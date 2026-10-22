@@ -1582,6 +1582,40 @@ export class CredentialContextRequiredError extends Error {
   }
 }
 
+function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, candidate?: ArtifactRef): readonly ArtifactRef[] {
+      const references = new Map<string, ArtifactRef>();
+      const visit = (value: unknown): void => {
+        if (value === null || typeof value !== "object") return;
+        if (candidate !== undefined && containsDeletionArtifactReference(value, candidate)) references.set(candidate.sha256, candidate);
+        const full = ArtifactRefSchema.safeParse(value);
+        if (full.success) references.set(full.data.sha256, full.data);
+        if (Array.isArray(value)) { for (const member of value) visit(member); return; }
+        const object = value as Record<string, unknown>;
+        if (typeof object.preparationJson === "string") visit(JSON.parse(object.preparationJson));
+        const attachment = DiagnosticAttachmentSchema.safeParse(value);
+        if (attachment.success) {
+          const row = attachment.data;
+          const ref = ArtifactRefSchema.parse({ id: row.artifactId, sha256: row.digest, bytes: row.byteLength, mediaType: row.mediaType });
+          references.set(ref.sha256, ref);
+        }
+        for (const member of Object.values(object)) visit(member);
+      };
+      for (const table of AUTHORITY_TABLE_REGISTRY.map(entry => entry.name)) {
+        const columns = database.prepare(`PRAGMA table_info(${table})`).all()
+          .map(raw => z.object({ name: z.string() }).parse(raw).name)
+          .filter(name => name.endsWith("_json"));
+        if (columns.length === 0) continue;
+        const retained = table === "diagnostic_snapshots" ? " WHERE json_extract(payload_json,'$.availability.state') IS NOT 'purged'"
+          : table === "diagnostic_files" ? " WHERE snapshot_id IN (SELECT id FROM diagnostic_snapshots WHERE json_extract(payload_json,'$.availability.state') IS NOT 'purged')" : "";
+        for (const raw of database.prepare(`SELECT ${columns.join(",")} FROM ${table}${retained}`).all()) {
+          for (const value of Object.values(raw)) {
+            if (typeof value === "string") visit(JSON.parse(value));
+          }
+        }
+      }
+      return Object.freeze([...references.values()].map(reference => Object.freeze(reference)));
+}
+
 export class AuthorityDatabase implements Disposable {
   readonly #admission: RuntimeAdmission;
   #database: DatabaseSync;
@@ -1699,6 +1733,30 @@ export class AuthorityDatabase implements Disposable {
   ): AuthorityDatabase {
     admission.assertProfileRuntime();
     return new AuthorityDatabase(admission, input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials);
+  }
+
+  static readProfileMaintenanceInventory(admission: RuntimeAdmission) {
+    const owner = requireRuntimeAdmission(admission), path = join(owner.stateRoot, "state.db");
+    owner.assertLive();
+    return withAuthorityDatabaseReadOnly(owner, path, database => {
+      const inspection = inspectNormalAuthority(database);
+      if (inspection.installationId !== owner.profileBinding.installationId || inspection.profileId !== owner.profileBinding.profileId) throw new Error("profile-maintenance-binding-mismatch");
+      const settings = readAppSettings(database);
+      const settingsAuthority = settings === undefined
+        ? Object.freeze({ state: "never-initialized" as const })
+        : Object.freeze({ state: "initialized" as const, record: settings });
+      const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
+        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
+      const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
+      const browsers = database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow);
+      const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
+      const controls = database.prepare("SELECT * FROM worker_controls ORDER BY command_id").all().map(workerControlFromRow);
+      const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
+      const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
+      const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
+      const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
+      return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+    });
   }
 
   static openStoppedRestoreProjection(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock): AuthorityDatabase {
@@ -1923,39 +1981,7 @@ export class AuthorityDatabase implements Disposable {
 
   readManagedArtifactReferences(candidate?: ArtifactRef): readonly ArtifactRef[] {
     this.#assertOpen();
-    return this.#withReadSnapshot(() => {
-      const references = new Map<string, ArtifactRef>();
-      const visit = (value: unknown): void => {
-        if (value === null || typeof value !== "object") return;
-        if (candidate !== undefined && containsDeletionArtifactReference(value, candidate)) references.set(candidate.sha256, candidate);
-        const full = ArtifactRefSchema.safeParse(value);
-        if (full.success) references.set(full.data.sha256, full.data);
-        if (Array.isArray(value)) { for (const member of value) visit(member); return; }
-        const object = value as Record<string, unknown>;
-        if (typeof object.preparationJson === "string") visit(JSON.parse(object.preparationJson));
-        const attachment = DiagnosticAttachmentSchema.safeParse(value);
-        if (attachment.success) {
-          const row = attachment.data;
-          const ref = ArtifactRefSchema.parse({ id: row.artifactId, sha256: row.digest, bytes: row.byteLength, mediaType: row.mediaType });
-          references.set(ref.sha256, ref);
-        }
-        for (const member of Object.values(object)) visit(member);
-      };
-      for (const table of AUTHORITY_TABLE_REGISTRY.map(entry => entry.name)) {
-        const columns = this.#database.prepare(`PRAGMA table_info(${table})`).all()
-          .map(raw => z.object({ name: z.string() }).parse(raw).name)
-          .filter(name => name.endsWith("_json"));
-        if (columns.length === 0) continue;
-        const retained = table === "diagnostic_snapshots" ? " WHERE json_extract(payload_json,'$.availability.state') IS NOT 'purged'"
-          : table === "diagnostic_files" ? " WHERE snapshot_id IN (SELECT id FROM diagnostic_snapshots WHERE json_extract(payload_json,'$.availability.state') IS NOT 'purged')" : "";
-        for (const raw of this.#database.prepare(`SELECT ${columns.join(",")} FROM ${table}${retained}`).all()) {
-          for (const value of Object.values(raw)) {
-            if (typeof value === "string") visit(JSON.parse(value));
-          }
-        }
-      }
-      return Object.freeze([...references.values()].map(reference => Object.freeze(reference)));
-    });
+    return this.#withReadSnapshot(() => readManagedArtifactReferencesFromDatabase(this.#database, candidate));
   }
 
   reclaimPendingDiagnostics(): number {

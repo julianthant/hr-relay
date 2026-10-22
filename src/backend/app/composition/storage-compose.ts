@@ -1,3 +1,4 @@
+import { assertProfileBrowserRoot, composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeProfileCredentialInventory } from "./profile-credential-inventory.js";
 import { retireOrphanVerification } from "../../storage/maintenance/orphan-verification-retirement.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
@@ -6,26 +7,19 @@ import { requireLifecycleApplied, RunRecordService } from "../../runs/lifecycle/
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { composeProfileSettings } from "./dashboard/settings.js";
 import { activeSettingsConfig, activeSettingsRuntimeIdentity } from "../../runtime/settings/settings-runtime.js";
-import { workerProfileDirectory } from "../../runtime/browser/browser-session-factory.js";
 import { createProfileSession, ProfileSessionRefusedError } from "../../profiles/profile-session.js";
-import { readEmergencyFaults } from "../../logs/emergency-faults.js";
 import type { CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
-import { readBootSettings, readSettings } from "../../runtime/settings/settings-runtime.js";
-
+import { readBootSettings } from "../../runtime/settings/settings-runtime.js";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
-import { assertCredentialStoreOwner, readForErasure, ChatGptCredentialError, createChatGptCredentialRepository, createCredentialStore } from "../../storage/configuration/credential-store.js";
+import { assertCredentialStoreOwner, ChatGptCredentialError, createChatGptCredentialRepository, createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { protectedSettingsReadback } from "../../../models/config/protected-settings.js";
-import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readdirSync, readSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { assessCredentialInventory, type CredentialInventory } from "../../profiles/credential-inventory.js";
-import { verifyBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
-import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
-import { AUTHORITY_TABLE_REGISTRY } from "../../../models/config/authority.js";
 import type { DashboardWorkerProcessSupervisor } from "../../runtime/workers/worker-supervisor.js";
 import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import type { WorkerControlRecord } from "../../../models/run/worker-control.js";
@@ -33,33 +27,19 @@ import { workerPoolMember } from "../../../models/run/worker-slot.js";
 import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans, type ProcessIdentityObserver } from "../../storage/sqlite/runtime-process-locks.js";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
-import { acquireRecoveryRuntimeRestore, ProfileBrowserRootRefusalError, type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { acquireRecoveryRuntimeRestore, type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { descriptorSetHash, DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
-import {
-  AuthorityDatabase,
-  OfflineAuthorityRestoreService,
-  OfflineRestoreFailure,
-  RecoveryStopProofStore,
-  doctorAuthorityStorage,
-  summarizeSpanAuthorityReconciliation,
-} from "../../storage/sqlite/index.js";
+import { AuthorityDatabase, OfflineAuthorityRestoreService, OfflineRestoreFailure, RecoveryStopProofStore, doctorAuthorityStorage, summarizeSpanAuthorityReconciliation } from "../../storage/sqlite/index.js";
 import { settleInterruptedAuthorityRestore } from "../../storage/sqlite/offline-restore.js";
 import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../../storage/sqlite/runtime-process-locks.js";
-import type {
-  OfflineRestoreReport,
-  RecoveryRuntimeLockSnapshot,
-  StorageDoctorReport,
-} from "../../storage/sqlite/recovery-contracts.js";
+import type { OfflineRestoreReport, RecoveryRuntimeLockSnapshot, StorageDoctorReport } from "../../storage/sqlite/recovery-contracts.js";
 import { createRunQueueProjection } from "../../runs/projections/run-queue-projection.js";
 import { createTransactionHistory } from "../../storage/sqlite/transaction-history.js";
-import {
-  OfflineSpanRootRepairService,
-  type SpanRootRepairReport,
-} from "../../runs/recovery/span-root-repair.js";
+import { OfflineSpanRootRepairService, type SpanRootRepairReport } from "../../runs/recovery/span-root-repair.js";
 
 export interface StorageCommandOutcome {
   readonly output: string;
@@ -72,25 +52,6 @@ export class RuntimeCustodyUncertainError extends AggregateError {
     super(causes, ERROR_CATALOG.RUNTIME_CUSTODY_UNCERTAIN.text, { cause: causes[0] });
     this.name = "RuntimeCustodyUncertainError";
   }
-}
-
-export function assertProfileBrowserRoot(admissionInput: RuntimeAdmission, path: string): void {
-  const admission = requireRuntimeAdmission(admissionInput);
-  admission.assertProfileRuntime();
-  assertRetainedProfileBrowserRoot(admission, path);
-}
-
-function assertRetainedProfileBrowserRoot(admissionInput: RuntimeAdmission, path: string): void {
-  const admission = requireRuntimeAdmission(admissionInput), root = admission.stateRoot;
-  const child = relative(root, path);
-  if (!isAbsolute(path) || resolve(path) !== path || child === "" || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child)) throw new ProfileBrowserRootRefusalError();
-  if (["credentials", "backups", "artifacts", "logs", "scratch", "state.db", "state.db-wal", "state.db-shm"].includes(child.split(sep)[0] ?? "")) throw new ProfileBrowserRootRefusalError();
-  for (let current = path;; current = dirname(current)) {
-    const info = lstatSync(current, { throwIfNoEntry: false });
-    if (info !== undefined && (!info.isDirectory() || info.isSymbolicLink() || process.getuid !== undefined && info.uid !== process.getuid() || (info.mode & 0o022) !== 0)) throw new ProfileBrowserRootRefusalError();
-    if (current === root) break;
-  }
-  admission.assertStateRoot(path);
 }
 
 export function composeProfileActivity(input: Readonly<{
@@ -219,221 +180,6 @@ export function composeProfileActivity(input: Readonly<{
       if (drain === undefined) throw new Error("profile-cancellation-unrequested");
       if (drain.state === "failed") throw drain.error;
       return drain.state === "pending" ? drain.completion : Promise.resolve();
-    },
-  });
-}
-
-function inventoryFileIdentity(path: string) {
-  const info = lstatSync(path);
-  if (info.isSymbolicLink() || (!info.isFile() && !info.isDirectory()) || info.isFile() && info.nlink !== 1
-    || process.getuid !== undefined && info.uid !== process.getuid() || (info.mode & 0o022) !== 0) throw new Error("profile-inventory-path-unsafe");
-  return { path, directory: info.isDirectory(), device: info.dev, inode: info.ino, size: info.size,
-    mode: info.mode, modified: info.mtimeMs, changed: info.ctimeMs };
-}
-
-function credentialSearchBytes(capturedSecrets: readonly string[]): readonly Buffer[] {
-  return capturedSecrets.flatMap(value => {
-    const littleEndian = Buffer.from(value, "utf16le");
-    return [Buffer.from(value, "utf8"), littleEndian, Buffer.from(littleEndian).swap16()];
-  });
-}
-
-function containsCredentialValue(value: unknown, secrets: readonly string[]): boolean {
-  if (typeof value === "string") return secrets.some(secret => secret.length > 0 && value.includes(secret));
-  if (Array.isArray(value)) return value.some(member => containsCredentialValue(member, secrets));
-  if (typeof value === "object" && value !== null) return Object.entries(value).some(([key, member]) =>
-    containsCredentialValue(key, secrets) || containsCredentialValue(typeof member === "string" && key.endsWith("Json") ? JSON.parse(member) : member, secrets));
-  return false;
-}
-
-export function scanProfileCredentialCopy(path: string, capturedSecrets: readonly string[]): { digest: string; containsSecret: boolean } {
-  const secrets = credentialSearchBytes(capturedSecrets);
-  const before = inventoryFileIdentity(path);
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  try {
-    const opened = fstatSync(fd);
-    if (opened.dev !== before.device || opened.ino !== before.inode || opened.size !== before.size) throw new Error("profile-inventory-file-changed");
-    const digest = createHash("sha256"), chunk = Buffer.alloc(64 * 1024);
-    const overlap = Math.max(0, ...secrets.map(secret => secret.length - 1));
-    if (overlap > 64 * 1024) throw new Error("profile-inventory-secret-size-invalid");
-    let tail = Buffer.alloc(0), containsSecret = false, count = 0;
-    for (;;) {
-      const size = readSync(fd, chunk, 0, chunk.length, null);
-      if (size === 0) break;
-      count += size;
-      const bytes = chunk.subarray(0, size);
-      digest.update(bytes);
-      const scan = Buffer.concat([tail, bytes]);
-      containsSecret ||= secrets.some(secret => secret.length > 0 && scan.includes(secret));
-      tail = Buffer.from(scan.subarray(Math.max(0, scan.length - overlap)));
-    }
-    if (count !== before.size || canonicalJsonStringify(before) !== canonicalJsonStringify(inventoryFileIdentity(path))) throw new Error("profile-inventory-file-changed");
-    return { digest: digest.digest("hex"), containsSecret };
-  } finally { closeSync(fd); }
-}
-
-export function composeProfileCredentialInventory(input: Readonly<{ admission: RuntimeAdmission; database: AuthorityDatabase; hostFacts: HostConfigFacts; clock: Clock }>) {
-  const root = input.admission.stateRoot, profileId = input.admission.profileBinding.profileId;
-  const enumerate = () => {
-    input.admission.assertLive();
-    const custody = input.database.readProfileResourceCustody();
-    const saved = input.database.withAuthorityReadSnapshot(() => readSettings(input.database.authority));
-    const savedBrowserRoot = resolveConfigWithProvenance(saved.settings, input.hostFacts, input.clock,
-      { stateRoot: root, artifactRoot: input.admission.artifactRoot }).config.paths.browserProfileRoot;
-    const browserRootPaths = [...new Set([...custody.configSnapshots.map(snapshot => snapshot.config.paths.browserProfileRoot), savedBrowserRoot])];
-    if (browserRootPaths.length === 0) throw new Error("profile-inventory-config-unavailable");
-    for (const path of browserRootPaths) assertRetainedProfileBrowserRoot(input.admission, path);
-    if (browserRootPaths.some(path => browserRootPaths.some(other => other !== path && path.startsWith(`${other}${sep}`)))) throw new Error("profile-inventory-browser-root-ambiguous");
-    const identities: ReturnType<typeof inventoryFileIdentity>[] = [], copies: string[] = [], loginDataPaths: string[] = [], unsupported: string[] = [];
-    const backupPaths: string[] = [], manifests: string[] = [];
-    const browserRoots = new Set(custody.browsers.map(browser => {
-      const slot = custody.slots.find(value => value.workerId === browser.workerId);
-      const roots = [...new Set(custody.configSnapshots.filter(snapshot => snapshot.fingerprint === browser.configFingerprint).map(snapshot => snapshot.config.paths.browserProfileRoot))];
-      if (slot === undefined || roots.length !== 1 || browser.profileDirectory === undefined
-        || browser.profileDirectory !== workerProfileDirectory({ profileRoot: roots[0], slotOrdinal: slot.ordinal, system: browser.system })) {
-        throw new Error("profile-inventory-browser-membership-unavailable");
-      }
-      if (browser.health !== "closed") throw new Error("profile-inventory-browser-closure-unproved");
-      return browser.profileDirectory;
-    }));
-    const visit = (path: string): void => {
-      input.admission.assertStateRoot(path);
-      const entry = inventoryFileIdentity(path);
-      identities.push(entry);
-      const local = relative(root, path), parts = local.split(sep), top = parts[0];
-      if (local === "") { for (const name of readdirSync(path).sort()) visit(join(path, name)); return; }
-      const configuredBrowserRoot = browserRootPaths.find(browserRoot => path === browserRoot || path.startsWith(`${browserRoot}${sep}`));
-      const browserAncestor = browserRootPaths.some(browserRoot => browserRoot.startsWith(`${path}${sep}`));
-      if (top === undefined || !configuredBrowserRoot && !browserAncestor && !["credentials", "backups", "browsers", "artifacts", "logs", "scratch", "state.db", "state.db-wal", "state.db-shm"].includes(top)) {
-        throw new Error("profile-inventory-unowned-entry");
-      }
-      if (entry.directory) {
-        if (configuredBrowserRoot !== undefined) {
-          const browserParts = relative(configuredBrowserRoot, path).split(sep).filter(Boolean);
-          if (browserParts.length === 1 && !custody.slots.some(slot => `w${slot.ordinal}` === browserParts[0])) throw new Error("profile-inventory-browser-membership-unavailable");
-          if (browserParts.length === 2 && !browserRoots.has(path)) throw new Error("profile-inventory-browser-membership-unavailable");
-        }
-        if (top === "backups" && parts.length === 2 && !["authority", "suspects"].includes(parts[1] ?? "")) throw new Error("profile-inventory-backup-unowned");
-        if (top === "credentials" && parts.length !== 1 || top === "artifacts" && parts.length !== 1 || top === "logs" && parts.length !== 1) throw new Error("profile-inventory-unowned-entry");
-        for (const name of readdirSync(path).sort()) visit(join(path, name));
-        return;
-      }
-      if (top.startsWith("state.db")) { if (parts.length !== 1) throw new Error("profile-inventory-unowned-entry"); return; }
-      if (top === "credentials") {
-        if (parts.length !== 2 || !["protected.json", "chatgpt-account.json", "duo-webauthn.json"].includes(parts[1] ?? "")
-          && !/^\.protected\.[0-9a-f-]{36}\.tmp$/u.test(parts[1] ?? "")) throw new Error("profile-inventory-credential-unowned");
-        if (parts[1] !== "protected.json") copies.push(path);
-        return;
-      }
-      if (top === "backups") {
-        if (parts.length !== 3 || parts[1] !== "authority") throw new Error("profile-inventory-backup-unverified");
-        if (path.endsWith(".manifest.json")) manifests.push(path);
-        else backupPaths.push(path);
-        return;
-      }
-      if (configuredBrowserRoot !== undefined || top === "browsers") {
-        if (configuredBrowserRoot === undefined) throw new Error("profile-inventory-browser-root-unowned");
-        const browserParts = relative(configuredBrowserRoot, path).split(sep);
-        if (browserParts.length < 3 || !browserRoots.has(join(configuredBrowserRoot, ...browserParts.slice(0, 2)))) throw new Error("profile-inventory-browser-membership-unavailable");
-        if (basename(path) === "Login Data") loginDataPaths.push(path);
-        else if (!["Local State", "Preferences", "Secure Preferences"].includes(basename(path))) unsupported.push(path);
-        copies.push(path);
-        return;
-      }
-      if (top === "artifacts") {
-        if (!custody.artifactReferences.some(ref => basename(path) === `${ref.sha256}.artifact`)) throw new Error("profile-inventory-artifact-unowned");
-        unsupported.push(path);
-      } else if (top !== "logs" || parts.length !== 2 || parts[1] !== "boot.jsonl") throw new Error("profile-inventory-unowned-entry");
-      copies.push(path);
-    };
-    visit(root);
-    if (input.admission.artifactRoot !== join(root, "artifacts")) throw new Error("profile-inventory-artifact-root-unavailable");
-    for (const ref of custody.artifactReferences) {
-      if (!identities.some(entry => entry.path === join(root, "artifacts", `${ref.sha256}.artifact`))) throw new Error("profile-inventory-artifact-missing");
-    }
-    return { custody, savedBrowserRoot, identities, copies, loginDataPaths, unsupported, backupPaths, manifests };
-  };
-  let prepared: { membership: ReturnType<typeof enumerate>; backups: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[] } | undefined;
-  return Object.freeze({
-    async prepare(): Promise<void> {
-      const before = enumerate();
-      const backups: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[] = [];
-      for (const path of before.manifests) {
-        const verified = await verifyBackupManifestAtPath(input.admission, path, input.database.getSourceDatabaseIdentity());
-        if (verified.manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || verified.manifest.profileId !== profileId
-          || verified.manifest.installationId !== input.admission.profileBinding.installationId) throw new Error("profile-inventory-backup-binding-mismatch");
-        backups.push(verified);
-      }
-      if (before.backupPaths.length !== backups.length || before.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("profile-inventory-backup-unverified");
-      const after = enumerate();
-      if (canonicalJsonStringify(before) !== canonicalJsonStringify(after)) throw new Error("profile-inventory-membership-changed");
-      prepared = { membership: after, backups };
-    },
-    assess(fields: Readonly<{ admission: RuntimeAdmission; credentials: CredentialStore; operationId?: string;
-      capturedSecrets: readonly string[]; capturedSecretsComplete: boolean }>): CredentialInventory {
-      if (prepared === undefined) throw new Error("profile-inventory-unprepared");
-      if (fields.admission.stateRoot !== root || fields.admission.profileBinding.profileId !== profileId) throw new Error("profile-inventory-owner-mismatch");
-      assertCredentialStoreOwner(fields.credentials, fields.admission);
-      const before = enumerate();
-      const stable = (value: ReturnType<typeof enumerate>) => ({ ...value, identities: value.identities.filter(entry => entry.path !== join(root, "credentials", "protected.json") && entry.path !== join(root, "credentials")) });
-      if (canonicalJsonStringify(stable(before)) !== canonicalJsonStringify(stable(prepared.membership))) throw new Error("profile-inventory-membership-changed");
-      const record = fields.operationId === undefined ? fields.credentials.read() : readForErasure(fields.credentials, fields.operationId);
-      const inventory = assessCredentialInventory({ profileRoot: root, entriesAbsent: record.entries.ucpathUserId === undefined && record.entries.ucpathPassword === undefined,
-        backupPaths: [], loginDataPaths: before.loginDataPaths, capturedSecrets: fields.capturedSecrets, capturedSecretsComplete: fields.capturedSecretsComplete });
-      const backupPlaintext = [...inventory.backupPlaintext], unknownFormats = [...inventory.unknownFormats, ...before.unsupported];
-      for (const path of [...before.copies, ...before.backupPaths]) {
-        const scanned = scanProfileCredentialCopy(path, fields.capturedSecrets), backup = prepared.backups.find(value => value.backupPath === path);
-        if (backup !== undefined && scanned.digest !== backup.manifest.sha256) throw new Error("profile-inventory-backup-changed");
-        let containsSecret = scanned.containsSecret;
-        if (backup === undefined && basename(path) !== "Login Data" && !before.unsupported.includes(path)) {
-          try {
-            const bootLog = path === join(root, "logs", "boot.jsonl");
-            if (bootLog && readEmergencyFaults(root).state !== "present") throw new Error("profile-inventory-log-unavailable");
-            const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-            let bytes: Buffer;
-            try {
-              const info = fstatSync(descriptor), limit = bootLog ? 5 * 1024 * 1024 : 16 * 1024 * 1024;
-              if (!info.isFile() || info.size > limit) throw new Error("profile-inventory-copy-size-invalid");
-              bytes = Buffer.alloc(info.size + 1);
-              let count = 0;
-              while (count < bytes.length) {
-                const size = readSync(descriptor, bytes, count, bytes.length - count, count);
-                if (size === 0) break;
-                count += size;
-              }
-              if (count !== info.size) throw new Error("profile-inventory-copy-changed");
-              bytes = bytes.subarray(0, count);
-            } finally { closeSync(descriptor); }
-            if (createHash("sha256").update(bytes).digest("hex") !== scanned.digest) throw new Error("profile-inventory-copy-changed");
-            const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-            const documents: unknown[] = bootLog ? text.trimEnd().split("\n").map(line => JSON.parse(line) as unknown) : [JSON.parse(text) as unknown];
-            if (documents.some(value => value === null || typeof value !== "object" || Array.isArray(value))) throw new Error("profile-inventory-json-unsupported");
-            containsSecret ||= documents.some(value => containsCredentialValue(value, fields.capturedSecrets));
-            for (const token of text.matchAll(/"(?:[^"\\]|\\.)*"/gu)) {
-              if (containsCredentialValue(JSON.parse(token[0]) as unknown, fields.capturedSecrets)) containsSecret = true;
-            }
-          } catch { unknownFormats.push(path); }
-        }
-        if (backup !== undefined) {
-          const copyAdmission = input.admission.verifiedReadOnlyCopy(path, backup.manifest.sha256);
-          try {
-            containsSecret ||= withAuthorityDatabaseReadOnly(copyAdmission, path, database => {
-              const bytes = credentialSearchBytes(fields.capturedSecrets);
-              for (const table of AUTHORITY_TABLE_REGISTRY) for (const row of database.prepare(`SELECT * FROM ${table.name}`).iterate()) {
-                for (const [column, value] of Object.entries(row)) {
-                  if (containsCredentialValue(typeof value === "string" && column.endsWith("_json") ? JSON.parse(value) : value, fields.capturedSecrets)) return true;
-                  if (value instanceof Uint8Array && bytes.some(secret => secret.length > 0 && Buffer.from(value).includes(secret))) return true;
-                }
-              }
-              return false;
-            });
-          } finally { copyAdmission.release(); }
-        }
-        if (containsSecret) backupPlaintext.push(path);
-        if (!fields.capturedSecretsComplete) unknownFormats.push(path);
-      }
-      if (canonicalJsonStringify(before) !== canonicalJsonStringify(enumerate())) throw new Error("profile-inventory-membership-changed");
-      return { ...inventory, backupPlaintext, unknownFormats, logoutComplete: inventory.logoutComplete && backupPlaintext.length === 0 && unknownFormats.length === 0 };
     },
   });
 }
@@ -583,7 +329,9 @@ export function composeProfileRuntime(input: Readonly<{
       if (current?.admission === admission) { assertCredentialStoreOwner(current.credentials, admission); return current.credentials; }
       if (purpose === "ordinary" && entry.ordinary?.context !== undefined && entry.ordinary.state !== "closed") throw new Error("profile-resource-custody-unavailable");
       const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-        erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${profileId}.json`), hooks: input.credentialHooks });
+        erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${profileId}.json`), hooks: input.credentialHooks,
+        repairInventory: composeProfileCredentialRepairInventory({ machine, admission, hostFacts: input.hostFacts, clock: input.clock }),
+        initializationInventory: composeProfileCredentialInitializationInventory({ machine, admission, hostFacts: input.hostFacts, clock: input.clock }) });
       assertCredentialStoreOwner(credentials, admission);
       if (purpose === "ordinary") entry.ordinary = { admission, credentials, supervision: { state: "not-constructed" }, state: "open" };
       else entry.settlement = { admission, credentials };
@@ -1275,7 +1023,7 @@ export async function composeStorageCommand(
     authorityPath: join(stateRoot, "state.db"),
     backupDirectory: join(stateRoot, "backups", "authority"),
     busyTimeoutMs: 5000,
-  }, clock);
+  }, clock, credentials);
   const healthy = report.authority.state === "healthy"
     && report.recovery.state === "clear"
     && report.spanAuthority.state === "reconciled"

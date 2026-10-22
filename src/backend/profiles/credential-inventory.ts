@@ -1,4 +1,5 @@
-import { lstatSync, readdirSync, readFileSync } from "node:fs";
+import { readPrivateFile } from "../storage/configuration/credential-safe-file.js";
+import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { countUcsdLoginRows } from "../storage/sqlite/profile-local-databases.js";
 
@@ -51,18 +52,34 @@ function classifyBytes(bytes: Uint8Array): Exclude<CopyClass, "absent" | "unread
   catch { return "plaintext"; }
   if (typeof decoded !== "object" || decoded === null || !("schemaVersion" in decoded)) return "unknown";
   if (decoded.schemaVersion !== 2 && decoded.schemaVersion !== 3) return "unknown";
-  return holdsUcsd(decoded) ? "holds" : "clean";
+  return holdsUcsd(decoded) ? "holds" : "unknown";
 }
 
-function classifyPath(path: string): CopyClass {
+function readCredentialInventoryBytes(path: string): Buffer {
+  const file = readPrivateFile(path, { label: "protected.json", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
+  if (file === undefined) throw new Error("credential-inventory-copy-missing");
+  return file.bytes;
+}
+
+function classifyPath(path: string, inspectEncrypted?: (path: string) => Readonly<{ containsUcsd: boolean; containsCaptured: boolean }>): CopyClass {
   const info = lstatSync(path, { throwIfNoEntry: false });
   if (info === undefined) return "absent";
   if (info.isSymbolicLink() || !info.isFile()) return "unknown";
-  try { return classifyBytes(readFileSync(path)); }
+  try {
+    const bytes = readCredentialInventoryBytes(path);
+    let decoded: unknown;
+    try { decoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { return classifyBytes(bytes); }
+    if (isRecord(decoded) && decoded.schemaVersion === 4) {
+      if (inspectEncrypted === undefined) return "unknown";
+      const inspected = inspectEncrypted(path);
+      return inspected.containsUcsd || inspected.containsCaptured ? "holds" : "clean";
+    }
+    return classifyBytes(bytes);
+  }
   catch { return "unreadable"; }
 }
 
-function countLoginRows(paths: readonly string[]): number | "unreadable" | "absent" {
+export function countProfileCredentialLoginRows(paths: readonly string[]): number | "unreadable" | "absent" {
   if (paths.length === 0) return "absent";
   let rows = 0;
   let sawFile = false;
@@ -83,6 +100,7 @@ function containsCaptured(bytes: Uint8Array, secrets: readonly Uint8Array[]): bo
 
 export function assessCredentialInventory(input: {
   readonly profileRoot: string;
+  readonly inspectEncrypted?: (path: string) => Readonly<{ containsUcsd: boolean; containsCaptured: boolean }>;
   readonly entriesAbsent: boolean;
   readonly backupPaths?: readonly string[];
   readonly loginDataPaths?: readonly string[];
@@ -92,17 +110,17 @@ export function assessCredentialInventory(input: {
   const inventoryMissing = input.backupPaths === undefined || input.loginDataPaths === undefined;
   const captured = (input.capturedSecrets ?? []).map((secret) => Buffer.from(secret, "utf8"));
   const protectedPath = join(input.profileRoot, "credentials", "protected.json");
-  const protectedClass = classifyPath(protectedPath);
+  const protectedClass = classifyPath(protectedPath, input.inspectEncrypted);
   let stagePlaintext = false;
   let byteHit = protectedClass !== "absent" && protectedClass !== "unreadable" && captured.length > 0
-    && containsCaptured(readFileSync(protectedPath), captured);
+    && containsCaptured(readCredentialInventoryBytes(protectedPath), captured);
   try {
     for (const name of readdirSync(join(input.profileRoot, "credentials"))) {
       if (!name.startsWith(".protected.") || !name.endsWith(".tmp")) continue;
       const path = join(input.profileRoot, "credentials", name);
-      const stageClass = classifyPath(path);
+      const stageClass = classifyPath(path, input.inspectEncrypted);
       if ((stageClass !== "clean" && stageClass !== "absent") || (stageClass === "clean" && !input.capturedSecretsComplete)) stagePlaintext = true;
-      if (captured.length > 0 && stageClass !== "absent" && stageClass !== "unreadable" && containsCaptured(readFileSync(path), captured)) {
+      if (captured.length > 0 && stageClass !== "absent" && stageClass !== "unreadable" && containsCaptured(readCredentialInventoryBytes(path), captured)) {
         byteHit = true;
       }
     }
@@ -113,14 +131,14 @@ export function assessCredentialInventory(input: {
   const backupPlaintext: string[] = [];
   const unknownFormats: string[] = [];
   for (const path of backupPaths) {
-    const copy = classifyPath(path);
+    const copy = classifyPath(path, input.inspectEncrypted);
     if (copy === "holds" || copy === "plaintext") backupPlaintext.push(path);
     if (copy === "unknown" || copy === "unreadable" || (copy === "clean" && !input.capturedSecretsComplete)) unknownFormats.push(path);
-    if (captured.length > 0 && copy !== "absent" && copy !== "unreadable" && containsCaptured(readFileSync(path), captured)) {
+    if (captured.length > 0 && copy !== "absent" && copy !== "unreadable" && containsCaptured(readCredentialInventoryBytes(path), captured)) {
       byteHit = true;
     }
   }
-  const loginDataUcSdRows = input.loginDataPaths === undefined ? "absent" : countLoginRows(input.loginDataPaths);
+  const loginDataUcSdRows = input.loginDataPaths === undefined ? "absent" : countProfileCredentialLoginRows(input.loginDataPaths);
   const loginClean = loginDataUcSdRows === "absent" || loginDataUcSdRows === 0;
   const protectedClean = protectedClass === "absent" || protectedClass === "clean";
   return {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe,it } from "vitest";
 import { composeFailureResolution } from "../../../../src/backend/app/composition/dashboard/failure-resolution.js";
 import { createRunResourcesFactory } from "../../../../src/backend/app/composition/worker/run-resources.js";
-import { assertProfileBrowserRoot } from "../../../../src/backend/app/composition/storage-compose.js";
+import { assertProfileBrowserRoot } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { boundProfileAdmission, findProfileFixtureAdmission } from "../../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";

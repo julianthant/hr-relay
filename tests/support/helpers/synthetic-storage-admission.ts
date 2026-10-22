@@ -1,4 +1,4 @@
-import { findProfileFixtureAdmission } from "./admission-fixture.js";
+import { createBoundProfileCredentialStore, findProfileFixtureAdmission } from "./admission-fixture.js";
 import { withAuthorityDatabaseReadOnly as realWithAuthorityDatabaseReadOnly } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { inspectAuthorityBackupReadOnly as realInspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly as realOpenAuthorityBackupSourceReadOnly } from "../../../src/backend/storage/sqlite/backup-inspection.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -112,7 +112,9 @@ export async function composeStorageCommand(isolation: Parameters<typeof realCom
 }
 
 export function createCredentialStore(options: Omit<Parameters<typeof realCreateCredentialStore>[0],"admission">) {
-  return realCreateCredentialStore({ ...options, admission: syntheticStateRoot(options.stateRoot) });
+  const profile = findProfileFixtureAdmission(options.stateRoot);
+  return profile === undefined ? realCreateCredentialStore({ ...options, admission: syntheticStateRoot(options.stateRoot) })
+    : createBoundProfileCredentialStore(profile, options);
 }
 
 

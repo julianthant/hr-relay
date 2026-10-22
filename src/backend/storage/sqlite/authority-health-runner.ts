@@ -1,3 +1,4 @@
+import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import type { PreflightRunner, PreflightRunnerContext } from "../../../models/preflight/preflight.js";
@@ -15,16 +16,18 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
   #options: ReturnType<typeof StorageDoctorOptionsSchema.parse>;
   #clock: Clock;
   #admission: RuntimeAdmission;
+  #credentials: CredentialStore | undefined;
 
-  constructor(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock) {
+  constructor(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore) {
     this.#admission = admission;
+    this.#credentials = credentials;
     this.#options = StorageDoctorOptionsSchema.parse(input);
     this.#clock = clock;
   }
 
   async run(context: PreflightRunnerContext) {
     if (context.signal.aborted) throw new Error("authority.health preflight was aborted before inspection");
-    const report = await doctorAuthorityStorage(this.#admission, this.#options, this.#clock);
+    const report = await doctorAuthorityStorage(this.#admission, this.#options, this.#clock, this.#credentials);
     if (context.signal.aborted) throw new Error("authority.health preflight was aborted during inspection");
     const protectedSummary = report.protectedSettings.state === "available"
       ? report.protectedSettings.entries.map(({ name, present }) => `${name}=${present ? "present" : "absent"}`).join(", ")

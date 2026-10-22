@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { createCredentialDoctorWriter } from "../../support/helpers/credential-doctor-fixtures.js";
 import { createCredentialDoctorFixtures } from "../../support/helpers/credential-doctor-fixtures.js";
 import { createCredentialPersistenceFixtures } from "../../support/helpers/credential-persistence-fixtures.js";
@@ -7,7 +8,7 @@ import { default as assert } from "node:assert/strict";
 
 
 
-import { readFileSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
 
 
 import { rmSync } from "node:fs";
@@ -89,9 +90,10 @@ const writeCredentials = createCredentialDoctorWriter(COMMAND_ID, WRITE_ID);
 
 async function unchanged(f: ReturnType<typeof fixture>) {
   const meta = f.database.getMeta();
-  const before = snapshot(f.root);
-  const report = await doctorAuthorityStorage(f.admission,f.options);
-  assert.ok(isDeepStrictEqual(snapshot(f.root), before), "doctor changed source inventory or bytes");
+  const before = snapshot(f.machineRoot), controlBefore = snapshot(join(f.workspace, ".tracker", "control"));
+  const report = await doctorAuthorityStorage(f.admission,f.options, undefined, f.credentialStore);
+  assert.ok(isDeepStrictEqual(snapshot(f.machineRoot), before), "doctor changed profile or machine key/journal bytes");
+  assert.ok(isDeepStrictEqual(snapshot(join(f.workspace, ".tracker", "control")), controlBefore), "doctor changed control bytes");
   assert.deepEqual(f.database.getMeta(), meta);
   return report.protectedSettings;
 }
@@ -125,7 +127,25 @@ afterEach(_afterEachFixture0);
     }
   });
 
-  it("treats an absent credential store as the read-only empty baseline", async () => {
+  it("refuses missing or foreign credential owners without changing authority", async () => {
+    const f = fixture(), other = fixture();
+    const before = snapshot(f.machineRoot), control = snapshot(join(f.workspace, ".tracker", "control")), meta = f.database.getMeta();
+    for (const owner of [undefined, other.credentialStore]) {
+      const report = await doctorAuthorityStorage(f.admission, f.options, undefined, owner);
+      assert.equal(report.protectedSettings.state, "unavailable");
+      assert.ok(isDeepStrictEqual(snapshot(f.machineRoot), before));
+      assert.ok(isDeepStrictEqual(snapshot(join(f.workspace, ".tracker", "control")), control));
+      assert.deepEqual(f.database.getMeta(), meta);
+    }
+  });
+
+  it("refuses a missing established credential document without creating a baseline", async () => {
+    const f = fixture();
+    unlinkSync(f.credentialPath);
+    assert.equal((await unchanged(f)).state, "unavailable");
+  });
+
+  it("observes an authenticated empty credential record without creating a baseline", async () => {
     const f = fixture();
     assert.deepEqual(await unchanged(f), {
       state: "available",
@@ -148,12 +168,13 @@ const NOW_2 = "2026-09-06T12:01:00.000Z";
 const roots: string[] = [];
 
 const _afterEachFixture0 = () => {
+  releaseFixtures();
   vi.restoreAllMocks();
   syncBuiltinESMExports();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 
-const { fixture, crashAfterCredentialRename, crashBeforeCredentialRename, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
+const { fixture, releaseFixtures, crashAfterCredentialRename, crashBeforeCredentialRename, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
 
 
 

@@ -1,12 +1,13 @@
+import { observeCredentialPresence } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { createCredentialDoctorFixtures } from "../../../support/helpers/credential-doctor-fixtures.js";
+import { isDeepStrictEqual } from "node:util";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 
 import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { createCredentialStore, CredentialErasureAuthorityError } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { createCredentialPersistenceFixtures } from "../../../support/helpers/credential-persistence-fixtures.js";
 
@@ -17,9 +18,10 @@ const WRITE_2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SECRET = "credential-erase-private-password";
 const NOW = "2026-09-06T12:00:00.000Z";
 const roots: string[] = [];
-const { fixture, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW);
+const { fixture, registeredFixture, releaseFixtures, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW);
 
 afterEach(() => {
+  releaseFixtures();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -45,82 +47,53 @@ describe("credential history plaintext", () => {
   });
 
   it("strips a restored password when the erasure journal survived the crash", () => {
-    const stored = fixture({ afterErasureJournal: () => { throw new Error("crash after journal"); } });
+    const stored = registeredFixture({ afterErasureJournal: () => { throw new Error("crash after journal"); } });
     const applied = stored.store.apply(request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
-      expectedRevision: 1,
+      expectedRevision: 2,
       entries: { ucpathPassword: { set: SECRET } },
     }));
     assert.equal(applied.state, "applied");
     const before = readFileSync(stored.path);
-    assert.throws(() => stored.store.erase(CredentialEraseInputSchema.parse({
+    assert.throws(() => stored.erase(CredentialEraseInputSchema.parse({
       commandId: COMMAND_2,
-      commandFingerprint: "3".repeat(64),
-      expectedRevision: 2,
+      commandFingerprint: "b".repeat(64),
+      expectedRevision: 3,
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       writeId: WRITE_2,
       updatedAt: NOW,
     })), /crash after journal/);
-    assert.equal(readFileSync(stored.path, "utf8").includes(SECRET), true);
-    assert.equal(stored.store.read().entries.ucpathPassword, undefined);
+    assert.equal(readFileSync(stored.path, "utf8").includes(SECRET), false);
+    assert.equal(stored.recoverErasure().state, "applied");
+    assert.equal(stored.readErasure().entries.ucpathPassword, undefined);
     assert.equal(readFileSync(stored.path, "utf8").includes(SECRET), false);
     writeFileSync(stored.path, before, { mode: 0o600 });
     chmodSync(stored.path, 0o600);
-    assert.equal(stored.store.read().entries.ucpathPassword, undefined);
+    assert.equal(stored.recoverErasure().state, "applied");
+    assert.equal(stored.readErasure().entries.ucpathPassword, undefined);
     assert.equal(readFileSync(stored.path, "utf8").includes(SECRET), false);
-    const replay = stored.store.apply(request({
-      commandId: COMMAND_1,
-      writeId: WRITE_1,
-      expectedRevision: stored.store.read().revision,
-      entries: { ucpathPassword: { set: SECRET } },
-    }));
-    assert.equal(replay.state, "rejected");
-    if (replay.state === "rejected") assert.equal(replay.code, "command-divergent");
+    assert.throws(() => stored.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
+      expectedRevision: stored.readErasure().revision, entries: { ucpathPassword: { set: SECRET } } })));
+    assert.throws(() => stored.retryErasure(CredentialEraseInputSchema.parse({ commandId: COMMAND_1, writeId: WRITE_1,
+      expectedRevision: stored.readErasure().revision, commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: NOW })));
   });
 
-  it("migrates a version-2 credential document without leaving historical plaintext", () => {
-    const stored = fixture();
-    const applied = stored.store.apply(request({
-      commandId: COMMAND_1,
-      writeId: WRITE_1,
-      expectedRevision: 1,
-      entries: { ucpathPassword: { set: SECRET } },
-    }));
-    assert.equal(applied.state, "applied");
-    const document = JSON.parse(readFileSync(stored.path, "utf8")) as {
-      schemaVersion: number;
-      history: { setValueIds?: unknown }[];
-    };
-    document.schemaVersion = 2;
-    document.history = document.history.map((entry) => ({
-      request: {
-        commandId: COMMAND_1,
-        commandFingerprint: "1".repeat(64),
-        expectedRevision: 1,
-        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-        writeId: WRITE_1,
-        updatedAt: NOW,
-        entries: { ucpathPassword: { set: SECRET } },
-      },
-      setValueIds: entry.setValueIds,
-    }));
-    writeFileSync(stored.path, `${JSON.stringify(document)}\n`, { mode: 0o600 });
-    chmodSync(stored.path, 0o600);
-    stored.store.migrateHistory();
-    const migrated = readFileSync(stored.path, "utf8");
-    assert.equal(migrated.includes(`"schemaVersion":2`), false);
-    assert.equal(migrated.includes(SECRET), true);
-    const parsed = JSON.parse(migrated) as { history: readonly { request?: unknown }[] };
-    assert.equal(parsed.history.some((entry) => entry.request !== undefined), false);
+  it("refuses an implicit version-two conversion outside an admitted conversion intent", () => {
+    const stored = versionTwoFixture();
+    const bytes = `${JSON.stringify(stored.document)}\n`;
+    writeFileSync(stored.path, bytes, { mode: 0o600 });
+    assert.throws(() => stored.store.read());
+    assert.throws(() => stored.store.migrateHistory({ operation: stored.operation }));
+    assert.equal(readFileSync(stored.path, "utf8"), bytes);
   });
 
   it("strips an older password generation restored after erasure", () => {
-    const stored = fixture();
+    const stored = registeredFixture();
     const first = stored.store.apply(request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
-      expectedRevision: 1,
+      expectedRevision: 2,
       entries: { ucpathPassword: { set: SECRET } },
     }));
     assert.equal(first.state, "applied");
@@ -128,14 +101,14 @@ describe("credential history plaintext", () => {
     const newer = stored.store.apply(request({
       commandId: COMMAND_2,
       writeId: WRITE_2,
-      expectedRevision: 2,
+      expectedRevision: 3,
       entries: { ucpathPassword: { set: "credential-erase-newer-password" } },
     }));
     assert.equal(newer.state, "applied");
-    const erased = stored.store.erase(CredentialEraseInputSchema.parse({
+    const erased = stored.erase(CredentialEraseInputSchema.parse({
       commandId: "33333333-3333-4333-8333-333333333333",
-      commandFingerprint: "3".repeat(64),
-      expectedRevision: 3,
+      commandFingerprint: "b".repeat(64),
+      expectedRevision: 4,
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       writeId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
       updatedAt: NOW,
@@ -143,93 +116,87 @@ describe("credential history plaintext", () => {
     assert.equal(erased.state, "applied");
     writeFileSync(stored.path, older, { mode: 0o600 });
     chmodSync(stored.path, 0o600);
-    assert.equal(stored.store.read().entries.ucpathPassword, undefined);
+    assert.equal(stored.recoverErasure().state, "applied");
+    assert.equal(stored.readErasure().entries.ucpathPassword, undefined);
     assert.equal(readFileSync(stored.path, "utf8").includes(SECRET), false);
-    const replay = stored.store.apply(request({
-      commandId: COMMAND_1,
-      writeId: WRITE_1,
-      expectedRevision: stored.store.read().revision,
-      entries: { ucpathPassword: { set: SECRET } },
-    }));
-    assert.equal(replay.state, "rejected");
-    if (replay.state === "rejected") assert.equal(replay.code, "command-divergent");
+    assert.throws(() => stored.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
+      expectedRevision: stored.readErasure().revision, entries: { ucpathPassword: { set: SECRET } } })));
+    assert.throws(() => stored.retryErasure(CredentialEraseInputSchema.parse({ commandId: COMMAND_1, writeId: WRITE_1,
+      expectedRevision: stored.readErasure().revision, commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: NOW })));
   });
 
   it("does not treat a missing established erasure journal as empty", () => {
-    const stored = fixture();
+    const stored = registeredFixture();
     const applied = stored.store.apply(request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
-      expectedRevision: 1,
+      expectedRevision: 2,
       entries: { ucpathPassword: { set: SECRET } },
     }));
     assert.equal(applied.state, "applied");
     const older = readFileSync(stored.path);
-    const erased = stored.store.erase(CredentialEraseInputSchema.parse({
+    const erased = stored.erase(CredentialEraseInputSchema.parse({
       commandId: COMMAND_2,
-      commandFingerprint: "3".repeat(64),
-      expectedRevision: 2,
+      commandFingerprint: "b".repeat(64),
+      expectedRevision: 3,
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       writeId: WRITE_2,
       updatedAt: NOW,
     }));
     assert.equal(erased.state, "applied");
-    unlinkSync(join(stored.tracker, "credential-erasures", "journal.json"));
+    unlinkSync(stored.journalPath);
     writeFileSync(stored.path, older, { mode: 0o600 });
     chmodSync(stored.path, 0o600);
-    assert.throws(() => stored.store.read(), CredentialErasureAuthorityError);
+    assert.throws(() => stored.readErasure(), /credential-erasure-head-missing/u);
   });
 });
 
 
 it("refuses a missing established erasure anchor and accepts the same restored anchor", () => {
-  const stored = fixture();
-  assert.equal(stored.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1, expectedRevision: 1, entries: { ucpathPassword: { set: SECRET } } })).state, "applied");
-  assert.equal(stored.store.erase(CredentialEraseInputSchema.parse({ commandId: COMMAND_2, commandFingerprint: "3".repeat(64), expectedRevision: 2,
+  const stored = registeredFixture();
+  assert.equal(stored.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1, expectedRevision: 2, entries: { ucpathPassword: { set: SECRET } } })).state, "applied");
+  assert.equal(stored.erase(CredentialEraseInputSchema.parse({ commandId: COMMAND_2, commandFingerprint: "b".repeat(64), expectedRevision: 3,
     protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: WRITE_2, updatedAt: NOW })).state, "applied");
-  const anchor = join(stored.tracker, "credential-erasures", "journal.json.authority");
-  const bytes = readFileSync(anchor); unlinkSync(anchor);
-  assert.throws(() => stored.store.read(), CredentialErasureAuthorityError);
+  const anchor = `${stored.journalPath}.authority`;
+  const bytes = readFileSync(anchor);
+  const heldAnchor = `${anchor}.held`;
+  renameSync(anchor, heldAnchor);
+  assert.throws(() => stored.readErasure(), /credential-erasure-head-missing/u);
   writeFileSync(anchor, bytes, { mode: 0o600 });
-  assert.equal(stored.store.read().entries.ucpathPassword, undefined);
+  assert.throws(() => stored.readErasure(), /credential-erasure-head-changed/u);
+  unlinkSync(anchor);
+  renameSync(heldAnchor, anchor);
+  assert.equal(stored.readErasure().entries.ucpathPassword, undefined);
 });
 
 
-it("keeps local sticky-ancestor reads live while writes and released authority refuse", () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "credential-local-read-")));
-  roots.push(root);
-  const stateRoot = join(root, "state");
-  mkdirSync(stateRoot, { mode: 0o700 });
-  const admission = RuntimeAdmission.syntheticRoots(stateRoot, stateRoot);
-  const store = createCredentialStore({ admission, stateRoot });
+it("keeps genuine private profile reads and writes beneath a sticky workspace while released authority refuses", () => {
+  const stored = fixture();
   try {
-    assert.equal(store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
+    assert.equal(stored.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
       expectedRevision: 1, entries: { ucpathPassword: { set: SECRET } } })).state, "applied");
-    chmodSync(root, 0o1777);
-    assert.equal(store.read().entries.ucpathPassword?.value, SECRET);
-    assert.throws(() => store.apply(request({ commandId: COMMAND_2, writeId: WRITE_2,
-      expectedRevision: 2, entries: { ucpathPassword: { clear: true } } })), /unsafe synthetic fixture ancestor/u);
-    assert.throws(() => store.erase(CredentialEraseInputSchema.parse({ commandId: COMMAND_2,
-      commandFingerprint: "3".repeat(64), expectedRevision: 2, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-      writeId: WRITE_2, updatedAt: NOW })), /unsafe synthetic fixture ancestor/u);
-    assert.equal(store.read().entries.ucpathPassword?.value, SECRET);
-    admission.release();
-    assert.throws(() => store.read(), /released admission/u);
-  } finally { chmodSync(root, 0o700); admission.release(); }
+    chmodSync(stored.stateRoot, 0o1777);
+    assert.equal(stored.store.read().entries.ucpathPassword?.value, SECRET);
+    assert.equal(stored.store.apply(request({ commandId: COMMAND_2, writeId: WRITE_2,
+      expectedRevision: 2, entries: { ucpathPassword: { clear: true } } })).state, "applied");
+    assert.equal(stored.store.read().entries.ucpathPassword, undefined);
+    stored.admission.release();
+    assert.throws(() => stored.store.read(), /released admission/u);
+  } finally { chmodSync(stored.stateRoot, 0o700); }
 });
 
 it("refuses a substituted local journal ancestor before treating missing files as empty", () => {
-  const stored = fixture();
+  const stored = registeredFixture();
   assert.equal(stored.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
-    expectedRevision: 1, entries: { ucpathPassword: { set: SECRET } } })).state, "applied");
-  assert.equal(stored.store.erase(CredentialEraseInputSchema.parse({ commandId: COMMAND_2,
-    commandFingerprint: "3".repeat(64), expectedRevision: 2, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+    expectedRevision: 2, entries: { ucpathPassword: { set: SECRET } } })).state, "applied");
+  assert.equal(stored.erase(CredentialEraseInputSchema.parse({ commandId: COMMAND_2,
+    commandFingerprint: "b".repeat(64), expectedRevision: 3, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
     writeId: WRITE_2, updatedAt: NOW })).state, "applied");
-  assert.equal(stored.store.read().entries.ucpathPassword, undefined);
-  const directory = join(stored.tracker, "credential-erasures");
+  assert.equal(stored.readErasure().entries.ucpathPassword, undefined);
+  const directory = dirname(stored.journalPath);
   renameSync(directory, `${directory}-held`);
   mkdirSync(directory, { mode: 0o700 });
-  assert.throws(() => stored.store.read(), /credential ancestor identity changed/u);
+  assert.throws(() => stored.readErasure(), /credential-erasure-head-missing/u);
 });
 
 
@@ -246,21 +213,18 @@ function versionTwoFixture() {
   return { ...stored, original, document, password, lastApplied: record.lastApplied };
 }
 
-it("authenticates a complete version-two replay before projecting its marked history", () => {
+it("requires explicit conversion before ordinary version-two read or replay", () => {
   const stored = versionTwoFixture();
   const bytes = `${JSON.stringify(stored.document)}\n`;
   writeFileSync(stored.path, bytes, { mode: 0o600 });
-  assert.deepEqual(stored.store.read(), stored.document.record);
-  const replay = stored.store.verifyReplay(stored.original);
-  assert.equal(replay.state, "applied");
-  if (replay.state === "applied") assert.deepEqual(replay.record, stored.document.record);
+  assert.throws(() => stored.store.read());
+  assert.throws(() => stored.store.verifyReplay(stored.original));
+  assert.throws(() => stored.store.migrateHistory({ operation: stored.operation }));
   assert.equal(readFileSync(stored.path, "utf8"), bytes);
-  stored.store.migrateHistory();
-  assert.deepEqual(stored.store.read(), stored.document.record);
 });
 
 it.each(["value", "timestamp", "commandFingerprint", "expectedRevision", "protectedSchemaHash"] as const)(
-  "refuses version-two %s corruption before read, replay or conversion effects", corruption => {
+  "refuses version-two %s corruption through ordinary reads and unadmitted conversion", corruption => {
     const stored = versionTwoFixture();
     const record = corruption === "value" || corruption === "timestamp"
       ? { ...stored.document.record, entries: { ...stored.document.record.entries,
@@ -272,26 +236,50 @@ it.each(["value", "timestamp", "commandFingerprint", "expectedRevision", "protec
     const bytes = `${JSON.stringify({ ...stored.document, record })}\n`;
     writeFileSync(stored.path, bytes, { mode: 0o600 });
     for (const observe of [() => stored.store.read(), () => stored.store.verifyReplay(stored.original),
-      () => stored.store.migrateHistory()]) {
-      assert.throws(observe, corruption === "expectedRevision" || corruption === "protectedSchemaHash"
-        ? /credential store protected.json is malformed/u : /credential store protected.json disagrees with its identity history/u);
+      () => stored.store.migrateHistory({ operation: stored.operation })]) {
+      assert.throws(observe);
       assert.equal(readFileSync(stored.path, "utf8"), bytes);
     }
   });
 
 it.each(["commandFingerprint", "expectedRevision", "protectedSchemaHash"] as const)(
-  "authenticates reconstructable version-three lastApplied %s", field => {
+  "refuses legacy version-three lastApplied %s without ordinary compatibility reads", field => {
     const stored = versionTwoFixture();
     const record = { ...stored.document.record, lastApplied: { ...stored.lastApplied,
       ...(field === "commandFingerprint" ? { commandFingerprint: "9".repeat(64) }
         : field === "expectedRevision" ? { expectedRevision: 2 } : { protectedSchemaHash: "9".repeat(64) }) } };
-    const document: unknown = JSON.parse(readFileSync(stored.path, "utf8"));
-    assert.ok(typeof document === "object" && document !== null);
-    const bytes = `${JSON.stringify({ ...document, record })}\n`;
+    const bytes = `${JSON.stringify({ schemaVersion: 3, record, history: [{
+      receipt: { ...stored.lastApplied, updatedAt: NOW, requestReceipt: "f".repeat(64) },
+      marked: { ucpathPassword: { set: "<set>" } }, setValueIds: { ucpathPassword: stored.password.valueId },
+    }] })}\n`;
     writeFileSync(stored.path, bytes, { mode: 0o600 });
-    const refusal = field === "expectedRevision" || field === "protectedSchemaHash"
-      ? /credential store protected.json is malformed/u : /credential store protected.json disagrees with its identity history/u;
-    assert.throws(() => stored.store.read(), refusal);
-    assert.throws(() => stored.store.verifyReplay(stored.original), refusal);
+    assert.throws(() => stored.store.read());
+    assert.throws(() => stored.store.verifyReplay(stored.original));
     assert.equal(readFileSync(stored.path, "utf8"), bytes);
   });
+
+it("refuses passive doctor presence when an exact external erasure advances between observations", async () => {
+  const snapshot = createCredentialDoctorFixtures([]).snapshot;
+  let captured: unknown, capturedControl: unknown, armed = false;
+  const stored = registeredFixture({ betweenPresenceObservations: () => {
+    if (!armed) return;
+    armed = false;
+    const erased = stored.erase(CredentialEraseInputSchema.parse({ commandId: COMMAND_2, writeId: WRITE_2,
+      commandFingerprint: "b".repeat(64), expectedRevision: stored.store.read().revision,
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: NOW }));
+    assert.equal(erased.state, "applied");
+    writeFileSync(stored.path, originalCiphertext, { mode: 0o600 });
+    assert.equal(readFileSync(stored.path).equals(originalCiphertext), true);
+    captured = snapshot(stored.machine.stateRoot);
+    capturedControl = snapshot(join(stored.stateRoot, ".tracker", "control"));
+  } });
+  const originalCiphertext = readFileSync(stored.path);
+  armed = true;
+  const report = await doctorAuthorityStorage(stored.admission, { stateRoot: stored.tracker, authorityPath: join(stored.tracker, "state.db"),
+    stateRootTrustAnchor: stored.stateRoot, backupDirectory: join(stored.tracker, "backups", "authority"), busyTimeoutMs: 250 }, undefined, stored.store);
+  assert.equal(report.protectedSettings.state, "unavailable");
+  assert.ok(captured !== undefined);
+  assert.ok(isDeepStrictEqual(snapshot(stored.machine.stateRoot), captured), "doctor changed external writer's settled bytes");
+  assert.ok(isDeepStrictEqual(snapshot(join(stored.stateRoot, ".tracker", "control")), capturedControl), "doctor changed settled control bytes");
+  assert.throws(() => observeCredentialPresence(stored.store, stored.admission), /profile-storage-claim-generation-changed/u);
+});

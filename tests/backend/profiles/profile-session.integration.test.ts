@@ -1,3 +1,6 @@
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { readAuthenticatedCredentialFixture, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
+import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../src/backend/app/composition/profile-credential-inventory.js";
 import { assessCredentialInventory } from "../../../src/backend/profiles/credential-inventory.js";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -13,7 +16,7 @@ import { afterEach, describe, it, vi } from "vitest";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createProfileSession as realCreateProfileSession } from "../../../src/backend/profiles/profile-session.js";
 import { ProfileRegistryDocumentSchema, SignUpOperationSchema, type ProfileRegistryDocument } from "../../../src/models/profiles/profile.js";
-import { manualClock } from "../../../src/rules/time/clock.js";
+import { manualClock, systemClock } from "../../../src/rules/time/clock.js";
 import { IsoInstantSchema, PositiveIntSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/models/config/settings.js";
 import type { SettingsRuntimeSnapshot } from "../../../src/backend/runtime/settings/settings-runtime.js";
@@ -28,7 +31,11 @@ const machineAdmissions = new Map<string, RuntimeAdmission>();
 function createProfileSession(input: Omit<Parameters<typeof realCreateProfileSession>[0], "admission">) {
   const admission = machineAdmissions.get(input.machineRoot);
   if (admission === undefined) throw new Error("profile fixture machine admission missing");
-  return realCreateProfileSession({ ...input, admission });
+  return realCreateProfileSession({ ...input, admission,
+    repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine: admission,
+      admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
+    initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: admission,
+      admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies) });
 }
 
 const roots: string[] = [];
@@ -37,6 +44,7 @@ function temp(): string {
   const root = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hr-profiles-")));
   roots.push(root);
   const admission = acquireEntrypointAdmission(root, "shared");
+  mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   machineAdmissions.set(admission.stateRoot, admission);
   return admission.stateRoot;
 }
@@ -62,14 +70,14 @@ describe("profile session", () => {
     assert.equal(blocked.state, "cancelling");
     if (blocked.state !== "cancelling" || blocked.operationId === undefined) return;
     assert.equal(readFileSync(join(root, "machine", "operations", `${blocked.operationId}.json`), "utf8").includes("secret-one"), false);
-    assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), true);
+    assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), false);
     busy = false;
     const wiped = session.resumeLogout(blocked.operationId);
     assert.equal(wiped.state, "wiped");
     const protectedText = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8");
     assert.equal(protectedText.includes("secret-one"), false);
     assert.equal(protectedText.includes("alex@example.edu"), false);
-    const retained = JSON.parse(protectedText) as { record: { entries: { timekeeperName?: { value: string } } } };
+    const retained = readAuthenticatedCredentialFixture(root, alex.profileId) as { record: { entries: { timekeeperName?: { value: string } } } };
     assert.equal(retained.record.entries.timekeeperName?.value, "AR");
     const verifiers = readFileSync(join(root, "machine", "profile-verifiers.json"), "utf8");
     assert.equal(verifiers.includes("secret-one"), false);
@@ -80,9 +88,13 @@ describe("profile session", () => {
     assert.equal(returned.state, "active");
     if (returned.state !== "active") return;
     const restored = readFileSync(join(root, "profiles", returned.profileId, "credentials", "protected.json"), "utf8");
-    assert.equal(restored.includes("secret-one"), true);
-    assert.equal(restored.includes("alex@example.edu"), true);
-    assert.equal(restored.includes("\"AR\""), true);
+    assert.equal(restored.includes("secret-one"), false);
+    assert.equal(restored.includes("alex@example.edu"), false);
+    assert.equal(restored.includes("\"AR\""), false);
+    const currentRecord = readAuthenticatedCredentialFixture(root, returned.profileId) as { record: { entries: { ucpathUserId: { value: string }; ucpathPassword: { value: string }; timekeeperName: { value: string } } } };
+    assert.equal(currentRecord.record.entries.ucpathUserId.value, "alex@example.edu");
+    assert.equal(currentRecord.record.entries.ucpathPassword.value, "secret-one");
+    assert.equal(currentRecord.record.entries.timekeeperName.value, "AR");
     assert.equal(session.logOut(returned.token, { at: "2026-09-06T12:09:00.000Z" }).state, "wiped");
     const sam = session.signUp({
       firstName: "Sam", lastName: "Ortiz", email: "sam@example.edu", password: "secret-two", createdAt: "2026-09-06T12:08:00.000Z",
@@ -141,15 +153,17 @@ describe("profile session", () => {
     const held = session.logOut(active.token, { at: "2026-09-06T12:01:00.000Z" });
     assert.ok(held.state === "refused" && held.operationId !== undefined);
     const operationId = held.operationId;
-    const erased = JSON.parse(readFileSync(protectedPath, "utf8")) as { history: { receipt: { commandId: string } }[] };
-    const copyRoot = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "inventory-clean-copy-"))); roots.push(copyRoot);
-    const copyAdmission = RuntimeAdmission.syntheticRoots(copyRoot, join(copyRoot, "artifacts"));
-    const copyStore = createCredentialStore({ admission: copyAdmission, stateRoot: copyRoot });
-    assert.equal(copyStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: "32323232-3232-4232-8232-323232323232", writeId: "34343434-3434-4434-8434-343434343434",
-      commandFingerprint: "e".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-      updatedAt: "2026-09-06T12:00:00.000Z", entries: { timekeeperName: { set: password } } })).state, "applied");
-    writeFileSync(backup, readFileSync(join(copyRoot, "credentials", "protected.json")), { mode: 0o600 });
-    copyAdmission.release();
+    const erased = readAuthenticatedCredentialFixture(root, active.profileId) as { history: { receipt: { commandId: string } }[] };
+    const copyFixture = createBoundProfileFixture();
+    const copyAdmission = copyFixture.admission;
+    try {
+      const copyStore = createCredentialStore({ admission: copyAdmission, stateRoot: copyAdmission.stateRoot, erasureJournalAdmission: copyFixture.machine,
+        erasureJournalPath: join(copyFixture.machine.stateRoot, "machine", "erasures", `${copyAdmission.profileBinding.profileId}.json`) });
+      assert.equal(copyStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: "32323232-3232-4232-8232-323232323232", writeId: "34343434-3434-4434-8434-343434343434",
+        commandFingerprint: "e".repeat(64), expectedRevision: copyStore.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        updatedAt: "2026-09-06T12:00:00.000Z", entries: { ucpathUserId: { clear: true }, ucpathPassword: { clear: true }, timekeeperName: { set: password } } })).state, "applied");
+      writeFileSync(backup, readFileSync(join(copyAdmission.stateRoot, "credentials", "protected.json")), { mode: 0o600 });
+    } finally { copyFixture.close(); }
     const copyBytes = readFileSync(backup);
     const withoutCapture = assessCredentialInventory({ profileRoot: profile, entriesAbsent: true, backupPaths: [backup], loginDataPaths: [], capturedSecrets: [], capturedSecretsComplete: false });
     assert.equal(withoutCapture.logoutComplete, false);
@@ -165,7 +179,7 @@ describe("profile session", () => {
     assert.notEqual(row?.credentialState, "wiped");
     assert.deepEqual(readFileSync(backup), copyBytes);
     assert.equal(readFileSync(protectedPath).includes(Buffer.from(password)), false);
-    const replayed = JSON.parse(readFileSync(protectedPath, "utf8")) as typeof erased;
+    const replayed = readAuthenticatedCredentialFixture(root, active.profileId) as typeof erased;
     assert.deepEqual(replayed.history.map(entry => entry.receipt.commandId), erased.history.map(entry => entry.receipt.commandId));
     const assertStillBlocked = (result: ReturnType<typeof restarted.resumeLogout>) => {
       assert.ok(result.state === "refused");
@@ -174,7 +188,7 @@ describe("profile session", () => {
       assert.equal(row?.lifecycle, "cancelling");
       assert.notEqual(row?.credentialState, "wiped");
       assert.deepEqual(readFileSync(backup), copyBytes);
-      const current = JSON.parse(readFileSync(protectedPath, "utf8")) as typeof erased;
+      const current = readAuthenticatedCredentialFixture(root, active.profileId) as typeof erased;
       assert.deepEqual(current.history.map(entry => entry.receipt.commandId), erased.history.map(entry => entry.receipt.commandId));
       const pending = JSON.parse(readFileSync(join(root, "machine", "operations", `${operationId}.json`), "utf8")) as { commandId: string; writeId: string; expectedRevision: number };
       assert.deepEqual({ commandId: pending.commandId, writeId: pending.writeId, expectedRevision: pending.expectedRevision }, eraseIdentity);
@@ -222,7 +236,7 @@ describe("profile session", () => {
     };
     assert.equal(registry.profiles.find((entry) => entry.profileId === alex.profileId)?.lifecycle, "ready");
     assert.equal(cancelled.includes(alex.profileId), false);
-    assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), true);
+    assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), false);
   });
 
   it("refuses non-letter initials before creating a profile", () => {
@@ -259,7 +273,7 @@ describe("profile session", () => {
     if (alex.state !== "active") return;
     const result = session.logOut(alex.token, { at: "2026-09-06T12:07:00.000Z" });
     assert.equal(result.state, "cancelling");
-    assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), true);
+    assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), false);
   });
 
   it("resumes a logout from the retained operation after restart", () => {
@@ -337,19 +351,23 @@ describe("profile session", () => {
     const wiped = session.logOut(alex.token, { at: "2026-09-06T12:07:00.000Z" });
     assert.equal(wiped.state, "refused");
     assert.ok("operationId" in wiped && wiped.operationId !== undefined);
+    const operationId = wiped.operationId;
     writeFileSync(protectedPath, older, { mode: 0o600 });
     mkdirSync(join(root, "profiles", alex.profileId, "credential-erasures"), { recursive: true, mode: 0o700 });
     writeFileSync(join(root, "profiles", alex.profileId, "credential-erasures", "journal.json"), "{\"schemaVersion\":1,\"epoch\":0,\"erasedValueIds\":[],\"retiredCommandIds\":[]}\n", { mode: 0o600 });
     rmSync(backup);
-    assert.equal(session.resumeLogout(wiped.operationId).state, "wiped");
+    assert.throws(() => session.resumeLogout(operationId), /profile-inventory-unowned-entry/u);
+    rmSync(join(root, "profiles", alex.profileId, "credential-erasures"), { recursive: true });
+    assert.equal(session.resumeLogout(operationId).state, "wiped");
     assert.equal(readFileSync(protectedPath, "utf8").includes("secret-one"), false);
   });
 
   it("does not publish a profile when credential apply fails before commit", () => {
     const root = temp();
+    let renames = 0;
     const session = createProfileSession({
       machineRoot: root,
-      credentialHooks: { beforeRename: () => { throw new Error("disk"); } },
+      credentialHooks: { beforeRename: () => { if (++renames === 2) throw new Error("disk"); } },
     });
     assert.throws(() => session.signUp({
       firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
@@ -359,18 +377,20 @@ describe("profile session", () => {
 
   it("publishes one sign-up when the credential commit is uncertain", () => {
     const root = temp();
+    let renames = 0;
     const session = createProfileSession({
       machineRoot: root,
-      credentialHooks: { afterRename: () => { throw new Error("uncertain"); } },
+      credentialHooks: { afterRename: () => { if (++renames === 2) throw new Error("uncertain"); } },
     });
     const alex = session.signUp({
       firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
     });
     assert.equal(alex.state, "active");
+    assert.equal(renames, 2);
     if (alex.state !== "active") return;
     const text = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8");
-    assert.equal(text.includes("secret-one"), true);
-    const document: unknown = JSON.parse(text);
+    assert.equal(text.includes("secret-one"), false);
+    const document: unknown = readAuthenticatedCredentialFixture(root, alex.profileId);
     if (typeof document !== "object" || document === null || !("history" in document) || !Array.isArray(document.history)) {
       throw new Error("credential history is missing");
     }
@@ -464,7 +484,8 @@ describe("profile session", () => {
     const verifierText = readFileSync(join(root, "machine", "profile-verifiers.json"), "utf8");
     const verifier: unknown = JSON.parse(verifierText);
     const credentialText = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8");
-    const credential: unknown = JSON.parse(credentialText);
+    assert.equal(credentialText.includes("secret-one"), false);
+    const credential: unknown = readAuthenticatedCredentialFixture(root, alex.profileId);
     if (typeof verifier !== "object" || verifier === null || !("profiles" in verifier) || !Array.isArray(verifier.profiles)) {
       throw new Error("verifier file is missing");
     }
@@ -513,8 +534,10 @@ describe("profile session", () => {
     assert.equal(failedVerifier.profiles[0]?.consecutiveFailures, 1);
     assert.deepEqual(failedVerifier, { ...JSON.parse(verifierText), profiles: [{ ...row, consecutiveFailures: 1 }] });
     const restored = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8");
-    assert.equal(restored.includes("secret-one"), true);
+    assert.equal(restored.includes("secret-one"), false);
     assert.equal(restored.includes("secret-two"), false);
+    const current = readAuthenticatedCredentialFixture(root, alex.profileId) as { record: { entries: { ucpathPassword: { value: string } } } };
+    assert.equal(current.record.entries.ucpathPassword.value, "secret-one");
   });
 
   it("writes the supplied password again when an old command survives logout", () => {
@@ -534,7 +557,7 @@ describe("profile session", () => {
     assert.equal(wiped.state, "wiped");
     const credentialText = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8");
     assert.equal(credentialText.includes("secret-one"), false);
-    const document: unknown = JSON.parse(credentialText);
+    const document: unknown = readAuthenticatedCredentialFixture(root, alex.profileId);
     if (typeof document !== "object" || document === null || !("history" in document) || !Array.isArray(document.history)) {
       throw new Error("credential history is missing");
     }
@@ -562,7 +585,9 @@ describe("profile session", () => {
     const again = session.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:07:00.000Z" });
     assert.equal(again.state, "active");
     const restored = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8");
-    assert.equal(restored.includes("secret-one"), true);
+    assert.equal(restored.includes("secret-one"), false);
+    const current = readAuthenticatedCredentialFixture(root, alex.profileId) as { record: { entries: { ucpathPassword: { value: string } } } };
+    assert.equal(current.record.entries.ucpathPassword.value, "secret-one");
     const registry = JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: { profileId: string; credentialState: string }[] };
     assert.equal(registry.profiles.find((row) => row.profileId === alex.profileId)?.credentialState, "saved");
   });

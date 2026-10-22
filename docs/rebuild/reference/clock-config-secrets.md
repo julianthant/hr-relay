@@ -287,14 +287,31 @@ Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 
 0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
 Each record retains its own transaction and recovery contract.
 
-`createCredentialStore({ admission, stateRoot })` stores `<stateRoot>/credentials/protected.json`.
-The schema-3 document contains the schema-1 current record and marked replay receipts.
-Each current entry holds `{ valueId, value, updatedAt }`; history retains request digests, marked
-operations and allocated value IDs without replaced plaintext. A missing store represents the empty
-revision-one baseline. Schema-2 input is fully replayed against its record before marked-history
-projection in memory; reconstructable last-applied metadata must also match. `migrateHistory()`
-or a subsequent write publishes schema 3.
-The store requires a live, path-bound `RuntimeAdmission`.
+`createCredentialStore` stores `<profileRoot>/credentials/protected.json` using the exact issued
+profile child and its machine journal owner. The schema-4 envelope authenticates the whole current
+record, value-free history and latest exact request with AES-256-GCM. Authentication finishes before
+plaintext is parsed or returned. In-memory entries remain `{ valueId, value, updatedAt }`.
+The stable random per-profile key lives at `machine/credential-keys/<profileId>.json`; the machine
+continuity row binds its exact private file identity and bytes. Ordinary reads cannot create or
+replace an established key, document or anchor.
+
+Fresh setup and explicit forward conversion use the existing sign-up operation and profile-publication
+journal. Key bytes first become durable in one private operation-named stage. Its exact inode,
+bytes and prior operation enter that journal through the actual factory witness before the same
+inode is renamed to the canonical key path. Passive reads validate an interrupted stage publication;
+only fresh matching maintenance custody can complete it. A stage left before intent publication is
+an unowned orphan and refuses adoption. Proven schema-2 replay may supply current values. Unprovable schema-3 input requires the
+verified operator to supply all five set/clear choices before activation; none of its old values are
+imported. The validated legacy revision is an opaque concurrency floor, with new history advancing
+from that revision. Legacy identities are deny-only, never successful replay authority. Ordinary reads
+accept only schema 4. Publication of a migration key anchor revokes the previous login epoch once;
+resumption uses the exact pending publication and fresh canonical inventory, rather than a new attempt.
+
+Private history contains no request digests or replaced plaintext. Only the latest exact apply or
+erase request is retained inside authenticated ciphertext. The external value-free erasure journal
+retains its own request identity. Complete inventory authenticates ciphertext before tombstone repair,
+checks decoded JSON and native copies, and refuses incomplete captures or unknown membership.
+The key does not provide general rollback resistance or a cryptographic-erasure guarantee.
 
 The protected-settings reader verifies link count, size, descriptor identity, path identity,
 and stable readback. The document limit is
@@ -314,8 +331,8 @@ latest replay or reused command/write identity refuses `command-divergent`. A st
 conflict; unavailable exclusion reports `lock-unavailable`.
 
 `erase()` durably records erased value identities and retired commands before rewriting protected
-entries. The local journal is `<stateRoot>/credential-erasures/journal.json` with its identity anchor;
-profile sessions use the separately admitted machine journal outside the profile root. Readback
+entries. Profile sessions use the separately admitted machine journal outside the profile root, at
+`machine/erasures/<profileId>.json`, with its identity anchor. Readback
 repairs restored erased values under strict writable admission and refuses missing established authority.
 
 `settings-service.ts` commits this private operation independently before the command kernel's
@@ -510,7 +527,7 @@ command replay, refuses divergent replay, and caps the command namespace at 256 
 eviction. Its last-completed report cache separately retains at most 256 selections with oldest
 entry eviction. Dashboard report evidence expires after 60 seconds or a config change.
 `storage doctor` is a read-only storage inspection; it does not repair authority or substitute an
-empty inventory. [Execution and sessions](execution-and-sessions.md) owns workflow admission and
+empty inventory. Protected presence comes from the exact constructor-owned profile store through a passive fixed-name/boolean observer. It authenticates the complete current envelope, key and external erasure head across both observations and refuses missing, pending or repair-needed authority without rewriting bytes. It never creates a credential store or an empty baseline for inspection. [Execution and sessions](execution-and-sessions.md) owns workflow admission and
 worker readiness details.
 `backup-service.ts` removes only its owned read-only inspection companions and refuses nonempty WAL; live database companions are never cleanup targets.
 `storage-doctor.ts` reconciles exact run/root, attempt, path, and terminal identities in one inspection; malformed authority withholds absence classifications and never selects a substitute database or row.

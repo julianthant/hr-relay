@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
-  chmodSync,
+  chmodSync, constants, fstatSync, lstatSync, readSync,
   closeSync,
   createReadStream,
   existsSync,
@@ -13,6 +13,8 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { readPrivateFile } from "../configuration/credential-safe-file.js";
+import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
@@ -121,12 +123,57 @@ export async function verifyBackupManifestAtPath(
   try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, backupPath, manifest.schemaVersion); }
   finally { copyAdmission.release(); }
   removeReadOnlyInspectionCompanions(backupPath);
+  assertBackupInspection(manifest, inspection);
+  return Object.freeze({ manifestPath, backupPath, manifest });
+}
+
+function assertBackupInspection(manifest: AuthorityBackupManifest, inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>): void {
   for (const field of ["applicationId", "schemaVersion", "installationId", "profileId", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
     if (inspection[field] !== manifest[field]) {
       throw new Error(`backup file ${manifest.backupFileName} ${field} does not match its manifest`);
     }
   }
-  return Object.freeze({ manifestPath, backupPath, manifest });
+}
+
+export function verifyStoppedBackupManifestAtPath(admissionInput: RuntimeAdmission, manifestPathInput: string,
+  expectedSourceDatabaseIdentity: string): VerifiedBackup {
+  const admission = requireRuntimeAdmission(admissionInput), manifestPath = resolve(manifestPathInput);
+  admission.assertReadOnlyAuthorityDatabase(join(admission.stateRoot, "state.db"));
+  admission.assertStateRoot(manifestPath);
+  const file = readPrivateFile(manifestPath, { label: "lock", maxBytes: 64_000 });
+  if (file === undefined) throw new Error("profile-maintenance-backup-manifest-required");
+  const manifest = AuthorityBackupManifestSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+  if (manifest.sourceDatabaseIdentity !== expectedSourceDatabaseIdentity) throw new Error("profile-maintenance-backup-source-mismatch");
+  const backupPath = join(dirname(manifestPath), manifest.backupFileName);
+  admission.assertStateRoot(backupPath);
+  const snapshot = createReadonlyAuthoritySnapshot(backupPath);
+  try {
+    const before = lstatSync(backupPath);
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || (before.mode & 0o077) !== 0
+      || process.getuid !== undefined && before.uid !== process.getuid() || before.size !== manifest.byteSize) throw new Error("profile-maintenance-backup-identity-invalid");
+    const descriptor = openSync(backupPath, constants.O_RDONLY | constants.O_NOFOLLOW), hash = createHash("sha256");
+    try {
+      const opened = fstatSync(descriptor);
+      if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("profile-maintenance-backup-changed");
+      const chunk = Buffer.alloc(64 * 1024); let count = 0;
+      for (;;) {
+        const size = readSync(descriptor, chunk, 0, chunk.length, null);
+        if (size === 0) break;
+        count += size;
+        if (count > manifest.byteSize) throw new Error("profile-maintenance-backup-size-invalid");
+        hash.update(chunk.subarray(0, size));
+      }
+      if (count !== manifest.byteSize || hash.digest("hex") !== manifest.sha256) throw new Error("profile-maintenance-backup-digest-mismatch");
+    } finally { closeSync(descriptor); }
+    snapshot.assertUnchanged();
+    const copy = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
+    try { assertBackupInspection(manifest, inspectAuthorityBackupReadOnly(copy, backupPath, manifest.schemaVersion)); }
+    finally { copy.release(); }
+    snapshot.assertUnchanged();
+    const after = readPrivateFile(manifestPath, { label: "lock", maxBytes: 64_000 });
+    if (after === undefined || after.identity.device !== file.identity.device || after.identity.inode !== file.identity.inode || !after.bytes.equals(file.bytes)) throw new Error("profile-maintenance-backup-manifest-changed");
+    return Object.freeze({ manifestPath, backupPath, manifest });
+  } finally { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } }
 }
 
 export class AuthorityBackupService {

@@ -7,9 +7,10 @@ import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqli
 import { workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { join } from "node:path";
 import { it } from "vitest";
-import { composeProfileCredentialInventory, composeSelectedProfileStorage, scanProfileCredentialCopy } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory, composeProfileCredentialInventory, scanProfileCredentialCopy } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createCredentialStore, inspectCredentialKeyCopy } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
@@ -27,6 +28,9 @@ function fixture() {
   assert.equal(capturedSecrets.length, 2);
   const inventory = composeProfileCredentialInventory({ admission: f.admission, database: context.database, clock, hostFacts: { primaryDisplay: null } });
   const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot,
+    repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine: f.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
+    initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine, admission: child,
+      clock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
     activity: { hasUnquiescedWork: () => false } });
   return { ...f, clock, context, capturedSecrets, inventory,
     erase() {
@@ -48,14 +52,15 @@ function fixture() {
   };
 }
 
-for (const backup of ["none", "clean", "captured-copy", "incomplete-capture"] as const) it(`assesses genuine canonical inventory after exact erasure with ${backup} backup`, async () => {
+for (const backup of ["none", "clean", "captured-copy", "key-copy", "incomplete-capture"] as const) it(`assesses genuine canonical inventory after exact erasure with ${backup} backup`, async () => {
   const f = fixture();
   let settlement: ReturnType<typeof f.erase> | undefined;
   try {
-    if (backup === "captured-copy") {
+    if (backup === "captured-copy" || backup === "key-copy") {
+      const key = JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")) as { key: string };
       createWorkbookLibraryService({ repository: f.context.database.authority.workbooks, clock: f.clock }).create({
         name: "Synthetic.xlsx", themes: [], hasFormulas: false,
-        sheets: [{ id: "sheet", name: "Synthetic", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: f.capturedSecrets[1] }] }] }],
+        sheets: [{ id: "sheet", name: "Synthetic", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: backup === "key-copy" ? key.key : f.capturedSecrets[1] }] }] }],
       });
     }
     if (backup !== "none") await new AuthorityBackupService(f.admission, f.context.database,
@@ -66,7 +71,7 @@ for (const backup of ["none", "clean", "captured-copy", "incomplete-capture"] as
     assert.equal(observed.entriesAbsent, true);
     assert.equal(observed.inventoryMissing, false);
     assert.equal(observed.logoutComplete, backup === "none" || backup === "clean");
-    if (backup === "captured-copy") assert.equal(observed.backupPlaintext.length, 1);
+    if (backup === "captured-copy" || backup === "key-copy") assert.equal(observed.backupPlaintext.length, 1);
     if (backup === "incomplete-capture") assert.equal(observed.unknownFormats.length, 1);
   } finally { settlement?.admission.release(); await f.cleanup(); }
 });
@@ -97,7 +102,7 @@ for (const encoding of ["utf8", "utf16le", "utf16be"] as const) it(`detects ${en
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-for (const content of ["clean", "escaped-value", "malformed"] as const) it(`inspects decoded canonical boot JSONL with ${content} content`, async () => {
+for (const content of ["clean", "escaped-value", "escaped-key-material", "malformed"] as const) it(`inspects decoded canonical boot JSONL with ${content} content`, async () => {
   const f = fixture();
   let settlement: ReturnType<typeof f.erase> | undefined;
   try {
@@ -105,8 +110,9 @@ for (const content of ["clean", "escaped-value", "malformed"] as const) it(`insp
     appendEmergencyFault({ stateRoot: f.stateRoot, build: "synthetic", code: "DATABASE_WRITER_UNAVAILABLE", error, now: f.clock.now() });
     const path = join(f.stateRoot, "logs", "boot.jsonl");
     const record = JSON.parse(readFileSync(path, "utf8")) as { payload: { event: { message: string } } };
-    const secret = f.capturedSecrets[1]; assert.ok(secret);
-    if (content === "escaped-value") {
+    const key = JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")) as { key: string };
+    const secret = content === "escaped-key-material" ? key.key : f.capturedSecrets[1]; assert.ok(secret);
+    if (content === "escaped-value" || content === "escaped-key-material") {
       record.payload.event.message = secret;
       const encoded = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
       const text = JSON.stringify(record).replace(JSON.stringify(secret), `"${encoded}"`);
@@ -118,12 +124,12 @@ for (const content of ["clean", "escaped-value", "malformed"] as const) it(`insp
     settlement = f.erase();
     const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
     assert.equal(observed.logoutComplete, content === "clean");
-    assert.equal(observed.backupPlaintext.includes(path), content === "escaped-value");
+    assert.equal(observed.backupPlaintext.includes(path), content === "escaped-value" || content === "escaped-key-material");
     assert.equal(observed.unknownFormats.includes(path), content === "malformed");
   } finally { settlement?.admission.release(); await f.cleanup(); }
 });
 
-for (const content of ["clean", "escaped-key", "escaped-shadowed", "malformed"] as const) it(`inspects canonical retained browser JSON with ${content} content`, async () => {
+for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material", "malformed"] as const) it(`inspects canonical retained browser JSON with ${content} content`, async () => {
   const f = fixture();
   let settlement: ReturnType<typeof f.erase> | undefined;
   let worker: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
@@ -147,7 +153,8 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "malformed"] 
       browserMode: "headless", profileDirectory: directory, acceptDownloads: false, exclusive: false, health: "closed",
       observedAt: f.clock.now().toISOString(), openedAt: f.clock.now().toISOString(), profileRevision: 1 });
     mkdirSync(directory, { recursive: true, mode: 0o700 });
-    const path = join(directory, "Preferences"), secret = f.capturedSecrets[1]; assert.ok(secret);
+    const key = JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")) as { key: string };
+    const path = join(directory, "Preferences"), secret = content === "key-material" ? key.key : f.capturedSecrets[1]; assert.ok(secret);
     const escaped = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
     const text = content === "clean" ? '{"profile":{"name":"Synthetic"}}' : content === "malformed" ? "{invalid}" : content === "escaped-shadowed" ? `{"synthetic":"${escaped}","synthetic":"clean"}` : `{"${escaped}":"synthetic"}`;
     assert.equal(text.includes(secret), false);
@@ -155,7 +162,21 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "malformed"] 
     await f.inventory.prepare(); settlement = f.erase();
     const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
     assert.equal(observed.logoutComplete, content === "clean");
-    assert.equal(observed.backupPlaintext.includes(path), content === "escaped-key" || content === "escaped-shadowed");
+    assert.equal(observed.backupPlaintext.includes(path), content === "escaped-key" || content === "escaped-shadowed" || content === "key-material");
     assert.equal(observed.unknownFormats.includes(path), content === "malformed");
   } finally { worker?.processLock.release(); settlement?.admission.release(); await f.cleanup(); }
+});
+
+for (const encoding of ["raw", "base64", "utf16le", "utf16be"] as const) it(`detects private stable key ${encoding} across the copy chunk boundary`, async () => {
+  const f = fixture(), path = join(f.stateRoot, "synthetic-copy.bin");
+  try {
+    const key = JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")) as { key: string };
+    const bytes = encoding === "raw" ? Buffer.from(key.key, "base64") : Buffer.from(key.key, encoding === "base64" ? "utf8" : "utf16le");
+    if (encoding === "utf16be") bytes.swap16();
+    writeFileSync(path, Buffer.concat([Buffer.alloc(64 * 1024 - 3, 0x78), bytes, Buffer.alloc(17, 0x79)]), { mode: 0o600 });
+    const scan = { containsKey: (value: unknown) => inspectCredentialKeyCopy(boundProfileCredentials(f.admission), value), keyScanOverlap: 4095 };
+    assert.equal(scanProfileCredentialCopy(path, [], scan).containsSecret, true);
+    writeFileSync(path, Buffer.alloc(64 * 1024 + 100, 0x78), { mode: 0o600 });
+    assert.equal(scanProfileCredentialCopy(path, [], scan).containsSecret, false);
+  } finally { await f.cleanup(); }
 });

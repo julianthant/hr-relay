@@ -22,7 +22,7 @@ function entry<Value extends z.ZodType>(value: Value) {
   return z.strictObject({ valueId: z.uuid(), value, updatedAt: IsoInstantSchema });
 }
 
-/** Values exist only in this private-file shape; no digest or comparison surrogate is admitted. */
+/** In-memory values retain this shape; authenticated disk ciphertext and its tag are not comparison surrogates. */
 export const ProtectedStoreEntriesSchema = z.strictObject({
   ucpathUserId: entry(ProtectedValueSchemas.ucpathUserId).optional(),
   ucpathPassword: entry(ProtectedValueSchemas.ucpathPassword).optional(),
@@ -42,6 +42,8 @@ export const ProtectedSettingsPatchSchema = z.strictObject({
   sharepointOnboardingRosterUrl: operation(ProtectedValueSchemas.sharepointOnboardingRosterUrl),
   activityPersonPseudonym: operation(ProtectedValueSchemas.activityPersonPseudonym),
 });
+export const CompleteProtectedSettingsPatchSchema = ProtectedSettingsPatchSchema.required();
+export type CompleteProtectedSettingsPatch = z.infer<typeof CompleteProtectedSettingsPatchSchema>;
 export const PROTECTED_SETTINGS_SCHEMA_HASH = deriveSchemaHash(ProtectedSettingsPatchSchema, "input");
 
 export const PROTECTED_SETTINGS_SET_MARKER = "<set>" as const;
@@ -91,7 +93,7 @@ export type ProtectedSettingsApplyInput = z.infer<typeof ProtectedSettingsApplyI
 
 export const ProtectedStoreRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
-  revision: PositiveIntSchema,
+  revision: PositiveIntSchema.max(Number.MAX_SAFE_INTEGER),
   protectedSchemaHash: FingerprintSchema,
   entries: ProtectedStoreEntriesSchema,
   lastApplied: ProtectedSettingsLastAppliedSchema.optional(),

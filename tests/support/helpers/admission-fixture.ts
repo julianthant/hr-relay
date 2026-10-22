@@ -1,53 +1,23 @@
+import { registerBoundProfile, unregisterBoundProfile, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
+export { registerBoundProfile, unregisterBoundProfile, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission, profileFixtureStorageAdmission, boundProfileAdmission } from "./synthetic-database-admission.js";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../src/backend/app/composition/profile-credential-inventory.js";
+import { systemClock } from "../../../src/rules/time/clock.js";
 import { createProfileVerifiers } from "../../../src/backend/profiles/verifier-store.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { tmpdir } from "node:os";
 import { createProfileSession } from "../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase as ProductionAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { createCredentialStore as productionCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
-import type { CredentialStore } from "../../../src/models/config/credential-store.js";
 
 const admissions = new Map<string, RuntimeAdmission>();
-const boundProfiles = new Map<string, { admission: RuntimeAdmission; machine: RuntimeAdmission; credentials: CredentialStore }>();
-
-function registerBoundProfile(admission: RuntimeAdmission, machine: RuntimeAdmission): void {
-  const credentials = productionCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-    erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
-  boundProfiles.set(admission.stateRoot, { admission, machine, credentials });
-}
-
-export function boundProfileCredentials(admission: RuntimeAdmission): CredentialStore {
-  const entry = boundProfiles.get(admission.stateRoot);
-  if (entry?.admission !== admission) throw new Error("fixture-bound-profile-credential-owner-required");
-  admission.assertLive();
-  return entry.credentials;
-}
-
-export function findProfileFixtureAdmission(stateRoot: string): RuntimeAdmission | undefined {
-  const admission = boundProfiles.get(resolve(stateRoot))?.admission;
-  admission?.assertLive();
-  return admission;
-}
-
-export function profileFixtureStorageAdmission(path: string): RuntimeAdmission {
-  const canonical = resolve(path);
-  const admission = boundProfiles.get(dirname(canonical))?.admission;
-  if (admission === undefined || canonical !== join(admission.stateRoot, "state.db")) throw new Error("fixture-bound-profile-path-required");
-  admission.assertLive();
-  return admission;
-}
-
-export function boundProfileAdmission(path: string): RuntimeAdmission {
-  const admission = profileFixtureStorageAdmission(path);
-  admission.assertProfileRuntime();
-  return admission;
-}
-
 export function initializeAdmissionFixture(root: string): void {
   const canonical = resolve(root);
   if (admissions.has(canonical)) throw new Error("fixture installation already initialized");
@@ -83,7 +53,7 @@ export function releaseAdmissionFixtures(): void {
   for (const root of [...admissions.keys()]) releaseAdmissionFixture(root);
 }
 function admissionForStateRoot(root: string): RuntimeAdmission {
-  const bound = boundProfiles.get(resolve(root))?.admission;
+  const bound = findProfileFixtureAdmission(root);
   if (bound !== undefined) { bound.assertLive(); return bound; }
   for (const workspace of admissions.keys()) if (join(workspace, rebuildRuntimeIsolation.stateRoot) === resolve(root)) return fixtureAdmission(workspace);
   return RuntimeAdmission.syntheticRoots(resolve(root), join(resolve(root), "artifacts"));
@@ -104,24 +74,57 @@ export const AuthorityDatabase = new Proxy(ProductionAuthorityDatabase, {
   open(input: unknown, clock?: Parameters<typeof ProductionAuthorityDatabase.open>[2]): ProductionAuthorityDatabase;
 };
 export function createCredentialStore(input: Omit<Parameters<typeof productionCredentialStore>[0], "admission">) {
-  const entry = boundProfiles.get(resolve(input.stateRoot));
-  if (entry !== undefined) {
-    if (Object.keys(input).length === 1) return boundProfileCredentials(entry.admission);
-    return productionCredentialStore({ erasureJournalAdmission: entry.machine,
-      erasureJournalPath: join(entry.machine.stateRoot, "machine", "erasures", `${entry.admission.profileBinding.profileId}.json`),
-      ...input, admission: entry.admission });
+  const admission = findProfileFixtureAdmission(input.stateRoot);
+  if (admission !== undefined) {
+    if (Object.keys(input).length === 1) return boundProfileCredentials(admission);
+    return createBoundProfileCredentialStore(admission, input);
   }
   return productionCredentialStore({ ...input, admission: admissionForStateRoot(input.stateRoot) });
+}
+
+export function readAuthenticatedCredentialFixture(machineRoot: string, profileId: string): unknown {
+  const bytes = readFileSync(join(machineRoot, "profiles", profileId, "credentials", "protected.json"));
+  if (bytes.byteLength > Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096) throw new Error("fixture-envelope-bound");
+  const envelope = JSON.parse(bytes.toString("utf8")) as { schemaVersion: number; algorithm: string; installationId: string; profileId: string; keyId: string; nonce: string; tag: string; ciphertext: string };
+  const key = JSON.parse(readFileSync(join(machineRoot, "machine", "credential-keys", `${profileId}.json`), "utf8")) as { key: string; keyId: string; installationId: string; profileId: string };
+  if (envelope.schemaVersion !== 4 || envelope.algorithm !== "aes-256-gcm" || envelope.profileId !== profileId
+    || key.profileId !== profileId || key.installationId !== envelope.installationId || key.keyId !== envelope.keyId) throw new Error("fixture-envelope-binding");
+  const keyBytes = Buffer.from(key.key, "base64"), nonce = Buffer.from(envelope.nonce, "base64"), tag = Buffer.from(envelope.tag, "base64");
+  if (keyBytes.length !== 32 || nonce.length !== 12 || tag.length !== 16
+    || keyBytes.toString("base64") !== key.key || nonce.toString("base64") !== envelope.nonce || tag.toString("base64") !== envelope.tag) throw new Error("fixture-envelope-parameters");
+  const decipher = createDecipheriv("aes-256-gcm", keyBytes, nonce, { authTagLength: 16 });
+  decipher.setAAD(Buffer.from(canonicalJsonStringify({ domain: "relay:protected-current:v4", schemaVersion: 4, algorithm: envelope.algorithm,
+    installationId: envelope.installationId, profileId, keyId: envelope.keyId }), "utf8"));
+  decipher.setAuthTag(tag);
+  const pending = decipher.update(Buffer.from(envelope.ciphertext, "base64")), final = decipher.final();
+  return JSON.parse(Buffer.concat([pending, final]).toString("utf8")) as unknown;
+}
+
+export function rewriteAuthenticatedCredentialFixture(machineRoot: string, profileId: string, change: (payload: unknown) => unknown): void {
+  const payload = change(readAuthenticatedCredentialFixture(machineRoot, profileId));
+  const path = join(machineRoot, "profiles", profileId, "credentials", "protected.json");
+  const envelope = JSON.parse(readFileSync(path, "utf8")) as { schemaVersion: number; algorithm: string; installationId: string; profileId: string; keyId: string };
+  const key = JSON.parse(readFileSync(join(machineRoot, "machine", "credential-keys", `${profileId}.json`), "utf8")) as { key: string };
+  const bytes = Buffer.from(canonicalJsonStringify(payload));
+  if (bytes.byteLength > 16 * 1024 * 1024) throw new Error("fixture-payload-bound");
+  const nonce = randomBytes(12), cipher = createCipheriv("aes-256-gcm", Buffer.from(key.key, "base64"), nonce, { authTagLength: 16 });
+  cipher.setAAD(Buffer.from(canonicalJsonStringify({ domain: "relay:protected-current:v4", schemaVersion: 4, algorithm: envelope.algorithm,
+    installationId: envelope.installationId, profileId, keyId: envelope.keyId })));
+  const ciphertext = Buffer.concat([cipher.update(bytes), cipher.final()]);
+  writeFileSync(path, canonicalJsonStringify({ ...envelope, nonce: nonce.toString("base64"), ciphertext: ciphertext.toString("base64"), tag: cipher.getAuthTag().toString("base64") }), { mode: 0o600 });
 }
 
 export function createBoundProfileFixture(options: { pending?: true; sharedMachine?: true } = {}) {
   if (options.pending === true && options.sharedMachine === true) throw new Error("pending profile fixture requires exclusive machine");
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")));
   let machine = acquireEntrypointAdmission(workspace, "exclusive");
+  mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   try {
     const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@example.edu",
       password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
     const session = createProfileSession({ admission: machine, machineRoot: machine.stateRoot,
+      repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
+      initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
       activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
     const operation = machine.beginProfileSignUp({ firstName: fields.firstName, lastName: fields.lastName,
       createdAt: IsoInstantSchema.parse(fields.createdAt), emailKey: createProfileVerifiers(machine.stateRoot).emailKeyFor(fields.email),
@@ -151,6 +154,6 @@ export function createBoundProfileFixture(options: { pending?: true; sharedMachi
       return { admission, credentials: boundProfileCredentials(admission) };
     };
     return { workspace, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish, renewAfterRestore,
-      close() { boundProfiles.delete(stateRoot); admission.release(); machine.release(); rmSync(workspace, { recursive: true, force: true }); } };
+      close() { unregisterBoundProfile(admission); admission.release(); machine.release(); rmSync(workspace, { recursive: true, force: true }); } };
   } catch (error) { machine.release(); rmSync(workspace, { recursive: true, force: true }); throw error; }
 }

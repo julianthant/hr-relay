@@ -55,7 +55,7 @@ Paths in this table are relative to `src/backend/`.
 | --- | --- |
 | `accounts/` | ChatGPT OAuth, verified account and usage state, and Responses OCR. Browser-safe account and sign-in lifecycle schemas live in `models/dashboard/chatgpt-account.ts`; HTTP routes own the latest account attempt. |
 | `app/` | Bootstrap, configuration, host admission, preflight, dry-run setup, and application composition. |
-| `app/composition/` | Storage, dashboard, and worker dependency assembly. |
+| `app/composition/` | Storage, dashboard, and worker dependency assembly. `profile-credential-inventory.ts` owns canonical profile copy membership, credential maintenance assessment, and browser-root validation. |
 | `app/registries/` | Workflow, task, step-proof, and test-target registration. `task-registry.ts` composes system, processing, and workflow task stores. |
 | `logs/` | Spans, observed data, artifacts, confirmed actions, declared step results, and diagnostics. `run-log-stream.ts` reads confirmed events through native timeline cursors. `emergency-faults.ts` owns the capped database-unavailable spool and its import. |
 | `logs/diagnostics/` | Diagnostic capture and retention. |

@@ -1,3 +1,5 @@
+import type { SignUpOperation } from "../profiles/profile.js";
+import type { CompleteProtectedSettingsPatch } from "./protected-settings.js";
 import { z } from "zod";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import {
@@ -29,7 +31,7 @@ export interface CredentialStore {
   ownsCommandId(this: void, commandId: string): boolean;
   apply(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome;
   erase(input: CredentialEraseInput): CredentialStoreApplyOutcome;
-  migrateHistory(): void;
+  migrateHistory(input: Readonly<{ operation: SignUpOperation; replacement?: CompleteProtectedSettingsPatch }>): void;
   /** Verify the exact most-recent application without performing a write. */
   verifyReplay(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome;
 }

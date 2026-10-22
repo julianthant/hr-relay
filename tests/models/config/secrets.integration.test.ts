@@ -150,12 +150,13 @@ const NOW_2 = "2026-09-06T12:01:00.000Z";
 const roots: string[] = [];
 
 const _afterEachFixture0 = () => {
+  releaseFixtures();
   vi.restoreAllMocks();
   syncBuiltinESMExports();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 
-const { fixture, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
+const { fixture, releaseFixtures, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
 
 
 

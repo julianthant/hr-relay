@@ -420,6 +420,10 @@ export const ERROR_CATALOG = Object.freeze({
     "That email and password did not match a profile on this computer.",
     EmptyParametersSchema,
   ),
+  PROFILE_CREDENTIAL_CONVERSION_REQUIRED: catalogEntry(
+    "This profile needs an explicit complete credential replacement before sign in can continue.",
+    EmptyParametersSchema,
+  ),
   PROFILE_OTHER_EMAIL: catalogEntry(
     "That email belongs to a different profile.",
     EmptyParametersSchema,

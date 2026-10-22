@@ -243,7 +243,7 @@ export function companionCredentialEntries(directory: string, record: "protected
   const chat = record === "protected";
   const fileName = chat ? "chatgpt-account.json" : "protected.json";
   if (names.includes(fileName)) {
-    if (readPrivateFile(join(directory, fileName), { label: chat ? "ChatGPT" : "protected.json", maxBytes: chat ? 64_000 : 16 * 1024 * 1024 }) === undefined) throw new Error("directory-integrity: companion credential record disappeared");
+    if (readPrivateFile(join(directory, fileName), { label: chat ? "ChatGPT" : "protected.json", maxBytes: chat ? 64_000 : Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 }) === undefined) throw new Error("directory-integrity: companion credential record disappeared");
     permitted.add(fileName);
   }
   const locks = chat ? [".chatgpt-account.lock"] : [".protected.lock", ".protected.reaper", ".protected.reaper-claim"];
@@ -276,7 +276,7 @@ export function companionCredentialEntries(directory: string, record: "protected
     const match = (chat ? /^\.chatgpt-account\.([^.]+)\.tmp$/u : /^\.protected\.([^.]+)\.([^.]+)\.tmp$/u).exec(name);
     if (match === null || writerId === undefined || match[1] !== writerId || !z.uuid().safeParse(match[1]).success
       || (!chat && !z.uuid().safeParse(match[2]).success)) throw new Error("directory-integrity: companion credential stage is not owned by its writer");
-    if (readPrivateFile(join(directory, name), { label: chat ? "ChatGPT" : "protected.json", maxBytes: chat ? 64_000 : 16 * 1024 * 1024 }) === undefined) throw new Error("directory-integrity: companion credential stage disappeared");
+    if (readPrivateFile(join(directory, name), { label: chat ? "ChatGPT" : "protected.json", maxBytes: chat ? 64_000 : Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 }) === undefined) throw new Error("directory-integrity: companion credential stage disappeared");
     permitted.add(name);
   }
   return permitted;

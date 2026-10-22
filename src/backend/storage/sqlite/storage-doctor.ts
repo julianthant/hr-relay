@@ -2,9 +2,9 @@ import { inspectRestoreEligibility, inspectStorageRecovery } from "./storage-rec
 import { verifyBackupLocationEvidence } from "./backup-location-evidence.js";
 import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { ProtectedSettingsNameSchema } from "../../../models/config/protected-settings.js";
 import { TimelineRecordError } from "./timeline-repository.js";
-import { createCredentialStore } from "../configuration/credential-store.js";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
+import { observeCredentialPresence } from "../configuration/credential-store.js";
 import { ProtectedSettingsInspectionSchema } from "./recovery-contracts.js";
 import { createHash } from "node:crypto";
 import {
@@ -828,16 +828,10 @@ async function inspectCandidates(
 }
 
 /** No credential value or value-bearing error may escape this presence observer. */
-function inspectCredentialPresence(admission: RuntimeAdmission, stateRoot: string) {
+function inspectCredentialPresence(admission: RuntimeAdmission, stateRoot: string, credentials: CredentialStore | undefined) {
   try {
-    const record = createCredentialStore({ admission, stateRoot }).read();
-    return ProtectedSettingsInspectionSchema.parse({
-      state: "available",
-      entries: ProtectedSettingsNameSchema.options.map((name) => ({
-        name,
-        present: record.entries[name] !== undefined,
-      })),
-    });
+    if (credentials === undefined) throw new Error("credential-presence-owner-required");
+    return ProtectedSettingsInspectionSchema.parse({ state: "available", entries: observeCredentialPresence(credentials, admission) });
   } catch {
     return ProtectedSettingsInspectionSchema.parse({ state: "unavailable", cause: {
       code: "authority-unavailable",
@@ -846,7 +840,7 @@ function inspectCredentialPresence(admission: RuntimeAdmission, stateRoot: strin
   }
 }
 
-export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock): Promise<StorageDoctorReport> {
+export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore): Promise<StorageDoctorReport> {
   requireRuntimeAdmission(admission);
   const options = StorageDoctorOptionsSchema.parse(input);
   const authorityPath = resolve(options.authorityPath);
@@ -941,7 +935,7 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
   const spanAuthorityIdentityMismatch = initialAuthorityIdentity !== undefined
     && spanAuthorityRead.authorityIdentity !== undefined
     && !sameAuthorityIdentity(initialAuthorityIdentity, spanAuthorityRead.authorityIdentity);
-  const protectedSettings = inspectCredentialPresence(admission, stateRoot);
+  const protectedSettings = inspectCredentialPresence(admission, stateRoot, credentials);
   const authorityUpgrades = inspectAuthorityUpgradeStatus(admission, authorityPath, options.busyTimeoutMs, clock);
   const finalAuthorityRead = inspectAuthorityIdentity(admission, authorityPath, options.busyTimeoutMs);
   if (initialAuthorityRead.state !== finalAuthorityRead.state) {
