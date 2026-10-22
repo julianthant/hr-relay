@@ -1,3 +1,5 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { DatabaseSync } from "node:sqlite";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import assert from "node:assert/strict";
@@ -47,7 +49,6 @@ import { copyFileSync, existsSync, symlinkSync, truncateSync } from "node:fs";
 
 import { z } from "zod";
 
-import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 
 import { composeStorageCommand as syntheticComposeStorageCommand_m1 } from "../../../support/helpers/synthetic-storage-admission.js";
 
@@ -117,9 +118,12 @@ afterEach(_afterEachFixture0);
 {
 
 const admissions = new Map<string, RuntimeAdmission>();
+const openedAuthorities: AuthorityDatabase[] = [];
 function openAuthority(input: z.input<typeof AuthorityDatabaseOptionsSchema>, clock = CLOCK) {
   const admission = [...admissions.values()].find(owner => input.path.startsWith(owner.stateRoot + "/"));
-  return admission === undefined ? AuthorityDatabase_m0.open(input, clock) : AuthorityDatabase.open(admission, input, clock);
+  const database = admission === undefined ? AuthorityDatabase_m0.open(input, clock) : AuthorityDatabase.open(admission, input, clock);
+  openedAuthorities.push(database);
+  return database;
 }
 function composeStorageCommand(isolation: Parameters<typeof composeStorageCommand_m0>[0], args: readonly string[], clock = CLOCK, repoRoot: string) {
   const admission = admissions.get(repoRoot);
@@ -129,9 +133,13 @@ function composeStorageCommand(isolation: Parameters<typeof composeStorageComman
 const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));
 const ManifestGenerationSchema = z.object({ authorityGeneration: z.number().int().nonnegative() });
 const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 
 const _afterEachFixture0 = () => {
-  for (const root of roots.splice(0)) { admissions.get(root)?.release(); admissions.delete(root); rmSync(root, { recursive: true, force: true }); }
+  for (const database of openedAuthorities.splice(0)) database.close();
+  admissions.clear();
+  for (const profile of profiles.splice(0)) profile.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 
 interface Paths {
@@ -141,10 +149,13 @@ interface Paths {
   readonly backupDirectory: string;
 }
 
-function paths(): Paths {
-  const repoRoot = mkdtempSync(join_m0(realpathSync(tmpdir()), "hrauto-storage-backup-"));
-  roots.push(repoRoot);
-  const stateRoot = join_m0(repoRoot, rebuildRuntimeIsolation.stateRoot);
+function paths(mode: "ready" | "pending" | "uninitialized" = "uninitialized"): Paths {
+  const profile = mode === "uninitialized" ? undefined : createBoundProfileFixture(mode === "pending" ? { pending: true } : {});
+  if (profile !== undefined) profiles.push(profile);
+  const repoRoot = profile?.workspace ?? mkdtempSync(join_m0(realpathSync(tmpdir()), "hrauto-storage-backup-"));
+  if (profile === undefined) roots.push(repoRoot);
+  else admissions.set(repoRoot, profile.admission);
+  const stateRoot = profile?.stateRoot ?? join_m0(repoRoot, rebuildRuntimeIsolation.stateRoot);
   writeFileSync(join_m0(repoRoot, "package.json"), JSON.stringify({ name: "backup-command", version: "0.1.0" }));
   return {
     repoRoot,
@@ -155,8 +166,7 @@ function paths(): Paths {
 }
 
 function createAuthority(p: Paths): number {
-  const admission = acquireEntrypointAdmission(p.repoRoot, "exclusive");
-  admissions.set(p.repoRoot, admission);
+  assert.ok(admissions.has(p.repoRoot), "authority fixture requires an issued profile");
   const database = openAuthority(
     { path: p.authorityPath, busyTimeoutMs: 250, migrationOwner: "backup-command-test" },
     CLOCK,
@@ -173,7 +183,7 @@ describe("cli storage backup", () => {
 afterEach(_afterEachFixture0);
 
   it("real restore warns about displaced fenced evidence without resurrecting the run", async () => {
-    const p = paths(); createAuthority(p);
+    const p = paths("ready"); createAuthority(p);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
@@ -216,7 +226,7 @@ afterEach(_afterEachFixture0);
     } finally { next.close(); }
   });
   it("reports a lost write attempt even when the restored run still exists at the same version", async () => {
-    const p = paths(); createAuthority(p);
+    const p = paths("ready"); createAuthority(p);
     const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "retained-restore-owner" }, CLOCK);
     try {
       seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT, p.authorityPath);
@@ -246,7 +256,7 @@ afterEach(_afterEachFixture0);
 
   it.each(["corrupt", "file-symlink", "directory-symlink", "changed-during-read"] as const)(
     "refuses %s preserved authority evidence without leaking supplied content", async (damage) => {
-      const p = paths(); createAuthority(p);
+      const p = paths("ready"); createAuthority(p);
       const directory = join_m0(p.stateRoot, "backups", "suspects");
       const name = "suspect-20260903120000000-87000000-0000-4000-8000-000000000008.sqlite";
       const source = join_m0(directory, name);
@@ -274,7 +284,7 @@ afterEach(_afterEachFixture0);
     });
 
   it.each(["database count", "file count", "bytes"] as const)("bounds preserved authority %s", async (limit) => {
-    const p = paths(); createAuthority(p);
+    const p = paths("ready"); createAuthority(p);
     const directory = join_m0(p.stateRoot, "backups", "suspects"); mkdirSync(directory, { recursive: true });
     const count = limit === "file count" ? 385 : limit === "database count" ? 129 : 1;
     for (let index = 0; index < count; index++) {
@@ -290,7 +300,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("accounts a preserved run after explicit deletion without reviving it", async () => {
-    const p = paths(); createAuthority(p);
+    const p = paths("ready"); createAuthority(p);
     const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "deleted-preserved-owner" }, CLOCK);
     try {
       initial.authority.runs.enqueue(QUEUED_RUN);
@@ -315,7 +325,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("ignores all four retired cleanup-only names through plan/apply without importing or removing values", async () => {
-    const p = paths();
+    const p = paths("pending");
     const retired = ["I9_USER_ID", "I9_PASSWORD", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"];
     const values = retired.map((_, index) => `synthetic-retired-private-${String(index)}`);
     const source = retired.map((name, index) => `${name}=${values[index]}`).join("\n") + "\n";
@@ -330,8 +340,10 @@ afterEach(_afterEachFixture0);
     const applied = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--json"], CLOCK, p.repoRoot);
     assert.equal(applied.exitCode, 0, applied.output);
     assert.deepEqual(JSON.parse(applied.output), { ...JSON.parse(plan.output), state: "initialized" });
-    const database = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "cleanup-only-proof" }, CLOCK);
-    try { assert.deepEqual(readSettings(database.authority).settings, {}); }
+    const admission = admissions.get(p.repoRoot); assert.ok(admission);
+    AuthorityDatabase.inspectStoppedUpgrade(admission, p.authorityPath, join_m0(p.repoRoot, rebuildRuntimeIsolation.processLockRoot), CLOCK);
+    const database = new DatabaseSync(p.authorityPath, { readOnly: true });
+    try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); }
     finally { database.close(); }
     assert.equal(createCredentialStore_m0({ stateRoot: p.stateRoot }).read().revision, 1);
     assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), false);
@@ -366,7 +378,7 @@ afterEach(_afterEachFixture0);
     assert.equal(result.exitCode, 2); assert.ok(result.output.includes(flag)); assert.deepEqual(readdirSync(p.repoRoot), before);
   });
   it("writes exactly one verified backup and manifest at the live generation", async () => {
-    const p = paths();
+    const p = paths("ready");
     const generation = createAuthority(p);
     assert.equal(existsSync(p.backupDirectory), false, "no backup exists before the operator asks");
 
@@ -399,7 +411,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("lets the doctor exit 0 on a healthy reconciled authority with no backup, reporting it missing", async () => {
-    const p = paths();
+    const p = paths("ready");
     createAuthority(p);
     const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor"], CLOCK, p.repoRoot);
     assert.equal(doctor.exitCode, 0, doctor.output);
@@ -412,12 +424,13 @@ afterEach(_afterEachFixture0);
     assert.match(after.output, /^backup: current/mu);
   });
   it.each(["missing", "malformed"])("restores SQLite before reporting %s independent credentials", async (credentialState) => {
-    const p = paths(); createAuthority(p);
+    const p = paths("ready"); createAuthority(p);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json"));
     assert.ok(manifest);
     const credentialPath = join_m0(p.stateRoot, "credentials", "protected.json");
+    rmSync(join_m0(p.stateRoot, "credentials"), { recursive: true });
     if (credentialState === "malformed") {
       mkdirSync(join_m0(p.stateRoot, "credentials"), { mode: 0o700 });
       writeFileSync(credentialPath, "synthetic-malformed-credential-canary", { mode: 0o600 });
@@ -439,7 +452,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
 try {
 
   CLOCK.setWall(new Date(WRITE_INTENT_ATTEMPTING.fencedAt));
-  const p = paths(); createAuthority(p);
+  const p = paths("ready"); createAuthority(p);
   const checkpoint = atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT);
   const inspect = (path: string) => {
     return withAuthorityDatabaseReadOnly(admissions.get(p.repoRoot)!, path, db => {

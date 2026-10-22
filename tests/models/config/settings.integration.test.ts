@@ -5,7 +5,6 @@ import { randomUUID } from "node:crypto";
 
 
 
-import { rmSync } from "node:fs";
 
 
 
@@ -89,16 +88,10 @@ const databases: AuthorityDatabase[] = [];
 
 const LATER = "2026-07-31T17:05:00.000Z";
 
-const { openDatabase } =
+const { openDatabase, cleanup: cleanupClaims } =
   createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID);
 
-const _afterEachFixture0 = () => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-};
+const _afterEachFixture0 = cleanupClaims;
 
 describe("run claim store", () => {
 afterEach(_afterEachFixture0);

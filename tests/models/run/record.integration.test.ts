@@ -266,19 +266,13 @@ const databases: AuthorityDatabase[] = [];
 const LATER = "2026-07-31T17:05:00.000Z";
 const MUCH_LATER = "2026-07-31T18:00:00.000Z";
 
-const { openDatabase, claimOne } =
+const { openDatabase, claimOne, cleanup: cleanupClaims } =
   createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID);
 
 
 
 describe("RunRecord", () => {
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupClaims);
 
   it("refuses a claimed run that was never claimed", () => {
     assert.throws(
@@ -322,13 +316,7 @@ afterEach(() => {
 });
 
 describe("run transition legality", () => {
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupClaims);
 
   const lifecycle = (input: unknown) => RunLifecycleSchema.parse(input);
   const queued = lifecycle({ state: "queued" });
@@ -363,13 +351,7 @@ afterEach(() => {
 });
 
 describe("run claim store", () => {
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupClaims);
 
   it("resumes only a parked run, and only to a named node", () => {
     const database = openDatabase();
@@ -426,13 +408,7 @@ afterEach(() => {
 });
 
 describe("run row column invariants", () => {
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupClaims);
 
   it("keeps the typed columns in lockstep with the record, and rejects a claim outside a claimed state", () => {
     const database = openDatabase();
