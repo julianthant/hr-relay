@@ -9,7 +9,7 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { HASH_B, HASH_C, LATER, NOW, UUID_6 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
-import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "./registered-workflows.js";
 import { type AuthorityTerminalizationHooks, AuthorityDatabase } from "./synthetic-storage-admission.js";
 
@@ -91,13 +91,15 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
         },
       },
     });
-    const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW });
+    const claimMember1 = database.authority.workerSlots.get(WORKER_ID);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember1.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW });
     if (claimed.state !== "claimed") throw new Error("run was not claimed");
     const validating = database.authority.runs.transition({
       runId: RUN_ID,
       expectedVersion: claimed.run.version,
       claim: CLAIM,
-      lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+      lifecycle: { state: "validating", workerId: WORKER_ID, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember1.poolIndex).workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
       now: NOW,
     });
     if (validating.state !== "applied") throw new Error("run did not enter validating");
@@ -108,6 +110,7 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
       lifecycle: {
         state: "running",
         workerId: WORKER_ID,
+        workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember1.poolIndex).workerLifetime,
         claimedAt: NOW,
         heartbeatAt: NOW,
         currentNodeId: nodeId,

@@ -7,7 +7,7 @@ import { retainedRunProtectedBindings, valueFreeProtectedData, valueFreeProtecte
 import { delegationDependencyRecord, delegationEvidenceOutput } from "../../../models/run/result.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import { type DelegationPlan } from "../../../models/workflow/delegation.js";
-import type { AnyWorkflowRef } from "../../../models/workflow/graph.js";
+import { projectTransactionOutcome, type AnyWorkflowRef } from "../../../models/workflow/graph.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
@@ -28,7 +28,7 @@ import { authenticateRootRun } from "../../storage/sqlite/delegation-root-author
 import { delegatedCandidateEligible } from "./run-claim-admission.js";
 import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
 import { CheckpointExpectationSchema, loadCheckpoint, resolveFreshnessBound } from "../../../models/workflow/checkpoint.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import { BUILD_MANIFEST, resolveTaskImplFingerprint, type BuildManifest } from "../../../workflow-kit/validation/build-manifest.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../models/workflow/gates.js";
 import { taskSpanPath } from "../../logs/span-emitter.js";
@@ -51,6 +51,7 @@ interface AdmissionLifecycle {
 export function admitDelegation(dependencies: RunRecordServiceDependencies, context: ChildRunContext,
   suppliedPlan: DelegationPlan<AnyWorkflowRef>, lifecycle: AdmissionLifecycle) {
   context.signal.throwIfAborted();
+  const buildManifest = dependencies.buildManifest ?? BUILD_MANIFEST;
   return dependencies.database.withAuthorityTransaction(repositories => {
     const parent = repositories.runs.get(context.run.envelope.runId);
     const held = parent === undefined ? undefined : runClaim(parent);
@@ -61,15 +62,14 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
     const slot = repositories.workerSlots.get(held.workerId), lease = repositories.workerLeases.get(held.workerId);
     const owner = parent.lifecycle.workerLifetime;
     if (slot === undefined || slot.retiredAt !== null || lease === undefined || !isLiveWorker(lease)
-      || lease.lifecycle.state === "stopping" || lease.control.directive === "stop"
+      || lease.lifecycle.state === "stopping"
       || owner === undefined || owner.membershipRevision !== slot.membershipRevision || owner.leaseGeneration !== lease.leaseGeneration
       || repositories.workerControls.resetForWorker(held.workerId) !== undefined
       || repositories.workerControls.resetForRun(parent.envelope.runId) !== undefined
       || repositories.workerControls.lifecycleForWorker(held.workerId) !== undefined
       || repositories.workerSlots.recovery(held.workerId) !== undefined
       || repositories.workerSlots.verification(held.workerId) !== undefined
-      || repositories.workerControls.initializingForWorker(held.workerId, lease.leaseGeneration) !== undefined
-      || [slot.workflow, parent.envelope.workflow].some(workflow => repositories.workerControls.pending(`worker-pool:${workflow}`).length > 0)) throw new Error("delegation-worker-authority-stale");
+      || repositories.workerControls.initializingForWorker(held.workerId, lease.leaseGeneration) !== undefined) throw new Error("delegation-worker-authority-stale");
     const descriptor = dependencies.resolveDescriptor?.(parent.envelope.workflow);
     const target = dependencies.resolveDescriptor?.(context.node.target.id);
     if (parent.envelope.parent === undefined) authenticateRootRun(repositories, parent);
@@ -139,14 +139,14 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
         if (checkpoint === undefined || checkpoint.descriptorVersion !== descriptor.version || checkpoint.contractFingerprint !== descriptor.contractFingerprint
           || checkpoint.workflowId !== parent.envelope.workflow || checkpoint.itemId !== parent.envelope.itemId || checkpoint.attempt > parent.envelope.attempt
           || value === undefined || checkpoint.runId === parent.envelope.runId && checkpoint.claimGeneration > parent.claimGeneration
-          || canonicalJsonStringify(checkpoint.output.value) !== canonicalJsonStringify(value)) throw new Error("delegation-scope-checkpoint-mismatch");
+          || canonicalJsonStringify(source.kind === "transaction" ? projectTransactionOutcome(source.commit.uses, checkpoint.output.value, "delegation prerequisite") : checkpoint.output.value) !== canonicalJsonStringify(value)) throw new Error("delegation-scope-checkpoint-mismatch");
         if (source.kind === "task") {
           if (checkpoint.assertion !== undefined || checkpoint.runId !== parent.envelope.runId && source.replay !== "checkpoint") throw new Error("delegation-scope-checkpoint-mismatch");
           const producer = repositories.runs.get(checkpoint.runId);
           if (producer === undefined || producer.envelope.workflow !== parent.envelope.workflow || producer.envelope.itemId !== parent.envelope.itemId
             || producer.envelope.attempt !== checkpoint.attempt || producer.envelope.contractFingerprint !== descriptor.contractFingerprint) throw new Error("delegation-scope-checkpoint-mismatch");
           const loaded = loadCheckpoint(checkpoint, CheckpointExpectationSchema.parse({ descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
-            implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, source.uses.id), outputSchemaHash: deriveSchemaHash(source.uses.output, "output") }), source.uses.output);
+            implFingerprint: resolveTaskImplFingerprint(buildManifest, source.uses.id), outputSchemaHash: deriveSchemaHash(source.uses.output, "output") }), source.uses.output);
           if (!loaded.found || checkpoint.provenance.some(fact => {
             const observedAt = fact.source === "derived" ? fact.originalObservedAt : fact.observedAt;
             const age = dependencies.clock.nowMs() - Date.parse(observedAt);
@@ -154,9 +154,9 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
           })) throw new Error("delegation-scope-checkpoint-mismatch");
         } else if (checkpoint.runId !== parent.envelope.runId || checkpoint.attempt !== parent.envelope.attempt
           || checkpoint.output.schemaHash !== deriveSchemaHash(TransactionOutcomeSchema, "output")
-          || checkpoint.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, source.commit.uses.id)
+          || checkpoint.implFingerprint !== resolveTaskImplFingerprint(buildManifest, source.commit.uses.id)
           || !TransactionOutcomeSchema.safeParse(checkpoint.output.value).success) throw new Error("delegation-scope-checkpoint-mismatch");
-        authenticateObservationOrigins(repositories, descriptor, checkpoint);
+        authenticateObservationOrigins(repositories, descriptor, checkpoint, buildManifest);
         return { nodeId, checkpoint };
       }
       throw new Error("delegation-scope-source-unavailable");
@@ -176,7 +176,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
       retainedInvocation = DelegationInvocationRequestSchema.parse(retainedCommand.request);
       const original = readDelegationScopeEvidence(repositories, parent, retainedInvocation.scopeEvidence);
       if (sha256Hex(canonicalJsonStringify(valueFreeProtectedData(original))) !== retainedInvocation.approvalDigest
-        || canonicalJsonStringify(original.map(entry => reconfirmedScopeIdentity(repositories, descriptor, entry))) !== canonicalJsonStringify(approvals.map(entry => reconfirmedScopeIdentity(repositories, descriptor, entry)))) throw new Error("delegation-replay-divergent");
+        || canonicalJsonStringify(original.map(entry => reconfirmedScopeIdentity(repositories, descriptor, entry, buildManifest))) !== canonicalJsonStringify(approvals.map(entry => reconfirmedScopeIdentity(repositories, descriptor, entry, buildManifest)))) throw new Error("delegation-replay-divergent");
     }
     const invocation = DelegationInvocationRequestSchema.parse({ commandId: invocationCommandId, runId: parent.envelope.runId,
       attempt: parent.envelope.attempt, nodeId: context.node.id, edgeId: context.node.edgeId, manifestId,
@@ -291,7 +291,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
   });
 }
 
-function authenticateObservationOrigins(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, checkpoint: RunCheckpointRecord): void {
+function authenticateObservationOrigins(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, checkpoint: RunCheckpointRecord, buildManifest: BuildManifest): void {
   if (checkpoint.observationOrigins === undefined) return;
   const nodes = descriptorRuntimeNodes(descriptor), node = nodes.find(node => node.id === checkpoint.nodeId);
   const run = repositories.runs.get(checkpoint.runId);
@@ -337,7 +337,7 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
     const candidates = repositories.runCheckpoints.listByAttempt(checkpoint.workflowId, checkpoint.itemId, origin.nodeId, origin.attempt);
     if (!candidates.some(candidate => candidate.runId === origin.runId && candidate.contractFingerprint === descriptor.contractFingerprint
       && candidate.output.schemaHash === deriveSchemaHash(source.uses.output, "output")
-      && candidate.implFingerprint === resolveTaskImplFingerprint(BUILD_MANIFEST, source.uses.id)
+      && candidate.implFingerprint === resolveTaskImplFingerprint(buildManifest, source.uses.id)
       && (candidate.observationOrigins ?? []).some(value => canonicalJsonStringify(value.origin) === canonicalJsonStringify(origin)
         && canonicalJsonStringify(value.path) === canonicalJsonStringify([...origin.field.split("."), ...origin.path]))
       && canonicalJsonStringify(readObservationPath(candidate.output.value, [...origin.field.split("."), ...origin.path]))
@@ -345,9 +345,9 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
   }
 }
 
-function reconfirmedScopeIdentity(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, entry: ReturnType<typeof readDelegationScopeEvidence>[number]) {
+function reconfirmedScopeIdentity(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, entry: ReturnType<typeof readDelegationScopeEvidence>[number], buildManifest: BuildManifest) {
   if ("gate" in entry || "delegation" in entry) return entry;
-  authenticateObservationOrigins(repositories, descriptor, entry.checkpoint);
+  authenticateObservationOrigins(repositories, descriptor, entry.checkpoint, buildManifest);
   const { claimGeneration: _claim, writtenAt: _written, provenance, operationSources, observationOrigins, ...checkpoint } = entry.checkpoint;
   return { nodeId: entry.nodeId, checkpoint: { ...checkpoint,
     provenance: provenance.map(fact => {

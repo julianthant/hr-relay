@@ -1,7 +1,16 @@
+import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
+import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisiteModules } from "../../../support/fixtures/child-execution-write-workflow.js";
 import assert from "node:assert/strict";
+import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
+import { taskId } from "../../../../src/rules/identity/ids.js";
+import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
+import { resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
+import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
-import { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -9,42 +18,21 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
-import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
-import { EidSchema } from "../../../../src/rules/identity/ids.js";
-import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
-import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
-import { testRunLifecycle, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureDescriptor,
   writeFixtureSessions, WRITE_FIXTURE_EID, WRITE_FIXTURE_IMPL_FINGERPRINT } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { fixtureBuildManifest } from "../../../support/fixtures/workflow-definition-fixtures.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
-const input = z.strictObject({ eid: EidSchema });
-const output = z.strictObject({ transactionId: z.string().min(1) });
-const id = "fixture-child-write-recovery";
-const root = compileWorkflow(defineWorkflow({ id, version: 1, code: "fcw", label: "Synthetic child write recovery", icon: "ShieldCheck",
-  category: "operations", input, canonicalInput: defineCanonicalInput(input, input, [{ eid: WRITE_FIXTURE_EID }]),
-  inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: {}, details: [], identity: { matchKey: value => `eid:${value.eid}` }, presentation: { title: () => "Synthetic child write recovery" },
-  scenarios: ["write-fixture/happy"], role: defineWorkflowRole({ kind: "standalone" }), steps: ({ delegate, result }) => {
-    const child = delegate({ id: "write", target: { id: writeFixtureDescriptor.id, input, result: output }, edgeId: "write",
-      cardinality: "one", await: "terminal", join: "one", policy: { cascadeCancel: "cascade", onChildFailed: "fail-parent",
-        afterChildRetry: "resume-parent", visibility: "inline" } }, [],
-    { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
-    return { steps: [[{ key: "write", label: "Write child" }, [child]]], result: result(output, [child], ({ outputs }) => {
-      if (outputs.write.state !== "done") throw new Error("write-child-not-done");
-      return outputs.write.output;
-    }, [{ path: "transactionId", source: { kind: "child-output", entryId: "write", path: "transactionId" } }]) };
-  } }), { manifest: fixtureBuildManifest([id]) });
 
-function fixture() {
-  const driver = createWriteFixtureWorld(), stores = buildWriteFixtureRegistry(driver);
-  const h = world.executorHarness({ descriptor: root.descriptor, stores, sessions: writeFixtureSessions(driver) });
+function fixture(prerequisites = false) {
+  const driver = createWriteFixtureWorld(), graph = prerequisites ? childPrerequisiteModules(driver) : undefined;
+  const selectedRoot = prerequisites ? childPrerequisiteRoot : root;
+  const stores = graph?.stores ?? buildWriteFixtureRegistry(driver);
+  const h = world.executorHarness({ descriptor: selectedRoot.descriptor, stores, sessions: writeFixtureSessions(driver) });
   const { database, clock, stateRoot, path } = h.authority;
   const patch = { "actor.label": { set: "Synthetic operator" } } as const;
   assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
@@ -54,10 +42,12 @@ function fixture() {
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
   const sequencer = createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
     sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
-    operator: "local-operator", log: h.deps.log, resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT });
-  const execution = canonicalChildExecution({ ...h.deps, writeSequencer: sequencer }, database, path,
-    workflow => workflow === root.descriptor.id ? root.descriptor : workflow === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined);
-  const run = execution.start(root.descriptor, { eid: WRITE_FIXTURE_EID }, { dryRun: false });
+    operator: "local-operator", log: h.deps.log, resolveImplFingerprint: id => prerequisites ? resolveTaskImplFingerprint(childExecutionBuildManifest, id) : WRITE_FIXTURE_IMPL_FINGERPRINT });
+  const execution = canonicalChildExecution({ ...h.deps, writeSequencer: sequencer,
+    ...(prerequisites ? { buildManifest: childExecutionBuildManifest } : {}) }, database, path,
+    workflow => graph === undefined ? workflow === root.descriptor.id ? root.descriptor : workflow === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined
+      : graph.modules.find(module => module.descriptor.id === workflow)?.descriptor);
+  const run = execution.start(selectedRoot.descriptor, prerequisites ? { emplId: WRITE_FIXTURE_EID, text: "same", mode: "ok" } : { eid: WRITE_FIXTURE_EID }, { dryRun: false });
   return { ...h.authority, driver, execution, run };
 }
 
@@ -101,6 +91,12 @@ it("retains an UNKNOWN child write as parked without retry, parent settlement or
   assert.equal(f.driver.events.filter(event => event === "prepare").length, 1);
   const dependencies = f.database.authority.dependencies.listByParentRun(f.run.envelope.runId);
   const invocations = f.database.authority.lifecycleJournal.listDelegationInvocations(f.run.envelope.runId);
+  const beforeOwnedWorkerStop = f.database.getMeta().authorityGeneration;
+  stopSyntheticDatabaseWorkers({ database: f.database, path: f.path });
+  assert.ok(f.database.getMeta().authorityGeneration > beforeOwnedWorkerStop);
+  const afterOwnedWorkerStop = f.database.getMeta().authorityGeneration;
+  stopSyntheticDatabaseWorkers({ database: f.database, path: f.path });
+  assert.equal(f.database.getMeta().authorityGeneration, afterOwnedWorkerStop);
   const generation = f.database.getMeta().authorityGeneration;
   f.database.close();
   const reopened = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "child-write-reopen-test" }, f.clock);
@@ -123,3 +119,61 @@ it("retains an UNKNOWN child write as parked without retry, parent settlement or
     assert.equal(reopened.authority.runResults.get(parked.envelope.runId), undefined);
   } finally { reopened.close(); }
 });
+
+for (const unrelatedReset of [false, true]) {
+it(`authenticates task and transaction prerequisites through child resume with unrelated reset ${String(unrelatedReset)}`, async () => {
+  const f = fixture(true);
+  let control: ReturnType<typeof admitWorkerReset> | undefined;
+  if (unrelatedReset) {
+    const home = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.run.envelope.workflow,
+      poolIndex: 1, browserSystems: workflowProjections(childPrerequisiteRoot.descriptor).systems });
+    const other = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.run.envelope.workflow,
+      poolIndex: 2, browserSystems: workflowProjections(childPrerequisiteRoot.descriptor).systems });
+    control = f.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
+      commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard",
+      requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: {
+        workerId: other.workerId, membershipRevision: other.member.membershipRevision,
+        controlBasis: { leaseGeneration: other.lease.leaseGeneration, controlRevision: other.lease.controlRevision },
+      },
+    }, randomUUID(), f.clock.now().toISOString()));
+    assert.ok(control.reset);
+    assert.equal(f.database.authority.workerControls.resetForWorker(home.workerId), undefined);
+  }
+  f.driver.probeResults.push(absentProbeEvidence(f.clock.now().toISOString()));
+  const first = await f.execution.step(f.run, world.SIGNAL);
+  const failure = first.outcome.state === "failed" ? f.database.authority.failures.get(first.outcome.failureId) : undefined;
+  const code = ErrorCatalogCodeSchema.safeParse(failure?.code);
+  const diagnosticPaths = new Set(["src/backend/runtime/execution/run-executor.ts","src/backend/runtime/execution/durable-child-executor.ts","src/backend/runs/lifecycle/run-record-service.ts","src/backend/runs/lifecycle/delegation-admission.ts","src/backend/storage/sqlite/authority-database.ts","src/workflow-kit/task.ts","src/workflow-kit/workflow.ts"]);
+    const diagnosticTexts = failure?.debug === undefined ? [] : [failure.debug.stack, ...failure.debug.causes];
+    const diagnosticFrames = diagnosticTexts.flatMap((value) => [...value.matchAll(/(?:^|[(/\s])((?:src)\/[A-Za-z0-9_./-]+\.ts):(\d+):(\d+)/gm)]
+      .filter((match) => diagnosticPaths.has(match[1] ?? ""))
+      .map((match) => ({ path: match[1], line: Number(match[2]), column: Number(match[3]) })));
+    const diagnosticClasses = ["Error", "TypeError", "RangeError", "AssertionError", "ZodError", "AggregateError", "RunLifecycleRefusedError", "WorkerControlRefusal"].filter((name) => diagnosticTexts.some((value) => value.startsWith(name + ":")));
+    assert.equal(first.outcome.state, "yielded-delegation", new Error(failure === undefined ? undefined : JSON.stringify({
+    code: code.success ? code.data : "UNCLASSIFIED", codeSha256: sha256Hex(failure.code),
+    failureSha256: sha256Hex(canonicalJsonStringify(failure)), frames: diagnosticFrames, classes: diagnosticClasses, causeCount: failure?.debug?.causes.length ?? 0})));
+  const checkpoints = f.database.authority.runCheckpoints.listByItem(f.run.envelope.workflow, f.run.envelope.itemId);
+  const observation = checkpoints.find(checkpoint => checkpoint.nodeId === "observe");
+  const transaction = checkpoints.find(checkpoint => checkpoint.nodeId === "write");
+  assert.ok(observation && transaction);
+  assert.ok((observation.observationOrigins?.length ?? 0) > 0);
+  assert.equal(observation.implFingerprint, resolveTaskImplFingerprint(childExecutionBuildManifest, taskId("ocr/extract-form-page")));
+  assert.equal(transaction.implFingerprint, resolveTaskImplFingerprint(childExecutionBuildManifest, taskId("ucpath/submit-write-fixture")));
+  const retained = canonicalJsonStringify(checkpoints);
+  assert.equal(f.database.authority.runs.listChildren(f.run.envelope.runId).length, 1);
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "done");
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "done");
+  assert.equal(canonicalJsonStringify(f.database.authority.runCheckpoints.listByItem(f.run.envelope.workflow, f.run.envelope.itemId)), retained);
+  const result = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(result);
+  assert.deepEqual(result.result.value, { eid: WRITE_FIXTURE_EID, disposition: "same/same", providerState: "same" });
+  assert.equal(f.driver.events.filter(event => event.startsWith("commit-click:")).length, 1);
+  const writes = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
+  assert.equal(writes.length, 1); assert.equal(writes[0]?.status, "committed");
+  if (control !== undefined) {
+    assert.ok(control.reset);
+    assert.equal(f.database.authority.workerControls.get(control.commandId)?.phase.state, "admitted");
+    f.database.authority.workerControls.transition(control.commandId, "admitted", { state: "executing", startedAt: f.clock.now().toISOString() });
+    f.execution.lifecycle.settleResetWork(control.reset);
+  }
+});
+}

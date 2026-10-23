@@ -51,6 +51,7 @@ export default defineConfig({
     },
   },
   test: {
+    setupFiles: ["tests/support/duo-ceremony-setup.ts"],
     // Every named project, including architecture, must fail if its include or
     // exclude leaves it empty; an empty lane proves no invariant.
     passWithNoTests: false,

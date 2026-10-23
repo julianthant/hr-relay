@@ -16,7 +16,7 @@ export const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,"0"
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 export function foundationFixture(options:{input?:RunRecord["input"]}={}){
  const profile=createBoundProfileFixture();
@@ -26,26 +26,16 @@ export function foundationFixture(options:{input?:RunRecord["input"]}={}){
   {stateRoot:root,artifactRoot:join(root,"artifacts")});
  const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:resolved.fingerprint,capturedAt:NOW,capturedBy:"local-operator",config:resolved.config,provenance:resolved.provenance});
  db.authority.runtimeConfig.initialize(snapshot);
- let admissionIdentity=10000;
  const createRun=(runId:string)=>{
- const workerId=db.withAuthorityTransaction(repositories=>{
-  const slots=repositories.workerSlots.list("person-lookup").filter(slot=>slot.retiredAt===null);
-  const free=slots.find(slot=>!repositories.runs.listByWorker(slot.workerId).some(run=>["claimed","validating","running"].includes(run.lifecycle.state)));
-  const poolIndex=free?.poolIndex??[1,2,3].find(index=>!slots.some(slot=>slot.poolIndex===index));
-  assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
-  const slot=admitDirectWorker(repositories,{commandId:id(admissionIdentity++),workflow:"person-lookup",poolIndex,
-   expectedPoolVersion:repositories.workerPools.get("person-lookup")?.version??0,processId:process.pid,
-   processAcquisitionId:id(admissionIdentity++),authorityPath:path,processLockRoot:join(root,"locks"),now:NOW},id(admissionIdentity++));
-  if(repositories.workerLeases.get(slot.workerId)===undefined){
-   const lease=repositories.workerLeases.start({workerId:slot.workerId,workflow:"person-lookup",browserSystems:workflowProjections(personLookupDescriptor).systems,
-    processId:process.pid,requestedBy:"local-operator",now:NOW});assert.equal(lease.state,"started");
-  }
-  return slot.workerId;
- });
+ const slots=db.authority.workerSlots.list("person-lookup").filter(slot=>slot.retiredAt===null);
+ const free=slots.find(slot=>!db.authority.runs.listByWorker(slot.workerId).some(run=>["claimed","validating","running"].includes(run.lifecycle.state)));
+ const poolIndex=free?.poolIndex??[1,2,3].find(index=>!slots.some(slot=>slot.poolIndex===index));
+ assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
+ const {workerId}=testAdmittedWorker(db,clock,{path,workflow:"person-lookup",poolIndex,browserSystems:workflowProjections(personLookupDescriptor).systems});
  db.authority.runs.enqueue({...QUEUED_RUN,...(options.input===undefined?{}:{input:options.input}),envelope:{...QUEUED_RUN.envelope,runId, itemId:runId, descriptorVersion:personLookupDescriptor.version, contractFingerprint:personLookupDescriptor.contractFingerprint,configFingerprint:snapshot.fingerprint,configSnapshotId:snapshot.configSnapshotId}});
- const claim=db.authority.runs.claimNext({workflow:"person-lookup",workerId,now:NOW});assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("fixture claim failed");
- const validating=db.authority.runs.transition({runId,expectedVersion:claim.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"validating",workerId,claimedAt:NOW,heartbeatAt:NOW},now:NOW});assert.equal(validating.state,"applied");if(validating.state!=="applied")throw new Error("fixture validation failed");
- const running=db.authority.runs.transition({runId,expectedVersion:validating.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"running",workerId,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"searching"},now:NOW});assert.equal(running.state,"applied");if(running.state!=="applied")throw new Error("fixture run failed");
+ const claim=db.authority.runs.claimNext({workflow:"person-lookup",workerId,workerLifetime:testWorkerLifetime(db,"person-lookup",poolIndex).workerLifetime,now:NOW});assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("fixture claim failed");
+ const validating=db.authority.runs.transition({runId,expectedVersion:claim.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"validating",workerId,workerLifetime:testWorkerLifetime(db,"person-lookup",poolIndex).workerLifetime,claimedAt:NOW,heartbeatAt:NOW},now:NOW});assert.equal(validating.state,"applied");if(validating.state!=="applied")throw new Error("fixture validation failed");
+ const running=db.authority.runs.transition({runId,expectedVersion:validating.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"running",workerId,workerLifetime:testWorkerLifetime(db,"person-lookup",poolIndex).workerLifetime,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"searching"},now:NOW});assert.equal(running.state,"applied");if(running.state!=="applied")throw new Error("fixture run failed");
  return running.run;
  };
  const run=createRun(RUN_ID);

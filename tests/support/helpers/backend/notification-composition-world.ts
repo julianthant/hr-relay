@@ -2,7 +2,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
 import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory, QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
-import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { storageRecoveryFixture } from "../integration/storage-recovery-fixture.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
@@ -33,7 +33,9 @@ export function createNotificationCompositionTestWorld() {
     f.db.authority.runs.enqueue(queued);
     if (desired.lifecycle.state === "queued") return f.db.authority.runs.get(queued.envelope.runId)!;
     const slot = f.db.authority.workerSlots.list("person-lookup")[0];
-    const claim = f.db.authority.runs.claimNext({ workflow: "person-lookup", workerId: slot.workerId, now: f.clock.now().toISOString() });
+    const claimMember1 = f.db.authority.workerSlots.get(slot.workerId);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    const claim = f.db.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.db, "person-lookup", claimMember1.poolIndex).workerLifetime, workflow: "person-lookup", workerId: slot.workerId, now: f.clock.now().toISOString() });
     if (claim.state !== "claimed") throw new Error("fixture claim refused");
     let run = claim.run;
     for (const state of ["validating", "running"] as const) {

@@ -1,8 +1,6 @@
 
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture } from "./admission-fixture.js";
 import type { MonotonicDeadlineScheduler } from "../../../src/backend/runtime/scheduling/deadline-scheduler.js";
 import {
   createDuoCeremonyGateFactory,
@@ -13,7 +11,7 @@ import { systemClock } from "../../../src/rules/time/clock.js";
 import type { Clock } from "../../../src/rules/time/clock.js";
 import { FingerprintSchema, WorkerIdSchema } from "../../../src/rules/identity/ids.js";
 import type { BrowserSystemId, WorkerId } from "../../../src/rules/identity/ids.js";
-import { AuthorityDatabase } from "./synthetic-database-admission.js";
+import { AuthorityDatabase, syntheticDatabasePath } from "./synthetic-database-admission.js";
 import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "./registered-workflows.js";
 
@@ -29,12 +27,23 @@ const realScheduler: MonotonicDeadlineScheduler = {
   },
 };
 
+const closeFixtures: (() => void)[] = [];
+
+export function closeDuoCeremonyFixtures(): void {
+  const failures: unknown[] = [];
+  for (const close of closeFixtures.splice(0).reverse()) {
+    try { close(); } catch (error) { failures.push(error); }
+  }
+  if (failures.length > 0) throw new AggregateError(failures, "Duo fixture cleanup failed");
+}
+
 export function openDuoCeremonyLeaseDatabase(clock: Clock): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-duo-lease-fixture-"));
-  return AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    clock,
+  const profile = createBoundProfileFixture();
+  const database = AuthorityDatabase.open(
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock,
   );
+  closeFixtures.push(() => { database.close(); profile.close(); });
+  return database;
 }
 
 
@@ -75,9 +84,8 @@ export function fixtureDuoCeremonyGate(
   workerId: WorkerId = WorkerIdSchema.parse("person-lookup-worker-1"),
   clock: Clock = systemClock,
 ): DuoCeremonyGateHandle {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-duo-recipe-fixture-"));
-  const path = join(root, "authority.sqlite");
-  const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+  const database = openDuoCeremonyLeaseDatabase(clock);
+  const path = syntheticDatabasePath(database);
   testWorkerPorts(database, clock, { path, descriptor: personLookupDescriptor, poolIndex: 1 });
   const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(candidate => candidate.poolIndex === 1);
   assert.equal(slot?.workerId, workerId, "recipe gate must use its actually admitted worker");

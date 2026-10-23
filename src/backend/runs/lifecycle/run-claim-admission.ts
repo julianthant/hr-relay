@@ -2,7 +2,7 @@ import type { RunRecord } from "../../../models/run/record.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { authenticateDelegationGroup, retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateDelegationGroup, retainedDelegationManifests, delegationEdgeForChild } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import type { RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
@@ -48,6 +48,11 @@ export function delegatedCandidateEligible(repositories: AuthorityRepositories, 
       || deriveSchemaHash(node.target.input, "input") !== invocation.target.inputSchemaHash
       || deriveSchemaHash(node.target.result, "output") !== invocation.target.resultSchemaHash) throw new Error("delegation-dispatch-definition-mismatch");
   }
-  return ancestry.every(run => repositories.workerControls.resetForRun(run.envelope.runId) === undefined
-    && repositories.workerControls.pending(`worker-pool:${run.envelope.workflow}`).length === 0);
+  for (const run of ancestry) {
+    if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return false;
+    if (run.envelope.parent === undefined) break;
+    const edge = delegationEdgeForChild(repositories, run.envelope.parent.runId, run.envelope.runId);
+    if (edge.policy.cascadeCancel === "independent") break;
+  }
+  return true;
 }

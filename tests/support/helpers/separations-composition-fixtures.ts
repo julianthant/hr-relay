@@ -1,6 +1,6 @@
 import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
 import { protectedSecretSource } from "./protected-secret-source.js";
-import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -419,7 +419,9 @@ export function compositionClaimRunning(
   const now = clock.now().toISOString();
   const enqueued = database.authority.runs.enqueue(runInput);
   if (enqueued.state !== "inserted") throw new Error(`enqueue outcome was ${enqueued.state}`);
-  const claimed = database.authority.runs.claimNext({
+  const claimMember1 = database.authority.workerSlots.get(workerId);
+  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+  const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, COMPOSITION_WORKFLOW_ID, claimMember1.poolIndex).workerLifetime,
     workflow: COMPOSITION_WORKFLOW_ID,
     workerId,
     now,

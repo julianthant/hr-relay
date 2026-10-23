@@ -1,5 +1,5 @@
 import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
-import { WorkerResetBindingSchema } from "../../../models/run/worker-control.js";
+import { WorkerControlRefusal, WorkerResetBindingSchema } from "../../../models/run/worker-control.js";
 import { authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
 import { runSettingsAvailable, selectNewRunIdentity } from "../settings/run-settings.js";
@@ -83,7 +83,7 @@ export type RunPurgeOutcome =
 
 /** Worker capability never includes command-family transition. */
 export type WorkerRunLifecyclePort = Pick<RunRecordService,
-  "claimNext" | "renewClaim" | "workerTransition" | "terminalize" | "requeue" | "admitDelegation">;
+  "claimNext" | "renewClaim" | "workerTransition" | "terminalize" | "requeue" | "admitDelegation" | "assertCurrentExecution">;
 
 export interface RunContinuationPort {
   transition(input: z.input<typeof CanonicalWriteResolutionTransitionRequestSchema>): RunMutationOutcome | RunExistence;
@@ -95,6 +95,7 @@ export function workerRunLifecyclePort(service: RunRecordService): WorkerRunLife
     workerTransition: service.workerTransition.bind(service), terminalize: service.terminalize.bind(service),
     requeue: service.requeue.bind(service),
     admitDelegation: service.admitDelegation.bind(service),
+    assertCurrentExecution: service.assertCurrentExecution.bind(service),
   });
 }
 
@@ -166,6 +167,7 @@ export type RunRecordServiceDependencies = Readonly<{
   /** Synchronous readiness assertion; runs after replay, before enqueue. */
   admitQueuedRun?: (run: RunRecord) => void;
   resolveDescriptor?: (workflowId: string) => AnyWorkflowDescriptor | undefined;
+  buildManifest?: import("../../../workflow-kit/validation/build-manifest.js").BuildManifest;
 }>;
 
 
@@ -245,12 +247,23 @@ export class RunRecordService {
     });
   }
 
+  assertCurrentExecution(input: unknown): void {
+    try { this.dependencies.database.assertCurrentExecution(input); }
+    catch (error) {
+      if (error instanceof WorkerControlRefusal && error.message === "worker-execution-lost") throw new RunLifecycleRefusedError(refused({ reason: "lost" }));
+      throw error;
+    }
+  }
+
   admitDelegation(context: ChildRunContext, plan: DelegationPlan<AnyWorkflowRef>) {
-    return admitDelegation(this.dependencies, context, plan, {
+    return this.dependencies.database.withAuthorityTransaction(() => {
+      this.assertCurrentExecution({ runId: context.run.envelope.runId, claim: context.claim });
+      return admitDelegation(this.dependencies, context, plan, {
       create: (request, publication) => requireLifecycleApplied(this.createCanonical(request, publication)),
       inspectJournal: (repositories, operation, request, fence) => this.inspectJournal(repositories, operation, request, fence),
       recordJournal: (repositories, command, result) => this.recordJournal(repositories, command, result),
       release: request => this.requeue(request),
+      });
     });
   }
 
@@ -324,6 +337,7 @@ export class RunRecordService {
       if (slot === undefined || slot.retiredAt !== null || slot.workflow !== workflow
         || request.workerLifetime !== undefined && (slot.membershipRevision !== request.workerLifetime.membershipRevision
           || lease?.leaseGeneration !== request.workerLifetime.leaseGeneration || lease.lifecycle.state === "stopped")) return refused({ reason: "none-eligible" });
+      if (request.workerLifetime === undefined) return refused({ reason: "none-eligible" });
       if (journal.state === "replay") {
         const replayed = this.replayRun(journal.result);
         if (replayed.state !== "refused" && "run" in replayed && "workerId" in replayed.run.lifecycle) {
@@ -562,6 +576,7 @@ export class RunRecordService {
       if (journal.state === "replay") return this.replayRun(journal.result);
       const current = this.read(request.runId);
       if (current.state !== "present") return refused({ reason: "lost" });
+      this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
       const outcome = repositories.runs.renewClaim({ runId: request.runId, claim: request.claim,
         now: this.dependencies.clock.now().toISOString() });
       if (outcome.state === "lost") return refused({ reason: "lost" });
@@ -592,8 +607,12 @@ export class RunRecordService {
         return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
           to: request.lifecycle.state, message: violation === undefined ? "worker transition cannot replace ownership or settle" : violation });
       }
+      this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
+      const retainedLifetime = "workerLifetime" in current.run.lifecycle ? current.run.lifecycle.workerLifetime : undefined;
+      const lifecycle = "workerId" in request.lifecycle && request.lifecycle.workerLifetime === undefined && retainedLifetime !== undefined
+        ? { ...request.lifecycle, workerLifetime: retainedLifetime } : request.lifecycle;
       const result = repositories.runs.transition({ runId: request.runId, claim: request.claim,
-        expectedVersion: current.run.version, lifecycle: request.lifecycle,
+        expectedVersion: current.run.version, lifecycle,
         now: this.dependencies.clock.now().toISOString() });
       if (result.state === "conflict") return refused({ reason: "lost" });
       this.recordJournal(repositories, journal.command, journalRun(result.run), current.run.lifecycle);
@@ -608,12 +627,14 @@ export class RunRecordService {
   ): RunMutationOutcome {
     const request = CanonicalTerminalizeRequestSchema.parse(input);
     if (request.kind === "cancelled") return this.terminalizeCancellation(request);
-    return request.kind === "failure"
-      ? this.terminalizeFailure({ commandId: request.commandId, terminal: request.terminal }, descriptor)
-      : this.terminalizeSuccess(
-          { commandId: request.commandId, terminal: request.terminal },
-          factoryAuthorization,
-        );
+    try {
+      return request.kind === "failure"
+        ? this.terminalizeFailure({ commandId: request.commandId, terminal: request.terminal }, descriptor)
+        : this.terminalizeSuccess({ commandId: request.commandId, terminal: request.terminal }, factoryAuthorization);
+    } catch (error) {
+      if (error instanceof WorkerControlRefusal && error.message === "worker-execution-lost") throw new RunLifecycleRefusedError(refused({ reason: "lost" }));
+      throw error;
+    }
   }
 
   settleResetWork(input: unknown): void {

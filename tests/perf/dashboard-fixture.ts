@@ -1,6 +1,6 @@
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../support/helpers/run-integration-world.js";
 import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.js";
-import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { sqliteRunReader } from "../support/helpers/canonical-run-reader.js";
 
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -244,7 +244,9 @@ function startRunning(context: SeedContext, spec: RunSpec, workerLabel: string, 
   context.workers.set(workerLabel, workerId);
   const enqueued = enqueueRun(context, spec);
   const now = enqueued.envelope.enqueuedAt;
-  const claimed = context.database.authority.runs.claimNext({
+  const claimMember1 = context.database.authority.workerSlots.get(workerId);
+  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+  const claimed = context.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(context.database, descriptor.id, claimMember1.poolIndex).workerLifetime,
     workflow: descriptor.id,
     workerId,
     now,

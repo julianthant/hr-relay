@@ -1,4 +1,4 @@
-import { registerBoundProfile, unregisterBoundProfile, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
+import { registerBoundProfile, unregisterBoundProfile, assertBoundFixtureWorkersReleased, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
 export { registerBoundProfile, unregisterBoundProfile, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission, profileFixtureStorageAdmission, boundProfileAdmission } from "./synthetic-database-admission.js";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
@@ -148,6 +148,7 @@ export function createBoundProfileFixture(options: { pending?: true; sharedMachi
       registerBoundProfile(admission, machine);
     }
     const renewAfterRestore = () => {
+      assertBoundFixtureWorkersReleased(admission);
       admission.release();
       admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
       registerBoundProfile(admission, machine);

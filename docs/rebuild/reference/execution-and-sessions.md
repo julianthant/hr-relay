@@ -75,6 +75,12 @@ ownership rather than inventing a terminal result. The claim sweeper owns subseq
 
 One heartbeat renews the exact worker and `claimGeneration`; lost renewal aborts execution.
 `RunRecordService` re-reads authority versions before lifecycle mutation.
+Current execution also requires the retained physical worker lifetime, current profile admission,
+slot, lease and process birth. The executor checks this authority after a child await, and native
+worker mutations check it in their transaction. Pause and ordinary graceful stop do not revoke the
+current item; exact-worker reset, lifecycle and recovery reservations still fence it. An independent
+delegation edge stops ancestor cancellation propagation, without bypassing the child's own home-worker
+or profile lifetime.
 
 Worker composition uses `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`,
 `WORKER_CLAIM_STALE_AFTER_MS = 60_000`, and `WORKER_SWEEP_INTERVAL_MS = 30_000`.

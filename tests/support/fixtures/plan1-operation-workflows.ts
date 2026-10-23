@@ -8,7 +8,7 @@ import { defineCanonicalInput } from "../../../src/models/workflow/canonical-inp
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import { runDeclaredAction, recordDeclaredActionNotRun } from "../../../src/backend/systems/browser-shared/action-notes.js";
-import { fixtureBuildManifest } from "./workflow-definition-fixtures.js";
+import { childExecutionBuildManifest as manifest } from "./child-execution-build-manifest.js";
 
 export const Plan1Input = z.strictObject({ emplId: EidSchema, text: z.string(), mode: z.enum(["ok", "fail", "repeat", "confirmed"]) });
 export const Plan1Output = z.strictObject({ eid: EidSchema, disposition: z.string(), providerState: z.string() });
@@ -50,7 +50,6 @@ export const plan1Task = defineTask(plan1Contract, { sessions: [], async run({ i
 } });
 export const plan1Stores = defineTaskStoreRegistry([defineServiceStore("ocr", { observe: plan1Task })], { scenarioIds: [scenario], tasks: [{ id: plan1Contract.id, effect: "read" }] });
 const ids = ["fixture-plan1-leaf", "fixture-plan1-child", "fixture-plan1-parent"];
-const manifest = fixtureBuildManifest(ids);
 const common = { version: 1, code: "fpo", label: "Plan 1 synthetic workflow", icon: "Search" as const, category: "operations" as const,
   input: Plan1Input, canonicalInput: Plan1CanonicalInput, inputSubject: "eid" as const, surface: { shape: "single" as const }, enqueue: "reject-active" as const,
   actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [], identity: { matchKey: (input: z.output<typeof Plan1Input>) => input.emplId },

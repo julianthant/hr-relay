@@ -1,4 +1,4 @@
-import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -60,7 +60,9 @@ export function trustWorld() {
   };
   const fail = (run: RunRecord, seed: number) => {
     const now = world.clock.now().toISOString();
-    const claimed = database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId, now });
+    const claimMember1 = database.authority.workerSlots.get(workerId);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime, workflow: run.envelope.workflow, workerId, now });
     assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("fixture claim failed");
     assert.equal(claimed.run.envelope.runId, run.envelope.runId);
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };

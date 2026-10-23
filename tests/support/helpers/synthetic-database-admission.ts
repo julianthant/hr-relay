@@ -3,20 +3,110 @@ import type { CredentialStore } from "../../../src/models/config/credential-stor
 import { AuthorityDatabase as RealAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { dirname, join, resolve } from "node:path";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import type { RuntimeProcessLockHandle } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import type { Clock } from "../../../src/rules/time/clock.js";
 
-const boundProfiles = new Map<string, { admission: RuntimeAdmission; machine: RuntimeAdmission; credentials: CredentialStore }>();
+type FixtureWorker = Readonly<{ database: RealAuthorityDatabase; workerId: string; generation: number | undefined;
+  processId: number; handle: RuntimeProcessLockHandle; clock: Clock }>;
+const boundProfiles = new Map<string, { admission: RuntimeAdmission; machine: RuntimeAdmission; credentials: CredentialStore;
+  workers: Set<FixtureWorker> }>();
+const workerDatabases = new WeakSet<RealAuthorityDatabase>();
 
 export function registerBoundProfile(admission: RuntimeAdmission, machine: RuntimeAdmission): void {
   const credentials = productionCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
     erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
-  boundProfiles.set(admission.stateRoot, { admission, machine, credentials });
+  const prior = boundProfiles.get(admission.stateRoot);
+  if (prior !== undefined && prior.workers.size !== 0) throw new Error("fixture-worker-custody-retained");
+  boundProfiles.set(admission.stateRoot, { admission, machine, credentials, workers: new Set() });
 }
 
 export function unregisterBoundProfile(admission: RuntimeAdmission): void {
   const entries = [...boundProfiles].filter(([, entry]) => entry.admission === admission);
   const entry = entries[0];
   if (entries.length !== 1 || entry === undefined) throw new Error("fixture-bound-profile-owner-required");
+  if (entry[1].workers.size !== 0) throw new Error("fixture-worker-custody-retained");
   boundProfiles.delete(entry[0]);
+}
+
+export function assertBoundFixtureWorkersReleased(admission: RuntimeAdmission): void {
+  const entry = boundProfiles.get(admission.stateRoot);
+  if (entry?.admission !== admission) throw new Error("fixture-bound-profile-owner-required");
+  if (entry.workers.size !== 0) throw new Error("fixture-worker-custody-retained");
+}
+
+const syntheticWorkerStops = new WeakMap<object, { readonly path: string; readonly stop: () => void }>();
+
+export function stopSyntheticDatabaseWorkers(input: Pick<Parameters<typeof registerBoundFixtureWorker>[0], "database" | "path">): void {
+  const registered = syntheticWorkerStops.get(input.database);
+  if (registered === undefined || registered.path !== input.path) throw new Error("synthetic-database-fixture-unavailable");
+  registered.stop();
+}
+
+export function registerBoundFixtureWorker(input: FixtureWorker & Readonly<{ path: string }>): void {
+  const admission = boundProfileAdmission(input.path);
+  const entry = boundProfiles.get(admission.stateRoot);
+  if (entry?.admission !== admission || input.database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(input.path)) {
+    throw new Error("fixture-worker-database-owner-mismatch");
+  }
+  if ([...entry.workers].some(worker => worker.workerId === input.workerId)) throw new Error("fixture-worker-owner-already-retained");
+  const worker = Object.freeze({ database: input.database, workerId: input.workerId, generation: input.generation,
+    processId: input.processId, handle: input.handle, clock: input.clock });
+  entry.workers.add(worker);
+  if (workerDatabases.has(input.database)) return;
+  workerDatabases.add(input.database);
+  syntheticWorkerStops.set(input.database, { path: input.path, stop: () => {
+const retained = [...entry.workers].filter(value => value.database === input.database);
+const failures: unknown[] = [];
+for (const owner of retained) {
+    try {
+      const lease = owner.database.authority.workerLeases.get(owner.workerId);
+      if (owner.generation === undefined ? lease !== undefined
+      : lease === undefined || lease.leaseGeneration !== owner.generation || lease.processId !== owner.processId) {
+        throw new Error("fixture-worker-lifetime-replaced");
+      }
+      owner.database.assertWorkerLifecycleRelease(owner.workerId);
+      if (owner.database.authority.workerControls.browsers(owner.workerId).some(browser => browser.health !== "closed")) {
+        throw new Error("fixture-worker-browser-closure-unproved");
+      }
+      if (lease !== undefined) {
+        const custody = owner.database.workerLifetimeCustody(owner.workerId);
+        if (custody.state !== "alive" || custody.birth.owner.acquisitionId !== owner.handle.acquisitionId
+        || custody.birth.owner.pid !== owner.processId) throw new Error("fixture-worker-process-owner-mismatch");
+      }
+      if (lease !== undefined && lease.lifecycle.state !== "stopped") {
+        const now = owner.clock.now().toISOString();
+        const stopped = owner.database.authority.workerLeases.reportLifecycle({ workerId: owner.workerId,
+          leaseGeneration: lease.leaseGeneration, now, lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt,
+            stoppedAt: now, reason: "shutdown" } });
+        if (stopped.state !== "applied") throw new Error("fixture-worker-stop-conflict");
+      }
+    } catch (error) { failures.push(error); }
+  }
+if (failures.length !== 0) throw new AggregateError(failures, "fixture-worker-closure-unproved");
+  } });
+  const close = input.database.close.bind(input.database);
+  let databaseClosed = false;
+  input.database.close = () => {
+    if (!databaseClosed) stopSyntheticDatabaseWorkers(input);
+    const retained = [...entry.workers].filter(value => value.database === input.database);
+    const failures: unknown[] = [];
+    if (!databaseClosed) { close(); databaseClosed = true; }
+    for (const owner of retained) {
+      try { owner.handle.release(); entry.workers.delete(owner); }
+      catch (error) { failures.push(error); }
+    }
+    if (failures.length !== 0) throw new AggregateError(failures, "fixture-worker-process-release-unproved");
+  };
+}
+
+export function boundFixtureWorker(database: RealAuthorityDatabase, path: string, workerId: string): boolean {
+  const admission = boundProfileAdmission(path), entry = boundProfiles.get(admission.stateRoot);
+  if (entry?.admission !== admission || database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(path)) return false;
+  const owner = [...entry.workers].find(worker => worker.database === database && worker.workerId === workerId);
+  if (owner === undefined) return false;
+  const custody = database.workerLifetimeCustody(workerId), lease = database.authority.workerLeases.get(workerId);
+  return lease?.leaseGeneration === owner.generation && custody.state === "alive"
+    && custody.birth.owner.acquisitionId === owner.handle.acquisitionId && custody.birth.owner.pid === owner.processId;
 }
 
 export function createBoundProfileCredentialStore(admission: RuntimeAdmission, options: Omit<Parameters<typeof productionCredentialStore>[0], "admission" | "erasureJournalAdmission" | "erasureJournalPath">): CredentialStore {

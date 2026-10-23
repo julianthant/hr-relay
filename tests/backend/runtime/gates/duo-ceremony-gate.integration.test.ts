@@ -264,10 +264,14 @@ describe("Gate#release preserves the original error when the store's release() i
     const database = sharedAuthority(clock);
     const real = database.authority.duoCeremonyLeases;
     const releaseError = new Error("sqlite: database is locked (fixture)");
+    let failRelease = true;
     const flaky: DuoCeremonyLeaseRepository = Object.freeze({
       acquire: (input: unknown) => real.acquire(input),
       get: (credentialKey: string) => real.get(credentialKey),
-      release: () => { throw releaseError; },
+      release: (input: Readonly<{ token: unknown; now: string }>) => {
+        if (failRelease) throw releaseError;
+        return real.release(input);
+      },
     });
     const factory = createDuoCeremonyGateFactory({
       leases: flaky,
@@ -305,5 +309,8 @@ describe("Gate#release preserves the original error when the store's release() i
       },
     );
     assert.equal(leaseRow(database).state, "held", "still held: dispose()'s release failed and #hold was never cleared");
+    failRelease = false;
+    gate.dispose();
+    assert.equal(leaseRow(database).state, "released");
   });
 });

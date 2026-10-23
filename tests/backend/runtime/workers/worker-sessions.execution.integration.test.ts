@@ -27,6 +27,7 @@ describe("worker execution session identity", () => {
     assert.equal(harness.closes(), 1);
     assert.deepEqual(events.map(event => [event.type, event.workerId, event.workflowId]), [
       ["browser-session:start", world.WORKER_ID, childWorkflow],
+      ["browser-session:reset", world.WORKER_ID, childWorkflow],
       ["browser-session:close", world.WORKER_ID, childWorkflow],
     ]);
     manager.configureExecution(world.WORKFLOW_ID, taskStoreRegistry);
@@ -39,8 +40,9 @@ describe("worker execution session identity", () => {
     }
     assert.equal(harness.opens(), 2);
     assert.equal(harness.closes(), 2);
-    assert.deepEqual(events.slice(2).map(event => [event.type, event.workerId, event.workflowId]), [
+    assert.deepEqual(events.slice(3).map(event => [event.type, event.workerId, event.workflowId]), [
       ["browser-session:start", world.WORKER_ID, world.WORKFLOW_ID],
+      ["browser-session:reset", world.WORKER_ID, world.WORKFLOW_ID],
       ["browser-session:close", world.WORKER_ID, world.WORKFLOW_ID],
     ]);
   });

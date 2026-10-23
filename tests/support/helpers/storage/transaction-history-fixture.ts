@@ -5,7 +5,7 @@ import { foundationFixture } from "../database-foundation/fixtures.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { testRunService, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { separationsDescriptor } from "../registered-workflows.js";
 import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
 import { atomicWriteCheckpoint } from "../timeline-write-fixture.js";
@@ -35,7 +35,7 @@ export function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) 
       if (free === undefined) testWorkerPorts(database, historyClock, { path, descriptor: separationsDescriptor, poolIndex });
       const slot = database.authority.workerSlots.list(separationsDescriptor.id).find(entry => entry.poolIndex === poolIndex && entry.retiredAt === null);
       assert.ok(slot);
-      assert.equal(database.authority.runs.claimNext({ workflow: separationsDescriptor.id, workerId: slot.workerId, now: ledger.fencedAt }).state,"claimed");
+      assert.equal(database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, separationsDescriptor.id, poolIndex).workerLifetime, workflow: separationsDescriptor.id, workerId: slot.workerId, now: ledger.fencedAt }).state,"claimed");
       assert.equal(fenceWriteFixture(database, { intent: fixture.intent, attempt: fixture.attempt }).state, "fenced");
       database.commitWriteAttempt(fixture.commit, { ...atomicWriteCheckpoint(fixture.commit), descriptorVersion:separationsDescriptor.version,contractFingerprint:separationsDescriptor.contractFingerprint });
       if (options.terminalize !== true) return fixture;

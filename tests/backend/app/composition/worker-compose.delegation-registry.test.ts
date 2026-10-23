@@ -6,6 +6,8 @@ import { composeWorkflowModule } from "../../../../src/workflow-kit/workflow-def
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { plan1Child, plan1Leaf, plan1Parent, plan1Stores, plan1Workflows } from "../../../support/fixtures/plan1-operation-workflows.js";
 
+import { childExecutionBuildManifest as manifest } from "../../../support/fixtures/child-execution-build-manifest.js";
+
 const modules = plan1Workflows.map(compiled => composeWorkflowModule(compiled, plan1Stores.stores));
 const resolve = (id: string) => modules.find(module => module.descriptor.id === id);
 function input(workflowId: string, executionRegistry?: WorkerComposeInput["executionRegistry"]) {
@@ -27,7 +29,7 @@ describe("private child execution registry qualification before authority effect
 
   it("refuses an unknown root or descendant instead of falling back to production modules", async () => {
     for (const workflowId of ["unregistered-child-root", plan1Child.descriptor.id]) {
-      const world = input(workflowId, { resolve: id => id === plan1Child.descriptor.id ? resolve(id) : undefined, stores: plan1Stores });
+      const world = input(workflowId, { resolve: id => id === plan1Child.descriptor.id ? resolve(id) : undefined, stores: plan1Stores, manifest });
       await assert.rejects(composeWorkerRuntime(world.value), /not registered|delegation-target-descriptor-unavailable/u);
       assert.equal(world.effects(), 0);
     }
@@ -36,8 +38,8 @@ describe("private child execution registry qualification before authority effect
   it("refuses a foreign module and a genuine module whose stores are outside the selected owner", async () => {
     const empty = defineTaskStoreRegistry([], { scenarioIds: [], tasks: [] });
     for (const registry of [
-      { resolve: () => resolve(plan1Child.descriptor.id), stores: plan1Stores },
-      { resolve, stores: empty },
+      { resolve: () => resolve(plan1Child.descriptor.id), stores: plan1Stores, manifest },
+      { resolve, stores: empty, manifest },
     ]) {
       const world = input(plan1Leaf.descriptor.id, registry);
       await assert.rejects(composeWorkerRuntime(world.value), /worker-execution-registry-mismatch/u);
@@ -51,7 +53,7 @@ describe("private child execution registry qualification before authority effect
       const module = resolve(id);
       if (id !== plan1Leaf.descriptor.id || module === undefined) return module;
       return ++reads === 1 ? module : { ...module };
-    }, stores: plan1Stores });
+    }, stores: plan1Stores, manifest });
     await assert.rejects(composeWorkerRuntime(world.value), /worker-execution-registry-mismatch/u);
     assert.equal(reads, 2);
     assert.equal(world.effects(), 0);

@@ -1,5 +1,5 @@
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import fs, { renameSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -406,7 +406,7 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     const scope = h.preflight.runScope(run.envelope);
     testWorkerPorts(h.database, h.clock, { path: h.f.databasePath, descriptor: personLookupDescriptor, poolIndex: 1 });
     const workerId = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0].workerId;
-    assert.equal((await claimWithPreflight({ preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext({
+    assert.equal((await claimWithPreflight({ preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext({ workerLifetime: testWorkerLifetime(h.database, plan.workflowId, 1).workerLifetime,
       commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId,
       runtimeConfig: selectRunRuntime(h.database.authority),
     }, admit) })).state, "applied");
@@ -504,7 +504,7 @@ try {
   const original=h.database.authority.runs.listByWorkflow(plan.workflowId)[0];assert.ok(original);
   testWorkerPorts(h.database, h.clock, { path: h.f.databasePath, descriptor: personLookupDescriptor, poolIndex: 1 });
   const workerId = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0].workerId;
-  const request={commandId:"ffffffff-ffff-4fff-8fff-ffffffffffff",workflow:plan.workflowId,workerId,runtimeConfig:selectRunRuntime(h.database.authority)};
+  const request={commandId:"ffffffff-ffff-4fff-8fff-ffffffffffff",workflow:plan.workflowId,workerId,workerLifetime:testWorkerLifetime(h.database,plan.workflowId,1).workerLifetime,runtimeConfig:selectRunRuntime(h.database.authority)};
   renameSync(h.f.executable,`${h.f.executable}.parked`);h.clock.advanceWall(60_000);h.clock.advanceMonotonic(60_000);
   const generation=h.database.getMeta().authorityGeneration;
   await assert.rejects(claimWithPreflight({preflight:h.preflight,signal:signal(),claim:admit=>h.lifecycle.claimNext(request,admit)}),PreflightAdmissionRefusal);

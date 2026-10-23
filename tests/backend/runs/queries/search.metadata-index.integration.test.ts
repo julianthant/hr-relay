@@ -1,7 +1,7 @@
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it,vi } from "vitest";
@@ -138,7 +138,9 @@ it("publishes declared subject names, authentic recorded actors and typed failur
     const queued = runRecordOf({ seed: 4801, descriptor, enqueuedAt: NOW });
     f.db.authority.runs.enqueue(queued);
     const { workerId } = testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["ucpath"] });
-    const claimed = f.db.authority.runs.claimNext({ workflow: "person-lookup", workerId, now: NOW });
+    const claimMember1 = f.db.authority.workerSlots.get(workerId);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    const claimed = f.db.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.db, "person-lookup", claimMember1.poolIndex).workerLifetime, workflow: "person-lookup", workerId, now: NOW });
     assert.ok(claimed.state === "claimed");
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
     const validating = f.db.authority.runs.transition({ runId: queued.envelope.runId, expectedVersion: claimed.run.version, claim, now: NOW,

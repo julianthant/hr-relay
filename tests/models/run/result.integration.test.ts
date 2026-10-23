@@ -101,6 +101,9 @@ afterEach(cleanup);
     );
     assert.equal(database.authority.runResults.get(RUN_ID), undefined);
     assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
+    const cancelled = database.authority.runs.transition({ runId: RUN_ID, expectedVersion: running.version, claim: CLAIM,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: LATER }, now: LATER });
+    assert.equal(cancelled.state, "applied");
   });
 
   it("rejects run/outbox identity, stale claim/version, generic done, and non-running success", () => {

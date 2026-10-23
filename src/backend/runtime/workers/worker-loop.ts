@@ -85,6 +85,7 @@ export interface WorkerRunResources {
  readonly providers?: RunProviderWiring;
 }
 export interface WorkerLoopDependencies {
+  readonly buildManifest?: import("../../../workflow-kit/validation/build-manifest.js").BuildManifest;
  readonly resourcesForRun?: (run:RunRecord)=>WorkerRunResources;
  readonly idleCadence?: ()=>number;
   readonly workflowId: WorkflowId;
@@ -447,6 +448,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           () => executeClaimedRun({
             descriptor: execution.descriptor,
             stores: execution.stores,
+            ...(deps.buildManifest === undefined ? {} : { buildManifest: deps.buildManifest }),
             authority: deps.authority,
             lifecycle: deps.lifecycle,
             sessions,

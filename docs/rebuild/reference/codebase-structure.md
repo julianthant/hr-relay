@@ -141,6 +141,7 @@ tests/
 Architecture, parity, performance, type, and support trees are exempt from source mirroring.
 Architecture fixtures and helpers stay beside their owning guard families.
 Shared fixtures, fresh-authority builders, and child-process entrypoints live under `tests/support/`.
+- `tests/support/duo-ceremony-setup.ts` registers the shared Duo fixture cleanup for every Vitest project; the fixture owner stays process-safe.
 Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
 and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
 

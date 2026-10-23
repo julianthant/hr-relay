@@ -15,7 +15,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1, UUID_6, HASH_C, LATER, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
-import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { AuthorityDatabase, type AuthorityLifecycleHooks, type AuthorityTerminalizationHooks } from "../synthetic-storage-admission.js";
 import { on, once } from "node:events";
@@ -29,6 +29,7 @@ const WORKER_ID = CANONICAL_WORKER_ID;
 
 export function createRunRecordServiceTestWorld() {
   const cleanups: (() => void)[] = [];
+  const serviceDatabases = new WeakMap<RunRecordService, AuthorityDatabase>();
 
   function fixture(
     terminalizationHooks?: AuthorityTerminalizationHooks,
@@ -64,6 +65,7 @@ export function createRunRecordServiceTestWorld() {
         database.afterAuthorityCommit(() => published.push(run));
       },
     });
+    serviceDatabases.set(service, database);
     const request: CreateRunRequest = {
       commandId: UUID_1, code: "pl", matchKey: "synthetic-item", workflow: WORKFLOW_ID,
       descriptorVersion: QUEUED_RUN.envelope.descriptorVersion,
@@ -85,6 +87,9 @@ export function createRunRecordServiceTestWorld() {
   }
 
   function runningRun(service: RunRecordService, request: CreateRunRequest, runtimeConfig: unknown) {
+    const database = serviceDatabases.get(service);
+    if (database === undefined) throw new Error("run-service-fixture-owner-missing");
+    const lifetime = testWorkerLifetime(database, WORKFLOW_ID, 1);
     const run = created(service, {
       ...request,
       descriptorVersion: personLookupDescriptor.version,
@@ -94,6 +99,7 @@ export function createRunRecordServiceTestWorld() {
       commandId: "82000000-0000-4000-8000-000000000001",
       workflow: WORKFLOW_ID,
       workerId: WORKER_ID,
+      workerLifetime: lifetime.workerLifetime,
       runtimeConfig,
     });
     if (claim.state !== "applied") throw new Error("claim refused");
@@ -236,6 +242,13 @@ export function createRunRecordServiceTestWorld() {
       },
     };
   }
-  const cleanup = () => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); };
+  const cleanup = () => {
+    const failures: unknown[] = [];
+    for (const dispose of [...cleanups].reverse()) {
+      try { dispose(); cleanups.splice(cleanups.indexOf(dispose), 1); }
+      catch (error) { failures.push(error); }
+    }
+    if (failures.length !== 0) throw new AggregateError(failures, "run-service-fixture-closure-unproved");
+  };
   return { cleanups, fixture, created, runningRun, parkedWriteIntent, raceConnection, closeRaceConnections, failureTerminalRequest, cleanup };
 }

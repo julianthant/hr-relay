@@ -1,3 +1,4 @@
+import { NodeIdSchema } from "../../../../src/rules/identity/ids.js";
 import type { RunResultRecord } from "../../../../src/models/run/result.js";
 import { createTaskProvenanceCollector } from "../../../../src/backend/runs/provenance/task-provenance.js";
 import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
@@ -30,7 +31,7 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 afterEach(cleanup);
 
-it("executes two canonical children and a nested child, preserving every derived input through real terminal authority and source routes", async () => {
+function fixture() {
   const harness = executorHarness({ descriptor: plan1Parent.descriptor, stores: plan1Stores });
   const { database, clock, stateRoot: _stateRoot } = harness.authority;
   const patch = { "actor.label": { set: "Different operator" } } as const;
@@ -43,17 +44,14 @@ it("executes two canonical children and a nested child, preserving every derived
   assert.ok(active);
   const fingerprint = active.configFingerprint, configSnapshotId = active.configSnapshotId;
   const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+  const deps = { timeline: database.authority.timelineEvents, stateRoot: _stateRoot, runReader: testRunService(database, clock), canonical: { database }, descriptors: { resolve: () => undefined }, projection: { runLogSnapshot: () => ({ entries: [] }) } } as unknown as RunDetailQueryDeps;
+  return { harness, database, clock, fingerprint, configSnapshotId, writer, deps };
+}
+
+it("executes two canonical children and a nested child, preserving every derived input through real terminal authority and source routes", async () => {
+  const { harness, database, clock, writer, deps } = fixture();
   const canonical = canonicalChildExecution({ ...harness.deps, taskNotes: writer }, database, harness.authority.path,
     id => plan1Workflows.find(workflow => workflow.descriptor.id === id)?.descriptor);
-  let number = 0;
-  const createRun = (compiled: typeof plan1Parent, value: unknown, parent?: RunParent, itemId?: string) => {
-    const sequence = ++number;
-    return buildQueuedRun({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
-      itemId: itemId ?? `00000000-0000-4000-8001-${String(sequence).padStart(12, "0")}`, traceId: `fp-170000-${String(sequence).padStart(4, "0")}`,
-      rawInput: JsonValueSchema.parse(value), canonicalInput: { protectedBindings: [], schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value) }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
-      configFingerprint: fingerprint, configSnapshotId, resolvedInstance: {}, shape: parent === undefined ? "single" : "operation-member", priority: "bulk", dryRun: false,
-      attempt: 1, runNumber: sequence, now: clock.now().toISOString(), ...(parent === undefined ? {} : { parent }) });
-  };
   const root = canonical.start(plan1Parent.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
   const outcome = await canonical.execute(root, SIGNAL);
   assert.equal(outcome.run?.lifecycle.state, "terminal");
@@ -67,7 +65,6 @@ it("executes two canonical children and a nested child, preserving every derived
   assert.deepEqual(consumed.value.producer.inputs?.map((input) => [input.inputId, input.state, input.identities.length]), [["left", "retained", 2], ["right", "retained", 1], ["label", "definition-source", 0]]);
   const identity = consumed.value.producer.inputs?.[0]?.identities[0];
   assert.ok(identity);
-  const deps = { timeline: database.authority.timelineEvents, stateRoot: _stateRoot, runReader: testRunService(database, clock), canonical: { database }, descriptors: { resolve: () => undefined }, projection: { runLogSnapshot: () => ({ entries: [] }) } } as unknown as RunDetailQueryDeps;
   const found = resolveOperationSource(deps, root.envelope.runId, { identity });
   assert.equal(found.state, "found");
   assert.throws(() => resolveOperationSource(deps, identity.runId, { identity: (() => { const { value: _value, ...identity } = consumed; return identity; })() }), /child-not-authorized/u);
@@ -95,7 +92,7 @@ it("executes two canonical children and a nested child, preserving every derived
     execution: { runId: root.envelope.runId, traceId: root.envelope.traceId, attempt: root.envelope.attempt,
       workflowId: root.envelope.workflow, nodeId: "observe", taskId: plan1Contract.id }, clock,
     canonicalInput: Plan1Input.parse(root.input.parsed.value),
-    observationSpanPath: taskSpanPath(root.envelope.traceId, "observe", 1, outcome.run.claimGeneration),
+    observationSpanPath: taskSpanPath(root.envelope.traceId, NodeIdSchema.parse("observe"), 1, outcome.run.claimGeneration),
     upstreamEvidence: { checkpoints: [], children: [
       { evidence: left, results: [left.children[0].result, nested.children[0].result], checkpoints: checkpointRows(nested.children[0].result) },
       { evidence: right, results: [right.children[0].result], checkpoints: checkpointRows(right.children[0].result) },
@@ -116,6 +113,19 @@ it("executes two canonical children and a nested child, preserving every derived
   const protectedConsumed = protectedNotes.find((note) => note.action?.operation?.logicalActionId === "consume-text" && note.action.operation.state === "completed")?.action;
   assert.equal(protectedConsumed?.operation?.value?.consumed.state, "withheld");
   assert.equal(protectedConsumed?.value, undefined);
+});
+
+it("preserves local, protected, replay and operator-corrected provenance in one genuine history", async () => {
+  const { harness, database, clock, fingerprint, configSnapshotId, writer, deps } = fixture();
+  let number = 0;
+  const createRun = (compiled: typeof plan1Parent, value: unknown, parent?: RunParent, itemId?: string) => {
+    const sequence = ++number;
+    return buildQueuedRun({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
+      itemId: itemId ?? `00000000-0000-4000-8001-${String(sequence).padStart(12, "0")}`, traceId: `fp-170000-${String(sequence).padStart(4, "0")}`,
+      rawInput: JsonValueSchema.parse(value), canonicalInput: { protectedBindings: [], schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value) }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
+      configFingerprint: fingerprint, configSnapshotId, resolvedInstance: {}, shape: parent === undefined ? "single" : "operation-member", priority: "bulk", dryRun: false,
+      attempt: 1, runNumber: database.authority.runs.nextWorkflowRunNumber(compiled.descriptor.id), now: clock.now().toISOString(), ...(parent === undefined ? {} : { parent }) });
+  };
   for (const mode of ["fail", "repeat", "ok", "unprotected"] as const) {
     const fresh = createRun(plan1Workflows[0], { emplId: "10800000", text: "same", mode: mode === "unprotected" ? "ok" : mode });
     const local = mode !== "ok" ? fresh : { ...fresh, input: { ...fresh.input, parsed: { ...fresh.input.parsed, protectedBindings: [{ kind: "test-data-local" as const, sourceId: UUID_4, inputPath: "emplId" as const, name: "personLookupCanaryEid" as const }] } } };

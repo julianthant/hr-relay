@@ -6,7 +6,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -127,7 +127,9 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
   assert.ok(slot);
   const workerId = slot.workerId;
   world.database.authority.runs.enqueue(seeded);
-  const claimed = world.database.authority.runs.claimNext({ workflow: separationsDescriptor.id,
+  const claimMember1 = world.database.authority.workerSlots.get(workerId);
+  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+  const claimed = world.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(world.database, separationsDescriptor.id, claimMember1.poolIndex).workerLifetime, workflow: separationsDescriptor.id,
     workerId, now: GATE_NOW });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed") throw new Error("identity fixture claim refused");

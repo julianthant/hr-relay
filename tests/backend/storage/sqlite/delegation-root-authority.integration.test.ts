@@ -107,7 +107,7 @@ describe("retained canonical start-plan authority for a delegation root", () => 
         findAuditByCommand: () => ({ ...proof.creation, result: { kind: "run", runId: RunIdSchema.parse(randomUUID()), appliedVersion: PositiveIntSchema.parse(1) } }) } }, run),
       /delegation-root-create-authority-unavailable/u);
       assert.throws(() => authenticateStartPlanRun({ ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
-        getCommand: () => ({ ...proof.create, requestFingerprint: FingerprintSchema.parse("a".repeat(64)) }) } }, run), /run-lifecycle-request-binding-mismatch/u);
+        getCommand: () => ({ ...proof.create, requestFingerprint: FingerprintSchema.parse("a".repeat(64)) }) } }, run), /delegation-root-create-authority-unavailable/u);
     });
   });
   it("authenticates a real canonical priority bump and refuses invented or no-op-only authority", () => {
@@ -199,7 +199,7 @@ describe("canonical synchronous run command custody", () => {
       requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel",
       target: { runId: run.envelope.runId, expectedVersion: run.version } });
     const wrong = CommandRequestSchema.parse({ ...request, target: { runId: run.envelope.runId, expectedVersion: run.version + 1 } });
-    const application = { result: CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [] }),
+    const application = { result: CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "run", runId: run.envelope.runId }] }),
       versionChanges: [], affectedDependencyIds: [] };
     const failure = new Error("controlled-scope-failure");
     database.withAuthorityTransaction(repositories => repositories.commands.insert(request));

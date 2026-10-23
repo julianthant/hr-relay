@@ -1,6 +1,6 @@
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { prepareLiveDiagnosticArtifactLease,readDiagnosticBundleAttachment } from "../../../../src/backend/runs/queries/diagnostic-bundle.js";
@@ -132,7 +132,9 @@ function recordFailure(database: AuthorityDatabase): void {
   const slot = database.authority.workerSlots.list("person-lookup").find(row => row.poolIndex === 1 && row.retiredAt === null);
   assert.ok(slot);
   const workerId = slot.workerId;
-  const claimed = database.authority.runs.claimNext({ workflow: "person-lookup", workerId, now: NOW });
+  const claimMember1 = database.authority.workerSlots.get(workerId);
+  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+  const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, "person-lookup", claimMember1.poolIndex).workerLifetime, workflow: "person-lookup", workerId, now: NOW });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed") throw new Error("capture fixture was not claimed");
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };

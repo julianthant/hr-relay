@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createRunClaimFixtures } from "../../../support/helpers/backend/run-claim-fixtures.js";
 
 
@@ -162,7 +162,7 @@ describe("run claim store", () => {
   it("reports idle with no rows and deferred while every row is held back", () => {
     const database = openDatabase();
     assert.deepEqual(
-      database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
+      database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
       { state: "idle" },
     );
     database.authority.runs.enqueue({
@@ -170,10 +170,12 @@ describe("run claim store", () => {
       lifecycle: { state: "queued", notBefore: MUCH_LATER },
     });
     assert.deepEqual(
-      database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
+      database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
       { state: "deferred", nextEligibleAt: MUCH_LATER },
     );
-    const outcome = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: MUCH_LATER });
+    const claimMember1 = database.authority.workerSlots.get(WORKER_ID);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    const outcome = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember1.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: MUCH_LATER });
     assert.equal(outcome.state, "claimed");
   });
 
@@ -185,7 +187,9 @@ describe("run claim store", () => {
       enqueuedAt: LATER,
     }));
     assert.equal(claimOne(database, LATER).envelope.priority, "interactive");
-    const second = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: `${WORKFLOW_ID}-worker-2`, now: LATER });
+    const claimMember2 = database.authority.workerSlots.get(`${WORKFLOW_ID}-worker-2`);
+    if (claimMember2 === undefined) throw new Error("fixture-claim-member-required");
+    const second = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember2.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: `${WORKFLOW_ID}-worker-2`, now: LATER });
     if (second.state !== "claimed") throw new Error("the bulk row should still be claimable");
     assert.equal(second.run.envelope.priority, "bulk");
   });
@@ -254,7 +258,9 @@ describe("run claim store", () => {
     );
     // A second, distinct worker takes the other row — parallelism is worker
     // count, and nothing about the first claim blocks it.
-    const second = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: `${WORKFLOW_ID}-worker-2`, now: LATER });
+    const claimMember3 = database.authority.workerSlots.get(`${WORKFLOW_ID}-worker-2`);
+    if (claimMember3 === undefined) throw new Error("fixture-claim-member-required");
+    const second = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember3.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: `${WORKFLOW_ID}-worker-2`, now: LATER });
     assert.equal(second.state, "claimed");
     assert.equal(database.authority.runs.listByWorker(WORKER_ID).length, 1);
     assert.equal(database.authority.runs.listByWorker(`${WORKFLOW_ID}-worker-2`).length, 1);

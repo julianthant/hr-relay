@@ -1,4 +1,4 @@
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { PositiveIntSchema as positiveIntSchemaForReset } from "../../../../src/rules/identity/ids.js";
 
@@ -146,7 +146,9 @@ afterEach_m0(_afterEachFixture0);
     const runId = "11111111-1111-4000-8000-111111111111";
     enqueueRun(harness, runId);
     testWorkerPorts(harness.database, harness.clock, { path: syntheticDatabasePath(harness.database), descriptor: personLookupDescriptor_m0, poolIndex: 1 });
-    const claim = harness.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: "person-lookup-worker-1", now: NOW_m0 });
+    const claimMember1 = harness.database.authority.workerSlots.get("person-lookup-worker-1");
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    const claim = harness.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(harness.database, "person-lookup", claimMember1.poolIndex).workerLifetime, workflow: "person-lookup", workerId: "person-lookup-worker-1", now: NOW_m0 });
     assert_m0.equal(claim.state, "claimed");
     const currentRun = harness.database.authority.runs.get(runId);
     assert_m0.ok(currentRun !== undefined);

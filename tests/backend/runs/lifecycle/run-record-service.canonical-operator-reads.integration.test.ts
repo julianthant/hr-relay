@@ -10,7 +10,7 @@ import { buildRunDetail,readRunDetail,type RunDetailQueryDeps } from "../../../.
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { seedSyntheticRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { AT,DAY,makeWorld,queuedEventOf,runRecordOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -116,7 +116,9 @@ it("moves a claimed run back to the queue and preserves its canonical attempt wi
   const f = fixture();
   const run = runRecordOf({ seed: 410 });
   f.database.authority.runs.enqueue(run);
-  const claim = f.database.authority.runs.claimNext({ workflow: run.envelope.workflow,
+  const claimMember1 = f.database.authority.workerSlots.get("person-lookup-worker-1");
+  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+  const claim = f.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime, workflow: run.envelope.workflow,
     workerId: "person-lookup-worker-1", now: AT.toISOString() });
   assert.equal(claim.state, "claimed");
   if (claim.state !== "claimed") throw new Error("claim positive control failed");
@@ -145,7 +147,7 @@ it("publishes cancellation and rename without spans, while a pure claim heartbea
   const f = fixture();
   const run = runRecordOf({ seed: 403 });
   f.database.authority.runs.enqueue(run);
-  assert.equal(f.database.authority.runs.claimNext({ workflow: run.envelope.workflow,
+  assert.equal(f.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, 1).workerLifetime, workflow: run.envelope.workflow,
     workerId: "person-lookup-worker-1", now: AT.toISOString(),
   }).state, "claimed");
   const named = runRecordOf({ seed: 408 });

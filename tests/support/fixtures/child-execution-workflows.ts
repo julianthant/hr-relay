@@ -1,11 +1,10 @@
 import { compileWorkflow, composeWorkflowModule, defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
-import { fixtureBuildManifest } from "./workflow-definition-fixtures.js";
+import { childExecutionBuildManifest as manifest } from "./child-execution-build-manifest.js";
 import { Plan1Input, Plan1CanonicalInput, Plan1Output, plan1Leaf, plan1Stores } from "./plan1-operation-workflows.js";
 
 const ids = ["fixture-child-runtime-nested", "fixture-child-runtime-root"];
-const manifest = fixtureBuildManifest(ids);
 const common = { version: 1, label: "Synthetic child execution", icon: "Search" as const, category: "operations" as const,
   input: Plan1Input, canonicalInput: Plan1CanonicalInput, inputSubject: "eid" as const, surface: { shape: "single" as const },
   enqueue: "reject-active" as const, actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
@@ -52,6 +51,17 @@ export const childExecutionModules = [plan1Leaf, childExecutionNested, childExec
   .map(compiled => composeWorkflowModule(compiled, plan1Stores.stores));
 export const childExecutionStores = plan1Stores;
 
+export function childUnawaitedIndependentModules() {
+  const compiled = compileWorkflow(defineWorkflow({ ...common, id: "fixture-child-unawaited-independent", code: "fcu",
+    steps: ({ delegate, result }) => {
+      const child = delegate({ id: "child", target: leaf, edgeId: "child", cardinality: "one", await: "none", join: "none",
+        policy: { ...policy, cascadeCancel: "independent" } }, [],
+      { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+      return { steps: [[{ key: "child", label: "Child" }, [child]]], result: result(Plan1Input, [], ({ input }) => input) };
+    } }), { manifest });
+  return { root: compiled, modules: [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(compiled, plan1Stores.stores)] };
+}
+
 
 export function childPolicyModules(cascadeCancel: "cascade" | "independent") {
   const id = `fixture-child-policy-${cascadeCancel}`;
@@ -68,6 +78,6 @@ export function childPolicyModules(cascadeCancel: "cascade" | "independent") {
         { path: "providerState", source: { kind: "child-output", entryId: "child", path: "providerState" } },
         { path: "disposition", source: { kind: "child-output", entryId: "child", path: "disposition" } },
       ]) };
-    } }), { manifest: fixtureBuildManifest([id]) });
-  return { root: compiled, modules: [plan1Leaf, compiled].map(workflow => composeWorkflowModule(workflow, plan1Stores.stores)) };
+    } }), { manifest });
+  return { root: compiled, modules: [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(compiled, plan1Stores.stores)] };
 }
