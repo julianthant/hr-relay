@@ -1,5 +1,4 @@
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -7,6 +6,7 @@ import type { Clock } from "../../../../src/rules/time/clock.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import {
   SETTINGS_SCHEMA_HASH,
+  mergeSettingsPatch,
   deriveSettingsPatchFingerprint,
 } from "../../../../src/models/config/settings.js";
 import {
@@ -16,7 +16,8 @@ import {
 } from "../../../../src/rules/commands/commands.js";
 import type { SettingsCurrentRecord } from "../../../../src/models/config/settings-current.js";
 import { derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
-import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
+import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 
@@ -127,7 +128,7 @@ function corruptPersistedIdentity(
         result: { ...auditRecord.result, settingsFingerprint: "f".repeat(64) },
       };
     } else if (corruption.id === "audit-result-target") {
-      const wrongTarget = { family: "settings" as const, revision: 3 };
+      const wrongTarget = { family: "settings" as const, revision: commandRecord.target.expectedRevision + 2 };
       changedAudit = {
         ...auditRecord,
         result: {
@@ -140,9 +141,9 @@ function corruptPersistedIdentity(
       changedAudit = {
         ...auditRecord,
         versionChanges: [{
-          target: { family: "settings", revision: 2 },
+          target: { family: "settings", revision: commandRecord.target.expectedRevision + 1 },
           before: 0,
-          after: 2,
+          after: commandRecord.target.expectedRevision + 1,
         }],
       };
     } else {
@@ -164,9 +165,16 @@ export function persistCorruptJournaledSettings(input: Readonly<{
   clock: Clock;
   corruption: SettingsRuntimeIdentityCorruption;
   activateRuntime: boolean;
-  admission?: RuntimeAdmission;
+  admission: RuntimeAdmission;
+  credentials: CredentialStore;
 }>): Readonly<{ record: SettingsCurrentRecord }> {
-  mkdirSync(input.stateRoot, { recursive: true });
+  input.admission.assertAuthorityDatabase(join(input.stateRoot, "state.db"));
+  const databasePath = join(input.stateRoot, "state.db");
+  const options = { path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" };
+  const open = () => AuthorityDatabase.open(input.admission, options, input.clock, undefined, undefined, undefined,
+    input.credentials);
+  const database = open();
+  const baseline = readSettings(database.authority);
   const patch = { "browser.headless": { set: false } } as const;
   const command = SettingsCommandRequestSchema.parse({
     commandId: COMMAND_ID,
@@ -175,24 +183,20 @@ export function persistCorruptJournaledSettings(input: Readonly<{
     source: "dashboard",
     family: "settings",
     type: "apply-settings",
-    target: { expectedRevision: 1 },
+    target: { expectedRevision: baseline.revision },
     payload: {
       settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       patchFingerprint: deriveSettingsPatchFingerprint(patch),
       patch,
     },
   });
-  const record = { revision: 2, settings: { browser: { headless: false } }, settingsFingerprint: derivePersistedSettingsFingerprint({ browser: { headless: false } }) };
-  const databasePath = join(input.stateRoot, "state.db");
-  const options = { path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" };
-  const open = () => input.admission === undefined
-    ? SyntheticAuthorityDatabase.open(options, input.clock)
-    : AuthorityDatabase.open(input.admission, options, input.clock);
-  const database = open();
+  const settings = mergeSettingsPatch(baseline.settings, patch);
+  const record = { revision: baseline.revision + 1, settings, settingsFingerprint: derivePersistedSettingsFingerprint(settings) };
   try {
     if (database.authority.runtimeConfig.get() === undefined) {
-      const initial = resolveConfigWithProvenance({}, hostConfigFacts({}), input.clock);
-      database.authority.runtimeConfig.initialize({ configSnapshotId: DEPENDENCY_ID, revision: 1,
+      const initial = resolveConfigWithProvenance(baseline.settings, hostConfigFacts({}), input.clock,
+        { stateRoot: input.stateRoot, artifactRoot: input.admission.artifactRoot });
+      database.authority.runtimeConfig.initialize({ configSnapshotId: DEPENDENCY_ID, revision: baseline.revision,
         fingerprint: initial.fingerprint, config: initial.config, provenance: initial.provenance,
         capturedAt: command.requestedAt, capturedBy: "local-operator" });
     }
@@ -228,10 +232,11 @@ export function persistCorruptJournaledSettings(input: Readonly<{
         committedAt: command.requestedAt,
       });
       if (input.activateRuntime) {
-        const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), input.clock);
+        const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), input.clock,
+          { stateRoot: input.stateRoot, artifactRoot: input.admission.artifactRoot });
         repositories.configSnapshots.insert({
           configSnapshotId: CONFIG_SNAPSHOT_ID,
-          revision: 1,
+          revision: record.revision,
           fingerprint: resolved.fingerprint,
           capturedAt: command.requestedAt,
           capturedBy: "local-operator",

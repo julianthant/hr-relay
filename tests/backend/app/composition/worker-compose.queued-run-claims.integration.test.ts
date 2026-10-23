@@ -1,20 +1,21 @@
+import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
+import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { fixtureAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { composeWorkerRuntime, parseWorkerArguments } from "../../../../src/backend/app/composition/worker-compose.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { type GateSourcePort } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
-import { observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { observeProcessIdentity, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AppSettingsSchema } from "../../../../src/models/config/app-settings.js";
 import { SETTINGS_SCHEMA_HASH, derivePersistedSettingsFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
@@ -22,10 +23,10 @@ import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js
 import { SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS, persistCorruptJournaledSettings } from "../../../support/fixtures/integration/settings-runtime-corruption-fixtures.js";
 import { RUN_ID, WORKFLOW_ID, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { settingsSetOperations } from "../../../support/fixtures/settings-operation-fixtures.js";
-import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
+import { AuthorityDatabase, createCredentialStore, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { happySessionHarness, personLookupQueuedRun, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, fixtureProcessIdentityObserver, composeInput, cleanup } = createWorkerCompositionTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
+const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, captureSyntheticClosure, resolvedSettings, profileAdmission, stateRootFor, concurrentWorkers, databaseDescriptors, composeInput, cleanup } = createWorkerCompositionTestWorld();
 
 
 afterEach(cleanup);
@@ -44,7 +45,8 @@ function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, pa
     target: { expectedRevision: 1 },
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
   };
-  void repoRoot; void clock;
+  const baseline = reopen(stateRootFor(repoRoot), clock);
+  try { command.target.expectedRevision = readSettings(baseline.authority).revision; } finally { baseline.close(); }
   return Object.freeze({ command, settingsFingerprint: derivePersistedSettingsFingerprint({ browser: { headless: false } }) });
 }
 
@@ -67,7 +69,7 @@ function persistJournaledWorkerSettings(
       const configSnapshotId = "55555555-5555-4555-8555-555555555555";
       repositories.configSnapshots.insert({
         configSnapshotId,
-        revision: 1,
+        revision: record.revision,
         fingerprint: resolved.fingerprint,
         capturedAt: clock.now().toISOString(),
         capturedBy: "local-operator",
@@ -94,10 +96,10 @@ function journalWorkerSettings(
 ): void {
   const clock = manualClock(new Date(NOW));
   if (database.authority.runtimeConfig.get() === undefined) {
-    const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, {
+    const resolved = resolveConfigWithProvenance(readSettings(database.authority).settings, hostConfigFacts({}), clock, {
       stateRoot, artifactRoot: join(stateRoot, "artifacts"),
     });
-    database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
+    database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: readSettings(database.authority).revision,
       fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(),
       capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
   }
@@ -109,11 +111,11 @@ function journalWorkerSettings(
 function assertStoppedWorkerProcessRecord(repoRoot: string, clock: TestClock, generation = 3): void {
   const snapshot = observeRuntimeLockSnapshot({
     processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-    sourceDatabaseIdentity: "a".repeat(64),
+    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(stateRootFor(repoRoot), "state.db")),
   }, clock, {
     // Re-read through the exact identity observer that wrote this fixture
     // record. An unreleased record is therefore active, not a PID-reuse arm.
-    observeProcessIdentity: fixtureProcessIdentityObserver,
+    observeProcessIdentity,
   });
   assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation });
 }
@@ -175,9 +177,7 @@ describe("composed worker runtime", () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const reports = await Promise.all([0, 1, 2].map((offset) =>
-      composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: happySessionHarness(),
-        poolIndex: PositiveIntSchema.parse(offset + 1), processId: 4300 + offset }))));
+    const reports = await concurrentWorkers(repoRoot, clock);
     assert.equal(reports.flatMap(({ outcomes }) => outcomes).length, 1,
       "one queued run is claimed once while other workers observe idle");
     assert.equal(existsSync(join(stateRoot, "settings")), false, "boot and polling create no file authority or lock");
@@ -278,7 +278,7 @@ describe("composed worker runtime", () => {
         clock,
         corruption,
         activateRuntime: true,
-        admission: fixtureAdmission(repoRoot),
+        admission: profileAdmission(repoRoot), credentials: boundProfileCredentials(profileAdmission(repoRoot)),
       });
       const before = readFileSync(join(stateRoot, "state.db"));
       await assert.rejects(
@@ -312,12 +312,23 @@ describe("composed worker runtime", () => {
       stateRoot,
       clock,
       personLookupQueuedRun(),
-      resolveConfigWithProvenance({ timeouts: { sessionAcquireMs: 1 } }, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }),
+      resolvedSettings(stateRoot, clock),
     );
+    const unusedResources = happySessionHarness();
+    let acquisitionStarts = 0, acquisitionAborts = 0;
     const neverOpeningSessions: SessionFactoryHarness = {
-      ...happySessionHarness(),
+      ...unusedResources,
       factory: {
-        open: () => new Promise<never>(() => undefined),
+        open: input => new Promise<never>((_resolve, reject) => {
+          acquisitionStarts++;
+          const abort = () => {
+            const reason: unknown = input.signal.reason;
+            assert.ok(reason instanceof Error, "actual acquisition cancellation must carry its Error");
+            acquisitionAborts++; reject(reason);
+          };
+          if (input.signal.aborted) abort();
+          else input.signal.addEventListener("abort", abort, { once: true });
+        }),
       },
     };
     const stop = new AbortController();
@@ -338,6 +349,9 @@ describe("composed worker runtime", () => {
       assert.ok(failed?.state === "failed");
       const failure = reopen(stateRoot, clock).authority.failures.get(failed.failureId);
       assert.match(failure?.summary ?? "", /exceeded its 1ms timeouts\.sessionAcquireMs bound/u);
+      assert.equal(acquisitionStarts, 1);
+      assert.equal(acquisitionAborts, 1);
+      assert.equal(unusedResources.opens(), 0);
     } finally {
       clearTimeout(stopFallback);
     }
@@ -370,6 +384,7 @@ describe("composed worker runtime", () => {
     const sessions = happySessionHarness();
     let admissionCrossed = false;
     let admissionSettingsRecord: ReturnType<typeof readSettings> | undefined;
+    let admissionCurrentRecord: ReturnType<AuthorityDatabase["authority"]["settingsCurrent"]["get"]>;
     let admissionDatabase: AuthorityDatabase | undefined;
 
     const refusal = await composeWorkerRuntime({
@@ -393,6 +408,7 @@ describe("composed worker runtime", () => {
           );
           // Nested settings application must roll back with failed claim admission.
           admissionSettingsRecord = readSettings(admissionDatabase.authority);
+          admissionCurrentRecord = admissionDatabase.authority.settingsCurrent.get();
           journalWorkerSettings(admissionDatabase, persisted, stateRoot);
           admissionCrossed = true;
           throw new Error("synthetic stale owner at claim admission");
@@ -401,7 +417,10 @@ describe("composed worker runtime", () => {
       () => undefined,
       (error: unknown) => error,
     );
-    assert.equal(admissionCrossed, true);
+    assert.equal(admissionCrossed, true, JSON.stringify({
+      errorClass: refusal instanceof Error && ["Error", "TypeError", "RangeError", "RuntimeCustodyUncertainError"].includes(refusal.name) ? refusal.name : "unclassified",
+      messageSha256: createHash("sha256").update(refusal instanceof Error ? refusal.message : typeof refusal).digest("hex"),
+    }));
     assert.deepEqual(readSettings(reopen(stateRoot, clock).authority), admissionSettingsRecord);
     const database = reopen(stateRoot, clock);
     assert.equal(sessions.opens("ucpath"), 0);
@@ -412,7 +431,7 @@ describe("composed worker runtime", () => {
     );
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
     assert.equal(database.authority.commands.get("33333333-3333-4333-8333-333333333333"), undefined);
-    assert.equal(database.authority.settingsCurrent.get(), undefined);
+    assert.deepEqual(database.authority.settingsCurrent.get(), admissionCurrentRecord);
   });
 
   it("releases its process record when authority open fails without masking that error", async () => {
@@ -436,43 +455,41 @@ describe("composed worker runtime", () => {
     );
     const snapshot = observeRuntimeLockSnapshot({
       processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-      sourceDatabaseIdentity: "a".repeat(64),
+      sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(stateRootFor(repoRoot), "state.db")),
     }, clock);
     assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
   });
 
   it("keeps its process record active when database closure cannot be proven", async () => {
-    const { repoRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     const closeFailure = new Error("injected database close failure");
     let stillOpen: AuthorityDatabase | undefined;
-    await assert.rejects(
-      composeWorkerRuntime({
-        ...composeInput({
-          repoRoot,
-          clock,
-          sessions: happySessionHarness(),
-          poolIndex: POOL_INDEX_1,
-          processId: process.pid,
-        }),
-        closeDatabase: (database) => {
-          stillOpen = database;
-          throw closeFailure;
-        },
-      }),
-      (error: unknown) => error === closeFailure,
-    );
-    assert.ok(stillOpen !== undefined);
-    assert.doesNotThrow(() => stillOpen?.getMeta(), "the injected close failure left the handle usable");
-    const snapshot = observeRuntimeLockSnapshot({
-      processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-      sourceDatabaseIdentity: "a".repeat(64),
-    }, clock);
-    assert.deepEqual(snapshot.processLocks.workers, {
-      state: "active",
-      generation: 3,
-      pid: process.pid,
-    });
-    stillOpen.close();
+    const input = composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 });
+    const captured = captureSyntheticClosure(repoRoot, clock, credentialStores.createCredentialStore);
+    const storeSpy = vi.spyOn(credentialStores, "createCredentialStore").mockImplementation(options => captured.createStore(options));
+    try {
+      await assert.rejects(composeWorkerRuntime({ ...input, openDatabase: (options, openClock) => captured.openDatabase(options, openClock),
+        closeDatabase: database => { stillOpen = database; throw closeFailure; } }), error => {
+        assert.ok(error instanceof RuntimeCustodyUncertainError);
+        const contains = (value: unknown): boolean => value === closeFailure
+          || value instanceof AggregateError && value.errors.some(member => contains(member));
+        assert.equal(contains(error), true);
+        return true;
+      });
+      assert.ok(stillOpen);
+      const retainedDatabase = stillOpen;
+      assert.doesNotThrow(() => retainedDatabase.getMeta(), "the injected close failure left the handle usable");
+      assert.equal(databaseDescriptors(stateRoot).length > 0, true);
+      const snapshot = observeRuntimeLockSnapshot({ processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
+        sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(stateRoot, "state.db")) }, clock);
+      assert.equal(snapshot.processLocks.workers.state, "active");
+      if (snapshot.processLocks.workers.state !== "active") throw new Error("missing retained fixture process");
+      assert.equal(snapshot.processLocks.workers.pid, process.pid);
+      assert.ok(captured.report);
+      assert.deepEqual(captured.report.outcomes, []);
+      captured.assertHeld();
+      await captured.closeAfterSyntheticFailure([]);
+    } finally { captured.restore(); storeSpy.mockRestore(); }
   });
 });

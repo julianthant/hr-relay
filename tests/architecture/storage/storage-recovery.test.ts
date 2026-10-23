@@ -2557,6 +2557,7 @@ describe("authority.health preflight and static recovery boundary", () => {
   it("keeps native SQLite use in the reviewed recovery boundaries and bans copy or VACUUM fallbacks", () => {
     const adapterPath = "src/backend/storage/sqlite/authority-database.ts";
     const sqliteBoundaryPaths = [
+      "src/backend/storage/sqlite/assistant-authorization.ts",
       "src/backend/storage/sqlite/authority-database.ts",
       "src/backend/storage/sqlite/backup-inspection.ts",
       "src/backend/storage/sqlite/command-record-row.ts",

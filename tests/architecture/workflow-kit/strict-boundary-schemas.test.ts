@@ -51,7 +51,8 @@ import { GraphCoveragePointSchema, ScenarioCoverageClaimSchema } from "../../../
 import { ApproveContextSchema, ApprovedDocumentSchema, CompletionConsumptionSpecSchema, CompletionProgramSampleSchema, ExtractedFieldSchema, MemberPlanEntrySchema, PreviewRecordSchema } from "../../../src/models/workflow/completion.js";
 import { FileAcceptSpecSchema, InputParserSpecSchema, ParsedInputEntrySchema, SurfaceFieldSchema, TextTemplateSchema, UploadFieldSpecSchema, UploadedFileSchema, WorkflowSurfacesSchema } from "../../../src/models/workflow/ingress.js";
 import { ResultTitleProjectionSchema, DetailProjectionSpecRuntimeSchema, DurableArtifactProjectionSpecRuntimeSchema, GateProjectionDefinitionSchema, StepProjectionSchema, SurfaceShapeSchema, VerdictDefinitionSchema, WorkflowActionPolicySchema, WorkflowCapabilitiesSchema } from "../../../src/models/workflow/presentation.js";
-import { BUILD_MANIFEST, BuildManifestSchema, SourceHashSchema } from "../../../src/workflow-kit/validation/build-manifest.js";
+import { BUILD_MANIFEST } from "../../../src/workflow-kit/validation/build-manifest.js";
+import { BuildManifestSchema, SourceHashSchema } from "../../../src/models/workflow/build-manifest.js";
 import { CheckpointExpectationSchema, CheckpointMissReasonSchema, FactProvenanceSchema, FreshnessOverrideSchema, RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { ChildVisibilitySchema, DelegationManifestRefSchema, DelegationPolicySchema, GraphNodeKindSchema, ParallelBranchSpecSchema, childRunOutcomeSchema } from "../../../src/models/workflow/graph.js";
 import { TimecardDateRangeSchema, TimecardMonthDaySchema, VisibleTimecardMonthDaysSchema } from "../../../src/rules/time/timecard-period.js";

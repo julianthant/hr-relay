@@ -1,3 +1,4 @@
+import { AssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
 import { WorkerSlotRecordSchema } from "../../models/run/worker-slot.js";
 import { WriteIntentRecordSchema } from "../write-safety/write-safety.js";
 import { WorkerControlBasisSchema } from "../../models/run/worker.js";
@@ -5,7 +6,7 @@ import { FailureResolutionTargetSchema, FailureResolutionActionSchema } from "..
 import { z } from "zod";
 
 import { JsonValueSchema, canonicalJsonStringify } from "../validation/canonical-json.js";
-import { SettingsPatchSchema } from "../../models/config/settings.js";
+import { SettingsLeafOperationSchema, SettingsPatchSchema } from "../../models/config/settings.js";
 import { MarkedProtectedSettingsPatchSchema, ProtectedSettingsPatchSchema, ProtectedSettingsReadbackSchema, markProtectedSettingsPatch } from "../../models/config/protected-settings.js";
 import { deepFreeze } from "../validation/immutability.js";
 import { ActorIdSchema, BrowserSessionIdSchema, CommandAuditIdSchema, CommandIdSchema, DependencyIdSchema, FingerprintSchema, GateIdSchema, IntakeSessionIdSchema, IntakeManifestIdSchema, IntakeTargetFieldIdSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID, NotificationIdSchema, NonNegativeIntSchema, PositiveIntSchema, RunIdSchema, RunSessionIdSchema, SourceColumnIdSchema, SourceSurfaceIdSchema, StartPlanIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, WriteAttemptIdSchema } from "../identity/ids.js";
@@ -175,6 +176,10 @@ export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: z.strictObject({ workerId: WorkerIdSchema, browserSessionId: BrowserSessionIdSchema, expectedVersion: PositiveIntSchema, controlBasis: WorkerControlBasisSchema.optional() }) }),
 ]);
 
+export const AssistantPermissionChangeSchema = z.strictObject({
+  expectedPolicyRevision: NonNegativeIntSchema, mode: AssistantPermissionModeSchema,
+});
+
 export const SettingsCommandRequestSchema = z.strictObject({
   ...CommandEnvelopeFields,
   family: z.literal("settings"),
@@ -183,7 +188,15 @@ export const SettingsCommandRequestSchema = z.strictObject({
   payload: z.strictObject({
     settingsSchemaHash: FingerprintSchema,
     patchFingerprint: FingerprintSchema,
-    patch: SettingsPatchSchema,
+    patch: z.record(z.string().min(1), SettingsLeafOperationSchema),
+    assistantPermission: AssistantPermissionChangeSchema.optional(),
+  }).superRefine((payload, context) => {
+    if (payload.assistantPermission !== undefined) {
+      if (Object.keys(payload.patch).length !== 0) context.addIssue({ code: "custom", path: ["patch"], message: "permission command requires an empty ordinary patch" });
+      return;
+    }
+    const ordinary = SettingsPatchSchema.safeParse(payload.patch);
+    if (!ordinary.success) for (const issue of ordinary.error.issues) context.addIssue({ ...issue, path: ["patch", ...issue.path] });
   }),
 });
 

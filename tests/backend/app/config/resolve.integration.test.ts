@@ -9,6 +9,7 @@ import { resolveInstances, resolveSystemEntryUrl } from "../../../../src/models/
 import { ConfigSchema, SettingsOverrideSchema } from "../../../../src/models/config/schema.js";
 import { SettingsPatchSchema, derivePersistedSettingsFingerprint, mergeSettingsPatch, SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
+import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
@@ -213,7 +214,7 @@ function repoRootWithState() {
   const repoRoot = profile.workspace;
   const stateRoot = profile.stateRoot;
   writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "worker-composition-fixture", version: "0.1.0", type: "module" }));
-  return { repoRoot, stateRoot, admission: profile.admission };
+  return { repoRoot, stateRoot, admission: profile.admission, profile };
 }
 
 function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
@@ -262,14 +263,20 @@ function journalWorkerSettings(
 }
 
 it("F composed dashboard reads active settings after boot through real HTTP", async () => {
-onTestFinished(cleanupOriginalFixture);
+let profile: ReturnType<typeof composeProfileRuntime> | undefined;
+ onTestFinished(async () => { await profile?.close(); cleanupOriginalFixture(); });
 
- const { repoRoot, stateRoot, admission } = repoRootWithState();
+ const { repoRoot, stateRoot, profile: owner } = repoRootWithState();
  const clock = manualClock(new Date(NOW));
  for (const name of ["package.json", "package-lock.json"])
   writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
- const dashboard = await composeDashboardRuntime({ admission, isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock,
-  backendPortOverride: 0, frontendPortOverride: 0 });
+ profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null },
+   processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot) });
+ const active = profile.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+ assert.equal(active.state, 'active');
+ if (active.state !== 'active') throw new Error('config fixture sign-in refused');
+ const dashboard = await composeDashboardRuntime({ admission: owner.machine, profile: { runtime: profile, token: active.token },
+   isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
  try {
   const database = reopen(stateRoot, clock);
   const before = database.authority.runtimeConfig.get();
@@ -302,7 +309,10 @@ onTestFinished(cleanupOriginalFixture);
   assert.equal(factsResponse.status, 200);
   const facts = SettingsFactsWireSchema.parse(await factsResponse.json());
   assert.equal(facts.systemHosts.find(entry => entry.system === "crm")?.production, "https://synthetic.example.invalid/");
- } finally { await dashboard.stop(); }
+ } finally {
+   for (const database of openDatabases.splice(0)) database.close();
+   await dashboard.stop();
+ }
 });
 }
 

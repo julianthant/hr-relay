@@ -445,12 +445,24 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 7` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 8` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
-ordinary startup; only an absent database receives the current baseline in an exclusive transaction.
-Schemas 1–6 are inspected only by the stopped upgrade path; ordinary readers use the current layout.
+ordinary startup. Ordinary writable opens and stopped upgrades use SQLite existing-only mode,
+including when a source disappears during opening. Only `initializeProfile`, after its issued setup
+admission check, creates the absent canonical profile database and its current baseline.
+Schemas 1–7 are inspected only by the stopped upgrade path; ordinary readers use the current layout.
+
+Assistant grants, chats and once-consumable actions use three profile-owned authority tables.
+An explicit operator `apply-settings` command may carry `assistantPermission` with the expected
+policy revision and mode, together with an empty ordinary patch. Settings and grant revisions
+settle in the same transaction; stale revisions refuse without partial changes. Ordinary Settings
+catalogue, persisted schema hash and commands without that field retain their existing grammar.
+Neither displayed permission defaults nor assistant-issued commands can mint a grant. The private
+profile-token composition issues chat custody and revalidates grants and canonical action bindings
+before consumption and at the asynchronous effect boundary. Subject-dependent, protected and
+unbound private/freeform actions remain unavailable until their actual owners are connected.
 
 `AuthorityBootStore` reports `healthy` with mutations `available`, or `degraded-read-only` with
 mutations `blocked`. Empty, corrupt, unavailable, or incompatible existing authority does not become a
@@ -578,7 +590,7 @@ The selected storage composition captures the authenticated profile and session 
 
 Worker bootstrap acquires machine admission, captures durable selection, and takes exact profile-database process custody before issuing a child or opening SQLite. Ordinary worker admission, claims, protected reads and browser acquisition revalidate that selection. Failed admission closes SQLite and releases child custody before its process record. Unproved closure propagates `RUNTIME_CUSTODY_UNCERTAIN`, retaining parent admission and remaining process custody. Profile runtime composition retains one ordinary/settlement resource entry, schedules actual account and canonical resource closure through session activity, and closes SQLite before child release after erasure inventory. Dashboard startup binds its actual supervisor once at the construction boundary. Public profile mounting, complete supported inventory coverage and actual process/browser closure acceptance remain required.
 
-Logout inventory certifies independent backup and credential-stage copies only when both canonical UCPath identity and password were available for capture before that erase. When a prior erase leaves capture incomplete, even a clean-shaped existing copy remains uncertain; repeated resumes and restart cannot publish wiped until those copies are absent. No captured plaintext is persisted.
+Logout inventory certifies independent backup and credential-stage copies only when both canonical UCPath identity and password were available for capture before that erase. When a prior erase leaves capture incomplete, even a clean-shaped existing copy remains uncertain; repeated resumes and restart cannot publish wiped until those copies are absent. No captured plaintext is persisted. Credential copy scans use the exact authenticated source-schema table registry for verified stopped backups, including supported pre-assistant copies. Their native schema, metadata, digest and physical custody must validate before scanning; ordinary runtime admission remains current-schema-only. Ordinary logout may retain a bound schema7 backup only when its authenticated profile/installation binding and exact source bytes match one immutable settled 7→current upgrade receipt, including canonical plan digest, under current stopped-resource and copy custody. Unbound schema1–6 backups retain a named binding refusal; path identity alone does not assign them to a profile.
 
 Settled worker reservation IDs retain allocation provenance. Closure authenticates the exact origin,
 revision and canonical retirement command. Remove-worker retirement requires

@@ -1,11 +1,11 @@
+import { createBoundProfileFixture, boundProfileCredentials } from "../../support/helpers/admission-fixture.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { randomUUID } from "node:crypto";
 import * as processLocks from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { WorkerVerificationClaimSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { admitWorkerVerification } from "../../../src/backend/storage/sqlite/worker-slots.js";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,19 +28,30 @@ import { taskStoreRegistry } from "../../../src/backend/app/registries/task-regi
 
 const clock = manualClock(new Date("2026-10-11T10:00:00.000Z"));
 const credentialKey = FingerprintSchema.parse("ab".repeat(32));
-const fixtures: { root: string; database: AuthorityDatabase }[] = [];
+const fixtures: { root: string; database: AuthorityDatabase; profile: ReturnType<typeof createBoundProfileFixture>; processLockRoot: string }[] = [];
 afterEach(() => {
   vi.restoreAllMocks();
-  for (const { root, database } of fixtures.splice(0)) {
-    database.close();
-    rmSync(root, { recursive: true, force: true });
+  const failures: unknown[] = [];
+  for (const { database, profile } of fixtures.splice(0)) {
+    try { database.close(); } catch (error) { failures.push(error); continue; }
+    try { profile.close(); } catch (error) { failures.push(error); }
   }
+  if (failures.length > 0) throw new AggregateError(failures, "browser login fixture cleanup failed");
 });
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "relay-browser-login-"));
-  const database = AuthorityDatabase.open({ path: join(root, "authority.sqlite"), busyTimeoutMs: 250,
-    migrationOwner: "browser-login-test" }, clock);
-  fixtures.push({ root, database });
+  const profile = createBoundProfileFixture(), root = profile.stateRoot;
+  const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
+  let database: AuthorityDatabase;
+  try {
+    database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "browser-login-test" }, clock,
+      undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+  } catch (error) {
+    const failures: unknown[] = [error];
+    try { profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+    if (failures.length > 1) throw new AggregateError(failures, "fixture opening and cleanup failed", { cause: error });
+    throw error;
+  }
+  fixtures.push({ root, database, profile, processLockRoot });
   const plan = (desiredWorkers: number) => database.authority.workerPools.plan({ workflow: "person-lookup",
     expectedVersion: 0, desiredWorkers, requestedBy: "local-operator", now: clock.now().toISOString() });
   const allocate = (poolIndex: number) => database.withAuthorityTransaction(repositories => {
@@ -53,7 +64,7 @@ function fixture() {
   const gates = createDuoCeremonyGateFactory({ leases: database.authority.duoCeremonyLeases, credentialKey,
     clock, scheduler: { schedule: () => ({ cancel: () => undefined }) }, sessionAcquireMs: 60000,
     graceMs: 20000, pollIntervalMs: 250 });
-  return { root, database, plan, allocate, gates };
+  return { root, database, plan, allocate, gates, processLockRoot };
 }
 
 function verificationSlot(database: AuthorityDatabase, stateRoot: string, processLockRoot: string) {
@@ -64,11 +75,16 @@ function verificationSlot(database: AuthorityDatabase, stateRoot: string, proces
   }, randomUUID()));
 }
 
+function fixtureOwner(database: AuthorityDatabase) {
+  const owner = fixtures.find(candidate => candidate.database === database);
+  if (owner === undefined) throw new Error("missing isolated fixture");
+  return owner;
+}
+
 async function withSmokeWorker(database: AuthorityDatabase, operation: Parameters<typeof runSmokeWorker>[1], currentClock = clock,
   options?: { processLockRoot: string; stateRoot: string }) {
-  const owner = fixtures.find(fixture => fixture.database === database);
-  if (owner === undefined) throw new Error("missing isolated fixture");
-  const custody = options ?? { processLockRoot: join(owner.root, "verification-locks"), stateRoot: owner.root };
+  const owner = fixtureOwner(database);
+  const custody = options ?? { processLockRoot: owner.processLockRoot, stateRoot: owner.root };
   const lock = options === undefined ? acquireRuntimeProcessLock({ processLockRoot: custody.processLockRoot, name: "live-smoke", pid: process.pid }, currentClock) : undefined;
   try { return await runSmokeWorker(database, operation, currentClock, undefined, custody); }
   finally { lock?.release(); }
@@ -217,7 +233,7 @@ describe("registered browser-login smoke lifecycle", () => {
   it("retires only a recorded smoke slot after immutable closure proof and parent release", () => {
     const { root, database, plan, allocate } = fixture();
     const peer = database.withAuthorityTransaction(() => { plan(1); return allocate(1); });
-    const processLockRoot = join(root, "locks");
+    const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     const slot = verificationSlot(database, root, processLockRoot);
     const profileRunId = z.uuid().parse(lock.acquisitionId);
@@ -249,7 +265,7 @@ describe("registered browser-login smoke lifecycle", () => {
   it("refuses historical process-only claims, unknown closure, active owners and held leases", () => {
     const { root, database, plan } = fixture();
     plan(0);
-    const processLockRoot = join(root, "locks");
+    const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     lock.release();
     expect(() => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot: root, clock })).toThrow(SmokeSlotOwnershipUnavailableError);
@@ -272,7 +288,7 @@ describe("registered browser-login smoke lifecycle", () => {
   it("keeps corrupted, linked or changed ownership records fail-loud", () => {
     const { root, database, plan } = fixture();
     plan(0);
-    const processLockRoot = join(root, "locks");
+    const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     const slot = verificationSlot(database, root, processLockRoot);
     const record = recordSmokeSlot({ database, processLockRoot, slot, profileRunId: z.uuid().parse(lock.acquisitionId),
@@ -302,7 +318,7 @@ describe("registered browser-login smoke lifecycle", () => {
     const scheduler = new ManualScheduler(clock);
     const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
     await helpers.withTempRuntime(async ({ config }) => {
-      const processLockRoot = join(stateRoot, "locks");
+      const processLockRoot = fixtureOwner(database).processLockRoot;
       const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
       const profileRunId = z.uuid().parse(lock.acquisitionId);
       const profileRoot = join(stateRoot, "scratch", "live-smoke", profileRunId, "browsers");
@@ -359,7 +375,7 @@ describe("registered browser-login smoke lifecycle", () => {
     const scheduler = new ManualScheduler(clock);
     const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
     await helpers.withTempRuntime(async ({ config: originalConfig, root }) => {
-      const processLockRoot = join(root, "locks");
+      const processLockRoot = fixtureOwner(database).processLockRoot;
       const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
       const profileRunId = z.uuid().parse(lock.acquisitionId);
       const profileRoot = join(root, "scratch", "live-smoke", profileRunId, "browsers");
@@ -423,7 +439,7 @@ describe("registered browser-login smoke lifecycle", () => {
     const scheduler = new ManualScheduler(clock);
     const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
     await helpers.withTempRuntime(async ({ config: originalConfig, root }) => {
-      const processLockRoot = join(root, "locks");
+      const processLockRoot = fixtureOwner(database).processLockRoot;
       const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
       const profileRunId = z.uuid().parse(lock.acquisitionId);
       const profileRoot = join(root, "scratch", "live-smoke", profileRunId, "browsers");
@@ -493,7 +509,7 @@ describe("registered browser-login smoke lifecycle", () => {
 
   it("binds claim creation and profile admission to the native acquisition", () => {
     const { root, database } = fixture();
-    const processLockRoot = join(root, "locks");
+    const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     try {
       const slot = verificationSlot(database, root, processLockRoot);
@@ -518,7 +534,7 @@ describe("registered browser-login smoke lifecycle", () => {
 
   it("re-admits only its exact already-admitted profile once for fresh-profile recovery", async () => {
     const { root, database } = fixture();
-    const processLockRoot = join(root, "locks");
+    const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     try {
       const slot = verificationSlot(database, root, processLockRoot);
@@ -546,7 +562,7 @@ describe("registered browser-login smoke lifecycle", () => {
 
   it("refuses unowned existing, linked and nonprivate smoke profiles", async () => {
     const { root, database } = fixture();
-    const processLockRoot = join(root, "locks");
+    const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     try {
       const slot = verificationSlot(database, root, processLockRoot);

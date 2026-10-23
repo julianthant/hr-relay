@@ -1,7 +1,10 @@
+import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
+import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
@@ -11,22 +14,26 @@ import { composeSelectedProfileStorage } from "../../../../src/backend/app/compo
 import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory, composeProfileCredentialInventory, scanProfileCredentialCopy } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
 import { createCredentialStore, inspectCredentialKeyCopy } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { AuthorityUpgradeRecordSchema, type AuthorityUpgradeRecord } from "../../../../src/models/config/authority.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { AuthorityBackupService, parseBackupManifestFile } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-function fixture() {
-  const f = createBoundProfileFixture();
+function fixture(f = createBoundProfileFixture()) {
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const credentials = boundProfileCredentials(f.admission);
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials, clock, hostFacts: { primaryDisplay: null } });
   const before = credentials.read();
   const capturedSecrets = [before.entries.ucpathUserId?.value, before.entries.ucpathPassword?.value].filter((value): value is string => value !== undefined);
   assert.equal(capturedSecrets.length, 2);
-  const inventory = composeProfileCredentialInventory({ admission: f.admission, database: context.database, clock, hostFacts: { primaryDisplay: null } });
+  const inventory = composeProfileCredentialInventory({ machine: f.machine, admission: f.admission, database: context.database, clock, hostFacts: { primaryDisplay: null } });
   const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot,
     repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine: f.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
     initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine, admission: child,
@@ -48,9 +55,139 @@ function fixture() {
         erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
       return { admission, credentials: store, operationId: operation.operationId };
     },
-    async cleanup() { await context.account.close(); context.database.close(); f.close(); },
+    async cleanup() { await context.account.close(); context.database.close(); session.close(); f.close(); },
   };
 }
+
+async function upgradedFixture(version: 6 | 7) {
+  const f = createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  try {
+    const raw = new DatabaseSync(f.path);
+    try {
+      for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= version)) for (const statement of migration.statements) raw.exec(statement);
+      if (version === 7) raw.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,7,7,?,NULL,'unbuilt',?,?)")
+        .run(clock.now().toISOString(), f.admission.profileBinding.installationId, f.admission.profileBinding.profileId);
+      else raw.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES(1,6,7,?,NULL,'unbuilt')").run(clock.now().toISOString());
+      raw.exec(`PRAGMA user_version=${String(version)}; PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}`);
+    } finally { raw.close(); }
+    assert.equal((await upgradeStorage(f.admission, { stateRoot: f.stateRoot,
+      processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false }, clock)).state, "upgraded");
+    const inspected = new DatabaseSync(f.path, { readOnly: true });
+    try {
+      const row = inspected.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();
+      assert.equal(typeof row?.payload_json, "string");
+      if (typeof row?.payload_json !== "string") throw new Error("upgrade fixture receipt missing");
+      const record = AuthorityUpgradeRecordSchema.parse(JSON.parse(row.payload_json)); assert.equal(record.phase, "settled");
+      if (record.phase !== "settled") throw new Error("upgrade fixture receipt unsettled");
+      assert.equal(record.planDigest, createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion: version,
+        toSchemaVersion: 8, sourceContentFingerprint: record.upgradeId,
+        statements: SQLITE_MIGRATIONS.filter(migration => migration.version > version).flatMap(migration => migration.statements) })).digest("hex"));
+    } finally { inspected.close(); }
+    f.finish();
+    return fixture(f);
+  } catch (error) { f.close(); throw error; }
+}
+
+function retainedBackup(f: ReturnType<typeof fixture>) {
+  const directory = join(f.stateRoot, "backups", "authority");
+  const names = readdirSync(directory).filter(name => name.endsWith(".manifest.json")); assert.equal(names.length, 1);
+  const name = names[0]; assert.ok(name);
+  const manifestPath = join(directory, name), manifest = parseBackupManifestFile(manifestPath);
+  return { manifestPath, manifest, path: join(directory, manifest.backupFileName) };
+}
+
+type ForwardUpgrade = Exclude<AuthorityUpgradeRecord, { phase: "baseline" }>;
+function changeUpgradeProof(f: ReturnType<typeof fixture>, transform: (record: ForwardUpgrade) => readonly AuthorityUpgradeRecord[]) {
+  const record = f.context.database.readProfileResourceCustody().upgrades.find(value => value.phase === "settled");
+  assert.ok(record && record.phase === "settled");
+  const records = transform(record).map(value => AuthorityUpgradeRecordSchema.parse(value));
+  const raw = new DatabaseSync(f.path);
+  try {
+    const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='database_upgrades' ORDER BY name").all();
+    assert.equal(triggers.length, 3);
+    raw.exec("BEGIN");
+    for (const trigger of triggers) { assert.equal(typeof trigger.name, "string"); assert.match(String(trigger.name), /^database_upgrades_[a-z_]+$/u); raw.exec(`DROP TRIGGER ${String(trigger.name)}`); }
+    raw.prepare("DELETE FROM database_upgrades WHERE id=?").run(record.recordKey);
+    for (const value of records) raw.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
+      .run(value.recordKey, value.upgradeId, value.phase, value.phase === "baseline" ? null : value.backup.sha256, canonicalJsonStringify(value), value.recordedAt);
+    for (const trigger of triggers) { assert.equal(typeof trigger.sql, "string"); raw.exec(String(trigger.sql)); }
+    raw.exec("COMMIT");
+  } finally { raw.close(); }
+}
+
+it("qualifies a genuine retained bound7 backup through its exact settled upgrade and preserves its bytes through erasure inventory", async () => {
+  const f = await upgradedFixture(7), backup = retainedBackup(f), bytes = readFileSync(backup.path);
+  let settlement: ReturnType<typeof f.erase> | undefined;
+  try {
+    assert.equal(backup.manifest.schemaVersion, 7);
+    assert.equal(backup.manifest.profileId, f.admission.profileBinding.profileId);
+    assert.equal(backup.manifest.installationId, f.admission.profileBinding.installationId);
+    await f.context.account.close();
+    await f.inventory.prepare();
+    settlement = f.erase();
+    const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
+    assert.equal(observed.logoutComplete, true);
+    assert.deepEqual(observed.backupPlaintext, []); assert.deepEqual(observed.unknownFormats, []);
+    assert.equal(readFileSync(backup.path).equals(bytes), true);
+  } finally { settlement?.admission.release(); await f.cleanup(); }
+});
+
+for (const mutation of ["absent", "duplicate", "unfinished", "forged-plan", "forged-path", "forged-source"] as const) it(`refuses retained bound7 copy with ${mutation} canonical upgrade provenance`, async () => {
+  const f = await upgradedFixture(7), backup = retainedBackup(f), bytes = readFileSync(backup.path);
+  try {
+    await f.context.account.close(); await f.inventory.prepare();
+    changeUpgradeProof(f, record => {
+      if (mutation === "absent") return [];
+      if (mutation === "duplicate") return [record, { ...record, recordKey: randomUUID(), upgradeId: FingerprintSchema.parse("e".repeat(64)) }];
+      if (mutation === "unfinished") return [{ ...record, phase: "committed" }];
+      if (mutation === "forged-plan") { assert.notEqual(record.planDigest, "e".repeat(64)); return [{ ...record, planDigest: FingerprintSchema.parse("e".repeat(64)) }]; }
+      if (mutation === "forged-source") { assert.notEqual(record.upgradeId, "e".repeat(64)); return [{ ...record, upgradeId: FingerprintSchema.parse("e".repeat(64)) }]; }
+      return [{ ...record, backup: { ...record.backup, manifestPath: `${record.backup.manifestPath}.foreign` } }];
+    });
+    const generation = f.context.database.getMeta().authorityGeneration;
+    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "profile-inventory-backup-upgrade-unproved");
+    assert.equal(f.context.database.getMeta().authorityGeneration, generation);
+    assert.equal(readFileSync(backup.path).equals(bytes), true);
+  } finally { await f.cleanup(); }
+});
+
+it("refuses a genuine foreign bound7 copy even when its manifest claims the current source namespace", async () => {
+  const f = await upgradedFixture(7), other = await upgradedFixture(7);
+  try {
+    const target = retainedBackup(f), foreign = retainedBackup(other);
+    assert.notEqual(foreign.manifest.profileId, target.manifest.profileId);
+    await f.context.account.close(); await f.inventory.prepare();
+    copyFileSync(foreign.path, target.path);
+    writeFileSync(target.manifestPath, canonicalJsonStringify({ ...foreign.manifest,
+      backupFileName: target.manifest.backupFileName, sourceDatabaseIdentity: target.manifest.sourceDatabaseIdentity }), { mode: 0o600 });
+    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "profile-inventory-backup-binding-mismatch");
+  } finally { await other.cleanup(); await f.cleanup(); }
+});
+
+it("refuses substitution of a qualified bound7 copy before assessment", async () => {
+  const f = await upgradedFixture(7), backup = retainedBackup(f);
+  let settlement: ReturnType<typeof f.erase> | undefined;
+  try {
+    await f.context.account.close(); await f.inventory.prepare();
+    settlement = f.erase();
+    const currentSettlement = settlement;
+    const bytes = readFileSync(backup.path); bytes[bytes.length - 1] ^= 1;
+    writeFileSync(backup.path, bytes, { mode: 0o600 });
+    assert.throws(() => f.inventory.assess({ ...currentSettlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true }),
+      error => error instanceof Error && error.message === "profile-inventory-membership-changed");
+  } finally { settlement?.admission.release(); await f.cleanup(); }
+});
+
+it("retains named refusal for an unbound6 upgrade backup rather than deriving an old profile from its path", async () => {
+  const f = await upgradedFixture(6), backup = retainedBackup(f);
+  try {
+    assert.equal(backup.manifest.schemaVersion, 6); assert.equal(backup.manifest.profileId, undefined); assert.equal(backup.manifest.installationId, undefined);
+    const bytes = readFileSync(backup.path), credentials = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
+    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "profile-inventory-backup-binding-mismatch");
+    assert.equal(readFileSync(backup.path).equals(bytes), true);
+    assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).equals(credentials), true);
+  } finally { await f.cleanup(); }
+});
 
 for (const backup of ["none", "clean", "captured-copy", "key-copy", "incomplete-capture"] as const) it(`assesses genuine canonical inventory after exact erasure with ${backup} backup`, async () => {
   const f = fixture();
@@ -74,6 +211,36 @@ for (const backup of ["none", "clean", "captured-copy", "key-copy", "incomplete-
     if (backup === "captured-copy" || backup === "key-copy") assert.equal(observed.backupPlaintext.length, 1);
     if (backup === "incomplete-capture") assert.equal(observed.unknownFormats.length, 1);
   } finally { settlement?.admission.release(); await f.cleanup(); }
+});
+
+for (const mutation of ["forged-source-version", "missing-source-table", "extra-source-table"] as const) it(`rejects ${mutation} before accepting a backup into credential inventory`, async () => {
+  const f = fixture();
+  try {
+    const report = await new AuthorityBackupService(f.admission, f.context.database,
+      { directory: join(f.stateRoot, "backups", "authority") }, f.clock).request({ trigger: "operator", requiredGeneration: f.context.database.getMeta().authorityGeneration });
+    const manifest = report.manifests[0]; assert.ok(manifest);
+    const path = join(f.stateRoot, "backups", "authority", manifest.backupFileName);
+    const manifestPath = `${path}.manifest.json`;
+    await f.inventory.prepare();
+    const protectedPath = join(f.stateRoot, "credentials", "protected.json"), protectedBefore = readFileSync(protectedPath);
+    const sourceBefore = f.context.database.getMeta();
+    if (mutation === "forged-source-version") {
+      writeFileSync(manifestPath, JSON.stringify({ ...manifest, schemaVersion: 7,
+        verification: { ...manifest.verification, schemaVersion: 7 } }), { mode: 0o600 });
+    } else {
+      const raw = new DatabaseSync(path);
+      try { raw.exec(mutation === "missing-source-table" ? "PRAGMA foreign_keys=OFF; DROP TABLE assistant_actions" : "CREATE TABLE unowned_authority(id TEXT)"); }
+      finally { raw.close(); }
+      const bytes = readFileSync(path);
+      writeFileSync(manifestPath, JSON.stringify({ ...manifest, byteSize: bytes.length,
+        sha256: createHash("sha256").update(bytes).digest("hex") }), { mode: 0o600 });
+    }
+    await assert.rejects(f.inventory.prepare(), error => mutation === "forged-source-version"
+      ? error instanceof AuthoritySchemaVersionError && error.schemaVersion === 8
+      : error instanceof Error && error.message === "authority-native-schema-shape-mismatch");
+    assert.deepEqual(f.context.database.getMeta(), sourceBefore);
+    assert.equal(readFileSync(protectedPath).equals(protectedBefore), true);
+  } finally { await f.cleanup(); }
 });
 
 for (const problem of ["extra-file", "contained-symlink", "unreferenced-backup"] as const) it(`refuses canonical inventory with ${problem}`, async () => {

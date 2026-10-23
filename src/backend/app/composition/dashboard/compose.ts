@@ -61,7 +61,7 @@ import { createStorageRelocationPlanReader } from "../../../storage/maintenance/
 import { createWriteResolutionExecutor } from "../../../runtime/writes/write-recovery.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { systemClock } from "../../../../rules/time/clock.js";
-import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../storage-compose.js";
+import { composeProfileAssistantAuthorization, composeProfileRuntime, RuntimeCustodyUncertainError } from "../storage-compose.js";
 import { systemIdFactory, type IdFactory } from "../../../../rules/identity/identifiers.js";
 import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment, workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
@@ -95,6 +95,7 @@ import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/time
 import { createDashboardPreflightRunners } from "../../preflight/dashboard-runners.js";
 
 export interface DashboardRuntime {
+  readonly assistantAuthorization?: ReturnType<typeof composeProfileAssistantAuthorization>;
   readonly port: number;
   readonly noteWriter: NoteTimelineWriter;
   readonly notificationStatus: ReturnType<typeof createTrustNotifications>["observer"]["status"];
@@ -178,6 +179,7 @@ export interface WorkerProcessControlInput {
   readonly birth: Readonly<{ pollMs: number; timeoutMs: number }>;
   readonly onFault: (error: Error) => void;
   readonly preflight?: RuntimePreflight;
+  readonly assertAssistantEffect?: (commandId: string) => void;
 }
 
 
@@ -200,11 +202,12 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       }
     },
     admission: request => input.database.withAuthorityTransaction(repositories => {
+      if (request.commandId === undefined) throw new WorkerControlRefusal("worker-control-command-identity-unavailable");
+      input.assertAssistantEffect?.(request.commandId);
       if (request.command === "spawn-worker" && input.preflight !== undefined) {
         try { input.preflight.admission.assertReady(input.preflight.currentScope()); }
         catch (error) { if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message); throw error; }
       }
-      if (request.commandId === undefined) throw new WorkerControlRefusal("worker-control-command-identity-unavailable");
       const standing = "member" in request ? repositories.workerSlots.recovery(request.member.workerId) : undefined;
       if (standing !== undefined && request.command === "spawn-worker") {
         const binding = standing.request.binding, lease = repositories.workerLeases.get(request.member.workerId), active = repositories.runtimeConfig.get();
@@ -665,6 +668,10 @@ async function composeDashboardRuntimeStartup(
       message: error.message,
     }));
   };
+  const assertAssistantEffect = (commandId: string): void => {
+    if (database.authority.assistantAuthorization.actionByCommand(commandId) === undefined) return;
+    assistantAuthorization.assertEffect(commandId);
+  };
   profile.runtime.beginSupervisorConstruction(profile.token);
   const workerControl = composeWorkerProcessControl({
     profileRoot: resolved.config.paths.browserProfileRoot,
@@ -677,6 +684,7 @@ async function composeDashboardRuntimeStartup(
     birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
     onFault: reportSupervisorFault,
     preflight: runtimePreflight,
+    assertAssistantEffect,
   });
   profile.runtime.bindSupervisor(profile.token, workerControl.supervisor);
   startupCleanups.push(requiredClosure(async () => {
@@ -734,9 +742,16 @@ async function composeDashboardRuntimeStartup(
 
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     settings: settingsBoundary.executor,
+    authorityProfileId: admission.profileBinding.profileId,
+    assistantRevalidate: command => {
+      if (database.authority.assistantAuthorization.actionByCommand(command.commandId) === undefined) return;
+        assistantAuthorization.assertEffect(command.commandId, command);
+    },
     storageRelocationPlans,
     explorerEdits: explorerBoundary.executor,
   });
+
+  const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
 
   const commands = createDashboardCommandService({
     kernel,
@@ -865,6 +880,7 @@ async function composeDashboardRuntimeStartup(
     return detaching;
   };
   return Object.freeze({
+    assistantAuthorization,
     port: server.port,
     notificationStatus: notificationObserver.status,
     noteWriter,

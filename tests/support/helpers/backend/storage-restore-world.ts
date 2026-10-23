@@ -2,14 +2,14 @@ import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT, COMMAND_FIXTURES, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
 import { seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { composeStorageCommand as composeNativeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { type RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
+import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
+import { AuthorityDatabase } from "../synthetic-database-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 
@@ -20,6 +20,8 @@ export interface DrillPaths {
   readonly authorityPath: string;
   readonly backupDirectory: string;
   readonly processLockRoot: string;
+  readonly credentials: CredentialStore;
+  renewAfterRestore(): void;
 }
 
 
@@ -29,33 +31,31 @@ export function createStorageRestoreTestWorld() {
 
   const roots: string[] = [];
 
-  const admissions = new Map<string,RuntimeAdmission>();
+  const admissions = new Map<string, ReturnType<typeof createBoundProfileFixture>>();
 
-  async function composeStorageCommand(isolation:typeof rebuildRuntimeIsolation,args:readonly string[],clock:typeof CLOCK,repoRoot:string){const admission=admissions.get(repoRoot);assert.ok(admission);return composeNativeStorageCommand(isolation,args,clock,repoRoot,admission);}
+  async function composeStorageCommand(isolation:typeof rebuildRuntimeIsolation,args:readonly string[],clock:typeof CLOCK,repoRoot:string){const fixture=admissions.get(repoRoot);assert.ok(fixture);return composeNativeStorageCommand(isolation,args,clock,repoRoot,fixture.admission,boundProfileCredentials(fixture.admission));}
 
   function drillPaths(): DrillPaths {
-    const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "native-restore-drill-"));
+    const fixture = createBoundProfileFixture();
+    const repoRoot = fixture.workspace, stateRoot = fixture.stateRoot;
     roots.push(repoRoot);
-    const admission=acquireEntrypointAdmission(repoRoot,"exclusive");admissions.set(repoRoot,admission);
-    const stateRoot = admission.stateRoot;
-    mkdirSync(stateRoot, { recursive: true });
-    // The command reads the running build's version out of its repo root, the
-    // same way the dashboard composition does; the drill's root is a repo root.
+    admissions.set(repoRoot, fixture);
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "drill", version: "0.1.0" }));
     return {
       repoRoot,
-      admission,
+      get admission() { return fixture.admission; },
+      get credentials() { return boundProfileCredentials(fixture.admission); },
+      renewAfterRestore() { fixture.renewAfterRestore(); },
       stateRoot,
-      authorityPath: join(stateRoot, "state.db"),
+      authorityPath: fixture.path,
       backupDirectory: join(stateRoot, "backups", "authority"),
       processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
     };
   }
 
   function open(paths: DrillPaths): AuthorityDatabase {
-    return AuthorityDatabase.open(paths.admission,
-      { path: paths.authorityPath, busyTimeoutMs: 250, migrationOwner: "restore-drill" },
-      CLOCK,
+    return AuthorityDatabase.open(
+      { path: paths.authorityPath, busyTimeoutMs: 250, migrationOwner: "restore-drill" }, CLOCK,
     );
   }
 
@@ -120,8 +120,9 @@ export function createStorageRestoreTestWorld() {
     }
   }
   const cleanup = () => {
-    for(const admission of admissions.values())admission.release();admissions.clear();
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+    for (const fixture of admissions.values()) fixture.close();
+    admissions.clear();
+    roots.splice(0);
   };
   return { CLOCK, roots, admissions, composeStorageCommand, drillPaths, open, seedRealShapedAuthority, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup };
 }

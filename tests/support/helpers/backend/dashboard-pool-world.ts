@@ -1,3 +1,5 @@
+import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { vi } from "vitest";
 import type { AuthorityDatabase as PoolAuthorityDatabase } from "../admission-fixture.js";
 import { type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -7,8 +9,7 @@ import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqli
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { composeWorkerProcessControl } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
@@ -28,6 +29,8 @@ import { createStartPlanService } from "../../../../src/backend/runs/commands/st
 
 export interface ControlHarness {
   readonly root: string;
+  readonly authorityPath: string;
+  readonly processLockRoot: string;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly scheduler: ManualScheduler;
@@ -98,17 +101,25 @@ export function createDashboardPoolTestWorld() {
   const roots: string[] = [];
 
   const openDatabases: AuthorityDatabase[] = [];
+  const profiles = new Map<AuthorityDatabase, ReturnType<typeof createBoundProfileFixture>>();
 
   const cleanups: (() => Promise<void> | void)[] = [];
 
   function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-worker-pool-"));
-    roots.push(root);
+    const profile = createBoundProfileFixture(), root = profile.stateRoot;
+    const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
     const clock = manualClock(new Date(NOW));
-    const database = AuthorityDatabase.open(
-      { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-      clock,
-    );
+    let database: AuthorityDatabase;
+    try {
+      database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock,
+        undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+    } catch (error) {
+      const failures: unknown[] = [error];
+      try { profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+      if (failures.length > 1) throw new AggregateError(failures, "fixture opening and cleanup failed", { cause: error });
+      throw error;
+    }
+    profiles.set(database, profile);
     seedSyntheticRuntimeConfig(database);
     openDatabases.push(database);
     const nativeDeath = database.assertRetainedWorkerDeath.bind(database);
@@ -129,7 +140,7 @@ export function createDashboardPoolTestWorld() {
     const faults: Error[] = [];
     let nextPid = 6000;
     const control = composeWorkerProcessControl({
-      profileRoot: join(root, "browsers"), processLockRoot: join(root, "locks"),
+      profileRoot: join(root, "browsers"), processLockRoot,
       database,
       clock,
       scheduler,
@@ -211,7 +222,7 @@ export function createDashboardPoolTestWorld() {
         }),
       },
     });
-    return { root, database, clock, scheduler, kernel, control, children, spawnRequests, faults, auditFault };
+    return { root, authorityPath: profile.path, processLockRoot, database, clock, scheduler, kernel, control, children, spawnRequests, faults, auditFault };
   }
 
   let commandSequence = 0;
@@ -285,14 +296,14 @@ export function createDashboardPoolTestWorld() {
   }
 
   function admitExternalSlot(harness: ControlHarness, poolIndex = 1) {
-    const held = bindWorkerProcessAdmission({ processLockRoot: join(harness.root, "locks"),
-      authorityPath: join(harness.root, "state.db"), pid: process.pid, clock: harness.clock,
+    const held = bindWorkerProcessAdmission({ processLockRoot: harness.processLockRoot,
+      authorityPath: harness.authorityPath, pid: process.pid, clock: harness.clock,
       open: () => harness.database, close: () => {},
       admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories,
         { commandId: nextCommandId(), workflow: WORKFLOW, poolIndex,
           expectedPoolVersion: repositories.workerPools.get(WORKFLOW)?.version ?? 0,
-          processId: process.pid, processAcquisitionId: acquisitionId, authorityPath: join(harness.root, "state.db"),
-          processLockRoot: join(harness.root, "locks"), now: harness.clock.now().toISOString() }, nextCommandId()).workerId),
+          processId: process.pid, processAcquisitionId: acquisitionId, authorityPath: harness.authorityPath,
+          processLockRoot: harness.processLockRoot, now: harness.clock.now().toISOString() }, nextCommandId()).workerId),
     });
     cleanups.push(() => held.processLock.release());
     return held.workerId;
@@ -341,7 +352,14 @@ export function createDashboardPoolTestWorld() {
   }
   const cleanup = async () => {
     for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-    for (const database of openDatabases.splice(0)) database.close();
+    const failures: unknown[] = [];
+    for (const database of openDatabases.splice(0)) {
+      try { database.close(); } catch (error) { failures.push(error); continue; }
+      const profile = profiles.get(database);
+      assert.ok(profile);
+      try { profile.close(); profiles.delete(database); } catch (error) { failures.push(error); }
+    }
+    if (failures.length > 0) throw new AggregateError(failures, "pool fixture cleanup failed");
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   };
   return { servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, MEMBER_1, WORKER_2, roots, openDatabases, cleanups, openControlHarness, nextCommandId, envelope, spawnPoolWorker, admitExternalSlot, admitPoolSlot, dashboardLaunch, launchCommands, proveLaunchBirth, occupyMember, settleMicrotasks, fireBirthPoll, cleanup };

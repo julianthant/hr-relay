@@ -53,6 +53,7 @@ Paths in this table are relative to `src/backend/`.
 
 | Path | Ownership |
 | --- | --- |
+| `assistant/` | Pure action policy, private profile-token authorization, server-issued chat custody and once-consumable canonical actions. Profile SQLite owns grants, chats and action records. |
 | `accounts/` | ChatGPT OAuth, verified account and usage state, and the shared Responses OCR/assistant transport. Account-specific model catalogs and bounded strict namespaced function turns use the same selected-account owner; production function bindings remain empty until their availability and authorization gates pass. Browser-safe account and sign-in lifecycle schemas live in `models/dashboard/chatgpt-account.ts`; HTTP routes own the latest account attempt. |
 | `app/` | Bootstrap, configuration, host admission, preflight, rehearsal manifest validation, and application composition. |
 | `app/composition/` | Storage, dashboard, and worker dependency assembly. `profile-credential-inventory.ts` owns canonical profile copy membership, credential maintenance assessment, and browser-root validation. |
@@ -90,6 +91,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields live under `fields/`. |
 | `src/models/dashboard/activity-population.ts` | Canonical Analytics population, selected browse, export and AP1 snapshot schemas. `activity-selection.ts` owns the nested AS1 report selection used by summary and XLSX exports. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. |
+| `src/models/workflow/build-manifest.ts` | Pure build-manifest path, schemas, types and parser shared by generation and runtime validation. `workflow-kit/validation/build-manifest.ts` owns the eagerly validated checked-in manifest and fingerprint resolvers. |
 | `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
 | `src/rules/` | Pure decisions and validation, including identity, clocks, normalization, ledger derivation, redaction, and write safety. |

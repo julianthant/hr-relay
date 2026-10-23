@@ -1,30 +1,25 @@
 import assert from "node:assert/strict";
-import { existsSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync,readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { AuthorityDatabase,upgradeStorage } from "../../../support/helpers/synthetic-storage-admission.js";
+import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
-const roots: string[] = [];
+const cleanups: Array<() => void> = [];
 const clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
 function fresh() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "storage-upgrade-"));
-  roots.push(root);
-  mkdirSync(join(root, "artifacts"), { mode: 0o700 });
-  const path = join(root, "state.db");
-  const input = { stateRoot: root, processLockRoot: join(root, "locks"), plan: false };
-  return { root, path, input, run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
+  const f = storageRecoveryFixture();
+  cleanups.push(f.dispose);
+  return f;
 }
 function rows(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
-    assert.equal(tables.length, 36);
+    assert.equal(tables.length, 39);
     return Object.fromEntries(tables.map(row => {
       assert.equal(typeof row.name, "string");
       return [String(row.name), raw.prepare(`SELECT * FROM "${String(row.name)}" ORDER BY rowid`).all()];
@@ -43,9 +38,10 @@ describe("stopped native SQLite initialization", () => {
       toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
     assert.deepEqual(storageTree(f.root), before);
     assert.equal((await f.run()).state, "initialized");
-    const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "upgrade-readback" }, clock);
+    assert.equal(existsSync(`${f.root}/credentials`), false);
+    f.finish();
+    const db = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "upgrade-readback" }, clock);
     try { assert.equal(db.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { db.close(); }
-    assert.equal(existsSync(join(f.root, "credentials")), false);
     const bytes = readFileSync(f.path); const admitted = rows(f.path);
     assert.equal((await f.run()).state, "already-upgraded");
     assert.deepEqual(readFileSync(f.path), bytes);

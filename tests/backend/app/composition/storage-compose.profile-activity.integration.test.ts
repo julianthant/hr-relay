@@ -1,3 +1,5 @@
+import { WireErrorSchema } from "../../../../src/models/dashboard/primitives.js";
+import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { isDeepStrictEqual } from "node:util";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import assert from "node:assert/strict";
@@ -311,7 +313,11 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
     const send = async (input: Record<string, unknown>) => {
       const response = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin },
         body: JSON.stringify({ commandId: randomUUID(), requestedAt: systemClock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", ...input }) });
-      return CommandResultSchema.parse(await response.json());
+      const body: unknown = await response.json();
+      const failure = WireErrorSchema.safeParse(body);
+      const code = failure.success ? ErrorCatalogCodeSchema.safeParse(failure.data.code) : undefined;
+      assert.ok(!failure.success, `HTTP ${response.status}:${code?.success ? code.data : 'unregistered-code'}`);
+      return CommandResultSchema.parse(body);
     };
     const patch = { "daemon.idleRepollMs": { set: 100 }, "features.duoWebAuthn": { set: false }, "browser.headless": { set: true } };
     assert.equal((await send({ family: "settings", type: "apply-settings", target: { expectedRevision: readSettings(database.authority).revision },

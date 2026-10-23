@@ -21,7 +21,7 @@ import {
   type WorkflowResultSourceBinding,
 } from "../models/workflow/operation-display.js";
 import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "./validation/build-manifest.js";
-import type { BuildManifest } from "./validation/build-manifest.js";
+import type { BuildManifest } from "../models/workflow/build-manifest.js";
 import { DelegationPolicySchema } from "../models/workflow/delegation-policy.js";
 import type { DelegationPolicy } from "../models/workflow/delegation-policy.js";
 import type { WorkflowModuleRole } from "./validation/module-role.js";

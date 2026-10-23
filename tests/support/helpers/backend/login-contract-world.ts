@@ -1,3 +1,6 @@
+import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { personLookupDescriptor } from "../registered-workflows.js";
+import { syntheticDatabasePath } from "../synthetic-database-admission.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import assert from "node:assert/strict";
 import type { Page } from "playwright";
@@ -131,9 +134,8 @@ export function createLoginContractTestWorld() {
 
   function sharedAuthority(clock: TestClock): AuthorityDatabase {
     const database = openDuoCeremonyLeaseDatabase(clock);
-    database.withAuthorityTransaction(repositories => {
-      repositories.workerPools.plan({ workflow: WORKFLOW_ID, expectedVersion: 0, desiredWorkers: 2, requestedBy: "local-operator", now: clock.now().toISOString() });
-      for (const poolIndex of [1, 2]) repositories.workerSlots.allocate({ workflow: WORKFLOW_ID, poolIndex, commandId: null, now: clock.now().toISOString() });
+    for (const poolIndex of [1, 2]) testWorkerPorts(database, clock, {
+      path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex,
     });
     databases.push(database);
     return database;

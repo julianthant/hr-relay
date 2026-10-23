@@ -36,7 +36,8 @@ import {
   TraceIdSchema,
 } from "../../../src/rules/identity/ids.js";
 import { defineIntakeProjection } from "../../../src/models/intake/projection.js";
-import { BUILD_MANIFEST, BUILD_MANIFEST_PATH } from "../../../src/workflow-kit/validation/build-manifest.js";
+import { BUILD_MANIFEST } from "../../../src/workflow-kit/validation/build-manifest.js";
+import { BUILD_MANIFEST_PATH } from "../../../src/models/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import {
   ICON_NAMES,

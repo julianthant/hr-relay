@@ -1,3 +1,4 @@
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { withBrowserActionBinding, withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { createDeclaredActionBinder } from "../../../../src/backend/runtime/writes/operation-action-binding.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
@@ -24,9 +25,6 @@ import { z } from "zod";
 import { testRunLifecycle,testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Readable } from "node:stream";
 import { afterEach,describe,it } from "vitest";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
@@ -105,15 +103,18 @@ function recordingArtifacts(): DiagnosticArtifactWriter & { readonly puts: () =>
 }
 
 function openDatabase(now = NOW): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-diagnostic-"));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "diagnostic-capture-test" },
-    manualClock(new Date(now)),
-  );
-  disposers.push(() => {
-    database.close();
-    rmSync(root, { recursive: true, force: true });
-  });
+  const profile = createBoundProfileFixture();
+  let database: AuthorityDatabase;
+  try {
+    database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "diagnostic-capture-test" },
+      manualClock(new Date(now)), undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+  } catch (error) {
+    const failures: unknown[] = [error];
+    try { profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+    if (failures.length > 1) throw new AggregateError(failures, "diagnostic fixture opening cleanup failed", { cause: error });
+    throw error;
+  }
+  disposers.push(() => { database.close(); profile.close(); });
   return database;
 }
 

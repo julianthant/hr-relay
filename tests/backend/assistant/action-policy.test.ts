@@ -1,3 +1,4 @@
+import { deriveRawSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
@@ -509,4 +510,14 @@ describe("assistant action policy", () => {
     assert.equal(otherCommand.state, "refused");
     if (otherCommand.state === "refused") assert.equal(otherCommand.code, "ASSISTANT_UNKNOWN_NOT_REPLAYABLE");
   });
+});
+
+it("refuses assistant consent envelopes independently of stored command admission", () => {
+  const command = commands().write;
+  assert.equal(command.type, "apply-settings");
+  const permission = { ...command, payload: { ...command.payload, patch: {}, patchFingerprint: deriveRawSettingsPatchFingerprint({}),
+    assistantPermission: { expectedPolicyRevision: 0, mode: "without-asking" } } };
+  const decision = decide(permission, { authority: authority("without-asking") });
+  assert.equal(decision.state, "refused");
+  assert.equal(decision.code, "ASSISTANT_OPTIONS_UNBOUND");
 });

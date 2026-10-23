@@ -1,0 +1,172 @@
+{
+  "format": 1,
+  "sourceCommit": "4eee2b31ada2caf71053671ac6dda9936cec2b25",
+  "schemaVersion": 7,
+  "settingsSchemaHash": "19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7",
+  "settings": {
+    "revision": 2,
+    "settingsSchemaHash": "19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7",
+    "settingsFingerprint": "49dcdefc3b7f09acb5ce16c490396d35ea08d5e0d0a4babd834acde1b0b0d679",
+    "settings": {
+      "browser": {
+        "headless": false
+      },
+      "concurrency": {
+        "defaultWorkers": 2
+      }
+    }
+  },
+  "command": {
+    "commandId": "435faa06-0e69-4285-b3cc-e533ea16ce39",
+    "requestedAt": "2026-10-21T12:00:00.000Z",
+    "requestedBy": "local-operator",
+    "source": "settings-surface",
+    "family": "settings",
+    "type": "apply-settings",
+    "target": {
+      "expectedRevision": 1
+    },
+    "payload": {
+      "settingsSchemaHash": "19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7",
+      "patchFingerprint": "2b2de834ee0641210584f6a9f691d19598d81aed2606273dffcc77ab56d14526",
+      "patch": {
+        "browser.headless": {
+          "set": false
+        },
+        "concurrency.defaultWorkers": {
+          "set": 2
+        }
+      }
+    }
+  },
+  "result": {
+    "state": "applied",
+    "commandId": "435faa06-0e69-4285-b3cc-e533ea16ce39",
+    "affectedTargets": [
+      {
+        "family": "settings",
+        "revision": 2
+      }
+    ],
+    "restartRequired": false,
+    "settingsRevision": 2,
+    "settingsFingerprint": "49dcdefc3b7f09acb5ce16c490396d35ea08d5e0d0a4babd834acde1b0b0d679"
+  },
+  "migrationStatementsSha256": "c6e4ace7d394addc6242f5bbd7fa46c6ce0c502399061ded5daaaa6ced9a3fa0",
+  "sources": [
+    {
+      "path": "src/models/config/settings.ts",
+      "sha256": "46c2f778b409a6d9579d48084decc22138ff6b24d74c47c5df19fb428183767c"
+    },
+    {
+      "path": "src/models/config/schema.ts",
+      "sha256": "16aec96bdf1bc1bcd902a046549349ea8c188542a06eae94218e82d442ce049b"
+    },
+    {
+      "path": "src/models/config/catalog.ts",
+      "sha256": "f40dbfff495629983a73144927de2a78593fe0134e87b7e306e4da3575c07548"
+    },
+    {
+      "path": "src/models/config/settings-initialization.ts",
+      "sha256": "e95134e5db730bcc5490ad4b1d9f6b80e8df0398fda61b3c627a03b8e31adead"
+    },
+    {
+      "path": "src/models/config/settings-current.ts",
+      "sha256": "dd9e1f9e1f8ec2c6416e50da486d192ee005d390ec1a5beeb3b44139df9af7d5"
+    },
+    {
+      "path": "src/backend/storage/sqlite/settings-storage.ts",
+      "sha256": "4d14e00eac5ce8c8e376d5c0e6065c9c91784f326709cb02222d1b71a8594917"
+    },
+    {
+      "path": "src/backend/storage/sqlite/migrations.ts",
+      "sha256": "771e1fe69d88dda64c65b7226acbc5c16eb2f08f03f27786568acba7a4535c22"
+    },
+    {
+      "path": "src/backend/runs/commands/settings-service.ts",
+      "sha256": "df0df30d90e8090bfdd6e0d5babaa1bb5e2542056dc501a4f623d4a920398fab"
+    },
+    {
+      "path": "src/backend/runs/commands/command-kernel.ts",
+      "sha256": "b52dccb7ece6fda80bce62d99abbccc3c20c14d654659f47413481bde21313e7"
+    },
+    {
+      "path": "tests/support/helpers/admission-fixture.ts",
+      "sha256": "ef82284a75b98dbaa1a138034bd54850c20e65ad9d1343219d823ffd861fc088"
+    }
+  ],
+  "tables": {
+    "commands": [
+      {
+        "id": "435faa06-0e69-4285-b3cc-e533ea16ce39",
+        "family": "settings",
+        "actor_id": "local-operator",
+        "parent_id": null,
+        "target_id": null,
+        "request_digest": "c150899439659d26208b7288c6e9c128d2e3f03eb8a81bc335c8fbeeaec1965e",
+        "request_json": "{\"commandId\":\"435faa06-0e69-4285-b3cc-e533ea16ce39\",\"family\":\"settings\",\"payload\":{\"patch\":{\"browser.headless\":{\"set\":false},\"concurrency.defaultWorkers\":{\"set\":2}},\"patchFingerprint\":\"2b2de834ee0641210584f6a9f691d19598d81aed2606273dffcc77ab56d14526\",\"settingsSchemaHash\":\"19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7\"},\"requestedAt\":\"2026-10-21T12:00:00.000Z\",\"requestedBy\":\"local-operator\",\"source\":\"settings-surface\",\"target\":{\"expectedRevision\":1},\"type\":\"apply-settings\"}",
+        "state": "succeeded",
+        "outcome_json": "{\"affectedDependencyIds\":[],\"auditId\":\"fbc38930-de3f-4cda-ad43-0e8a80204632\",\"completedAt\":\"2026-10-21T12:00:00.000Z\",\"request\":{\"commandId\":\"435faa06-0e69-4285-b3cc-e533ea16ce39\",\"family\":\"settings\",\"payload\":{\"patch\":{\"browser.headless\":{\"set\":false},\"concurrency.defaultWorkers\":{\"set\":2}},\"patchFingerprint\":\"2b2de834ee0641210584f6a9f691d19598d81aed2606273dffcc77ab56d14526\",\"settingsSchemaHash\":\"19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7\"},\"requestedAt\":\"2026-10-21T12:00:00.000Z\",\"requestedBy\":\"local-operator\",\"source\":\"settings-surface\",\"target\":{\"expectedRevision\":1},\"type\":\"apply-settings\"},\"result\":{\"affectedTargets\":[{\"family\":\"settings\",\"revision\":2}],\"commandId\":\"435faa06-0e69-4285-b3cc-e533ea16ce39\",\"restartRequired\":false,\"settingsFingerprint\":\"49dcdefc3b7f09acb5ce16c490396d35ea08d5e0d0a4babd834acde1b0b0d679\",\"settingsRevision\":2,\"state\":\"applied\"},\"versionChanges\":[{\"after\":2,\"before\":1,\"target\":{\"family\":\"settings\",\"revision\":2}}]}",
+        "created_at": "2026-10-21T12:00:00.000Z",
+        "updated_at": "2026-10-21T12:00:00.000Z"
+      },
+      {
+        "id": "5a1c8341-bb4d-4396-b748-2b63301e4ea7",
+        "family": "settings-initialization",
+        "actor_id": "local-operator",
+        "parent_id": null,
+        "target_id": null,
+        "request_digest": "cc280edbc7112f9025871c38043b1838a8d74b95b277a7ef5c401f7e5d1c298a",
+        "request_json": "{\"commandId\":\"5a1c8341-bb4d-4396-b748-2b63301e4ea7\",\"configFingerprint\":\"d152020a5ee0559af8cdce186a464f39d3e1e247ab3d1917e28a8580772ee09a\",\"configSnapshotId\":\"ea8bb266-721d-4b79-a23c-929b7639ed3b\",\"initializedAt\":\"2026-10-21T12:00:00.000Z\",\"kind\":\"settings-initialization\",\"revision\":1,\"settings\":{\"revision\":1,\"settings\":{},\"settingsFingerprint\":\"4c71f7a9e1684556d23cc5ab43f2571afcb5cfba85b2824915a6278c22352cc5\",\"settingsSchemaHash\":\"19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7\"}}",
+        "state": "succeeded",
+        "outcome_json": "{\"auditId\":\"b0f2413c-b18d-496f-a86b-e6f4413c71c3\",\"completedAt\":\"2026-10-21T12:00:00.000Z\",\"kind\":\"settings-initialization\",\"request\":{\"commandId\":\"5a1c8341-bb4d-4396-b748-2b63301e4ea7\",\"configFingerprint\":\"d152020a5ee0559af8cdce186a464f39d3e1e247ab3d1917e28a8580772ee09a\",\"configSnapshotId\":\"ea8bb266-721d-4b79-a23c-929b7639ed3b\",\"initializedAt\":\"2026-10-21T12:00:00.000Z\",\"kind\":\"settings-initialization\",\"revision\":1,\"settings\":{\"revision\":1,\"settings\":{},\"settingsFingerprint\":\"4c71f7a9e1684556d23cc5ab43f2571afcb5cfba85b2824915a6278c22352cc5\",\"settingsSchemaHash\":\"19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7\"}},\"result\":{\"fingerprint\":\"d152020a5ee0559af8cdce186a464f39d3e1e247ab3d1917e28a8580772ee09a\",\"revision\":1,\"snapshotId\":\"ea8bb266-721d-4b79-a23c-929b7639ed3b\",\"state\":\"initialized\"}}",
+        "created_at": "2026-10-21T12:00:00.000Z",
+        "updated_at": "2026-10-21T12:00:00.000Z"
+      }
+    ],
+    "command_audits": [
+      {
+        "id": "b0f2413c-b18d-496f-a86b-e6f4413c71c3",
+        "command_id": "5a1c8341-bb4d-4396-b748-2b63301e4ea7",
+        "code": null,
+        "payload_json": "{\"auditId\":\"b0f2413c-b18d-496f-a86b-e6f4413c71c3\",\"completedAt\":\"2026-10-21T12:00:00.000Z\",\"kind\":\"settings-initialization\",\"request\":{\"commandId\":\"5a1c8341-bb4d-4396-b748-2b63301e4ea7\",\"configFingerprint\":\"d152020a5ee0559af8cdce186a464f39d3e1e247ab3d1917e28a8580772ee09a\",\"configSnapshotId\":\"ea8bb266-721d-4b79-a23c-929b7639ed3b\",\"initializedAt\":\"2026-10-21T12:00:00.000Z\",\"kind\":\"settings-initialization\",\"revision\":1,\"settings\":{\"revision\":1,\"settings\":{},\"settingsFingerprint\":\"4c71f7a9e1684556d23cc5ab43f2571afcb5cfba85b2824915a6278c22352cc5\",\"settingsSchemaHash\":\"19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7\"}},\"result\":{\"fingerprint\":\"d152020a5ee0559af8cdce186a464f39d3e1e247ab3d1917e28a8580772ee09a\",\"revision\":1,\"snapshotId\":\"ea8bb266-721d-4b79-a23c-929b7639ed3b\",\"state\":\"initialized\"}}",
+        "created_at": "2026-10-21T12:00:00.000Z"
+      },
+      {
+        "id": "fbc38930-de3f-4cda-ad43-0e8a80204632",
+        "command_id": "435faa06-0e69-4285-b3cc-e533ea16ce39",
+        "code": null,
+        "payload_json": "{\"affectedDependencyIds\":[],\"auditId\":\"fbc38930-de3f-4cda-ad43-0e8a80204632\",\"completedAt\":\"2026-10-21T12:00:00.000Z\",\"request\":{\"commandId\":\"435faa06-0e69-4285-b3cc-e533ea16ce39\",\"family\":\"settings\",\"payload\":{\"patch\":{\"browser.headless\":{\"set\":false},\"concurrency.defaultWorkers\":{\"set\":2}},\"patchFingerprint\":\"2b2de834ee0641210584f6a9f691d19598d81aed2606273dffcc77ab56d14526\",\"settingsSchemaHash\":\"19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7\"},\"requestedAt\":\"2026-10-21T12:00:00.000Z\",\"requestedBy\":\"local-operator\",\"source\":\"settings-surface\",\"target\":{\"expectedRevision\":1},\"type\":\"apply-settings\"},\"result\":{\"affectedTargets\":[{\"family\":\"settings\",\"revision\":2}],\"commandId\":\"435faa06-0e69-4285-b3cc-e533ea16ce39\",\"restartRequired\":false,\"settingsFingerprint\":\"49dcdefc3b7f09acb5ce16c490396d35ea08d5e0d0a4babd834acde1b0b0d679\",\"settingsRevision\":2,\"state\":\"applied\"},\"versionChanges\":[{\"after\":2,\"before\":1,\"target\":{\"family\":\"settings\",\"revision\":2}}]}",
+        "created_at": "2026-10-21T12:00:00.000Z"
+      }
+    ],
+    "settings_snapshots": [
+      {
+        "id": "1122fa22-f086-434d-97d7-3dc78f954e24",
+        "revision": 2,
+        "fingerprint": "0b94b082c7ea2ffaf95581435ad6f9c66183e316218a2d7f52438308524066f4",
+        "payload_json": "{\"capturedAt\":\"2026-10-21T12:00:00.000Z\",\"capturedBy\":\"local-operator\",\"config\":{\"actor\":{\"id\":\"local-operator\",\"label\":\"Local operator\"},\"annualDates\":{},\"browser\":{\"closeProofMs\":15000,\"headless\":false},\"browserHealth\":{\"maxAutoRefresh\":10,\"maxReopen\":3,\"monitorTickMs\":30000},\"concurrency\":{\"defaultWorkers\":2},\"daemon\":{\"idleMs\":900000,\"idleRepollMs\":30000},\"display\":{\"screenHeight\":1440,\"screenWidth\":2560},\"features\":{\"debugScreenshots\":false,\"duoWebAuthn\":true},\"ocr\":{\"backoffBaseMs\":2000,\"backoffCapMs\":60000,\"disambigConcurrency\":4,\"maxValidationRetries\":1,\"pageConcurrency\":0,\"pageMaxWaitMs\":120000,\"secondOpinionMax\":5,\"suggestConcurrency\":4,\"tier1PatienceMs\":90000},\"paths\":{\"artifactRoot\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/relay-bound-profile-bx6WGq/.tracker/data/profiles/d9fea593-a8aa-470b-9e56-eaefc83ea1a3/artifacts\",\"browserProfileRoot\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/relay-bound-profile-bx6WGq/.tracker/data/profiles/d9fea593-a8aa-470b-9e56-eaefc83ea1a3/browsers\",\"downloadsDir\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/data/downloads\",\"duoCredential\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/relay-bound-profile-bx6WGq/.tracker/data/profiles/d9fea593-a8aa-470b-9e56-eaefc83ea1a3/credentials/duo-webauthn.json\",\"duoExtensionDir\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/duo-autopilot\",\"i9CheckTrackerPath\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/data/reports/i9-check-tracker.xlsx\",\"onboardingDocsDir\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/data/onboarding\",\"reportsDir\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/data/reports\",\"stateRoot\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/relay-bound-profile-bx6WGq/.tracker/data/profiles/d9fea593-a8aa-470b-9e56-eaefc83ea1a3\"},\"performance\":{\"navigationRetries\":10,\"separationTerminationWindowDays\":14},\"providers\":{\"geocodeCensus\":{\"timeoutMs\":15000},\"geocodeNominatim\":{\"timeoutMs\":15000}},\"timeouts\":{\"duoApprovalCrmSeconds\":60,\"duoApprovalSeconds\":180,\"duoCeremonyLeaseGraceMs\":20000,\"longNavigationMs\":30000,\"navigationMs\":15000,\"retryDelayMs\":5000,\"sessionAcquireMs\":60000,\"taskMs\":180000,\"transactionMs\":300000,\"ukgNavigationMs\":60000},\"urls\":{\"crm\":{\"prod\":{\"entry\":\"https://crm.ucsd.edu/hr\",\"idocsViewer\":\"https://act-idocs.ucsd.edu\",\"onboardingHistory\":\"https://act-crm.my.site.com/hr/ONB_ShowOnboardingHistory\",\"onboardingSearch\":\"https://act-crm.my.site.com/hr/ONB_SearchOnboardings\",\"ucPathEntrySheet\":\"https://act-crm.my.site.com/hr/ONB_PPSEntrySheet\"}},\"i9\":{\"prod\":{\"app\":\"https://wwwe.i9complete.com\",\"entry\":\"https://i9complete.ucop.edu\"}},\"kuali\":{\"prod\":{\"entry\":\"https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb\"}},\"newKronos\":{\"prod\":{\"entry\":\"https://ucsd-sso.prd.mykronos.com/wfd/home\"}},\"oldKronos\":{\"prod\":{\"entry\":\"https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/\"}},\"onbase\":{\"prod\":{\"entry\":\"https://ucsd.hylandcloud.com/251ids/NavPanel.aspx\"}},\"servicenow\":{\"prod\":{\"entry\":\"https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf\"}},\"sharepoint\":{\"prod\":{\"entry\":\"https://ucsdcloud.sharepoint.com\"}},\"ucpath\":{\"prod\":{\"jobSummary\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL\",\"login\":\"https://ucpath.ucsd.edu\",\"personProfile\":\"https://ucphrprdpub.universityofcalifornia.edu/psp/ucphrprd/EMPLOYEE/HRMS/c/SETUP_PROFILE_MANAGEMENT.JPM_PERSON_PROFILE.GBL\",\"personalData\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1\",\"smartHr\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y\"}}}},\"configSnapshotId\":\"1122fa22-f086-434d-97d7-3dc78f954e24\",\"fingerprint\":\"0b94b082c7ea2ffaf95581435ad6f9c66183e316218a2d7f52438308524066f4\",\"provenance\":{\"actor.id\":\"default\",\"actor.label\":\"default\",\"browser.closeProofMs\":\"default\",\"browser.headless\":\"settings\",\"browserHealth.maxAutoRefresh\":\"default\",\"browserHealth.maxReopen\":\"default\",\"browserHealth.monitorTickMs\":\"default\",\"concurrency.defaultWorkers\":\"settings\",\"daemon.idleMs\":\"default\",\"daemon.idleRepollMs\":\"default\",\"display.screenHeight\":\"default\",\"display.screenWidth\":\"default\",\"features.debugScreenshots\":\"default\",\"features.duoWebAuthn\":\"default\",\"ocr.backoffBaseMs\":\"default\",\"ocr.backoffCapMs\":\"default\",\"ocr.disambigConcurrency\":\"default\",\"ocr.maxValidationRetries\":\"default\",\"ocr.pageConcurrency\":\"default\",\"ocr.pageMaxWaitMs\":\"default\",\"ocr.secondOpinionMax\":\"default\",\"ocr.suggestConcurrency\":\"default\",\"ocr.tier1PatienceMs\":\"default\",\"paths.artifactRoot\":\"default\",\"paths.browserProfileRoot\":\"default\",\"paths.downloadsDir\":\"default\",\"paths.duoCredential\":\"default\",\"paths.duoExtensionDir\":\"default\",\"paths.i9CheckTrackerPath\":\"default\",\"paths.onboardingDocsDir\":\"default\",\"paths.reportsDir\":\"default\",\"paths.stateRoot\":\"default\",\"performance.navigationRetries\":\"default\",\"performance.separationTerminationWindowDays\":\"default\",\"providers.geocodeCensus.timeoutMs\":\"default\",\"providers.geocodeNominatim.timeoutMs\":\"default\",\"timeouts.duoApprovalCrmSeconds\":\"default\",\"timeouts.duoApprovalSeconds\":\"default\",\"timeouts.duoCeremonyLeaseGraceMs\":\"default\",\"timeouts.longNavigationMs\":\"default\",\"timeouts.navigationMs\":\"default\",\"timeouts.retryDelayMs\":\"default\",\"timeouts.sessionAcquireMs\":\"default\",\"timeouts.taskMs\":\"default\",\"timeouts.transactionMs\":\"default\",\"timeouts.ukgNavigationMs\":\"default\",\"urls.crm.prod.entry\":\"default\",\"urls.crm.prod.idocsViewer\":\"default\",\"urls.crm.prod.onboardingHistory\":\"default\",\"urls.crm.prod.onboardingSearch\":\"default\",\"urls.crm.prod.ucPathEntrySheet\":\"default\",\"urls.i9.prod.app\":\"default\",\"urls.i9.prod.entry\":\"default\",\"urls.kuali.prod.entry\":\"default\",\"urls.newKronos.prod.entry\":\"default\",\"urls.oldKronos.prod.entry\":\"default\",\"urls.onbase.prod.entry\":\"default\",\"urls.servicenow.prod.entry\":\"default\",\"urls.sharepoint.prod.entry\":\"default\",\"urls.ucpath.prod.jobSummary\":\"default\",\"urls.ucpath.prod.login\":\"default\",\"urls.ucpath.prod.personProfile\":\"default\",\"urls.ucpath.prod.personalData\":\"default\",\"urls.ucpath.prod.smartHr\":\"default\"},\"revision\":2}",
+        "captured_at": "2026-10-21T12:00:00.000Z"
+      },
+      {
+        "id": "ea8bb266-721d-4b79-a23c-929b7639ed3b",
+        "revision": 1,
+        "fingerprint": "d152020a5ee0559af8cdce186a464f39d3e1e247ab3d1917e28a8580772ee09a",
+        "payload_json": "{\"capturedAt\":\"2026-10-21T12:00:00.000Z\",\"capturedBy\":\"local-operator\",\"config\":{\"actor\":{\"id\":\"local-operator\",\"label\":\"Local operator\"},\"annualDates\":{},\"browser\":{\"closeProofMs\":15000,\"headless\":true},\"browserHealth\":{\"maxAutoRefresh\":10,\"maxReopen\":3,\"monitorTickMs\":30000},\"concurrency\":{\"defaultWorkers\":4},\"daemon\":{\"idleMs\":900000,\"idleRepollMs\":30000},\"display\":{\"screenHeight\":1440,\"screenWidth\":2560},\"features\":{\"debugScreenshots\":false,\"duoWebAuthn\":true},\"ocr\":{\"backoffBaseMs\":2000,\"backoffCapMs\":60000,\"disambigConcurrency\":4,\"maxValidationRetries\":1,\"pageConcurrency\":0,\"pageMaxWaitMs\":120000,\"secondOpinionMax\":5,\"suggestConcurrency\":4,\"tier1PatienceMs\":90000},\"paths\":{\"artifactRoot\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/relay-bound-profile-bx6WGq/.tracker/data/profiles/d9fea593-a8aa-470b-9e56-eaefc83ea1a3/artifacts\",\"browserProfileRoot\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/relay-bound-profile-bx6WGq/.tracker/data/profiles/d9fea593-a8aa-470b-9e56-eaefc83ea1a3/browsers\",\"downloadsDir\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/data/downloads\",\"duoCredential\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/relay-bound-profile-bx6WGq/.tracker/data/profiles/d9fea593-a8aa-470b-9e56-eaefc83ea1a3/credentials/duo-webauthn.json\",\"duoExtensionDir\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/duo-autopilot\",\"i9CheckTrackerPath\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/data/reports/i9-check-tracker.xlsx\",\"onboardingDocsDir\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/data/onboarding\",\"reportsDir\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/data/reports\",\"stateRoot\":\"/private/tmp/relay-synthetic-old7-a7x_0dyu/relay-bound-profile-bx6WGq/.tracker/data/profiles/d9fea593-a8aa-470b-9e56-eaefc83ea1a3\"},\"performance\":{\"navigationRetries\":10,\"separationTerminationWindowDays\":14},\"providers\":{\"geocodeCensus\":{\"timeoutMs\":15000},\"geocodeNominatim\":{\"timeoutMs\":15000}},\"timeouts\":{\"duoApprovalCrmSeconds\":60,\"duoApprovalSeconds\":180,\"duoCeremonyLeaseGraceMs\":20000,\"longNavigationMs\":30000,\"navigationMs\":15000,\"retryDelayMs\":5000,\"sessionAcquireMs\":60000,\"taskMs\":180000,\"transactionMs\":300000,\"ukgNavigationMs\":60000},\"urls\":{\"crm\":{\"prod\":{\"entry\":\"https://crm.ucsd.edu/hr\",\"idocsViewer\":\"https://act-idocs.ucsd.edu\",\"onboardingHistory\":\"https://act-crm.my.site.com/hr/ONB_ShowOnboardingHistory\",\"onboardingSearch\":\"https://act-crm.my.site.com/hr/ONB_SearchOnboardings\",\"ucPathEntrySheet\":\"https://act-crm.my.site.com/hr/ONB_PPSEntrySheet\"}},\"i9\":{\"prod\":{\"app\":\"https://wwwe.i9complete.com\",\"entry\":\"https://i9complete.ucop.edu\"}},\"kuali\":{\"prod\":{\"entry\":\"https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb\"}},\"newKronos\":{\"prod\":{\"entry\":\"https://ucsd-sso.prd.mykronos.com/wfd/home\"}},\"oldKronos\":{\"prod\":{\"entry\":\"https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/\"}},\"onbase\":{\"prod\":{\"entry\":\"https://ucsd.hylandcloud.com/251ids/NavPanel.aspx\"}},\"servicenow\":{\"prod\":{\"entry\":\"https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf\"}},\"sharepoint\":{\"prod\":{\"entry\":\"https://ucsdcloud.sharepoint.com\"}},\"ucpath\":{\"prod\":{\"jobSummary\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL\",\"login\":\"https://ucpath.ucsd.edu\",\"personProfile\":\"https://ucphrprdpub.universityofcalifornia.edu/psp/ucphrprd/EMPLOYEE/HRMS/c/SETUP_PROFILE_MANAGEMENT.JPM_PERSON_PROFILE.GBL\",\"personalData\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1\",\"smartHr\":\"https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y\"}}}},\"configSnapshotId\":\"ea8bb266-721d-4b79-a23c-929b7639ed3b\",\"fingerprint\":\"d152020a5ee0559af8cdce186a464f39d3e1e247ab3d1917e28a8580772ee09a\",\"provenance\":{\"actor.id\":\"default\",\"actor.label\":\"default\",\"browser.closeProofMs\":\"default\",\"browser.headless\":\"default\",\"browserHealth.maxAutoRefresh\":\"default\",\"browserHealth.maxReopen\":\"default\",\"browserHealth.monitorTickMs\":\"default\",\"concurrency.defaultWorkers\":\"default\",\"daemon.idleMs\":\"default\",\"daemon.idleRepollMs\":\"default\",\"display.screenHeight\":\"default\",\"display.screenWidth\":\"default\",\"features.debugScreenshots\":\"default\",\"features.duoWebAuthn\":\"default\",\"ocr.backoffBaseMs\":\"default\",\"ocr.backoffCapMs\":\"default\",\"ocr.disambigConcurrency\":\"default\",\"ocr.maxValidationRetries\":\"default\",\"ocr.pageConcurrency\":\"default\",\"ocr.pageMaxWaitMs\":\"default\",\"ocr.secondOpinionMax\":\"default\",\"ocr.suggestConcurrency\":\"default\",\"ocr.tier1PatienceMs\":\"default\",\"paths.artifactRoot\":\"default\",\"paths.browserProfileRoot\":\"default\",\"paths.downloadsDir\":\"default\",\"paths.duoCredential\":\"default\",\"paths.duoExtensionDir\":\"default\",\"paths.i9CheckTrackerPath\":\"default\",\"paths.onboardingDocsDir\":\"default\",\"paths.reportsDir\":\"default\",\"paths.stateRoot\":\"default\",\"performance.navigationRetries\":\"default\",\"performance.separationTerminationWindowDays\":\"default\",\"providers.geocodeCensus.timeoutMs\":\"default\",\"providers.geocodeNominatim.timeoutMs\":\"default\",\"timeouts.duoApprovalCrmSeconds\":\"default\",\"timeouts.duoApprovalSeconds\":\"default\",\"timeouts.duoCeremonyLeaseGraceMs\":\"default\",\"timeouts.longNavigationMs\":\"default\",\"timeouts.navigationMs\":\"default\",\"timeouts.retryDelayMs\":\"default\",\"timeouts.sessionAcquireMs\":\"default\",\"timeouts.taskMs\":\"default\",\"timeouts.transactionMs\":\"default\",\"timeouts.ukgNavigationMs\":\"default\",\"urls.crm.prod.entry\":\"default\",\"urls.crm.prod.idocsViewer\":\"default\",\"urls.crm.prod.onboardingHistory\":\"default\",\"urls.crm.prod.onboardingSearch\":\"default\",\"urls.crm.prod.ucPathEntrySheet\":\"default\",\"urls.i9.prod.app\":\"default\",\"urls.i9.prod.entry\":\"default\",\"urls.kuali.prod.entry\":\"default\",\"urls.newKronos.prod.entry\":\"default\",\"urls.oldKronos.prod.entry\":\"default\",\"urls.onbase.prod.entry\":\"default\",\"urls.servicenow.prod.entry\":\"default\",\"urls.sharepoint.prod.entry\":\"default\",\"urls.ucpath.prod.jobSummary\":\"default\",\"urls.ucpath.prod.login\":\"default\",\"urls.ucpath.prod.personProfile\":\"default\",\"urls.ucpath.prod.personalData\":\"default\",\"urls.ucpath.prod.smartHr\":\"default\"},\"revision\":1}",
+        "captured_at": "2026-10-21T12:00:00.000Z"
+      }
+    ],
+    "settings": [
+      {
+        "id": "current",
+        "revision": 2,
+        "snapshot_id": "1122fa22-f086-434d-97d7-3dc78f954e24",
+        "command_id": "435faa06-0e69-4285-b3cc-e533ea16ce39",
+        "audit_id": "fbc38930-de3f-4cda-ad43-0e8a80204632",
+        "payload_json": "{\"active\":{\"activatedAt\":\"2026-10-21T12:00:00.000Z\",\"configFingerprint\":\"0b94b082c7ea2ffaf95581435ad6f9c66183e316218a2d7f52438308524066f4\",\"configSnapshotId\":\"1122fa22-f086-434d-97d7-3dc78f954e24\",\"generation\":2,\"settingsFingerprint\":\"49dcdefc3b7f09acb5ce16c490396d35ea08d5e0d0a4babd834acde1b0b0d679\",\"settingsRevision\":2},\"format\":1,\"initialization\":{\"auditId\":\"b0f2413c-b18d-496f-a86b-e6f4413c71c3\",\"commandId\":\"5a1c8341-bb4d-4396-b748-2b63301e4ea7\",\"configFingerprint\":\"d152020a5ee0559af8cdce186a464f39d3e1e247ab3d1917e28a8580772ee09a\",\"configSnapshotId\":\"ea8bb266-721d-4b79-a23c-929b7639ed3b\",\"initializedAt\":\"2026-10-21T12:00:00.000Z\",\"settings\":{\"revision\":1,\"settings\":{},\"settingsFingerprint\":\"4c71f7a9e1684556d23cc5ab43f2571afcb5cfba85b2824915a6278c22352cc5\",\"settingsSchemaHash\":\"19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7\"}},\"saved\":{\"auditId\":\"fbc38930-de3f-4cda-ad43-0e8a80204632\",\"commandFingerprint\":\"530747e66602677dae608ba86e41c180b0c22cf8a2ffe5d96acfbb07e7e13214\",\"commandId\":\"435faa06-0e69-4285-b3cc-e533ea16ce39\",\"committedAt\":\"2026-10-21T12:00:00.000Z\",\"revision\":2,\"settings\":{\"browser\":{\"headless\":false},\"concurrency\":{\"defaultWorkers\":2}},\"settingsFingerprint\":\"49dcdefc3b7f09acb5ce16c490396d35ea08d5e0d0a4babd834acde1b0b0d679\"}}",
+        "updated_at": "2026-10-21T12:00:00.000Z"
+      }
+    ]
+  },
+  "tablesSha256": "0823db201944dca98e417b6d75862df5b5ef7263cfc8894d2f84a3e40ce6355b"
+}

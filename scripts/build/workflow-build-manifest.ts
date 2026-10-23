@@ -10,8 +10,8 @@ import {
   BUILD_MANIFEST_PATH,
   BuildManifestSchema,
   parseBuildManifest,
-} from "../../src/workflow-kit/validation/build-manifest.js";
-import type { BuildManifest, SourceHash } from "../../src/workflow-kit/validation/build-manifest.js";
+} from "../../src/models/workflow/build-manifest.js";
+import type { BuildManifest, SourceHash } from "../../src/models/workflow/build-manifest.js";
 
 const MANIFEST_VERSION = 1;
 

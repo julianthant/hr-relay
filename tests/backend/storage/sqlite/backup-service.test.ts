@@ -1,6 +1,6 @@
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { randomUUID } from "node:crypto";
-import { copyFileSync,existsSync,mkdirSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
+import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFileSync,existsSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,expect,it } from "vitest";
@@ -9,7 +9,6 @@ import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/
 import { acquireRecoveryRuntimeRestore } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus } from "../../../../src/backend/storage/admission/installation.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { backupStoppedAuthority,upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
@@ -18,6 +17,8 @@ import { OfflineAuthorityRestoreService,settleInterruptedAuthorityRestore } from
 import { AuthorityBackupManifestSchema,RecoveryRuntimeLockSnapshotSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
 import { acquireRuntimeProcessLock,acquireRuntimeRestoreAdmission,observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { ProtectedSettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
@@ -27,43 +28,44 @@ const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
 function fixture() {
   const bound = createBoundProfileFixture();
-  const { workspace, admission, path } = bound, root = bound.stateRoot;
+  const { workspace, path } = bound, root = bound.stateRoot, admission = bound.admission;
   const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-backup" });
   cleanups.push(() => { database.close(); bound.close(); });
-  const directory = join(root, "backups"), clock = capturedInstantClock(NOW);
+  const directory = join(root, "backups", "authority"), clock = capturedInstantClock(NOW);
   const service = new AuthorityBackupService(admission, database, { directory }, clock);
-  return { workspace, root, path, admission, database, directory, clock, service };
+  return { workspace, root, path, get admission() { return bound.admission; }, get credentials() { return boundProfileCredentials(bound.admission); }, machine: bound.machine, renewAfterRestore: bound.renewAfterRestore, database, directory, clock, service };
 }
 describe("native authority backup", () => {
   it("restores the genuine protected command and audit while retaining independent credential bytes and exact replay", async () => {
-    const f = fixture(), store = createCredentialStore({ admission: f.admission, stateRoot: f.root });
+    const f = fixture(), store = f.credentials;
     f.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     const command = ProtectedSettingsCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: NOW,
       requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "settings-surface", family: "settings", type: "apply-protected-settings",
       target: { expectedRevision: store.read().revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
         writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-native-restore-private-value" } } } });
-    const settings = createSettingsApplicationExecutor(() => { throw new Error("protected command reached ordinary settings"); }, store);
     const execute = (database: AuthorityDatabase) => executeSettingsCommand({ authority: database, clock: f.clock,
-      ids: { uuid: randomUUID }, settings }, command);
+      ids: { uuid: randomUUID }, settings: createSettingsApplicationExecutor(() => { throw new Error("protected command reached ordinary settings"); }, f.credentials) }, command);
     const accepted = execute(f.database); expect(accepted.state).toBe("applied");
     const audit = f.database.authority.commandAudits.findSettingsHistory(command.commandId);
     expect(audit?.result).toEqual(accepted);
     const credentialPath = join(f.root, "credentials", "protected.json"), bytes = readFileSync(credentialPath), before = statSync(credentialPath);
     const report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
-    f.database.close(); const processLockRoot = join(f.root, "locks");
+    f.database.close(); const processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock); proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
     const restore = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"),
-      busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock);
+      busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock, undefined, undefined, f.credentials);
     await expect(restore.restore({ manifestPath, stoppedSystemProof })).resolves.toMatchObject({ state: "restored" });
+    expect(() => AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "stale-restore-owner" })).toThrow();
+    f.renewAfterRestore();
     const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "native-protected-restore" });
     try {
       expect(reopened.authority.commandAudits.findSettingsHistory(command.commandId)).toEqual(audit);
       expect(execute(reopened)).toEqual({ ...accepted, state: "already-applied" });
       expect(reopened.authority.commandAudits.findSettingsHistory(command.commandId)).toEqual(audit);
-      expect(store.read().revision).toBe(2);
+      expect(f.credentials.read().revision).toBe(command.target.expectedRevision + 1);
       expect(readFileSync(credentialPath)).toEqual(bytes);
       const after = statSync(credentialPath);
       expect({ ino: after.ino, mtimeMs: after.mtimeMs, ctimeMs: after.ctimeMs, mode: after.mode, uid: after.uid }).toEqual({
@@ -74,9 +76,9 @@ describe("native authority backup", () => {
     const f = fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     f.database.close();
-    const original = readFileSync(f.path), credentials = join(f.root, "credentials"), credentialPath = join(credentials, "offline-custody.bin");
-    mkdirSync(credentials, { mode: 0o700 }); writeFileSync(credentialPath, "synthetic-independent-credential", { mode: 0o600 });
-    const credentialBytes = readFileSync(credentialPath), credentialStat = statSync(credentialPath), processLockRoot = join(f.root, "locks");
+    const original = readFileSync(f.path), credentials = join(f.root, "credentials"), credentialPath = join(f.root, "offline-custody.bin");
+    expect(statSync(credentials).isDirectory()).toBe(true); writeFileSync(credentialPath, "synthetic-independent-credential", { mode: 0o600 });
+    const credentialBytes = readFileSync(credentialPath), credentialStat = statSync(credentialPath), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock);
     proofs.recordRuntimeState(snapshot);
@@ -85,10 +87,12 @@ describe("native authority backup", () => {
     const restore = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path,
       suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 },
       async staged => { rebuilds += 1; const stagedAdmission = f.admission.stoppedStagedAuthority(staged);
-        try { expect(inspectAuthorityBackupReadOnly(stagedAdmission, staged).tables).toHaveLength(36); } finally { stagedAdmission.release(); } }, f.clock);
+        try { expect(inspectAuthorityBackupReadOnly(stagedAdmission, staged).tables).toHaveLength(39); } finally { stagedAdmission.release(); } }, f.clock, undefined, undefined, f.credentials);
     const restored = await restore.restore({ manifestPath, stoppedSystemProof });
     expect(restored.state).toBe("restored"); expect(rebuilds).toBe(1);
     expect(readFileSync(join(f.root, "backups", "suspects", restored.suspectFileName))).toEqual(original);
+    expect(() => AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "stale-restore-owner" })).toThrow();
+    f.renewAfterRestore();
     const admitted = inspectAuthorityBackupReadOnly(f.admission, f.path);
     expect(admitted.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
     expect(admitted.authorityGeneration).toBe(manifest.authorityGeneration);
@@ -98,7 +102,7 @@ describe("native authority backup", () => {
   it.each(["before-swap", "after-swap"] as const)("preserves authenticated suspect evidence and reports the actual authority outcome on %s failure", async phase => {
     const f = fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
-    f.database.close(); const original = readFileSync(f.path), processLockRoot = join(f.root, "locks"), suspects = join(f.root, "backups", "suspects");
+    f.database.close(); const original = readFileSync(f.path), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), suspects = join(f.root, "backups", "suspects");
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock); proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
@@ -107,13 +111,14 @@ describe("native authority backup", () => {
       { copyFile: copyFileSync, atomicReplace: (source, destination) => {
         if (phase === "after-swap") renameSync(source, destination);
         throw new Error("synthetic-swap-fault");
-      } });
+      } }, undefined, f.credentials);
     await expect(restore.restore({ manifestPath, stoppedSystemProof })).rejects.toMatchObject({
       authorityState: phase === "after-swap" ? "replaced" : "unchanged",
     });
     const preserved = readdirSync(suspects).filter(name => name.endsWith(".sqlite")); expect(preserved).toHaveLength(1);
     expect(readFileSync(join(suspects, preserved[0]))).toEqual(original);
-    expect(inspectAuthorityBackupReadOnly(f.admission, f.path).authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
+    const copy = f.machine.verifiedReadOnlyCopy(f.path, createHash("sha256").update(readFileSync(f.path)).digest("hex"));
+    try { expect(inspectAuthorityBackupReadOnly(copy, f.path).authorityContentFingerprint).toBe(manifest.authorityContentFingerprint); } finally { copy.release(); }
     if (phase === "before-swap") expect(readFileSync(f.path)).toEqual(original);
     const reacquired = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, f.clock);
     reacquired.release();
@@ -126,7 +131,7 @@ describe("native authority backup", () => {
     f.database.close();
     for(const row of companions)writeFileSync(`${f.path}${row.suffix}`,row.bytes,{mode:0o600});
     const before = companions.map(row => ({...row, inode:statSync(`${f.path}${row.suffix}`).ino}));
-    const original = readFileSync(f.path), processLockRoot = join(f.root,"locks"), journalPath = join(f.workspace,".tracker","control","journal.json");
+    const original = readFileSync(f.path), processLockRoot = join(f.workspace,rebuildRuntimeIsolation.processLockRoot), journalPath = join(f.workspace,".tracker","control","journal.json");
     const snapshot = observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock);
     const proofs = new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60_000},f.clock);proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({observedBy:LOCAL_OPERATOR_ACTOR_ID,sourceDatabaseIdentity:snapshot.sourceDatabaseIdentity});
@@ -135,7 +140,7 @@ describe("native authority backup", () => {
       copyFile:copyFileSync,atomicReplace(){throw new Error("before-authority-replacement");},renamePath(source,destination){
         if(rollbackFault && source.endsWith(".live-companion"))throw new Error("companion-rollback-fault");
         renameSync(source,destination);
-      }});
+      }}, undefined, f.credentials);
     await expect(restore.restore({manifestPath,stoppedSystemProof})).rejects.toMatchObject({authorityState:rollbackFault ? "companion-state-uncertain" : "unchanged"});
     expect(readFileSync(f.path)).toEqual(original);
     if(rollbackFault){
@@ -143,7 +148,7 @@ describe("native authority backup", () => {
       expect(existsSync(journal.restore.stagedPath)).toBe(true);
       for(const row of before){expect(readFileSync(`${journal.restore.stagedPath}${row.suffix}.live-companion`)).toEqual(row.bytes);
         expect(statSync(`${journal.restore.stagedPath}${row.suffix}.live-companion`).ino).toBe(row.inode);}
-      f.admission.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared")).toThrow(/unfinished restoring/u);
+      f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared")).toThrow(/unfinished restoring/u);
     }else{
       expect(existsSync(journalPath)).toBe(false);
       for(const row of before){expect(readFileSync(`${f.path}${row.suffix}`)).toEqual(row.bytes);expect(statSync(`${f.path}${row.suffix}`).ino).toBe(row.inode);}
@@ -156,7 +161,7 @@ describe("native authority backup", () => {
       const manifest=report.manifests[0],manifestPath=join(f.directory,`${manifest.backupFileName}.manifest.json`);
       const companions=["-wal","-shm"].map(suffix=>({suffix,bytes:readFileSync(`${f.path}${suffix}`)}));f.database.close();
       for(const row of companions)writeFileSync(`${f.path}${row.suffix}`,row.bytes,{mode:0o600});
-      const processLockRoot=join(f.root,"locks"),suspects=join(f.root,"backups","suspects"),journalPath=join(f.workspace,".tracker","control","journal.json");
+      const processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot),suspects=join(f.root,"backups","suspects"),journalPath=join(f.workspace,".tracker","control","journal.json");
       const proofs=new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60_000},f.clock);
       const fresh=()=>{const observed=observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock);
         proofs.recordRuntimeState(observed);return proofs.issue({observedBy:LOCAL_OPERATOR_ACTOR_ID,sourceDatabaseIdentity:observed.sourceDatabaseIdentity});};
@@ -171,10 +176,10 @@ describe("native authority backup", () => {
             renameSync(target,`${target}.preserved`);copyFileSync(`${target}.preserved`,target);
           }else{const bytes=readFileSync(target);bytes[bytes.length-1]^=1;writeFileSync(target,bytes);}
           if(outcome === "unchanged")throw new Error("fault-before-authority-replacement");
-        }});
+        }}, undefined, f.credentials);
       await expect(restore.restore({manifestPath,stoppedSystemProof:fresh()}),fault).rejects.toMatchObject({authorityState:outcome});
       const journalBytes=readFileSync(journalPath),journal=JSON.parse(journalBytes.toString()) as {restore:{operationId:string}};
-      f.admission.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared"),fault).toThrow(/unfinished restoring/u);
+      f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared"),fault).toThrow(/unfinished restoring/u);
       const held=acquireRuntimeRestoreAdmission({processLockRoot,pid:process.pid},f.clock);
       const recovery=acquireRecoveryRuntimeRestore(f.workspace,journal.restore.operationId,held);
       try{
@@ -188,7 +193,7 @@ describe("native authority backup", () => {
   it("retains a durable restore barrier after ambiguous replacement and staged disappearance, then settles only the exact verified replacement", async () => {
     const f = fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
-    f.database.close(); const original = readFileSync(f.path), processLockRoot = join(f.root, "locks");
+    f.database.close(); const original = readFileSync(f.path), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock);
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
     proofs.recordRuntimeState(snapshot);
@@ -197,13 +202,13 @@ describe("native authority backup", () => {
       busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock,
       { copyFile: copyFileSync, atomicReplace(source, destination) {
         renameSync(source, destination); copyFileSync(destination, source); throw new Error("both-paths-after-replacement");
-      } });
+      } }, undefined, f.credentials);
     await expect(service.restore({ manifestPath, stoppedSystemProof })).rejects.toMatchObject({ authorityState: "authority-state-uncertain" });
     const journalPath = join(f.workspace, ".tracker", "control", "journal.json"), journalBytes = readFileSync(journalPath);
     const journal = JSON.parse(journalBytes.toString()) as { phase: string; restore: { operationId: string; stagedPath: string; suspectPath: string } };
     expect(journal.phase).toBe("restoring"); expect(existsSync(journal.restore.stagedPath)).toBe(true);
     expect(readFileSync(journal.restore.suspectPath)).toEqual(original); expect(readFileSync(manifestPath)).not.toHaveLength(0);
-    f.admission.release();
+    f.admission.release(); f.machine.release();
     expect(() => acquireEntrypointAdmission(f.workspace, "shared")).toThrow(/unfinished restoring/u);
     expect(() => inspectPendingRelocationStatus(f.workspace)).toThrow(/not an owned relocation/u);
     rmSync(journal.restore.stagedPath);
@@ -214,8 +219,10 @@ describe("native authority backup", () => {
       expect(() => acquireRecoveryRuntimeRestore(f.workspace, "ffffffff-ffff-4fff-8fff-ffffffffffff", restore)).toThrow(/exact offline restore recovery/u);
       recovered = acquireRecoveryRuntimeRestore(f.workspace, journal.restore.operationId, restore);
       const currentRecovery = recovered;
+      let wrongBindingVerifications = 0;
       expect(() => currentRecovery.admission.settleAuthorityRestore({ ...currentRecovery.input, authorityGeneration: currentRecovery.input.authorityGeneration + 1 },
-        "replaced", () => { throw new Error("wrong binding reached verifier"); }, restore)).toThrow(/operation binding mismatch/u);
+        "replaced", () => { wrongBindingVerifications += 1; throw new Error("wrong binding reached verifier"); }, restore)).toThrow("profile-restore-custody-mismatch");
+      expect(wrongBindingVerifications).toBe(0);
       expect(() => currentRecovery.admission.settleAuthorityRestore(currentRecovery.input, "replaced", () => ({
         authorityGeneration: currentRecovery.input.authorityGeneration + 1, authorityContentFingerprint: currentRecovery.input.authorityContentFingerprint,
       }), restore)).toThrow(/authority proof mismatch/u);
@@ -232,7 +239,8 @@ describe("native authority backup", () => {
       expect(existsSync(journalPath)).toBe(false);
     } finally { recovered?.admission.release(); restore.release(); }
     const reopened = acquireEntrypointAdmission(f.workspace, "shared");
-    try { expect(inspectAuthorityBackupReadOnly(reopened, f.path).authorityContentFingerprint).toBe(manifest.authorityContentFingerprint); }
+    try { const copy = reopened.verifiedReadOnlyCopy(f.path, createHash("sha256").update(readFileSync(f.path)).digest("hex"));
+      try { expect(inspectAuthorityBackupReadOnly(copy, f.path).authorityContentFingerprint).toBe(manifest.authorityContentFingerprint); } finally { copy.release(); } }
     finally { reopened.release(); }
   });
   it("publishes authenticated populated current bytes with the exact generation and table registry", async () => {
@@ -244,7 +252,7 @@ describe("native authority backup", () => {
     expect(manifest.verification.authorityGeneration).toBe(f.database.getMeta().authorityGeneration);
     const copy = f.admission.verifiedReadOnlyCopy(verified.backupPath, manifest.sha256);
     try { const inspection = inspectAuthorityBackupReadOnly(copy, verified.backupPath);
-      expect(inspection.tables).toHaveLength(36); expect(inspection.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
+      expect(inspection.tables).toHaveLength(39); expect(inspection.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
       expect(inspection.exactTableRegistry).toBe(true); expect(inspection.invariantViolations).toEqual([]);
     } finally { copy.release(); }
   });
@@ -267,20 +275,23 @@ describe("native authority backup", () => {
     const raw = new DatabaseSync(f.path);
     try { raw.exec("PRAGMA user_version=56"); } finally { raw.close(); }
     expect(() => inspectAuthorityBackupReadOnly(f.admission, f.path)).toThrow(/schema/u);
+    const historical = new DatabaseSync(f.path);
+    try { historical.exec("PRAGMA user_version=6"); } finally { historical.close(); }
+    expect(() => inspectAuthorityBackupReadOnly(f.admission, f.path)).toThrow(/schema/u);
     const current = new DatabaseSync(f.path);
-    try { current.exec("PRAGMA user_version=6; CREATE TABLE extra_authority(id TEXT)"); } finally { current.close(); }
+    try { current.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; CREATE TABLE extra_authority(id TEXT)`); } finally { current.close(); }
     expect(() => inspectAuthorityBackupReadOnly(f.admission, f.path)).toThrow(/schema-shape/u);
   });
   it("backs up a stopped current source without conversion or settings side files", async () => {
     const f = fixture(), expected = f.database.getMeta(); f.database.close();
     const source = openAuthorityBackupSourceReadOnly(f.admission, f.path);
-    try { expect(source.getMeta()).toEqual({ schemaVersion: 6, authorityGeneration: expected.authorityGeneration, updatedAt: expected.updatedAt });
+    try { expect(source.getMeta()).toEqual({ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: expected.authorityGeneration, updatedAt: expected.updatedAt, installationId: expected.installationId, profileId: expected.profileId });
       const report = await new AuthorityBackupService(f.admission, source, { directory: f.directory }, f.clock).request({ trigger: "operator", requiredGeneration: expected.authorityGeneration });
       expect(report.finalGeneration).toBe(expected.authorityGeneration);
     } finally { source.close(); }
   });
   it("observes every admitted process role and refuses stopped maintenance while live-smoke or unbound custody is held", async () => {
-    const f = fixture(), processLockRoot=join(f.root,"locks"); f.database.close();
+    const f = fixture(), processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot); f.database.close();
     for(const role of ["live-smoke","workers","geocode"] as const){
       const lock=acquireRuntimeProcessLock(role==="workers"?{processLockRoot,name:role,pid:process.pid,
         admission:{kind:"unbound-worker",authorityPath:f.path}}:{processLockRoot,name:role,pid:process.pid},f.clock);
@@ -315,7 +326,7 @@ describe("native authority backup", () => {
   });
 
   it("refuses uncertain immutable geocode claims before stopped maintenance can open or mutate authority",async()=>{
-    const f=fixture(),processLockRoot=join(f.root,"locks");f.database.close();
+    const f=fixture(),processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot);f.database.close();
     acquireRuntimeProcessLock({processLockRoot,name:"geocode",pid:process.pid},f.clock);
     const claims=join(processLockRoot,"geocode-claims"),claim=readdirSync(claims).find(name=>name.endsWith(".claim.json"));
     if(claim===undefined)throw new Error("missing genuine geocode claim");

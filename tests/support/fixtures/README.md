@@ -183,6 +183,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `processes/run-record-race-worker.ts` | run record race worker |
 | `processes/runtime-lock-contender.ts` | runtime lock contender |
 | `processes/worker-browser-control-cli.ts` | worker browser control cli |
+| `processes/worker-composition-child.ts` | real worker composition concurrency fixture |
 | `processes/worker-stub-cli.ts` | worker stub cli |
 | `helpers/browser/session-factory-fixtures.ts` | fresh browser factory and worker session runtime |
 | `helpers/workflow/flow-task-fixtures.ts` | flow, graph and scenario task contracts |
@@ -194,7 +195,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/test-target-registry-fixtures.ts` | registry subjects and recording public inputs |
 | `helpers/backend/note-scope-fixtures.ts` | note and terminal event fixture inputs |
 | `helpers/backend/owned-vite-probe-fixtures.ts` | owned local Vite probe server |
-| `helpers/assistant-function-fixtures.ts` | explicit synthetic namespaced functions and typed Responses fixtures; no production tool bindings |
 | `helpers/dry-run-scenario-fixtures.ts` | fresh rehearsal manifest, evidence assertions and verification-only orchestration |
 
 | `helpers/dashboard/search-page-fixtures.ts` | fresh authored zero-match search page |

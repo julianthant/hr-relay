@@ -1,3 +1,5 @@
+import { AssistantActionRecordSchema, AssistantChatRecordSchema, AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
+import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createWorkbookLibraryRepository, validateWorkbookLibrary } from "./workbook-library-repository.js";
 import { WorkerControlRecordSchema } from "../../../models/run/worker-control.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
@@ -61,6 +63,7 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync, lstatSync, openSync, closeSync, fsyncSync, unlinkSync, constants } from "node:fs";
 import { dirname, resolve, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { assertWorkflowRunResultAuthorization, descriptorRuntimeNodes, workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -109,7 +112,7 @@ import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-sce
 
 import { IdempotencyKeySchema, WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteAttemptRecord, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, isSupportedStoppedAuthoritySchemaVersion, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames, tableClassification } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, isSupportedStoppedAuthoritySchemaVersion, SQLITE_MIGRATIONS, deriveAuthorityUpgradePlanDigest, auditMigrationTableCoverage, migrationTableNames, tableClassification } from "./migrations.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
@@ -505,6 +508,7 @@ export type DuoCeremonyLeaseRepository = Readonly<{
 }>;
 
 export type AuthorityRepositories = Readonly<{
+  assistantAuthorization: ReturnType<typeof createAssistantAuthorizationRepository>;
   explorerOverrides: ReturnType<typeof createExplorerOverrideRepository>;
   timelineEvents: TimelineRepository;
   runs: RunRepository;
@@ -599,6 +603,13 @@ function readIntPragma(
   const value = row[name === "busy_timeout" ? "timeout" : name];
   if (value === undefined) throw new Error(`PRAGMA ${name} returned no value`);
   return value;
+}
+
+function existingDatabaseLocation(path: string): URL | string {
+  if (path === ":memory:") return path;
+  const location = pathToFileURL(path);
+  location.searchParams.set("mode", "rw");
+  return location;
 }
 
 function readTextPragma(database: DatabaseSync, name: "journal_mode"): string {
@@ -1058,6 +1069,23 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             inspected = { ...raw, payload_json: canonicalJsonStringify(plan) };
           }
           const record = nativeOrdinaryRecordFromRow(table,inspected);
+          if (table === "assistant_grants") {
+            const grant = AssistantGrantRecordSchema.parse(record), owner = readMetaRow(database);
+            if (grant.profileId !== owner.profile_id) throw new Error("assistant-grant-profile-mismatch");
+            const command = CommandRequestSchema.parse(commandFromRow(database.prepare("SELECT * FROM commands WHERE id=?").get(grant.commandId)));
+            if (command.type !== "apply-settings" || command.payload.assistantPermission === undefined
+              || command.payload.assistantPermission.mode !== grant.policy.mode
+              || command.payload.assistantPermission.expectedPolicyRevision !== grant.policy.revision - 1) throw new Error("assistant-grant-command-mismatch");
+          }
+          if (table === "assistant_chats") {
+            if (AssistantChatRecordSchema.parse(record).profileId !== readMetaRow(database).profile_id) throw new Error("assistant-chat-profile-mismatch");
+          }
+          if (table === "assistant_actions") {
+            const action = AssistantActionRecordSchema.parse(record);
+            const rawChat = database.prepare("SELECT * FROM assistant_chats WHERE id=?").get(action.chatId);
+            const chat = AssistantChatRecordSchema.parse(nativeOrdinaryRecordFromRow("assistant_chats", rawChat));
+            if (chat.profileId !== action.binding.profileId || chat.epoch !== action.binding.accountSessionEpoch) throw new Error("assistant-action-chat-mismatch");
+          }
           if (table === "run_results") assertTerminalEvidenceOwner(database,RunResultRecordSchema.parse(record));
           if (table === "write_intents") { authenticateStoredWriteResolution(database,record); assertConfirmationPublication(database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId); }
           if (table === "command_audits") {
@@ -1072,6 +1100,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
       validated++;
     }
   }
+  if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
+    && database.prepare("SELECT 1 FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' LIMIT 1").get() !== undefined) throw new Error("assistant-grant-missing-with-history");
   if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database);
   try{readAppSettings(database);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
@@ -1255,7 +1285,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
     if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
   }
-  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1281,6 +1311,11 @@ export function inspectNormalAuthority(database: DatabaseSync): AuthorityCopyIns
   return inspectOpenDatabase(database, false);
 }
 
+function readAuthorityUpgradeRecords(database: DatabaseSync) {
+  return database.prepare("SELECT * FROM database_upgrades ORDER BY rowid").all()
+    .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
+}
+
 function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, expectedFingerprint?: string, backup?: VerifiedBackup) {
   requireRuntimeAdmission(admission).assertExclusive();
   const version = readIntPragma(database, "user_version");
@@ -1299,9 +1334,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     if (backup === undefined || expectedFingerprint === undefined) throw new Error("upgrade-verified-backup-required");
     if (backup.manifest.schemaVersion !== version || backup.manifest.authorityContentFingerprint !== fingerprint
       || backup.manifest.authorityGeneration !== meta.authority_generation) throw new Error("source-changed: upgrade backup differs from source");
-    const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > version).flatMap(migration => migration.statements);
-    const planDigest = createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion: version,
-      toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, sourceContentFingerprint: fingerprint, statements })).digest("hex");
+    const planDigest = deriveAuthorityUpgradePlanDigest(version, fingerprint);
     for (const migration of SQLITE_MIGRATIONS.filter(item => item.version > version)) {
       for (const [index, statement] of migration.statements.entries()) {
         if (migration.version === 7 && index === 1) {
@@ -1648,7 +1681,7 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
-    purpose: "ordinary" | "stopped-restore-projection" = "ordinary",
+    purpose: "ordinary" | "profile-initialization" | "stopped-restore-projection" = "ordinary",
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
@@ -1657,6 +1690,9 @@ export class AuthorityDatabase implements Disposable {
     const binding = this.#admission.profileBinding;
     const existed = options.path !== ":memory:" && existsSync(options.path);
     const readOnlyNoMigrate = options.openMode !== "read-write";
+    const mayCreate = purpose === "profile-initialization" || options.path === ":memory:";
+    if (existed && purpose === "profile-initialization") throw new Error("profile-database-initialization-already-exists");
+    if (!existed && !mayCreate && !readOnlyNoMigrate) throw new Error("profile-database-binding-required");
     if (readOnlyNoMigrate && !existed) {
       throw new Error(`${options.openMode} requires an existing authority database`);
     }
@@ -1674,7 +1710,7 @@ export class AuthorityDatabase implements Disposable {
     this.#lifecycleHooks = lifecycleHooks;
     this.#path = options.path;
     this.#busyTimeoutMs = options.busyTimeoutMs;
-    this.#database = new DatabaseSync(options.path, {
+    this.#database = new DatabaseSync(readOnlyNoMigrate || mayCreate ? options.path : existingDatabaseLocation(options.path), {
       readOnly: readOnlyNoMigrate,
       enableForeignKeyConstraints: true,
       enableDoubleQuotedStringLiterals: false,
@@ -1698,7 +1734,7 @@ export class AuthorityDatabase implements Disposable {
         this.#configureReadOnlyConnection();
         this.#validateReadOnlyNoMigrateDatabase(existingVersion);
       } else {
-        if (!existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
+        if (!existed && purpose !== "stopped-restore-projection") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#configureConnection();
         if (existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#validateDatabase();
@@ -1760,7 +1796,7 @@ export class AuthorityDatabase implements Disposable {
       const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
       const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
       const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
-      return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+      return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
     });
   }
 
@@ -1778,7 +1814,7 @@ export class AuthorityDatabase implements Disposable {
     admission.assertProfileInitialization();
     const path = join(admission.stateRoot, "state.db");
     if (existsSync(path)) throw new Error("profile-database-initialization-already-exists");
-    const database = new AuthorityDatabase(admission, { path, busyTimeoutMs: 250, migrationOwner: "profile-initialization" }, clock);
+    const database = new AuthorityDatabase(admission, { path, busyTimeoutMs: 250, migrationOwner: "profile-initialization" }, clock, undefined, undefined, undefined, undefined, "profile-initialization");
     database.close();
   }
 
@@ -1805,7 +1841,7 @@ export class AuthorityDatabase implements Disposable {
 
   static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup) {
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
-    const database = new DatabaseSync(path, { enableForeignKeyConstraints: true, timeout: 250 });
+    const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
     try { return migrateStoppedAuthority(database, clock, admission, expectedFingerprint, backup); }
     finally { database.close(); }
   }
@@ -1813,8 +1849,7 @@ export class AuthorityDatabase implements Disposable {
 
   readUpgradePhases() {
     return this.withAuthorityReadSnapshot(() => {
-      const phases = this.#database.prepare("SELECT * FROM database_upgrades ORDER BY rowid").all().map(raw => {
-        const record = AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades",raw));
+      const phases = readAuthorityUpgradeRecords(this.#database).map(record => {
         return { phase: record.phase, fromSchemaVersion: record.fromSchemaVersion,
           toSchemaVersion: record.toSchemaVersion, recordedAt: record.recordedAt };
       });
@@ -1970,6 +2005,7 @@ export class AuthorityDatabase implements Disposable {
       });
       return Object.freeze({
         authorityGeneration: this.getMeta().authorityGeneration,
+        upgrades: readAuthorityUpgradeRecords(this.#database),
         slots,
         reservations: readWorkerReservationCustody(this.#database, slots, controls),
         leases: this.#database.prepare("SELECT * FROM worker_leases ORDER BY id").all()
@@ -3437,6 +3473,7 @@ export class AuthorityDatabase implements Disposable {
     const imports = createImportedArtifactRepositories({ database: this.#database,
       mutate: (work) => this.#authorityWrite("artifacts", work) });
     return Object.freeze({
+      assistantAuthorization: createAssistantAuthorizationRepository({ database: this.#database, mutate: (table, work) => this.#authorityWrite(table, work) }),
       workbooks: createWorkbookLibraryRepository({ database: this.#database,
         mutate: work => this.#authorityWrite("workbook_library", work),
         read: work => this.#withReadSnapshot(work) }),

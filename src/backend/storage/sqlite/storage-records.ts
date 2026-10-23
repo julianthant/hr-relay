@@ -1,3 +1,4 @@
+import { AssistantGrantRecordSchema, AssistantChatRecordSchema, AssistantActionRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { SavedWorkbookSchema } from "../../../models/dashboard/workbooks.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { NativeCommandRequestSchema, NativeCommandAuditSchema } from "./command-record-row.js";
@@ -46,6 +47,9 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   commands: NativeCommandRequestSchema,
   command_audits: NativeCommandAuditSchema,
   settings: AppSettingsSchema,
+  assistant_grants: AssistantGrantRecordSchema,
+  assistant_chats: AssistantChatRecordSchema,
+  assistant_actions: AssistantActionRecordSchema,
   run_batches: RunSessionRecordSchema,
   deleted_runs: DeletedRunRecordSchema,
   runs: RunRecordSchema,

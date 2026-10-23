@@ -1,3 +1,4 @@
+import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -8,7 +9,6 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../../src/models/config/runtime-generation.js";
 import { ActorIdSchema, TraceIdSchema } from "../../../../src/rules/identity/ids.js";
-import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 
 import { join } from "node:path";
@@ -27,7 +27,7 @@ import { RUN_ID, WORKFLOW_ID, sequentialIdFactory } from "../../../support/fixtu
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
 import { happySessionHarness, personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, ensureBaselineRuntimeConfig, composeInput, cleanup } = createWorkerCompositionTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
+const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, workerLifetime, ensureBaselineRuntimeConfig, composeInput, cleanup } = createWorkerCompositionTestWorld();
 
 
 afterEach(cleanup);
@@ -40,7 +40,6 @@ describe("settings apply during a production worker claim", () => {
     const database = reopen(stateRoot, clock);
     const spans = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
     const queued = database.authority.runs.get(RUN_ID); assert.ok(queued);
-    spans.emit(runQueuedSpanEvent({ run: queued, actorId: ActorIdSchema.parse("local-operator"), title: "Synthetic claim fixture" }));
     const credentials = createCredentialStore({ stateRoot });
     const { kernel } = kernelHarness({ database, clock, settings: createSettingsApplicationExecutor(
       (settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }), credentials) });
@@ -50,7 +49,9 @@ describe("settings apply during a production worker claim", () => {
       family: "settings", type: "apply-protected-settings", target: { expectedRevision: revision },
       payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: nextCommandId(), entries: { timekeeperName: { set: value } } },
     });
-    assert.equal(applyProtected("Synthetic Initial Keeper", 1).state, "applied");
+    const protectedBaseline = credentials.read().revision;
+    const ordinaryBaseline = readSettings(database.authority).revision;
+    assert.equal(applyProtected("Synthetic Initial Keeper", protectedBaseline).state, "applied");
     const gate = Promise.withResolvers<void>();
     const arrived = Promise.withResolvers<void>();
     const sessions = happySessionHarness();
@@ -80,10 +81,10 @@ describe("settings apply during a production worker claim", () => {
       const epoch = database.authority.settingsCurrent.get();
       const snapshot = database.authority.configSnapshots.get(active.configSnapshotId);
       assert.equal(source.read().entries.timekeeperName?.value, "Synthetic Initial Keeper");
-      const result = kind === "protected" ? applyProtected("Synthetic Rotated Keeper", 2) : (() => {
+      const result = kind === "protected" ? applyProtected("Synthetic Rotated Keeper", protectedBaseline + 1) : (() => {
         const patch = { "timeouts.taskMs": { set: 240_000 } } as const;
         return kernel.execute({ commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
-          family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
+          family: "settings", type: "apply-settings", target: { expectedRevision: ordinaryBaseline },
           payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
       })();
       assert.equal(result.state, "applied");
@@ -172,11 +173,13 @@ function refusingWorkerSupervisor(): WorkerPoolProcessSupervisor {
 }
 
 function kernelHarness(existing?: { database: AuthorityDatabase; clock: TestClock;
-  settings: ReturnType<typeof createSettingsApplicationExecutor> }): { database: AuthorityDatabase; kernel: CommandKernel; clock: TestClock } {
+  settings: ReturnType<typeof createSettingsApplicationExecutor> }): { database: AuthorityDatabase; kernel: CommandKernel; clock: TestClock; stateRoot?: string } {
   const clock = existing?.clock ?? manualClock(new Date(NOW));
   let database: AuthorityDatabase;
+  let ownedStateRoot: string | undefined;
   if (existing === undefined) {
     const { repoRoot, stateRoot } = repoRootWithState();
+    ownedStateRoot = stateRoot;
     ensureBaselineRuntimeConfig(repoRoot, clock);
     database = reopen(stateRoot, clock);
   } else database = existing.database;
@@ -203,7 +206,7 @@ function kernelHarness(existing?: { database: AuthorityDatabase; clock: TestCloc
     workerRuntime: { pool: createWorkerPoolRuntimeExecutor(refusingWorkerSupervisor(), database.authority.workerSlots) },
     ...(existing === undefined ? {} : { settings: existing.settings }),
   });
-  return { database, kernel, clock };
+  return { database, kernel, clock, ...(ownedStateRoot === undefined ? {} : { stateRoot: ownedStateRoot }) };
 }
 
 let commandSequence = 0;
@@ -235,28 +238,29 @@ describe("dashboard-composed worker-browser command arms", () => {
     const slot = harness.database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
     assert.deepEqual(planned.affectedTargets, [{ family: "worker-pool", workflowId: WORKFLOW_ID },
       { family: "worker-browser", workerId: slot.workerId }]);
-    assert.equal(harness.database.authority.workerLeases.start({ workerId: slot.workerId,
-      workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"], processId: 11,
-      requestedBy: "local-operator", now: NOW }).state, "started");
-    const lease = harness.database.authority.workerLeases.get(slot.workerId); assert.ok(lease);
-    const commandId = nextCommandId();
-    const command = { ...envelope(commandId), type,
-      target: { workerId: slot.workerId, expectedVersion: lease.version,
-        ...(type === "stop-worker" ? { membershipRevision: slot.membershipRevision } : {}),
-        controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } } };
-    if (type === "stop-worker") {
-      const result = await harness.kernel.executeWorkerPool(command);
-      assert.equal(result.state, "rejected");
-      assert.ok(result.state === "rejected");
-      assert.match(result.message, /worker-reset-owner-unavailable/u);
-      assert.equal(harness.database.authority.commands.get(commandId), undefined);
-      assert.equal(harness.database.authority.workerControls.get(commandId), undefined);
-    } else {
-      await assert.rejects(harness.kernel.executeWorkerPool(command), /mutating control requires durable supervisor ownership/u);
-      assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
-    }
-    assert.deepEqual(harness.database.authority.workerLeases.get(slot.workerId)?.control, lease.control);
-    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
+    assert.ok(harness.stateRoot);
+    const lifetime = await workerLifetime(harness.stateRoot, harness.clock, slot.workerId);
+    try {
+      const lease = harness.database.authority.workerLeases.get(slot.workerId); assert.ok(lease);
+      const commandId = nextCommandId();
+      const command = { ...envelope(commandId), type,
+        target: { workerId: slot.workerId, expectedVersion: lease.version,
+          ...(type === "stop-worker" ? { membershipRevision: slot.membershipRevision } : {}),
+          controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } } };
+      if (type === "stop-worker") {
+        const result = await harness.kernel.executeWorkerPool(command);
+        assert.equal(result.state, "rejected");
+        assert.ok(result.state === "rejected");
+        assert.match(result.message, /worker-reset-owner-unavailable/u);
+        assert.equal(harness.database.authority.commands.get(commandId), undefined);
+        assert.equal(harness.database.authority.workerControls.get(commandId), undefined);
+      } else {
+        await assert.rejects(harness.kernel.executeWorkerPool(command), /mutating control requires durable supervisor ownership/u);
+        assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
+      }
+      assert.deepEqual(harness.database.authority.workerLeases.get(slot.workerId)?.control, lease.control);
+      assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
+    } finally { await lifetime.close(); }
   });
   it("admits three native members without asserting they have started", async () => {
     const harness = kernelHarness();
@@ -281,21 +285,22 @@ describe("dashboard-composed worker-browser command arms", () => {
   it("keeps refresh and reopen unavailable without acknowledging a browser effect", async () => {
     const harness = kernelHarness(); await plan(harness);
     const slot = harness.database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
-    assert.equal(harness.database.authority.workerLeases.start({ workerId: slot.workerId,
-      workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"], processId: 12,
-      requestedBy: "local-operator", now: NOW }).state, "started");
-    for (const type of ["refresh-browser", "reopen-browser"] as const) {
-      const commandId = nextCommandId();
-      const lease = harness.database.authority.workerLeases.get(slot.workerId); assert.ok(lease);
-      const result = await harness.kernel.executeWorkerPool({ ...envelope(commandId), type,
-        target: { workerId: slot.workerId,
-          controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision },
-          browserSessionId: UUID_7, expectedVersion: lease.version } });
-      assert.equal(result.state, "rejected");
-      assert.ok(result.state === "rejected");
-      assert.match(result.message, /worker-browser-session-unavailable/u);
-      assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
-    }
+    assert.ok(harness.stateRoot);
+    const lifetime = await workerLifetime(harness.stateRoot, harness.clock, slot.workerId);
+    try {
+      for (const type of ["refresh-browser", "reopen-browser"] as const) {
+        const commandId = nextCommandId();
+        const lease = harness.database.authority.workerLeases.get(slot.workerId); assert.ok(lease);
+        const result = await harness.kernel.executeWorkerPool({ ...envelope(commandId), type,
+          target: { workerId: slot.workerId,
+            controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision },
+            browserSessionId: UUID_7, expectedVersion: lease.version } });
+        assert.equal(result.state, "rejected");
+        assert.ok(result.state === "rejected");
+        assert.match(result.message, /worker-browser-session-unavailable/u);
+        assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
+      }
+    } finally { await lifetime.close(); }
   });
 });
 

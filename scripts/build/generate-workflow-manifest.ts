@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { BUILD_MANIFEST_PATH } from "../../src/workflow-kit/validation/build-manifest.js";
+import { BUILD_MANIFEST_PATH } from "../../src/models/workflow/build-manifest.js";
 import {
   auditBuildManifestBytes,
   computeBuildManifest,

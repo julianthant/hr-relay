@@ -14,11 +14,8 @@ import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-perso
 import { UcpathStagePendingTerminationSweep } from "../../../src/models/systems/ucpath/stage-pending-termination-sweep.js";
 import { CANONICAL_FIELDS } from "../../../src/models/fields/registry.js";
 import { EidSchema, FingerprintSchema, ItemIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
-import {
-  BUILD_MANIFEST,
-  parseBuildManifest,
-  type BuildManifest,
-} from "../../../src/workflow-kit/validation/build-manifest.js";
+import { BUILD_MANIFEST } from "../../../src/workflow-kit/validation/build-manifest.js";
+import { parseBuildManifest, type BuildManifest } from "../../../src/models/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";

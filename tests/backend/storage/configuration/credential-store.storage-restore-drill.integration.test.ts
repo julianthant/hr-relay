@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../../src/models/config/protected-settings.js";
 import { localDatePart } from "../../../../src/rules/time/clock.js";
 import { COMMAND_FIXTURES, NOTIFICATION, NOW, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -30,11 +29,11 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     const paths = drillPaths();
     const credentialDirectory = join(paths.stateRoot, "credentials");
     const credentialPath = join(credentialDirectory, "protected.json");
-    const credentialOutcome = createCredentialStore({ admission:paths.admission,stateRoot: paths.stateRoot }).apply(
+    const credentialOutcome = paths.credentials.apply(
       ProtectedSettingsApplyInputSchema.parse({
         commandId: "a7111111-1111-4111-8111-111111111111",
         commandFingerprint: "1".repeat(64),
-        expectedRevision: 1,
+        expectedRevision: paths.credentials.read().revision,
         protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
         writeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         entries: { ucpathPassword: { set: "restore-independent-credential-canary" } },
@@ -101,6 +100,10 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
       readFileSync(join(paths.stateRoot, "backups", "suspects", suspects[0] ?? "")).equals(afterDoctor),
       true,
     );
+
+    const oldAdmission = paths.admission;
+    paths.renewAfterRestore();
+    assert.throws(() => oldAdmission.assertProfileRuntime());
 
     // 4 — every family the exit criterion names survived.
     const reopened = open(paths);

@@ -34,7 +34,7 @@ describe("native verification reservation exclusion", () => {
         repositories.workerControls.transition(pending.commandId, "admitted", { state: "executing", startedAt: world.NOW });
       });
       const before = harness.database.authority.workerPools.get("person-lookup");
-      const custody = { processLockRoot: join(harness.root, "locks"), stateRoot: harness.root };
+      const custody = { processLockRoot: harness.processLockRoot, stateRoot: harness.root };
       const lock = acquireRuntimeProcessLock({ processLockRoot: custody.processLockRoot, name: "live-smoke", pid: process.pid }, harness.clock);
       try {
         let effects = 0;
@@ -51,7 +51,7 @@ describe("native verification reservation exclusion", () => {
     const world = createDashboardPoolTestWorld();
     try {
       const harness = world.openControlHarness();
-      const custody = { processLockRoot: join(harness.root, "locks"), stateRoot: harness.root };
+      const custody = { processLockRoot: harness.processLockRoot, stateRoot: harness.root };
       const lock = acquireRuntimeProcessLock({ processLockRoot: custody.processLockRoot, name: "live-smoke", pid: process.pid }, harness.clock);
       try {
         const admission = { commandId: world.nextCommandId(), workflow: "person-lookup", expectedPoolVersion: 0,
@@ -128,7 +128,7 @@ describe("native verification reservation exclusion", () => {
     const world = createDashboardPoolTestWorld();
     try {
       const harness = world.openControlHarness();
-      const custody = { processLockRoot: join(harness.root, "locks"), stateRoot: harness.root };
+      const custody = { processLockRoot: harness.processLockRoot, stateRoot: harness.root };
       const lock = acquireRuntimeProcessLock({ processLockRoot: custody.processLockRoot, name: "live-smoke", pid: process.pid }, harness.clock);
       try {
         await expect(withSmokeWorker(harness.database, async () => { throw new SmokeSessionClosureError([new Error("controlled closure unknown")]); }, harness.clock,

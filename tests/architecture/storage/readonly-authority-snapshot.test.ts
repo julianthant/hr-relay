@@ -28,13 +28,15 @@ function inventory(directory: string) {
 }
 
 it.each([false, true])("inspects committed WAL: %s without creating or changing source companions", async liveWal => {
-  const fixture = createBoundProfileFixture(), workspace = fixture.workspace, admission = fixture.admission, path = fixture.path;
-  const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "readonly-snapshot-test" },
-    undefined, undefined, undefined, undefined, boundProfileCredentials(admission));
-  database.close();
-  const baseline = AuthorityDatabase.inspectExistingReadOnly(admission, path).authorityGeneration;
+  const fixture = createBoundProfileFixture(), { workspace, path, admission } = fixture;
+  const credentials = boundProfileCredentials(admission);
   let writer: DatabaseSync | undefined;
+  const failures: unknown[] = [];
   try {
+    const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "readonly-snapshot-test" },
+      undefined, undefined, undefined, undefined, credentials);
+    database.close();
+    const baseline = AuthorityDatabase.inspectExistingReadOnly(admission, path).authorityGeneration;
     if (liveWal) {
       writer = new DatabaseSync(path);
       writer.exec("PRAGMA wal_autocheckpoint=0; UPDATE database_states SET authority_generation=authority_generation+1,search_generation=search_generation+1 WHERE id=1");
@@ -51,16 +53,18 @@ it.each([false, true])("inspects committed WAL: %s without creating or changing 
     assert.equal(AuthorityDatabase.inspectSpanRunAuthorityReadOnly(admission, path, []).authorityGeneration, expectedGeneration);
     assert.equal(inspectAuthorityBackupReadOnly(admission, path).authorityGeneration, expectedGeneration);
     await doctorAuthorityStorage(admission, { stateRootTrustAnchor: workspace, stateRoot: admission.stateRoot,
-      authorityPath: path, backupDirectory: join(admission.stateRoot, "backups", "authority"), busyTimeoutMs: 250 });
+      authorityPath: path, backupDirectory: join(admission.stateRoot, "backups", "authority"), busyTimeoutMs: 250 }, undefined, credentials);
     const after = inventory(admission.stateRoot);
     assert.deepEqual(after.map(file => file.name), before.map(file => file.name));
     for (const [index, file] of after.entries()) {
       const original = before[index]; assert.ok(original);
       assert.ok(file.bytes.equals(original.bytes), `${file.name} changed`);
     }
-  } finally {
-    writer?.close(); fixture.close();
+  } catch (error) { failures.push(error); } finally {
+    try { writer?.close(); } catch (error) { failures.push(error); }
+    try { fixture.close(); } catch (error) { failures.push(error); }
   }
+  if (failures.length) throw new AggregateError(failures, "readonly authority fixture failed");
 });
 
 it("refuses unsafe companions and detects changed original source identity", () => {
