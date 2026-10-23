@@ -1,3 +1,6 @@
+import { CredentialErasureHeadSchema, erasureRequestIdentity } from "../configuration/credential-store.js";
+import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import type { CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness, CommittedCredentialInitialization, CommittedCredentialKeyStage, CredentialKeyStagePublication } from "../configuration/credential-store.js";
 import { registerRuntimeAdmission } from "./admission-identity.js";
 import { z } from "zod";
@@ -14,7 +17,7 @@ import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 
-import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type ProfileOperation } from "../../../models/profiles/profile.js";
+import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../../models/profiles/profile.js";
 import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import type { ProfileRegistryDocument, ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
@@ -122,7 +125,7 @@ export type RuntimeRelocationOperation = Readonly<{
 
 type AdmissionScope = "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "stopped-projection" | "synthetic-stopped-staged"
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
-  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile" | "profile-settlement" | "profile-repair-inventory";
+  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile" | "profile-settlement" | "profile-repair-inventory" | "profile-pending-logout-inventory";
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
 export class RuntimeAdmission {
@@ -136,11 +139,13 @@ export class RuntimeAdmission {
   #released = false;
   readonly #profileBinding: ProfileDatabaseBinding | undefined;
   readonly #profileParent: RuntimeAdmission | undefined;
+  readonly #pendingLogout: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }> | undefined;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
     authorityDatabasePaths: readonly string[],
     scope: AdmissionScope,
-    mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator, binding?: ProfileDatabaseBinding, profileParent?: RuntimeAdmission) {
+    mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator, binding?: ProfileDatabaseBinding, profileParent?: RuntimeAdmission,
+    pendingLogout?: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }>) {
     if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
     this.#authority = authority;
     this.#stateRoot = stateRoot;
@@ -149,6 +154,7 @@ export class RuntimeAdmission {
     this.#scope = scope;
     this.#mode = mode;
     this.#profileParent = profileParent;
+    this.#pendingLogout = pendingLogout;
     this.#profileBinding = binding === undefined ? undefined : Object.freeze({ ...binding });
     this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
     registerRuntimeAdmission(this);
@@ -327,6 +333,7 @@ export class RuntimeAdmission {
   }
   assertCredentialErasureHead(head: CredentialErasureHead): void {
     this.assertLive();
+    if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-owner-required");
     this.#authority.assertCredentialErasureHead?.(head);
   }
   resumeCredentialErasure(request: ErasureRequestIdentity, head: CredentialErasureHead): void {
@@ -335,11 +342,65 @@ export class RuntimeAdmission {
   }
   beginCredentialErasure(witness: VerifiedCredentialErasureIntent): void {
     this.assertLive();
+    if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     this.#authority.beginCredentialErasure?.(witness);
   }
   settleCredentialErasure(request: ErasureRequestIdentity, witness: VerifiedCredentialErasureHead): void {
     this.assertCredentialErasure(request);
     this.#authority.settleCredentialErasure?.(request, witness);
+  }
+  forPendingLogoutInventory(operation: LogoutOperation): RuntimeAdmission {
+    this.assertCredentialErasureObservation(operation.operationId);
+    const parent = this.#profileParent;
+    if (this.#scope !== "profile-settlement" || parent === undefined || operation.profileId !== this.profileBinding.profileId) {
+      throw new Error("profile-pending-logout-owner-required");
+    }
+    parent.assertWritable();
+    const lease = parent.#authority as InstallationLease;
+    assertInstallationLease(lease);
+    const witness = lease.capturePendingProfileLogout(operation);
+    const path = join(this.#stateRoot, "state.db"), original = lstatSync(path);
+    const assertHeld = () => {
+      this.assertCredentialErasureObservation(operation.operationId);
+      parent.assertWritable();
+      witness.assertHeld();
+      assertCanonicalProfileBinding(path, this.profileBinding);
+      const current = lstatSync(path);
+      if (current.dev !== original.dev || current.ino !== original.ino) throw new Error("profile-pending-logout-database-changed");
+    };
+    assertHeld();
+    return new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => parent.readInstallationContext(), release() {} },
+      this.#stateRoot, this.#artifactRoot, [path], "profile-pending-logout-inventory", this.#mode, this.#locator, this.profileBinding, parent,
+      { owner: this, operation: canonicalJsonStringify(operation) });
+  }
+  assertPendingLogoutInventory(owner: RuntimeAdmission, operation: LogoutOperation): void {
+    this.assertLive();
+    owner.assertCredentialErasureObservation(operation.operationId);
+    if (this.#scope !== "profile-pending-logout-inventory" || this.#pendingLogout?.copyPath !== undefined || this.#pendingLogout?.owner !== owner
+      || this.#pendingLogout.operation !== canonicalJsonStringify(operation) || this.#profileParent !== owner.#profileParent
+      || this.#profileBinding?.profileId !== operation.profileId || owner.#profileBinding?.profileId !== operation.profileId) {
+      throw new Error("profile-pending-logout-owner-required");
+    }
+  }
+  assertPendingLogoutErasureHead(owner: RuntimeAdmission, operation: LogoutOperation, input: CredentialErasureHead, request?: ErasureRequestIdentity): void {
+    this.assertPendingLogoutInventory(owner, operation);
+    const head = CredentialErasureHeadSchema.parse(input), parent = this.#profileParent;
+    if (parent === undefined) throw new Error("profile-pending-logout-owner-required");
+    const lease = parent.#authority as InstallationLease;
+    assertInstallationLease(lease);
+    if (operation.commandId === undefined && operation.writeId === undefined && operation.expectedRevision === undefined) {
+      if (request !== undefined) throw new Error("profile-pending-logout-request-refused");
+      lease.assertProfileErasureHead(operation.profileId, head);
+    } else {
+      if (operation.commandId === undefined || operation.writeId === undefined || operation.expectedRevision === undefined || request === undefined) {
+        throw new Error("profile-pending-logout-request-refused");
+      }
+      const expected = erasureRequestIdentity(CredentialEraseInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
+        expectedRevision: operation.expectedRevision, updatedAt: operation.at, commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH }));
+      if (request === undefined || canonicalJsonStringify(request) !== canonicalJsonStringify(expected)) throw new Error("profile-pending-logout-request-refused");
+      lease.resumeProfileErasure(operation.profileId, request, head);
+    }
+    this.assertPendingLogoutInventory(owner, operation);
   }
   forCredentialRepairInventory(request: Readonly<{ commandId: string; writeId: string; expectedRevision: number; updatedAt: string; commandFingerprint: string }>): RuntimeAdmission {
     this.assertLive();
@@ -356,7 +417,7 @@ export class RuntimeAdmission {
   }
   assertCredentialRead(): void {
     this.assertLive();
-    if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory") throw new Error("profile-settlement-credential-read-refused");
+    if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") throw new Error("profile-settlement-credential-read-refused");
     if (this.#scope === "profile") this.assertProfileRuntime();
   }
   assertCredentialErasureObservation(operationId: string): void {
@@ -507,11 +568,12 @@ export class RuntimeAdmission {
   }
   assertExclusive(): void {
     this.assertLive();
+    if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     if (this.#mode !== "exclusive" && this.#mode !== "synthetic") throw new Error("runtime-admission: exclusive offline admission required");
   }
   assertWritable(): void {
     this.assertLive();
-    if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory") throw new Error("profile-settlement-runtime-refused");
+    if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") throw new Error("profile-settlement-runtime-refused");
     if (this.#scope === "profile") this.assertProfileRuntime();
     if (this.#scope === "profile-initialization") assertCanonicalProfileBinding(join(this.#stateRoot, "state.db"), this.profileBinding);
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection is read-only");
@@ -530,6 +592,9 @@ export class RuntimeAdmission {
   }
   assertReadOnlyAuthorityDatabase(path: string): void {
     this.assertLive();
+    if (this.#scope === "profile-pending-logout-inventory") {
+      if (path === ":memory:" || this.#pendingLogout?.copyPath !== undefined && path !== this.#pendingLogout.copyPath) throw new Error("profile-pending-logout-path-refused");
+    }
     if (this.#scope === "relocation-source-verification" || this.#scope === "adoption-initialization") {
       throw new Error("runtime-admission: inspection database authority unavailable");
     }
@@ -550,6 +615,7 @@ export class RuntimeAdmission {
   }
   assertStateRoot(path: string): void {
     this.assertLive();
+    if (this.#pendingLogout?.copyPath !== undefined && path !== this.#pendingLogout.copyPath) throw new Error("profile-pending-logout-path-refused");
     if (this.#scope === "profile-settlement" && resolve(path) !== this.#stateRoot && !within(join(this.#stateRoot, "credentials"), resolve(path))) throw new Error("profile-settlement-path-refused");
     if (this.#scope === "profile-upgrade" && resolve(path) !== this.#stateRoot && resolve(path) !== join(this.#stateRoot, "state.db")
       && !within(join(this.#stateRoot, "backups", "authority"), resolve(path))) throw new Error("profile-stopped-upgrade-path-refused");
@@ -605,6 +671,7 @@ export class RuntimeAdmission {
   }
   assertArtifactRoot(path: string): void {
     this.assertLive();
+    if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot write artifacts");
     this.assertStorageRootsSafe();
     if (!within(this.#artifactRoot, resolve(path))) throw new Error("runtime-admission: artifact path is outside admission");
@@ -755,6 +822,7 @@ export class RuntimeAdmission {
 
   verifiedReadOnlyCopy(path: string, expectedSha256: string): RuntimeAdmission {
     this.assertLive();
+    if (this.#pendingLogout?.copyPath !== undefined) throw new Error("profile-pending-logout-copy-delegation-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot delegate copy authority");
     if (this.#scope === "relocation-source-verification") {
       throw new Error("runtime-admission: source verification is limited to retained roots");
@@ -801,7 +869,10 @@ export class RuntimeAdmission {
     verifyBytes();
     return new RuntimeAdmission(issuanceToken, { assertHeld: verifyBytes, release() {} },
       this.#stateRoot, this.#artifactRoot, [checked],
-      this.#scope === "synthetic" || this.#scope === "synthetic-verified-copy" ? "synthetic-verified-copy" : "verified-copy", this.#mode);
+      this.#scope === "profile-pending-logout-inventory" ? "profile-pending-logout-inventory"
+        : this.#scope === "synthetic" || this.#scope === "synthetic-verified-copy" ? "synthetic-verified-copy" : "verified-copy", this.#mode,
+      this.#pendingLogout === undefined ? undefined : this.#locator, this.#pendingLogout === undefined ? undefined : this.#profileBinding,
+      this.#pendingLogout === undefined ? undefined : this.#profileParent, this.#pendingLogout === undefined ? undefined : { ...this.#pendingLogout, copyPath: checked });
   }
 
   resumeProfileAuthorityRestore(operationId: string, restore: RestoreAdmissionHandle): RuntimeAdmission {

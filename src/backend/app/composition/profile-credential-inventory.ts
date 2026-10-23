@@ -6,7 +6,7 @@ import { readEmergencyFaults } from "../../logs/emergency-faults.js";
 import type { CredentialInitializationCopyInspection } from "../../storage/configuration/credential-store.js";
 import type { CredentialEraseInput, CredentialStore } from "../../../models/config/credential-store.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
-import type { SignUpOperation } from "../../../models/profiles/profile.js";
+import type { SignUpOperation, LogoutOperation } from "../../../models/profiles/profile.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
@@ -18,7 +18,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { assessCredentialInventory, countProfileCredentialLoginRows, type CredentialInventory } from "../../profiles/credential-inventory.js";
 import { verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
 import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
-import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans } from "../../storage/sqlite/runtime-process-locks.js";
+import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans, readRuntimeProcessLock } from "../../storage/sqlite/runtime-process-locks.js";
 import { ProfileBrowserRootRefusalError, type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -286,7 +286,7 @@ function assertCredentialBackupBinding(admission: RuntimeAdmission, backup: Awai
 }
 
 function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock }>, authorize: () => void) {
-  return (writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection): Readonly<{ revalidate(): () => void; revalidateBeforeKeyIntent(): void }> => {
+  return (writer: Readonly<{ acquisitionId: string; pid: number }> | undefined, copies: CredentialInitializationCopyInspection) => {
     const { machine, admission } = input;
     authorize();
     const registry = canonicalJsonStringify(machine.readProfileRegistry());
@@ -329,7 +329,20 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       return canonicalJsonStringify(entries);
     };
     const beforeKeyIntent = physicalMembership();
-    return Object.freeze({ revalidateBeforeKeyIntent: () => {
+    return Object.freeze({ assessCurrent(entriesAbsent: boolean): CredentialInventory {
+      authorize();
+      if (enumerate() !== before) throw new Error("credential-maintenance-inventory-changed");
+      const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
+      const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
+        : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
+      const savedBrowserRoot = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
+        { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.paths.browserProfileRoot;
+      const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, writer);
+      const assessment = assessCredentialInventory({ profileRoot: root, entriesAbsent, inspectEncrypted: copies.inspectEncrypted,
+        backupPaths: [], loginDataPaths: membership.loginDataPaths, capturedSecrets: copies.capturedSecrets, capturedSecretsComplete: copies.capturedSecretsComplete });
+      if (enumerate() !== before) throw new Error("credential-maintenance-inventory-changed");
+      return assessment;
+    }, revalidateBeforeKeyIntent: () => {
       if (physicalMembership() !== beforeKeyIntent) throw new Error("credential-maintenance-inventory-changed");
     }, revalidate: () => {
       authorize();
@@ -366,6 +379,28 @@ export function composeProfileCredentialRepairInventory(input: Readonly<{ machin
       const inventory = composeProfileCredentialMaintenanceInventory({ ...input, admission }, () => admission.assertLive())(writer, copies);
       return Object.freeze({ revalidate: inventory.revalidate, dispose: () => admission.release() });
     } catch (error) { admission.release(); throw error; }
+  };
+}
+
+
+export function composeProfilePendingLogoutInventory(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock }>) {
+  return (purpose: RuntimeAdmission, operation: LogoutOperation, copies: CredentialInitializationCopyInspection & Readonly<{ entriesAbsent: boolean }>) => {
+    purpose.assertPendingLogoutInventory(input.admission, operation);
+    const authorize = () => {
+      purpose.assertPendingLogoutInventory(input.admission, operation);
+      const installation = input.machine.readInstallationContext();
+      if (installation === undefined) throw new Error("credential-maintenance-installation-required");
+      const processLockRoot = join(installation.workspace, rebuildRuntimeIsolation.processLockRoot);
+      input.machine.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
+      const orphans = inspectRuntimeProcessOrphans(processLockRoot), server = readRuntimeProcessLock(processLockRoot, "server");
+      if (orphans.staleServerRecords > 0 || server?.releasedAt === null && server.pid !== process.pid) {
+        throw new Error("credential-pending-logout-process-custody-unproved");
+      }
+    };
+    const inventory = composeProfileCredentialMaintenanceInventory({ ...input, admission: purpose }, authorize)(undefined, copies);
+    return Object.freeze({ assessment: inventory.assessCurrent(copies.entriesAbsent), revalidate: () => {
+      inventory.revalidateBeforeKeyIntent(); inventory.revalidate(); inventory.revalidateBeforeKeyIntent();
+    } });
   };
 }
 

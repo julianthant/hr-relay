@@ -128,10 +128,11 @@ export function createProfileSession(input: {
   readonly initializationInventory?: (admission: RuntimeAdmission, operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(operation: SignUpOperation): () => void; revalidateBeforeKeyIntent(): void }>;
   readonly credentialsFor?: (admission: RuntimeAdmission, purpose: "ordinary" | "settlement") => CredentialStore;
   readonly prepareLogout?: (profileId: string, admission: RuntimeAdmission) => void;
+  readonly preparePendingLogout?: (operation: LogoutOperation, admission: RuntimeAdmission, credentials: CredentialStore) => void;
   readonly closeStorage?: (profileId: string, admission: RuntimeAdmission) => void;
   readonly sessionChange?: (profileId: string) => { readonly state: "closed" } | ProfileRefusal | ProfileCancelling;
   readonly credentialInventory?: (input: Readonly<{ profileId: string; admission: RuntimeAdmission; credentials: CredentialStore;
-    operationId: string; capturedSecrets: readonly string[]; capturedSecretsComplete: boolean }>) => CredentialInventory;
+    operationId: string; operation: LogoutOperation; capturedSecrets: readonly string[]; capturedSecretsComplete: boolean }>) => CredentialInventory;
 }) {
   const admission = requireRuntimeAdmission(input.admission);
   admission.assertWritable();
@@ -403,6 +404,15 @@ export function createProfileSession(input: {
     return publishSignUp(operation, fields);
   }
 
+  function logoutStorage(operation: LogoutOperation) {
+    const entry = storageAdmissions.get(operation.profileId) ?? {};
+    entry.settlement?.release();
+    const settlement = admission.admitProfile(registry.settlementClaim(operation.operationId));
+    entry.settlement = settlement;
+    storageAdmissions.set(operation.profileId, entry);
+    return { settlement, store: storeFor(operation.profileId, settlement, "settlement") };
+  }
+
   function continueLogout(operation: LogoutOperation): { readonly state: "wiped"; readonly inventory: CredentialInventory } | ProfileLogoutResult | ProfileCancelling {
     admission.assertWritable();
     const profileId = operation.profileId;
@@ -410,6 +420,11 @@ export function createProfileSession(input: {
     if (selection.activeProfileId !== null && selection.activeProfileId !== profileId) return refusal("PROFILE_TRANSITION_BLOCKED", operation.operationId);
     if (selection.activeProfileId === profileId) registry.advanceSession(null);
     if (selection.profiles.find(row => row.profileId === profileId)?.lifecycle !== "cancelling") registry.update(profileId, { lifecycle: "cancelling" });
+    let stopped: ReturnType<typeof logoutStorage> | undefined;
+    if (storageAdmissions.get(profileId)?.ordinary === undefined && input.preparePendingLogout !== undefined) {
+      stopped = logoutStorage(operation);
+      input.preparePendingLogout(operation, stopped.settlement, stopped.store);
+    }
     const closure = quiescence(profileId);
     if (closure === "busy") {
       input.activity?.requestCancellation?.(profileId);
@@ -426,12 +441,7 @@ export function createProfileSession(input: {
       writeOperation({ ...operation, phase: "incomplete" });
       return restoreAdmission(operation.operationId);
     }
-    const entry = storageAdmissions.get(profileId) ?? {};
-    entry.settlement?.release();
-    const settlement = admission.admitProfile(registry.settlementClaim(operation.operationId));
-    entry.settlement = settlement;
-    storageAdmissions.set(profileId, entry);
-    const store = storeFor(profileId, settlement, "settlement");
+    const { settlement, store } = stopped ?? logoutStorage(operation);
     const before = readForErasure(store, operation.operationId);
     const capturedSecrets = [before.entries.ucpathUserId?.value, before.entries.ucpathPassword?.value]
       .filter((value): value is string => value !== undefined);
@@ -445,8 +455,9 @@ export function createProfileSession(input: {
         expectedRevision: command.expectedRevision ?? before.revision,
       };
       writeOperation(command);
-    } else {
-      writeOperation({ ...command, phase: "erasing" });
+    } else if (command.phase !== "erasing") {
+      command = { ...command, phase: "erasing" };
+      writeOperation(command);
     }
     const commandId = command.commandId;
     const writeId = command.writeId;
@@ -482,7 +493,7 @@ export function createProfileSession(input: {
       }
     }
     const record = readForErasure(store, operation.operationId);
-    const inventory = input.credentialInventory?.({ profileId, admission: settlement, credentials: store, operationId: operation.operationId,
+    const inventory = input.credentialInventory?.({ profileId, admission: settlement, credentials: store, operationId: operation.operationId, operation: command,
       capturedSecrets, capturedSecretsComplete: before.entries.ucpathUserId !== undefined && before.entries.ucpathPassword !== undefined }) ?? assessCredentialInventory({
       profileRoot,
       inspectEncrypted: path => inspectCredentialCopy(store, path, capturedSecrets),

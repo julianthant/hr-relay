@@ -1,5 +1,6 @@
+import type { CredentialInventory } from "../../profiles/credential-inventory.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
-import { CredentialInitializationSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
+import { CredentialInitializationSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, LogoutOperationSchema, type LogoutOperation, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { linkSync, lstatSync, mkdirSync, readdirSync, renameSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -247,6 +248,7 @@ export interface CredentialStoreOptions {
   readonly erasureJournalPath?: string;
   readonly erasureJournalAdmission?: RuntimeAdmission;
   readonly repairInventory?: (request: CredentialEraseInput, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(): void; dispose(): void }>;
+  readonly pendingLogoutInventory?: (purpose: RuntimeAdmission, operation: LogoutOperation, copies: CredentialInitializationCopyInspection & Readonly<{ entriesAbsent: boolean }>) => Readonly<{ assessment: CredentialInventory; revalidate(): void }>;
   readonly initializationInventory?: (operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(operation: SignUpOperation): () => void; revalidateBeforeKeyIntent(): void }>;
   readonly ids?: CredentialStoreIds;
   readonly hooks?: CredentialStoreHooks;
@@ -579,7 +581,7 @@ export type CredentialErasureHead = z.infer<typeof CredentialErasureHeadSchema>;
 export interface VerifiedCredentialErasureHead { readonly epoch: number; }
 export interface VerifiedCredentialErasureIntent { readonly epoch: number; }
 type ErasureRequestIdentity = Readonly<{ commandId: string; writeId: string; commandFingerprint: string; expectedRevision: number; updatedAt: string; requestReceipt: string }>;
-function erasureRequestIdentity(request: CredentialEraseInput): ErasureRequestIdentity {
+export function erasureRequestIdentity(request: CredentialEraseInput): ErasureRequestIdentity {
   return Object.freeze({ commandId: request.commandId, writeId: request.writeId, commandFingerprint: request.commandFingerprint,
     expectedRevision: request.expectedRevision, updatedAt: request.updatedAt, requestReceipt: requestReceipt(request) });
 }
@@ -661,7 +663,7 @@ function assertInitializationInventoryProof(proof: CredentialInitializationInven
 }
 
 export interface CommittedCredentialWitness { readonly revision: number; }
-const committedStores = new WeakMap<CredentialStore, { readonly admission: RuntimeAdmission; readonly stateRoot: string;
+const committedStores = new WeakMap<CredentialStore, { readonly pendingLogoutInventory: (operation: LogoutOperation) => Readonly<{ assessment: CredentialInventory; revalidate(): void }>; readonly admission: RuntimeAdmission; readonly stateRoot: string;
   readonly presence: () => readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[]; readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly keyPath: string; readonly containsKey: (value: unknown) => boolean; readonly inspectCopy: (path: string, capturedSecrets: readonly string[]) => Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> ; readonly migrationSource: () => CredentialMigrationSource; readonly readForErasure: (operationId: string) => ProtectedStoreRecord; readonly captureErasureHead: () => VerifiedCredentialErasureHead }>();
 
 export function observeCredentialPresence(store: CredentialStore, admission: RuntimeAdmission): readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[] {
@@ -672,6 +674,13 @@ export function observeCredentialPresence(store: CredentialStore, admission: Run
 }
 
 type CredentialMigrationSource = { state: "current" } | { state: "absent" } | { state: "legacy"; schemaVersion: 2 | 3; revision: number; device: number; inode: number; digest: string };
+export function preparePendingLogoutInventory(store: CredentialStore, operation: LogoutOperation): Readonly<{ assessment: CredentialInventory; revalidate(): void }> {
+  const owner = committedStores.get(store);
+  if (owner === undefined) throw new Error("credential-store-owner-required");
+  owner.admission.assertCredentialErasureObservation(operation.operationId);
+  return owner.pendingLogoutInventory(LogoutOperationSchema.parse(operation));
+}
+
 export function inspectCredentialCopy(store: CredentialStore, path: string, capturedSecrets: readonly string[]): Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> {
   const owner = committedStores.get(store);
   if (owner === undefined) throw new Error("credential-copy-owner-required");
@@ -1988,7 +1997,58 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     if (journalAdmission !== admission) erasureHeads.set(witness, { stateRoot, journalPath, binding: binding, head: deepFreeze(observeErasureHead(journalPath, epoch)), keyPath, key: captureKeyFile(keyPath, binding) });
     return witness;
   }
-  committedStores.set(store, { admission, stateRoot, presence: () => {
+  let pendingCapture: Readonly<{ operationId: string; at: string; revision: number; values: readonly string[]; complete: boolean }> | undefined;
+  committedStores.set(store, { admission, stateRoot, pendingLogoutInventory: operation => {
+    admission.assertCredentialErasureObservation(operation.operationId);
+    const purpose = admission.forPendingLogoutInventory(operation);
+    try {
+      const current = observeCurrent(), journal = loadJournal(current.document, "settlement");
+      const head = observeErasureHead(journalPath, journal.epoch), key = captureKeyFile(keyPath, binding);
+      if ([operation.commandId, operation.writeId, operation.expectedRevision].some(value => value === undefined)
+        && [operation.commandId, operation.writeId, operation.expectedRevision].some(value => value !== undefined)) throw new Error("profile-pending-logout-request-refused");
+      const request = operation.commandId === undefined && operation.writeId === undefined && operation.expectedRevision === undefined ? undefined
+        : erasureRequestIdentity(CredentialEraseInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
+          expectedRevision: operation.expectedRevision, updatedAt: operation.at, commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH }));
+      purpose.assertPendingLogoutErasureHead(admission, operation, head, request);
+      const entries = current.document.record.entries;
+      let capturedSecrets = SECRET_NAMES.flatMap(name => { const entry = entries[name]; return entry === undefined ? [] : [entry.value]; });
+      let capturedSecretsComplete = SECRET_NAMES.every(name => entries[name] !== undefined);
+      const previous = pendingCapture, latest = current.document.latestRequest;
+      if (previous !== undefined && previous.operationId === operation.operationId && previous.at === operation.at
+        && latest?.kind === "erase" && latest.request.commandId === operation.commandId && latest.request.writeId === operation.writeId
+        && latest.request.expectedRevision === operation.expectedRevision && latest.request.updatedAt === operation.at
+        && previous.revision === operation.expectedRevision) {
+        capturedSecrets = [...previous.values]; capturedSecretsComplete = previous.complete;
+      } else if (capturedSecrets.length > 0) {
+        pendingCapture = { operationId: operation.operationId, at: operation.at, revision: current.document.record.revision,
+          values: capturedSecrets, complete: capturedSecretsComplete };
+      }
+      const assertCurrentInventory = () => {
+        purpose.assertPendingLogoutErasureHead(admission, operation, head, request);
+        assertCredentialErasureHeadFiles(journalPath, head); assertCredentialKeyWitness(keyPath, key, binding);
+        const after = observeCurrent(); loadJournal(after.document, "settlement");
+        if (!sameBytes(after.bytes, current.bytes) || after.identity.device !== current.identity.device || after.identity.inode !== current.identity.inode) {
+          throw new Error("credential-pending-logout-source-changed");
+        }
+      };
+      const inventory = options.pendingLogoutInventory?.(purpose, operation, { capturedSecrets, capturedSecretsComplete,
+        entriesAbsent: entries.ucpathUserId === undefined && entries.ucpathPassword === undefined, containsKey, keyScanOverlap: 4095,
+        inspectEncrypted: path => {
+          assertCurrentInventory(); purpose.assertStateRoot(path);
+          const copy = readPrivateDocument(path);
+          if (copy === undefined) throw new Error("credential-copy-required");
+          const inspected = inspectAuthenticatedCredentialPayload(copy.document, capturedSecrets);
+          assertCurrentInventory();
+          return { ...inspected, containsCaptured: inspected.containsCaptured || containsKey(copy.document) };
+        } });
+      if (inventory === undefined) throw new Error("credential-pending-logout-inventory-required");
+      assertCurrentInventory(); inventory.revalidate(); assertCurrentInventory();
+      if (inventory.assessment.logoutComplete) pendingCapture = undefined;
+      return Object.freeze({ assessment: inventory.assessment, revalidate: () => {
+        assertCurrentInventory(); inventory.revalidate(); assertCurrentInventory();
+      } });
+    } catch (error) { purpose.release(); throw error; }
+  }, presence: () => {
     admission.assertCredentialRead();
     const current = observeCurrent(), journal = loadJournal(current.document);
     const head = observeErasureHead(journalPath, journal.epoch), key = captureKeyFile(keyPath, binding);

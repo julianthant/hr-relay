@@ -1,4 +1,4 @@
-import { assertProfileBrowserRoot, composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeProfileCredentialInventory } from "./profile-credential-inventory.js";
+import { assertProfileBrowserRoot, composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeProfilePendingLogoutInventory, composeProfileCredentialInventory } from "./profile-credential-inventory.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
 import { retireOrphanVerification } from "../../storage/maintenance/orphan-verification-retirement.js";
@@ -17,7 +17,7 @@ import { randomUUID } from "node:crypto";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { readBootSettings } from "../../runtime/settings/settings-runtime.js";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
-import { assertCredentialStoreOwner, ChatGptCredentialError, createChatGptCredentialRepository, createCredentialStore } from "../../storage/configuration/credential-store.js";
+import { assertCredentialStoreOwner, preparePendingLogoutInventory, ChatGptCredentialError, createChatGptCredentialRepository, createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { protectedSettingsReadback } from "../../../models/config/protected-settings.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -232,7 +232,7 @@ export function composeProfileRuntime(input: Readonly<{
   type Supervision = { state: "not-constructed" } | { state: "constructing" } | { state: "bound"; owner: Supervisor };
   type Owned = { supervision: Supervision; admission: RuntimeAdmission; credentials: CredentialStore; context?: Context; activity?: ReturnType<typeof composeProfileActivity>;
     inventory?: ReturnType<typeof composeProfileCredentialInventory>; preparation?: Preparation; state: "open" | "closing" | "closed" };
-  const resources = new Map<string, { ordinary?: Owned; settlement?: Pick<Owned, "admission" | "credentials"> }>();
+  const resources = new Map<string, { ordinary?: Owned; settlement?: Pick<Owned, "admission" | "credentials"> & { stopped?: ReturnType<typeof preparePendingLogoutInventory> } }>();
   const contextFor = (expected?: RuntimeAdmission): Context => {
     const selected = captureSelectedProfileStorage(machine), entry = resources.get(selected.profileId)?.ordinary;
     if (entry === undefined || expected !== undefined && expected !== entry.admission) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
@@ -274,6 +274,7 @@ export function composeProfileRuntime(input: Readonly<{
       if (purpose === "ordinary" && entry.ordinary?.context !== undefined && entry.ordinary.state !== "closed") throw new Error("profile-resource-custody-unavailable");
       const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
         erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${profileId}.json`), hooks: input.credentialHooks,
+        pendingLogoutInventory: composeProfilePendingLogoutInventory({ machine, admission, hostFacts: input.hostFacts, clock: input.clock }),
         repairInventory: composeProfileCredentialRepairInventory({ machine, admission, hostFacts: input.hostFacts, clock: input.clock }),
         initializationInventory: composeProfileCredentialInitializationInventory({ machine, admission, hostFacts: input.hostFacts, clock: input.clock }) });
       assertCredentialStoreOwner(credentials, admission);
@@ -288,18 +289,41 @@ export function composeProfileRuntime(input: Readonly<{
     sessionChange: profileId => resources.get(profileId)?.ordinary?.context !== undefined && resources.get(profileId)?.ordinary?.state !== "closed"
       ? { state: "refused", code: "PROFILE_TRANSITION_BLOCKED", message: ERROR_CATALOG.PROFILE_TRANSITION_BLOCKED.text } : { state: "closed" },
     prepareLogout: (profileId, admission) => { initializeOwners(profileId, admission); },
+    preparePendingLogout: (operation, admission, credentials) => {
+      const entry = resources.get(operation.profileId), settlement = entry?.settlement;
+      if (entry?.ordinary !== undefined || settlement === undefined || settlement.admission !== admission || settlement.credentials !== credentials) {
+        throw new Error("profile-pending-logout-resource-owner-mismatch");
+      }
+      settlement.stopped = preparePendingLogoutInventory(credentials, operation);
+    },
     activity: {
       hasUnquiescedWork: profileId => {
-        const entry = resources.get(profileId)?.ordinary;
-        if (entry?.activity === undefined) throw new Error("profile-resource-custody-unavailable");
+        const resource = resources.get(profileId), entry = resource?.ordinary;
+        if (entry === undefined) {
+          const stopped = resource?.settlement?.stopped;
+          if (stopped === undefined) throw new Error("profile-resource-custody-unavailable");
+          stopped.revalidate();
+          return false;
+        }
+        if (entry.activity === undefined) throw new Error("profile-resource-custody-unavailable");
         if (entry.preparation?.state === "failed") throw entry.preparation.error;
         return entry.activity.hasUnquiescedWork(profileId) || entry.preparation?.state !== "ready";
       },
       requestCancellation: prepareClosure,
     },
     credentialInventory: fields => {
-      const entry = resources.get(fields.profileId)?.ordinary;
-      if (entry?.inventory === undefined || entry.preparation?.state !== "ready") throw new Error("profile-inventory-unprepared");
+      const resource = resources.get(fields.profileId), entry = resource?.ordinary;
+      if (entry === undefined) {
+        const settlement = resource?.settlement;
+        if (settlement?.stopped === undefined || settlement.admission !== fields.admission
+          || settlement.credentials !== fields.credentials) throw new Error("profile-pending-logout-resource-owner-mismatch");
+        const stopped = preparePendingLogoutInventory(fields.credentials, fields.operation);
+        settlement.stopped = stopped;
+        stopped.revalidate();
+        if (stopped.assessment.logoutComplete) delete settlement.stopped;
+        return stopped.assessment;
+      }
+      if (entry.inventory === undefined || entry.preparation?.state !== "ready") throw new Error("profile-inventory-unprepared");
       return entry.inventory.assess(fields);
     },
     closeStorage: (profileId, admission) => {
@@ -355,7 +379,8 @@ export function composeProfileRuntime(input: Readonly<{
       entry.supervision = { state: "bound", owner: supervisor };
     },
     async awaitClosurePreparation(profileId: string): Promise<void> {
-      const entry = resources.get(profileId)?.ordinary;
+      const resource = resources.get(profileId), entry = resource?.ordinary;
+      if (entry === undefined && resource?.settlement?.stopped !== undefined) { resource.settlement.stopped.revalidate(); return; }
       if (entry?.preparation?.state === "pending") await entry.preparation.completion;
       if (entry?.preparation?.state === "failed") throw entry.preparation.error;
       if (entry?.preparation?.state !== "ready") throw new Error("profile-work-drain-unproved");

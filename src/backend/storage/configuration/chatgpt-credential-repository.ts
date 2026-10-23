@@ -69,7 +69,8 @@ export function createChatGptCredentialRepository(options: ChatGptCredentialRepo
   }
   function read(): ChatGptCredentialRecord | undefined {
     try {
-      if (!inspect(false)) return undefined;
+      admission.assertCredentialRead();
+      if (!inspect(false)) { admission.assertCredentialRead(); return undefined; }
       const names = readdirSync(directory).sort();
       const companions = companionCredentialEntries(directory, "ChatGPT");
       if (names.some(name => name !== "chatgpt-account.json" && name !== ".chatgpt-account.lock" && !companions.has(name) && !/^\.chatgpt-account\.[0-9a-f-]{36}\.tmp$/u.test(name))) throw unavailable();
@@ -84,8 +85,9 @@ export function createChatGptCredentialRepository(options: ChatGptCredentialRepo
       inspect(false);
       if (!privateEqual(names, readdirSync(directory).sort()) || (first === undefined) !== (second === undefined)
         || first !== undefined && second !== undefined && !first.bytes.equals(second.bytes)) throw unavailable();
-      if (second === undefined) return undefined;
-      return parseRecord(second.bytes);
+      const record = second === undefined ? undefined : parseRecord(second.bytes);
+      admission.assertCredentialRead();
+      return record;
     } catch (error) { if (error instanceof ChatGptCredentialError) throw error; throw unavailable(); }
   }
   function removeExact(file: string, observed: Stats): void {
