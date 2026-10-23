@@ -61,8 +61,10 @@ async function fixture(): Promise<Fixture> {
       manualClock(new Date(NOW)), undefined, undefined, undefined, boundProfileCredentials(profile.admission),
     );
   } catch (primary) {
+    const failures: unknown[] = [primary];
     try { profile.close(); }
-    catch (cleanup) { throw new AggregateError([primary, cleanup], 'diagnostic fixture acquisition failed', { cause: primary }); }
+    catch (cleanup) { failures.push(cleanup); }
+    if (failures.length > 1) throw new AggregateError(failures, 'diagnostic fixture acquisition failed', { cause: primary });
     throw primary;
   }
   disposers.push(() => {

@@ -263,15 +263,16 @@ function journalWorkerSettings(
 }
 
 it("F composed dashboard reads active settings after boot through real HTTP", async () => {
-let profile: ReturnType<typeof composeProfileRuntime> | undefined;
- onTestFinished(async () => { await profile?.close(); cleanupOriginalFixture(); });
+const acquired: { profile?: ReturnType<typeof composeProfileRuntime> } = {};
+ onTestFinished(async () => { await acquired.profile?.close(); cleanupOriginalFixture(); });
 
  const { repoRoot, stateRoot, profile: owner } = repoRootWithState();
  const clock = manualClock(new Date(NOW));
  for (const name of ["package.json", "package-lock.json"])
   writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
- profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null },
+ const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null },
    processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot) });
+ acquired.profile = profile;
  const active = profile.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
  assert.equal(active.state, 'active');
  if (active.state !== 'active') throw new Error('config fixture sign-in refused');
