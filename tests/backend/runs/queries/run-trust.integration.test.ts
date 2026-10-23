@@ -5,7 +5,7 @@ import { afterEach, describe, it, vi } from "vitest";
 import { projectFailureResolution } from "../../../../src/backend/runs/queries/failure-resolution.js";
 import { buildRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { resolutionCommand, resolutionFixture, resolutionReadDeps } from "../../../support/helpers/failure-resolution/fixtures.js";
 
 import { readGateParks } from "../../../../src/backend/app/composition/dashboard/trust.js";
@@ -150,7 +150,9 @@ afterEach(_afterEachFixture0);
 
   it("uses canonical gate parks with no fold and refuses a stale list without publishing a partial set", () => {
     const f = fixture(); const run = f.create(30);
-    const claimed = f.database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId: f.workerId, now: f.world.clock.now().toISOString() });
+    const claimMember1 = f.database.authority.workerSlots.get(f.workerId);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    const claimed = f.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime, workflow: run.envelope.workflow, workerId: f.workerId, now: f.world.clock.now().toISOString() });
     assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("not claimed");
     let parked = claimed.run;
     for (const lifecycle of [

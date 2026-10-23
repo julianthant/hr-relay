@@ -19,7 +19,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWorkerDirectiveTestWorld } from "../../../support/helpers/backend/worker-directive-world.js";
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -192,7 +192,7 @@ describe("exact lifecycle reservation", () => {
     const h = fixture(), database = h.database;
     database.authority.runs.enqueue(personLookupQueuedRun());
     const lifecycle = new RunRecordService({ database, clock: h.authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => undefined });
-    const command = { commandId: randomUUID(), workerId: h.deps.workerId, workflow: h.deps.workflowId, runtimeConfig: selectRunRuntime(database.authority) };
+    const command = { commandId: randomUUID(), workerId: h.deps.workerId, workflow: h.deps.workflowId, workerLifetime: testWorkerLifetime(database, h.deps.workflowId, 1).workerLifetime, runtimeConfig: selectRunRuntime(database.authority) };
     const claimed = lifecycle.claimNext(command); expect(claimed.state).toBe("applied");
     if (claimed.state !== "applied") throw new Error("claim refused");
     expect(lifecycle.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: claimed.run.envelope.runId, expectedVersion: claimed.run.version,
@@ -509,7 +509,7 @@ describe("exact lifecycle reservation", () => {
     const h = fixture(), owner = await owned(h, h.deps.workerId), database = h.database;
     const lifecycle = new RunRecordService({ database, clock: h.authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => undefined });
     database.authority.runs.enqueue(personLookupQueuedRun());
-    const command = { commandId: randomUUID(), workerId: h.deps.workerId, workflow: h.deps.workflowId, runtimeConfig: selectRunRuntime(database.authority) };
+    const command = { commandId: randomUUID(), workerId: h.deps.workerId, workflow: h.deps.workflowId, workerLifetime: testWorkerLifetime(database, h.deps.workflowId, 1).workerLifetime, runtimeConfig: selectRunRuntime(database.authority) };
     const claimed = lifecycle.claimNext(command);
     if (claimed.state !== "applied") throw new Error("prior claim refused");
     database.authority.runs.requestCancellation({ runId: claimed.run.envelope.runId, expectedVersion: claimed.run.version, now: h.authority.clock.now().toISOString() });

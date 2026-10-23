@@ -63,8 +63,10 @@ export function trustWorld() {
   };
   const fail = (run: RunRecord, seed: number) => {
     const now = world.clock.now().toISOString();
-    const workerLifetime = testWorkerLifetime(database, run.envelope.workflow, 1).workerLifetime;
-    const claimed = database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId, workerLifetime, now });
+    const claimMember1 = database.authority.workerSlots.get(workerId);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    const workerLifetime = testWorkerLifetime(database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime;
+    const claimed = database.authority.runs.claimNext({ workerLifetime, workflow: run.envelope.workflow, workerId, now });
     assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("fixture claim failed");
     assert.equal(claimed.run.envelope.runId, run.envelope.runId);
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };

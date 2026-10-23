@@ -10,6 +10,9 @@ import type { Clock } from "../../../src/rules/time/clock.js";
 import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { CONFIG_SNAPSHOT } from "./phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
+import { bindWorkerProcessAdmission } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { WorkerIdSchema } from "../../../src/rules/identity/ids.js";
+import { boundFixtureWorker, boundProfileAdmission, registerBoundFixtureWorker } from "../helpers/synthetic-database-admission.js";
 
 export function testRunService(database: AuthorityDatabase, clock: Clock) {
   return new RunRecordService({ database, clock, ids: sequentialIdFactory("e"),
@@ -37,20 +40,41 @@ export function testWorkerLifetime(database: AuthorityDatabase, workflow: string
 export function testAdmittedWorker(database: AuthorityDatabase, clock: Clock, input: Readonly<{
   path: string; workflow: string; poolIndex: number; browserSystems: readonly string[];
 }>) {
+  boundProfileAdmission(input.path);
   if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  database.withAuthorityTransaction(repositories => {
-    const current = repositories.workerPools.get(input.workflow);
-    const admitted = admitDirectWorker(repositories, { commandId: randomUUID(), workflow: input.workflow,
-      poolIndex: input.poolIndex, expectedPoolVersion: current?.version ?? 0, processId: process.pid,
-      processAcquisitionId: randomUUID(), authorityPath: realpathSync(input.path),
-      processLockRoot: join(dirname(realpathSync(input.path)), "locks"), now: clock.now().toISOString() }, randomUUID());
-    if (repositories.workerLeases.get(admitted.workerId) === undefined) {
-      const lease = repositories.workerLeases.start({ workerId: admitted.workerId, workflow: input.workflow,
-        browserSystems: input.browserSystems, processId: process.pid,
-        requestedBy: "local-operator", now: clock.now().toISOString() });
-      assert.equal(lease.state, "started");
-    }
-  });
+  const existing = database.authority.workerSlots.list(input.workflow).find(slot => slot.poolIndex === input.poolIndex && slot.retiredAt === null);
+  if (existing !== undefined) {
+    assert.ok(boundFixtureWorker(database, input.path, existing.workerId), "fixture cannot adopt an unowned worker");
+    const custody = database.workerLifetimeCustody(existing.workerId);
+    assert.equal(custody.state, "alive");
+    assert.equal(custody.birth.owner.pid, process.pid);
+    return testWorkerLifetime(database, input.workflow, input.poolIndex);
+  }
+  const authorityPath = realpathSync(input.path), processLockRoot = join(dirname(authorityPath), "locks");
+  const owned = bindWorkerProcessAdmission({ authorityPath, processLockRoot, pid: process.pid, clock,
+    open: () => database, close: value => value.close(),
+    admit: (value, acquisitionId) => value.withAuthorityTransaction(repositories => {
+      const current = repositories.workerPools.get(input.workflow);
+      return WorkerIdSchema.parse(admitDirectWorker(repositories, { commandId: randomUUID(), workflow: input.workflow,
+        poolIndex: input.poolIndex, expectedPoolVersion: current?.version ?? 0, processId: process.pid,
+        processAcquisitionId: acquisitionId, authorityPath, processLockRoot, now: clock.now().toISOString() }, randomUUID()).workerId);
+    }) });
+  let failure: { error: unknown } | undefined;
+  try {
+    const started = database.startOwnedWorker({ workerId: owned.workerId, workflow: input.workflow,
+      browserSystems: input.browserSystems, processId: process.pid, requestedBy: "local-operator",
+      now: clock.now().toISOString() }, owned.processLock);
+    assert.equal(started.state, "started");
+  } catch (error) { failure = { error }; }
+  try {
+    registerBoundFixtureWorker({ database, path: input.path, workerId: owned.workerId,
+      generation: database.authority.workerLeases.get(owned.workerId)?.leaseGeneration,
+      processId: process.pid, handle: owned.processLock, clock });
+  } catch (error) {
+    if (failure !== undefined) throw new AggregateError([failure.error, error], "fixture-worker-owner-registration-unproved", { cause: error });
+    throw error;
+  }
+  if (failure !== undefined) throw failure.error;
   return testWorkerLifetime(database, input.workflow, input.poolIndex);
 }
 

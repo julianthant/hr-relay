@@ -5,7 +5,7 @@ import { z } from "zod";
 import { RunCompletionSchema } from "./completion.js";
 import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { RunDisplayNameSchema } from "../../rules/commands/commands.js";
+import { RunDisplayNameSchema } from "./display-name.js";
 import {
   EvidenceReceiptIdSchema,
   FailureIdSchema,

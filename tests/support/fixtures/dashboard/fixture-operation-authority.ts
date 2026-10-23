@@ -1,6 +1,7 @@
 import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { duoCeremonyGatesOver } from "../../helpers/duo-ceremony-fixtures.js";
 import { EXECUTOR_WORKER_ID, EXECUTOR_WORKFLOW_ID, FIXTURE_SESSION_ACQUIRE_MS } from "../../helpers/phase1f-executor-harness.js";
+import { canonicalChildExecution } from "../../helpers/backend/canonical-child-execution.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -97,7 +98,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     if (slot === undefined) throw new Error("operation-fixture-slot-missing");
     const claim = worker.claimNext({ commandId: `00000000-0000-4000-8002-${String(sequence).padStart(12, "0")}`, workflow: compiled.descriptor.id, workerId: slot.workerId });
     if (claim.state !== "applied" || claim.run.envelope.runId !== run.envelope.runId || claim.run.lifecycle.state !== "claimed") throw new Error("operation-fixture-claim-mismatch");
-    const outcome = await executeClaimedRun({ ...deps, descriptor: compiled.descriptor, childRuns }, { run: claim.run,
+    const outcome = await executeClaimedRun({ ...deps, descriptor: compiled.descriptor }, { run: claim.run,
       claim: { workerId: claim.run.lifecycle.workerId, claimGeneration: claim.run.claimGeneration }, signal });
     if (outcome.state === "failed" && mode === "separation-failed" || outcome.state === "parked-gate" && mode === "separation-ambiguous") return undefined;
     if (outcome.state !== "done") throw new Error(`operation-fixture-executor-${outcome.state}: ${database.authority.failures.listByRun(run.envelope.runId).map((failure) => failure.summary).join("; ")}`);
@@ -105,20 +106,14 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     if (result === undefined) throw new Error("operation-fixture-result-missing");
     return result;
   };
-  const childRuns: NonNullable<RunExecutorDependencies["childRuns"]> = { async executeChildRun(context) {
-    const { node } = context;
-    if (node.cardinality !== "one" || node.await !== "terminal") throw new Error("operation-fixture-child-shape-mismatch");
-    const compiled = plan1Workflows.find((candidate) => candidate.descriptor.id === node.target.id);
-    if (compiled === undefined) throw new Error("operation-fixture-child-target-missing");
-    const value = node.bind(context.scope);
-    const run = createRun(compiled, value, { runId: context.run.envelope.runId, edgeId: node.edgeId, tracePrefix: context.run.envelope.traceId }, node.deriveChildItemId(Plan1Input.parse(value)));
-    const result = await execute(run, compiled);
-    if (result === undefined) throw new Error("operation-fixture-child-result-missing");
-    return { state: "done", runId: run.envelope.runId, itemId: run.envelope.itemId, output: result.result.value };
-  } };
+  const canonical = canonicalChildExecution(deps, database, harness.path, resolve);
   const rootWorkflow = separation ? plan1SeparationWorkflow : mode === "browser" ? plan1BrowserWorkflow : plan1Parent;
-  const root = createRun(rootWorkflow, { emplId: "10800000", text: "synthetic", mode: mode === "separation-failed" ? "fail" : mode === "separation-ambiguous" ? "repeat" : "confirmed" });
-  await execute(root, rootWorkflow);
+  const input = { emplId: "10800000", text: "synthetic", mode: mode === "separation-failed" ? "fail" : mode === "separation-ambiguous" ? "repeat" : "confirmed" };
+  const root = mode === "local" ? canonical.start(rootWorkflow.descriptor, input, { dryRun: true }) : createRun(rootWorkflow, input);
+  if (mode === "local") {
+    const result = await canonical.execute(root, signal);
+    if (result.run?.lifecycle.state !== "terminal" || result.run.lifecycle.outcome !== "done") throw new Error("operation-fixture-canonical-root-incomplete");
+  } else await execute(root, rootWorkflow);
   const reader = testRunService(database, clock);
   const projection = createOperatorProjection({ database, reader, stateRoot, clock, appVersion: "0.1.0", descriptorSetHash: hash,
     ledger: createTransactionHistory(database.authority), descriptors: { resolve } });

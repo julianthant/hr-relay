@@ -235,11 +235,15 @@ export const DelegationManifestRefSchema = z.strictObject({
 });
 export type DelegationManifestRef = z.infer<typeof DelegationManifestRefSchema>;
 
+export interface ChildRunIdentityContext {
+  readonly canonicalItemId: ItemId;
+}
+
 interface ChildRunNodeBase<Target extends AnyWorkflowRef> extends GraphNodeBase {
   readonly kind: "child-run";
   readonly edgeId: DelegationEdgeId;
   readonly target: Target;
-  readonly deriveChildItemId: (input: z.output<Target["input"]>) => ItemId;
+  readonly deriveChildItemId: (input: z.output<Target["input"]>, context: ChildRunIdentityContext) => ItemId;
   readonly policy: DelegationPolicy;
 }
 export type ChildRunNode<Scope, Target extends AnyWorkflowRef> =

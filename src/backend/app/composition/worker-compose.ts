@@ -1,5 +1,9 @@
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { createChatGptOcrAdapter, CHATGPT_OCR_MODEL } from "../../processing/providers/chatgpt-ocr-adapter.js";
+import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { createDurableChildRunExecutor } from "../../runtime/execution/durable-child-executor.js";
+import { runQueuedSpanEvent } from "../../runs/commands/run-queued-span.js";
 import { isLiveWorker } from "../../../models/run/worker.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
@@ -8,7 +12,7 @@ import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFault
 import { admitDirectWorker, admitSupervisedWorker } from "../../storage/sqlite/worker-slots.js";
 import { z } from "zod";
 import { workerPoolMember, WorkerPoolMemberSchema } from "../../../models/run/worker-slot.js";
-import { CommandIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
+import { ActorIdSchema, CommandIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import { composeRuntimePreflight } from "../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
 import { claimWithPreflight } from "../preflight/worker-admission.js";
@@ -26,7 +30,10 @@ import { hostConfigFacts } from "../../../models/config/host-display.js";
 import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied, sweepWorkerClaims, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
 import { dirname, join } from "node:path";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
-import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowProjections, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { BUILD_MANIFEST, resolveWorkflowFingerprint, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import type { BuildManifest } from "../../../models/workflow/build-manifest.js";
+import { compileWorkflow, type WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../../runtime/scheduling/deadline-scheduler.js";
@@ -88,7 +95,7 @@ export async function initializeFailedWorkerReset(input: Readonly<{
 
 export async function initializeRetryWorker(input: Readonly<{
   database: AuthorityDatabase; commandId: string; leaseGeneration: number; descriptor: AnyWorkflowDescriptor;
-  configFingerprint: Fingerprint; sessions: WorkerSessionManager; signal: AbortSignal; clock: Clock; scheduler: MonotonicDeadlineScheduler;
+  stores?: TaskStoreRegistry; configFingerprint: Fingerprint; sessions: WorkerSessionManager; signal: AbortSignal; clock: Clock; scheduler: MonotonicDeadlineScheduler;
 }>): Promise<void> {
   const { database, commandId, leaseGeneration, descriptor, configFingerprint, sessions, signal, clock, scheduler } = input;
   const command = database.authority.workerControls.get(commandId);
@@ -110,7 +117,7 @@ export async function initializeRetryWorker(input: Readonly<{
   if (binding.operation.mode === "initialize") {
     await withBoundRunConfigFingerprint(sessions, binding.operation.configFingerprint, async () => {
       const contracts = new Set(workflowProjections(descriptor).contracts.map(contract => contract.id));
-      const needs = taskStoreRegistry.stores.flatMap(store => Object.values(store.tasks).filter(task => contracts.has(task.contract.id)).flatMap(task => task.impl.sessions));
+      const needs = (input.stores ?? taskStoreRegistry).stores.flatMap(store => Object.values(store.tasks).filter(task => contracts.has(task.contract.id)).flatMap(task => task.impl.sessions));
       const systems = new Set<string>();
       for (const need of needs) {
         if (systems.has(need.system)) continue;
@@ -142,7 +149,7 @@ export interface WorkerCliArguments {
 }
 
 /** `worker <workflow-id> --pool-index <positive-int> [--drain]` — anything else refuses by name. */
-export function parseWorkerArguments(args: readonly string[]): WorkerCliArguments {
+function parseWorkerArgumentSyntax(args: readonly string[]): WorkerCliArguments {
   const [first, ...rest] = args;
   if (first === undefined) {
     throw new Error(
@@ -150,11 +157,6 @@ export function parseWorkerArguments(args: readonly string[]): WorkerCliArgument
     );
   }
   const workflowId = WorkflowIdSchema.parse(first);
-  if (SERVER_REGISTRY[workflowId] === undefined) {
-    throw new Error(
-      `workflow ${workflowId} is not registered; registered: ${DESCRIPTORS.map(({ id }) => id).join(", ")}`,
-    );
-  }
   let drain = false;
   let poolIndex: PositiveInt | undefined;
   const launchFields = new Map<string, string>();
@@ -202,6 +204,12 @@ export function parseWorkerArguments(args: readonly string[]): WorkerCliArgument
   return Object.freeze({ workflowId, poolIndex, drain, launch });
 }
 
+export function parseWorkerArguments(args: readonly string[]): WorkerCliArguments {
+  const parsed = parseWorkerArgumentSyntax(args);
+  if (SERVER_REGISTRY[parsed.workflowId] === undefined) throw new Error(`workflow ${parsed.workflowId} is not registered`);
+  return parsed;
+}
+
 export interface WorkerComposeInput {
   readonly takeInitialCustody?: () => RuntimeProcessLockHandle | undefined;
   readonly admission?: RuntimeAdmission;
@@ -209,6 +217,11 @@ export interface WorkerComposeInput {
   readonly isolation: RuntimeIsolation;
   /** Raw CLI args after `worker` — see `parseWorkerArguments`. */
   readonly args: readonly string[];
+  readonly executionRegistry?: Readonly<{
+    resolve(workflowId: string): WorkflowModule | undefined;
+    stores: TaskStoreRegistry;
+    manifest: BuildManifest;
+  }>;
   readonly env?: NodeJS.ProcessEnv;
   readonly clock?: Clock;
   readonly ids?: IdFactory;
@@ -389,22 +402,72 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   let failedClosure: unknown;
   let closureFailed = false;
   try {
-    return await composeOwnedWorkerRuntime({ ...input, closeDatabase: database => {
+    return await composeOwnedWorkerRuntime(input, database => {
       try { (input.closeDatabase ?? (opened => opened.close()))(database); }
       catch (error) { closureFailed = true; failedClosure = error; throw error; }
-    } });
+    });
   } catch (error) {
     if (closureFailed) throw new RuntimeCustodyUncertainError([error, failedClosure]);
     throw error;
   }
 }
 
-async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
+async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabase: NonNullable<WorkerComposeInput["closeDatabase"]>): Promise<WorkerLoopReport> {
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
+  const { workflowId, poolIndex, drain, launch } = input.executionRegistry === undefined
+    ? parseWorkerArguments(input.args) : parseWorkerArgumentSyntax(input.args);
+  const stores = input.executionRegistry?.stores ?? taskStoreRegistry;
+  const buildManifest = input.executionRegistry?.manifest ?? BUILD_MANIFEST;
+  const selectedRegistry = input.executionRegistry ?? { resolve: (id: string) => SERVER_REGISTRY[id], stores };
+  const modules = new Map<string, WorkflowModule>();
+  const resolveModule = (id: string): WorkflowModule | undefined => {
+    const module = selectedRegistry.resolve(id), previous = modules.get(id);
+    if (module === undefined) {
+      if (previous !== undefined) throw new Error("worker-execution-registry-changed");
+      return undefined;
+    }
+    if (module.descriptor.id !== id || previous !== undefined && previous !== module
+      || module.stores.some(store => !stores.stores.includes(store))) throw new Error("worker-execution-registry-mismatch");
+    if (compileWorkflow(module.definition, { manifest: buildManifest }).descriptor !== module.descriptor) {
+      throw new Error("worker-execution-compiled-manifest-mismatch");
+    }
+    if (resolveWorkflowFingerprint(buildManifest, module.descriptor.id) !== module.descriptor.contractFingerprint) {
+      throw new Error("worker-execution-manifest-mismatch");
+    }
+    for (const node of descriptorRuntimeNodes(module.descriptor)) {
+      const contracts = node.kind === "task" ? [node.uses] : node.kind === "transaction" ? [node.prepare.uses, node.commit.uses] : [];
+      const required = contracts.map(contract => contract.id);
+      if (node.kind === "transaction") required.push(node.commit.uses.writeSafety.idempotency.probe.taskId);
+      for (const taskId of required) {
+        if (module.stores.flatMap(store => Object.values(store.tasks)).filter(task => task.contract.id === taskId).length !== 1) {
+          throw new Error("worker-execution-task-store-mismatch");
+        }
+        resolveTaskImplFingerprint(buildManifest, taskId);
+      }
+    }
+    modules.set(id, module);
+    return module;
+  };
+  const module = resolveModule(workflowId);
+  if (module === undefined) throw new Error(`workflow ${workflowId} is not registered`);
+  const descriptor = module.descriptor;
+  const systems = new Set(workflowProjections(descriptor).systems);
+  const qualify = (producer: WorkflowModule, ancestry: readonly string[]): void => {
+    if (ancestry.length >= 16 || ancestry.includes(producer.descriptor.id)) throw new Error("delegation-definition-cycle-or-depth");
+    for (const node of descriptorRuntimeNodes(producer.descriptor)) {
+      if (node.kind !== "child-run") continue;
+      const target = resolveModule(node.target.id);
+      if (target === undefined || deriveSchemaHash(target.descriptor.input, "input") !== deriveSchemaHash(node.target.input, "input")
+        || workflowTerminalResultExecution(target.descriptor).schemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("delegation-target-descriptor-unavailable");
+      for (const system of workflowProjections(target.descriptor).systems) systems.add(system);
+      qualify(target, [...ancestry, producer.descriptor.id]);
+    }
+  };
+  qualify(module, []);
+  const resolveDescriptor = (id: string) => resolveModule(id)?.descriptor;
   const machine = requireRuntimeAdmission(input.admission);
   const selected = captureSelectedProfileStorage(machine);
-  const { workflowId, poolIndex, drain, launch } = parseWorkerArguments(input.args);
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
@@ -416,10 +479,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
   const sweepIntervalMs = input.sweepIntervalMs ?? WORKER_SWEEP_INTERVAL_MS;
   const claimStaleAfterMs = input.claimStaleAfterMs ?? WORKER_CLAIM_STALE_AFTER_MS;
 
-  const module = SERVER_REGISTRY[workflowId];
-  if (module === undefined) throw new Error(`workflow ${workflowId} is not registered`);
-  const descriptor = module.descriptor;
-  const resolveDescriptor = (id: string) => SERVER_REGISTRY[id]?.descriptor;
 
 
   const hostFacts = hostConfigFacts(env);
@@ -461,7 +520,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
         throw error;
       }
     },
-    close: input.closeDatabase ?? (opened => opened.close()),
+    close: closeDatabase,
     releaseStorageCustody: () => admission.release(),
     admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
       assertCurrent();
@@ -495,8 +554,21 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
   const taskNotes = createNoteTimelineWriter({ repository: loggingRepository, clock });
   const protectedSecrets = createCredentialSecretSource({ read: () => { assertCurrent(); return protectedAuthority.read(); } });
-  const runRecordService = new RunRecordService({ database, clock, ids,
-    publishQueued: () => { throw new Error("worker port cannot create runs"); },
+  const executionDescriptor = resolveDescriptor;
+  const runRecordService = new RunRecordService({ database, clock, ids, buildManifest,
+    resolveDescriptor: executionDescriptor,
+    publishQueued: (run, publication) => {
+      if (publication === undefined) throw new Error("queued run is missing its publication context");
+      emitter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
+    },
+  });
+  const childRuns = createDurableChildRunExecutor({ authority: database,
+    admission: { admitAndRelease: (context, plan) => runRecordService.admitDelegation(context, plan) },
+    resolveTarget: id => {
+      const target = executionDescriptor(id);
+      if (target === undefined) throw new Error("delegation-target-descriptor-unavailable");
+      return target;
+    },
   });
   const lifecycle = workerRunLifecyclePort(runRecordService);
   const gateSources = createGateSourceRuntime({
@@ -609,7 +681,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
     const started = database.startOwnedWorker({
       workerId,
       workflow: workflowId,
-      browserSystems: workflowProjections(descriptor).systems,
+      browserSystems: [...systems],
       processId: input.processId ?? process.pid,
       requestedBy: LOCAL_OPERATOR_ACTOR_ID,
       ...(launch === undefined ? {} : { commandId: launch.commandId }),
@@ -726,7 +798,13 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
         workflowId,
         workerId,
         descriptor,
-        stores: taskStoreRegistry,
+        stores,
+        buildManifest,
+        childRuns,
+        resolveExecution: run => {
+          const target = executionDescriptor(run.envelope.workflow);
+          return target === undefined ? undefined : { descriptor: target, stores };
+        },
         authority: database,
         lifecycle,
         gateSources,
@@ -739,7 +817,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
             await initializeFailedWorkerReset({ database, commandId: launch.commandId, leaseGeneration,
               descriptor, handle: processLock, signal, clock, scheduler });
           } else if (launch !== undefined) await initializeRetryWorker({ database, commandId: launch.commandId, leaseGeneration,
-            descriptor, configFingerprint: resolved.fingerprint, sessions, signal, clock, scheduler });
+            descriptor, stores, configFingerprint: resolved.fingerprint, sessions, signal, clock, scheduler });
         },
         sessionFactory: baselineResources.sessionFactory,
         emitter,
@@ -817,7 +895,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
           { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.daemon.idleRepollMs,
         artifacts,
         writeSequencerFor: (sessions, taskDeadlineMs) => createWriteSequencer({
-          stores: taskStoreRegistry,
+          stores,
           authority: database,
         lifecycle,
           sessions,
@@ -827,6 +905,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
           scheduler,
           taskDeadlineMs,
           operator: LOCAL_OPERATOR_ACTOR_ID,
+          resolveImplFingerprint: taskId => resolveTaskImplFingerprint(buildManifest, taskId),
           log,
         }),
         diagnostics,
@@ -872,7 +951,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
   let databaseClosureProven = false;
   try {
     if (!accountClosureProven) throw new RuntimeCustodyUncertainError(cleanupErrors);
-    (input.closeDatabase ?? ((opened) => opened.close()))(database);
+    closeDatabase(database);
     databaseClosureProven = true;
   } catch (error) {
     cleanupErrors.push(error);

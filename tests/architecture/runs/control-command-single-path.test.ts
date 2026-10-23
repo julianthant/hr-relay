@@ -184,6 +184,199 @@ function withoutWorkerControlAdmissions(content: string, kernelContent: string):
   return content;
 }
 
+type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[] }>;
+const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRead[]>> = {
+  "src/backend/storage/sqlite/command-record-row.ts": [
+    { owner: "withCanonicalRunCommandScope", id: "request.commandId", guards: [
+      'canonicalJsonStringify(repositories.commands.get(request.commandId))!==canonicalJsonStringify(request)',
+      'repositories.commandAudits.findByCommand(request.commandId)!==undefined',
+      'activeRunCommand!==undefined', 'request.family!=="run"', 'request.type!=="retry"&&request.type!=="cancel"', '"then"inresult',
+    ], calls: ["repositories.commands.assertIdentity(request,parentCommandId)"] },
+  ],
+  "src/backend/storage/sqlite/delegation-root-authority.ts": [
+    { owner: "authenticateRunPriority", id: "source.commandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "Number(changes[0].before)!==Number(source.target.expectedVersion)"], calls: ["validateNativeLifecycleRequest(command)"] },
+    { owner: "authenticateStartPlanRun", id: "plan.consumedBy.commandId", guards: ["audit===undefined", "!same(audit.request,command)", "command.target.expectedVersion!==plan.version-1"], calls: ["validateNativeLifecycleRequest(created)"] },
+    { owner: "authenticateRootRun", id: "request.sourceCommandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "source.target.expectedVersion!==request.expectedVersion"], calls: ["validateNativeLifecycleRequest(origin)"] },
+  ],
+  "src/backend/storage/sqlite/delegation-authority.ts": [
+    { owner: "authenticateOperatorSource", id: "source.commandId", guards: ['audit.result.state!=="applied"', "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(source)", "source.requestedBy!==LOCAL_OPERATOR_ACTOR_ID"], calls: ["assertCanonicalRunCommandScope(repositories,source)"] },
+    { owner: "resolveDelegationRetry", id: "retry.sourceCommandId", guards: ['sourceAudit?.result.state!=="applied"', "canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)", "lifecycleRequest.sourceCommandId!==source.commandId"], calls: ["assertDelegationReplacement(repositories,original,child,next)"] },
+    { owner: "delegationCancellationAvailability", id: "source.commandId", guards: ['run?.lifecycle.state!=="terminal"', "repositories.commandAudits.findByCommand(source.commandId)===undefined"], calls: ["readDelegationCancellation(repositories,runId)"] },
+    { owner: "readDelegationCancellation", id: "source.commandId", guards: ['authored?.result.state!=="applied"', "canonicalJsonStringify(authored.request)!==canonicalJsonStringify(source)", "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(retained)"], calls: ["authenticateCancellationSource(repositories,run,request.cancellationSource)"] },
+  ],
+  "src/backend/runs/lifecycle/delegation-admission.ts": [
+    { owner: "admitDelegation", id: "gate.commandId", guards: ['audit?.result.state!=="applied"', "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)", "command.target.expectedVersion!==gate.expectedVersion", "command.requestedBy!==gate.resolvedBy"] },
+  ],
+};
+
+function withoutDelegationAuditReads(content: string, path: string, kernelContent: string): string {
+  const specs = DELEGATION_AUDIT_READS[path];
+  if (specs === undefined) return content;
+  const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true);
+  const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
+  const importsRepository = source.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
+    && node.moduleSpecifier.text === (path.endsWith("/delegation-admission.ts") ? "../../storage/sqlite/authority-database.js" : "./authority-database.js")
+    && node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
+    && node.importClause.namedBindings.elements.some(binding => binding.name.text === "AuthorityRepositories" && binding.propertyName === undefined));
+  if (!importsRepository) return content;
+  const uses: ts.PropertyAccessExpression[] = [];
+  function findUses(node: ts.Node): void {
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "commandAudits") uses.push(node);
+    ts.forEachChild(node, findUses);
+  }
+  findUses(source);
+  if (uses.length !== specs.length) return content;
+  const admitted: ts.PropertyAccessExpression[] = [];
+  for (const spec of specs) {
+    const owner = source.statements.filter(ts.isFunctionDeclaration).find(fn => fn.name?.text === spec.owner);
+    if (owner?.body === undefined) return content;
+    if (spec.owner !== "admitDelegation" && (owner.parameters[0]?.name.getText(source) !== "repositories"
+      || owner.parameters[0].type?.getText(source) !== "AuthorityRepositories")) return content;
+    const candidates = uses.filter(use => { let node: ts.Node | undefined = use.parent;
+      while (node !== undefined && !ts.isFunctionDeclaration(node)) node = node.parent;
+      return node === owner;
+    });
+    if (candidates.length !== 1) return content;
+    const use = candidates[0], method = use.parent, call = method.parent;
+    if (compact(use.expression) !== "repositories" || !ts.isPropertyAccessExpression(method) || method.name.text !== "findByCommand"
+      || !ts.isCallExpression(call) || call.expression !== method || call.arguments.length !== 1 || compact(call.arguments[0]) !== spec.id) return content;
+    const guards = new Set<string>(), calls = new Set<string>();
+    function facts(node: ts.Node): void {
+      if (ts.isCallExpression(node)) calls.add(compact(node));
+      if (ts.isIfStatement(node)) {
+        let refuses = false;
+        function refusal(statement: ts.Node): void {
+          if (ts.isThrowStatement(statement) || ts.isReturnStatement(statement) && statement.expression !== undefined
+            && (statement.expression.kind === ts.SyntaxKind.FalseKeyword || ts.isObjectLiteralExpression(statement.expression)
+              && statement.expression.properties.some(property => ts.isPropertyAssignment(property) && property.name.getText(source) === "state"
+                && ts.isStringLiteral(property.initializer) && property.initializer.text === "unavailable"))) refuses = true;
+          ts.forEachChild(statement, refusal);
+        }
+        refusal(node.thenStatement);
+        if (refuses) {
+          function condition(expression: ts.Node): void {
+            if (ts.isBinaryExpression(expression) || ts.isPrefixUnaryExpression(expression)) guards.add(compact(expression));
+            ts.forEachChild(expression, condition);
+          }
+          condition(node.expression);
+        }
+      }
+      ts.forEachChild(node, facts);
+    }
+    facts(owner.body);
+    if (spec.guards.some(proof => !guards.has(proof)) || spec.calls?.some(proof => !calls.has(proof))) return content;
+    if (spec.owner === "withCanonicalRunCommandScope") {
+      const installed = owner.body.statements.some(statement => ts.isExpressionStatement(statement)
+        && compact(statement) === "activeRunCommand={repositories,request:canonicalJsonStringify(request)};");
+      const guarded = owner.body.statements.filter(ts.isTryStatement);
+      if (!installed || guarded.length !== 1 || guarded[0].finallyBlock === undefined
+        || compact(guarded[0].finallyBlock) !== "{activeRunCommand=undefined;}"
+        || guarded[0].tryBlock.statements.length !== 3
+        || compact(guarded[0].tryBlock.statements[0]) !== "constresult=work();"
+        || !ts.isReturnStatement(guarded[0].tryBlock.statements[2])
+        || compact(guarded[0].tryBlock.statements[2]) !== "returnresult;") return content;
+    }
+    if (spec.owner === "admitDelegation") {
+      if (owner.parameters[0]?.name.getText(source) !== "dependencies" || owner.parameters[0].type?.getText(source) !== "RunRecordServiceDependencies"
+        || !source.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
+          && node.moduleSpecifier.text === "./run-record-service.js" && node.importClause?.namedBindings !== undefined
+          && ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.some(binding => binding.name.text === "RunRecordServiceDependencies" && binding.propertyName === undefined))) return content;
+      let callback: ts.Node | undefined = call.parent;
+      while (callback !== undefined && !ts.isArrowFunction(callback)) callback = callback.parent;
+      // The gate read sits inside its map callback; locate the actual authority callback above it.
+      while (callback !== undefined && !(ts.isArrowFunction(callback) && ts.isCallExpression(callback.parent)
+        && compact(callback.parent.expression) === "dependencies.database.withAuthorityTransaction")) callback = callback.parent;
+      if (callback === undefined || !ts.isArrowFunction(callback) || callback.parameters[0]?.name.getText(source) !== "repositories") return content;
+    }
+    admitted.push(use);
+  }
+  if (path.endsWith("/command-record-row.ts")) {
+    const kernel = ts.createSourceFile("kernel.ts", kernelContent, ts.ScriptTarget.Latest, true);
+    if (!kernel.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
+      && node.moduleSpecifier.text === "../../storage/sqlite/command-record-row.js" && node.importClause?.namedBindings !== undefined
+      && ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.some(binding => binding.name.text === "withCanonicalRunCommandScope" && binding.propertyName === undefined))) return content;
+    const calls: ts.CallExpression[] = [];
+    function find(node: ts.Node): void { if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+      && node.expression.text === "withCanonicalRunCommandScope") calls.push(node); ts.forEachChild(node, find); }
+    find(kernel);
+    if (calls.length !== 1 || calls[0].arguments.map(node => node.getText(kernel).replace(/\s+/gu, "")).join(",")
+      !== "repositories,request,()=>dispatchActive(dependencies,repositories,request,now,auditId),parentCommandId") return content;
+    let callback: ts.Node | undefined = calls[0].parent;
+    while (callback !== undefined && !ts.isArrowFunction(callback)) callback = callback.parent;
+    if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isCallExpression(callback.parent)
+      || callback.parent.expression.getText(kernel) !== "dependencies.authority.withAuthorityTransaction") return content;
+    const before: ts.CallExpression[] = [], after: ts.CallExpression[] = [];
+    function journal(node: ts.Node): void {
+      if (ts.isCallExpression(node)) {
+        const expression = node.expression.getText(kernel);
+        if (expression === "repositories.commands.insert") before.push(node);
+        if (expression === "repositories.commandAudits.insert") after.push(node);
+      }
+      ts.forEachChild(node, journal);
+    }
+    journal(callback.body);
+    if (before.length !== 1 || after.length !== 1 || before[0].end >= calls[0].getStart(kernel)
+      || calls[0].end >= after[0].getStart(kernel)) return content;
+    const owned = callback.body.getText(kernel).replace(/\s+/gu, "");
+    if (!owned.includes("repositories.commands.assertIdentity(request,parentCommandId);")
+      || !owned.includes("repositories.commands.insert(journalRequest,parentCommandId)")
+      || !owned.includes('if(journal.state==="existing")returnreplay(dependencies,repositories,request,now);')) return content;
+  }
+  for (const use of admitted.sort((left, right) => right.name.getStart(source) - left.name.getStart(source))) {
+    content = content.slice(0, use.name.getStart(source)) + "receiptReads" + content.slice(use.name.end);
+  }
+  return content;
+}
+
+describe("finite native delegation audit read ownership", () => {
+  for (const [path, specs] of Object.entries(DELEGATION_AUDIT_READS)) {
+    it(`retains exact proof-bound reads and refuses altered authority in ${path}`, () => {
+      const source = readFileSync(join(REPO_ROOT, path), "utf8");
+      const kernel = readFileSync(join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts"), "utf8");
+      assert.ok(!withoutDelegationAuditReads(source, path, kernel).includes("commandAudits"));
+      const parsed = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+      const calls: ts.CallExpression[] = [], expressions: ts.Node[] = [];
+      function visit(node: ts.Node): void {
+        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+          && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.name.text === "commandAudits") calls.push(node);
+        if (ts.isBinaryExpression(node) || ts.isPrefixUnaryExpression(node)) expressions.push(node);
+        ts.forEachChild(node, visit);
+      }
+      visit(parsed);
+      assert.equal(calls.length, specs.length);
+      const mutate = (node: ts.Node, replacement: string) => source.slice(0, node.getStart(parsed)) + replacement + source.slice(node.end);
+      const mutants: string[] = [`${source}\nfunction unrelated(repositories: any) { return repositories.commandAudits; }`];
+      for (const call of calls) {
+        for (const method of ["insert", "get"]) mutants.push(mutate(call, `repositories.commandAudits.${method}(${call.arguments[0].getText(parsed)})`));
+        mutants.push(mutate(call.arguments[0], "foreignCommandId"));
+        mutants.push(mutate(call, "repositories.commandAudits.findByCommand"));
+      }
+      for (const spec of specs) {
+        const proof = expressions.find(expression => expression.getText(parsed).replace(/\s+/gu, "") === spec.guards[1]);
+        assert.ok(proof);
+        mutants.push(mutate(proof, "true"));
+      }
+      for (const mutant of mutants) {
+        assert.notEqual(mutant, source);
+        assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"));
+      }
+      if (path.endsWith("command-record-row.ts")) {
+        for (const mutant of [
+          kernel.replace("withCanonicalRunCommandScope(repositories, request,", "withCanonicalRunCommandScope(repositories, otherRequest,"),
+          kernel.replace("() => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)", "() => arbitraryDispatch(dependencies, repositories, request, now, auditId), parentCommandId)"),
+          kernel.replaceAll("dependencies.authority.withAuthorityTransaction", "dependencies.authority.withAuthorityReadSnapshot"),
+        ]) {
+          assert.notEqual(mutant, kernel);
+          assert.ok(withoutDelegationAuditReads(source, path, mutant).includes("commandAudits"));
+        }
+        const revoked = source.replace("activeRunCommand = undefined;", "void activeRunCommand;");
+        assert.notEqual(revoked, source);
+        assert.ok(withoutDelegationAuditReads(revoked, path, kernel).includes("commandAudits"));
+      }
+    });
+  }
+});
+
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...COMMAND_FIXTURES,
   ...["remove-worker", "retry-worker"].map((type, index) => ({
@@ -521,11 +714,14 @@ describe("control-command-single-path", () => {
     for (const file of walkFiles(join(REPO_ROOT, "src"), { extensions: [".ts", ".tsx"] })) {
       const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
       const raw = readFileSync(file, "utf8");
+      const kernelContent = readFileSync(join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts"), "utf8");
       const content = path === "src/backend/storage/sqlite/worker-control.ts"
-        ? withoutWorkerControlAdmissions(raw, readFileSync(join(REPO_ROOT, "src/backend/runs/commands/command-kernel.ts"), "utf8")) : raw;
+        ? withoutWorkerControlAdmissions(raw, kernelContent) : withoutDelegationAuditReads(raw, path, kernelContent);
       if (content.includes("export function createCommandKernel")) kernelDefinitions += 1;
       if (path !== "src/backend/runs/commands/command-kernel.ts" && path !== "src/backend/storage/sqlite/worker-control.ts"
         && /\b(?:admitWorkerReset|admitWorkerLifecycle)\b/u.test(raw)) violations.push(`${path} references private native worker admission outside the kernel`);
+      if (path !== "src/backend/runs/commands/command-kernel.ts" && path !== "src/backend/storage/sqlite/command-record-row.ts"
+        && /\bwithCanonicalRunCommandScope\b/u.test(raw)) violations.push(`${path} references private synchronous run command custody outside the kernel`);
       if (allowed.has(path)) continue;
       for (const token of tokens) {
         const expectedSettingsAuditReads = settingsAuditReaders.get(path);

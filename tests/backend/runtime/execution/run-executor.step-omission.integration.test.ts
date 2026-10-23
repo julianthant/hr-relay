@@ -1,6 +1,6 @@
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
-import { testRunLifecycle,testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testRunLifecycle,testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
@@ -273,7 +273,9 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
 } {
   const workerId = database.authority.workerSlots.list(descriptor.id).find(slot => slot.retiredAt === null)?.workerId;
   assert.ok(workerId);
-  const claimed = database.authority.runs.claimNext({
+  const claimMember1 = database.authority.workerSlots.get(workerId);
+  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+  const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, descriptor.id, claimMember1.poolIndex).workerLifetime,
     workflow: descriptor.id,
     workerId,
     now: new Date("2026-09-01T09:00:00.000Z").toISOString(),

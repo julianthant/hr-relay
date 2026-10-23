@@ -2,7 +2,7 @@ import { buildGateParkSection } from "../../../../src/backend/runs/queries/run-d
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { fenceWriteFixture, seedCorruptWriteFenceFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { sweepWorkerClaims } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { testRunLifecycle,testRunService,testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testRunLifecycle,testRunService,testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
@@ -84,7 +84,9 @@ const PERSON_LOOKUP_WRITE_ATTEMPT = { ...WRITE_ATTEMPT,
 
 function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running", queued = QUEUED_RUN, workerId = WORKER_ID): void {
   database.authority.runs.enqueue(queued);
-  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
+  const claimMember5 = database.authority.workerSlots.get(workerId);
+  if (claimMember5 === undefined) throw new Error("fixture-claim-member-required");
+  const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember5.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId, now: NOW });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed" || target === "claimed") return;
   const validating = database.authority.runs.transition({
@@ -236,7 +238,9 @@ describe("expired-claim sweep write-intent gate", () => {
     }
 
     assert.equal(run.envelope.attempt, 1);
-    const reclaim = database.authority.runs.claimNext({
+    const claimMember1 = database.authority.workerSlots.get(SIBLING_WORKER_ID);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    const reclaim = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember1.poolIndex).workerLifetime,
       workflow: WORKFLOW_ID,
       workerId: SIBLING_WORKER_ID,
       now: MUCH_LATER,
@@ -262,7 +266,9 @@ describe("expired-claim sweep write-intent gate", () => {
     const run = database.authority.runs.get(RUN_ID);
     assert.ok(run);
     assert.equal(run.lifecycle.state, "claimed");
-    const reclaim = database.authority.runs.claimNext({
+    const claimMember2 = database.authority.workerSlots.get(SIBLING_WORKER_ID);
+    if (claimMember2 === undefined) throw new Error("fixture-claim-member-required");
+    const reclaim = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember2.poolIndex).workerLifetime,
       workflow: WORKFLOW_ID,
       workerId: SIBLING_WORKER_ID,
       now: MUCH_LATER,
@@ -291,7 +297,9 @@ describe("expired-claim sweep write-intent gate", () => {
       ? outcome.run.lifecycle.requeuedFrom
       : undefined;
     assert.equal(requeuedFrom, "recovery");
-    const reclaim = database.authority.runs.claimNext({
+    const claimMember3 = database.authority.workerSlots.get(SIBLING_WORKER_ID);
+    if (claimMember3 === undefined) throw new Error("fixture-claim-member-required");
+    const reclaim = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember3.poolIndex).workerLifetime,
       workflow: WORKFLOW_ID,
       workerId: SIBLING_WORKER_ID,
       now: LATER,
@@ -316,7 +324,9 @@ describe("expired-claim sweep write-intent gate", () => {
     const database = openDatabase();
     claimAndRun(database, "running");
     database.authority.runs.enqueue(SIBLING_RUN);
-    const sibling = database.authority.runs.claimNext({
+    const claimMember4 = database.authority.workerSlots.get(SIBLING_WORKER_ID);
+    if (claimMember4 === undefined) throw new Error("fixture-claim-member-required");
+    const sibling = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember4.poolIndex).workerLifetime,
       workflow: WORKFLOW_ID,
       workerId: SIBLING_WORKER_ID,
       now: NOW,
@@ -359,7 +369,7 @@ describe("expired-claim sweep write-intent gate", () => {
     assert.equal(run?.lifecycle.state, "parked-write");
     assert.equal(run?.envelope.attempt, 1, "a parked run must not take a new attempt");
     assert.equal(
-      database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: LATER }).state,
+      database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: LATER }).state,
       "idle",
       "the parked row must not be claimable, but it must no longer wedge the worker id",
     );

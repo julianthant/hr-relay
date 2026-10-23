@@ -33,6 +33,10 @@ function fingerprintOf(domain: string, value: unknown): Fingerprint {
     .digest("hex"));
 }
 
+export function delegationChildInputFingerprint(input: unknown): Fingerprint {
+  return fingerprintOf("delegation-child-input", input);
+}
+
 export interface DelegationFanOutRequest<Target extends AnyWorkflowRef> {
   readonly edgeId: DelegationEdgeId;
   readonly target: Target;
@@ -77,7 +81,7 @@ export function planDelegationFanOut<Target extends AnyWorkflowRef>(
     children.push({
       childItemId,
       input: parsed,
-      canonicalInputFingerprint: fingerprintOf("delegation-child-input", parsed),
+      canonicalInputFingerprint: delegationChildInputFingerprint(parsed),
     });
   }
 

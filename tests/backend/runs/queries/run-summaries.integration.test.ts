@@ -1,5 +1,5 @@
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
-import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { default as assert } from 'node:assert/strict';
 import { join as join_m0 } from "node:path";
@@ -69,7 +69,9 @@ try {
       browserSystems:workflowProjections(personLookupDescriptor).systems,processId:process.pid,requestedBy:"local-operator",now:NOW}).state,"started");
     return slot.workerId;
   });
-  const claim = f.db.authority.runs.claimNext({ workflow: 'person-lookup', workerId, now: NOW });
+  const claimMember1 = f.db.authority.workerSlots.get(workerId);
+  if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+  const claim = f.db.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.db, 'person-lookup', claimMember1.poolIndex).workerLifetime, workflow: 'person-lookup', workerId, now: NOW });
   assert.equal(claim.state, 'claimed');
   if (claim.state !== 'claimed') throw new Error('fixture-not-claimed');
   assert.equal(claim.run.envelope.runId, runId);

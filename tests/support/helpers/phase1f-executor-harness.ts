@@ -53,6 +53,7 @@ export const EXECUTOR_NOW = "2026-08-03T09:00:00.000Z";
 export interface AuthorityHarness {
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
+  readonly profile: ReturnType<typeof createBoundProfileFixture>;
 
   readonly path: string;
   readonly stateRoot: string;
@@ -73,6 +74,7 @@ export function openAuthorityHarness(): AuthorityHarness {
   return {
     database,
     clock,
+    profile: fixture,
     path,
     stateRoot: root,
     dispose: (): void => {

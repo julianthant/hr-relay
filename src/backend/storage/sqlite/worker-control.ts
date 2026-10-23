@@ -84,9 +84,19 @@ export function readWorkerControl(database: DatabaseSync, id: string) {
 
 export function createWorkerControlRepository(deps: {
   database: DatabaseSync;
+  edgeForChild?(parentRunId: string, childRunId: string): z.infer<typeof DependencyRecordSchema>;
+  resetSnapshot?(reset: WorkerResetBinding, childRunId: string): z.infer<typeof DependencyRecordSchema>;
   mutate<T>(table: "worker_controls" | "browser_sessions", work: () => { result: T; changes: number }): T;
 }) {
   const { database } = deps;
+  const edgeForChild = (parentRunId: string, childRunId: string) => {
+    if (deps.edgeForChild === undefined) throw new Error("worker-reset-delegation-authority-unavailable");
+    return deps.edgeForChild(parentRunId, childRunId);
+  };
+  const resetSnapshot = (reset: WorkerResetBinding, childRunId: string) => {
+    if (deps.resetSnapshot === undefined) throw new Error("worker-reset-delegation-authority-unavailable");
+    return deps.resetSnapshot(reset, childRunId);
+  };
   const get = (id: string) => readWorkerControl(database, id);
   const pending = (scope: string) => database.prepare("SELECT * FROM worker_controls WHERE scope=? AND audited_at IS NULL ORDER BY rowid").all(scope).map(workerControlFromRow);
   return Object.freeze({
@@ -180,10 +190,8 @@ export function createWorkerControlRepository(deps: {
           const children = database.prepare("SELECT * FROM runs WHERE parent_id=?").all(parent.runId).map(runRecordFromRow);
           for (const child of children) {
             if (child.lifecycle.state === "terminal") continue;
-            const edges = database.prepare("SELECT payload_json FROM delegation_dependencies WHERE json_extract(payload_json,'$.parentRunId')=? AND json_extract(payload_json,'$.childRunId')=?").all(parent.runId, child.envelope.runId)
-              .map(row => DependencyRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json)));
-            if (edges.length !== 1) throw new Error("worker-reset-cascade-authority-unavailable");
-            if (edges[0]?.policy.cascadeCancel !== "independent" && !bound.some(member => member.runId === child.envelope.runId)) throw new Error("worker-reset-cascade-binding-conflict");
+            const edge = edgeForChild(parent.runId, child.envelope.runId);
+            if (edge.policy.cascadeCancel !== "independent" && !bound.some(member => member.runId === child.envelope.runId)) throw new Error("worker-reset-cascade-binding-conflict");
           }
         }
         for (const member of bound) {
@@ -193,9 +201,8 @@ export function createWorkerControlRepository(deps: {
           if (run.version !== member.version || run.envelope.attempt !== member.attempt
             || (member.state === "queued" ? run.lifecycle.state !== "queued" : claim?.workerId !== member.workerId || claim?.claimGeneration !== member.claimGeneration)) throw new Error("worker-reset-run-conflict");
           if (member.state === "queued") {
-            const edges = database.prepare("SELECT payload_json FROM delegation_dependencies WHERE json_extract(payload_json,'$.childRunId')=?").all(member.runId)
-              .map(row => DependencyRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json)));
-            if (edges.length !== 1 || !edges.some(edge => sha256Hex(canonicalJsonStringify(edge)) === member.dependencyFingerprint)) throw new Error("worker-reset-cascade-binding-conflict");
+            const edge = resetSnapshot(record.reset, member.runId);
+            if (sha256Hex(canonicalJsonStringify(edge)) !== member.dependencyFingerprint) throw new Error("worker-reset-cascade-binding-conflict");
           }
         }
       }
@@ -217,24 +224,25 @@ export function createWorkerControlRepository(deps: {
       const reset = WorkerResetBindingSchema.parse(input), current = get(reset.commandId);
       if (current?.reset === undefined || canonicalJsonStringify(current.reset) !== canonicalJsonStringify(reset)) throw new Error("worker-reset-graph-authority-unavailable");
       const bound = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
-      for (const member of bound) {
-        const row = database.prepare("SELECT * FROM runs WHERE id=?").get(member.runId);
+      const visited = new Set<string>();
+      const check = (runId: string): void => {
+        if (visited.has(runId)) throw new Error("worker-reset-cascade-cycle");
+        visited.add(runId);
+        const row = database.prepare("SELECT * FROM runs WHERE id=?").get(runId);
         if (row === undefined) throw new Error("worker-reset-graph-run-missing");
-        const run = runRecordFromRow(row);
-        if (run.envelope.attempt !== member.attempt) throw new Error("worker-reset-graph-attempt-changed");
-        const children = database.prepare("SELECT * FROM runs WHERE parent_id=?").all(member.runId).map(runRecordFromRow);
-        for (const child of children) {
-          const edges = database.prepare("SELECT payload_json FROM delegation_dependencies WHERE json_extract(payload_json,'$.parentRunId')=? AND json_extract(payload_json,'$.childRunId')=?").all(member.runId, child.envelope.runId)
-            .map(row => DependencyRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json)));
-          if (edges.length !== 1) throw new Error("worker-reset-cascade-authority-unavailable");
-          const edge = edges[0];
-          if (edge?.policy.cascadeCancel === "independent") continue;
-          const selected = bound.find(value => value.runId === child.envelope.runId);
+        const run = runRecordFromRow(row), member = bound.find(member => member.runId === runId);
+        if (member !== undefined && run.envelope.attempt !== member.attempt) throw new Error("worker-reset-graph-attempt-changed");
+        for (const child of database.prepare("SELECT * FROM runs WHERE parent_id=?").all(runId).map(runRecordFromRow)) {
+          const edge = edgeForChild(runId, child.envelope.runId);
+          if (edge.policy.cascadeCancel === "independent") continue;
+          const selected = bound.find(member => member.runId === child.envelope.runId);
           if (selected === undefined) {
             if (child.lifecycle.state !== "terminal") throw new Error("worker-reset-cascade-changed");
-          } else if (selected.state !== "queued" || selected.dependencyFingerprint !== sha256Hex(canonicalJsonStringify(edge))) throw new Error("worker-reset-cascade-changed");
+          } else if (selected.state !== "queued" || selected.dependencyFingerprint !== sha256Hex(canonicalJsonStringify(resetSnapshot(reset, selected.runId)))) throw new Error("worker-reset-cascade-changed");
+          check(child.envelope.runId);
         }
-      }
+      };
+      if (reset.work.kind === "current") check(reset.work.current.runId);
     },
     transition: (id: string, expected: WorkerControlPhase["state"], input: unknown) => deps.mutate("worker_controls", () => {
       const current = get(id);
@@ -345,11 +353,12 @@ export function admitWorkerReset(repositories: AuthorityRepositories, input: unk
     if (seen.has(run.envelope.runId)) throw new Error("worker-reset-cascade-cycle");
     seen.add(run.envelope.runId);
     for (const child of repositories.runs.listChildren(run.envelope.runId)) {
-      const edges = repositories.dependencies.listByParentRun(run.envelope.runId).filter(edge => edge.childRunId === child.envelope.runId);
+      const edges = repositories.dependencies.listByParentRun(run.envelope.runId).filter(edge => repositories.dependencies.childHistory(edge.dependencyId).includes(child.envelope.runId));
       if (edges.length !== 1) throw new Error("worker-reset-cascade-authority-unavailable");
       const edge = edges[0];
       if (edge === undefined) throw new Error("worker-reset-cascade-authority-unavailable");
-      if (edge.policy.cascadeCancel === "independent" || child.lifecycle.state === "terminal") continue;
+      if (edge.policy.cascadeCancel === "independent") continue;
+      if (child.lifecycle.state === "terminal") { collect(child); continue; }
       const dependencyFingerprint = sha256Hex(canonicalJsonStringify(edge));
       if (runClaim(child) !== undefined) throw new Error("worker-reset-foreign-cascade-owner");
       if (child.lifecycle.state !== "queued") throw new Error("worker-reset-cascade-custody-unavailable");

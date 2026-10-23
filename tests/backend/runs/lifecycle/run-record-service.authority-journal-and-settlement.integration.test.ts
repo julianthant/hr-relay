@@ -1,4 +1,4 @@
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
@@ -119,7 +119,9 @@ describe("canonical run-record service", () => {
   it("#8 stale CAS reports the current version and writes nothing", () => {
     const { service, request, runtimeConfig, database } = fixture();
     const run = created(service, request);
-    service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
+    const claimMember1 = database.authority.workerSlots.get(WORKER_ID);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    service.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember1.poolIndex).workerLifetime, commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
     const before = database.getMeta().authorityGeneration;
     const bytes = service.read(run.envelope.runId);
     assert.deepEqual(service.transition({ commandId: "60000000-0000-4000-8000-000000000001",
@@ -159,7 +161,7 @@ describe("canonical run-record service", () => {
         const commandId = operation === "enqueue" ? f.request.commandId : UUID_5;
         assert.throws(() => {
           if (operation === "enqueue") f.service.create(f.request);
-          else if (operation === "claim") f.service.claimNext({ commandId, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig: f.runtimeConfig });
+          else if (operation === "claim") f.service.claimNext({ commandId, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig: f.runtimeConfig, workerLifetime: testWorkerLifetime(f.database, WORKFLOW_ID, 1).workerLifetime });
           else {
             assert.ok(run);
             f.service.transition({ commandId, runId: run.envelope.runId, expectedVersion: run.version,
@@ -435,7 +437,9 @@ describe("canonical run-record service", () => {
     const member = created(service, { ...request, commandId: "99000000-0000-4000-8000-000000000001", matchKey: "claimed-member",
       shape: "operation-member", parent: { runId: anchor.envelope.runId, tracePrefix: anchor.envelope.traceId, edgeId: "member" } });
     testWorkerPorts(database, clock, { path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex: 2 });
-    const claimed = service.claimNext({ commandId: "99000000-0000-4000-8000-000000000002", workflow: WORKFLOW_ID,
+    const claimMember2 = database.authority.workerSlots.get("person-lookup-worker-2");
+    if (claimMember2 === undefined) throw new Error("fixture-claim-member-required");
+    const claimed = service.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember2.poolIndex).workerLifetime, commandId: "99000000-0000-4000-8000-000000000002", workflow: WORKFLOW_ID,
       workerId: "person-lookup-worker-2", runtimeConfig });
     assert.equal(claimed.state, "applied");
     const cancelled = service.transition({ commandId: "99000000-0000-4000-8000-000000000003", runId: anchor.envelope.runId,

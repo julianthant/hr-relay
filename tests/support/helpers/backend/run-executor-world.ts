@@ -8,7 +8,7 @@ import { crmSession } from "../../../../src/backend/systems/crm/session-provider
 import { defineBrowserStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { plan1Parent, plan1Workflows } from "../../fixtures/plan1-operation-workflows.js";
-import { testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { ExecutorSpanEventSchema } from "../../../../src/backend/logs/span-emitter.js";
@@ -50,6 +50,7 @@ export function createRunExecutorTestWorld() {
   const authorityHarnesses = new WeakMap<AuthorityDatabase, AuthorityHarness>();
 
   const disposers: (() => void)[] = [];
+  const sessionClosures = new Set<() => Promise<void>>();
 
   function executorHarness(options: Readonly<{
     sessions?: SessionFactoryHarness;
@@ -59,10 +60,16 @@ export function createRunExecutorTestWorld() {
     descriptor?: AnyWorkflowDescriptor;
   }> = {}): ExecutorHarness {
     const authority = openAuthorityHarness();
-    disposers.push(authority.dispose);
     authorityHarnesses.set(authority.database, authority);
     const sessions = options.sessions ?? happySessionHarness();
     const manager = sessionManagerFor(sessions, authority.clock);
+    let sessionsClosed = false;
+    const closeSessions = async () => { await manager.closeAll("worker-stop"); sessionsClosed = true; };
+    sessionClosures.add(closeSessions);
+    disposers.push(() => {
+      if (!sessionsClosed) throw new Error("executor-fixture-session-closure-unproved");
+      authority.dispose();
+    });
     const scheduler = new ManualScheduler(authority.clock, options.autoFireAtOrBelowMs ?? 0);
     const emitter = {
       emitter: createTimelineEmitter({ repository: authority.database.authority.timelineEvents, clock: authority.clock }),
@@ -102,7 +109,8 @@ export function createRunExecutorTestWorld() {
     const slot = database.authority.workerSlots.list(workflow).find(slot => slot.poolIndex === 1 && slot.retiredAt === null);
     if (slot === undefined) throw new Error("executor-fixture-worker-missing");
     database.authority.runs.enqueue(run);
-    const claimed = database.authority.runs.claimNext({ workflow, workerId: slot.workerId, now });
+    const lifetime = testWorkerLifetime(database, workflow, slot.poolIndex);
+    const claimed = database.authority.runs.claimNext({ workflow, workerId: slot.workerId, workerLifetime: lifetime.workerLifetime, now });
     if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
     return {
       run: claimed.run,
@@ -264,7 +272,16 @@ export function createRunExecutorTestWorld() {
     });
   }
   const cleanup = async () => {
-    for (const dispose of disposers.splice(0)) dispose();
+    const failures: unknown[] = [];
+    for (const close of sessionClosures) {
+      try { await close(); sessionClosures.delete(close); }
+      catch (error) { failures.push(error); }
+    }
+    for (const dispose of [...disposers]) {
+      try { dispose(); disposers.splice(disposers.indexOf(dispose), 1); }
+      catch (error) { failures.push(error); }
+    }
+    if (failures.length !== 0) throw new AggregateError(failures, "executor-fixture-closure-unproved");
   };
   return { disposers, executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions, cleanup };
 }

@@ -1,5 +1,5 @@
 import { WriteParkedError } from "../../../../src/backend/runtime/writes/write-sequencer.js";
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { writeFixtureDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { DatabaseSync } from "node:sqlite";
@@ -50,7 +50,9 @@ describe("exact native worker reset reservation", () => {
     const h = world.harness();
     const request = resetRequest(h);
     h.database.authority.runs.enqueue(writeFixtureQueuedRun());
-    const claimed = h.database.authority.runs.claimNext({ workflow: "write-fixture", workerId: request.target.workerId,
+    const claimMember1 = h.database.authority.workerSlots.get(request.target.workerId);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
+    const claimed = h.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(h.database, "write-fixture", claimMember1.poolIndex).workerLifetime, workflow: "write-fixture", workerId: request.target.workerId,
       now: h.clock.now().toISOString() });
     expect(claimed.state).toBe("claimed");
     if (claimed.state !== "claimed" || claimed.run.lifecycle.state !== "claimed") throw new Error("missing claim");
@@ -155,7 +157,9 @@ describe("exact native worker reset reservation", () => {
         testWorkerPorts(h.database, h.clock, { path: syntheticDatabasePath(h.database), descriptor: writeFixtureDescriptor, poolIndex: 2 });
         const worker = h.database.authority.workerSlots.list()[1];
         if (worker === undefined) throw new Error("missing foreign worker");
-        const claimed = h.database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId: worker.workerId, now: h.clock.now().toISOString() });
+        const claimMember2 = h.database.authority.workerSlots.get(worker.workerId);
+        if (claimMember2 === undefined) throw new Error("fixture-claim-member-required");
+        const claimed = h.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(h.database, run.envelope.workflow, claimMember2.poolIndex).workerLifetime, workflow: run.envelope.workflow, workerId: worker.workerId, now: h.clock.now().toISOString() });
         expect(claimed.state).toBe("claimed");
       }
       const before = h.database.getMeta().authorityGeneration;

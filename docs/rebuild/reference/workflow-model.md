@@ -298,9 +298,12 @@ requires the same plan. A join requires the complete outcome set; zero children 
 satisfied join. `all-settled` returns all typed outcomes. An `all` join applies the failure policy.
 Durable delegation records use `run_delegations` and `delegation_dependencies`.
 
-The executor's `ChildRunExecutor` is an injected port. If a child-run node reaches an executor
-without that port, it refuses `capability-unavailable`. Neither registered workflow declares a
-child-run node. The typed contract alone does not prove a running fan-out.
+Worker composition supplies the durable `ChildRunExecutor`. Admission authenticates the consumed
+root start plan, retained invocation, declared edge and complete child membership. A physical worker
+keeps its home slot while a fresh canonical claim identifies the executing descendant. The parent
+releases its claim while awaiting children and resumes through a fresh claim. Missing child capacity
+refuses explicitly; uncertain writes are never retried. A direct executor without this port refuses
+`capability-unavailable`. Neither registered workflow declares a child-run node.
 
 ### 3.3 Conditions
 
@@ -488,7 +491,7 @@ The workflow has no transaction, gate, parallel, or delegation node. Its dry-run
 
 - The wiring base must consume served descriptor projections through existing dashboard components, retaining explicit loading, empty, failure, refusal, and uncertain states.
 - Workflow coding follows the approved maps and review policy in the [root instructions](../../../AGENTS.md#what-to-build). Each workflow switches to served data, one at a time, after wiring across its required surfaces, a dry run where supported, and operator sign-off.
-- A workflow that first needs child-run execution must supply the executor's admitted `ChildRunExecutor` and verify its durable fan-out and recovery behavior.
+- A workflow that first uses child-run execution must verify its registered targets, durable fan-out and recovery behavior through worker composition.
 
 
 Workflow timeline groups may declare a default `system` and ordered `operatorFields`. Each field owns its operator label, optional fictional display-string `example` and exact node/input-or-output path sources. An optional `visibility: "logs"` limits a field to retained observations, excluding it from Explorer examples. Groups may also declare operator `description` text. The compiler checks that every source belongs to the group and resolves through its task contract; collection paths address all members, without selecting a candidate. Logs preserves member order and keeps each member’s declared fields together. Logs uses these declarations to project classified observations and eligible frozen action values. Unlisted paths remain in Run data and diagnostics. Explorer projects declared fields and examples in group order, with explicit definition-preview copy; an undeclared example is reported as unavailable rather than replaced by a run value.

@@ -12,7 +12,7 @@ import { z } from "zod";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
-import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import {
@@ -85,12 +85,14 @@ export interface WorkerRunResources {
  readonly providers?: RunProviderWiring;
 }
 export interface WorkerLoopDependencies {
+  readonly buildManifest?: import("../../../models/workflow/build-manifest.js").BuildManifest;
  readonly resourcesForRun?: (run:RunRecord)=>WorkerRunResources;
  readonly idleCadence?: ()=>number;
   readonly workflowId: WorkflowId;
   readonly workerId: WorkerId;
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: TaskStoreRegistry;
+  readonly resolveExecution?: (run: RunRecord) => Readonly<{ descriptor: AnyWorkflowDescriptor; stores: TaskStoreRegistry }> | undefined;
   readonly authority: RunExecutionAuthority;
   readonly lifecycle: WorkerRunLifecyclePort;
   readonly sessionFactory: WorkerBrowserSessionFactory;
@@ -365,6 +367,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         await boundedWait(deps.scheduler, clock, (deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
         continue;
       }
+      if (descriptorRuntimeNodes(deps.descriptor).some(node => node.kind === "child-run")) await sessions.closeAll("parked");
       const claimRequest = {
         commandId: lifecycleCommandId("claim", { workerId, nonce: deps.ids.uuid() }),
         workflow: workflowId,
@@ -426,6 +429,13 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         },
       });
       try {
+        const execution = deps.resolveExecution === undefined
+          ? (run.envelope.workflow === deps.descriptor.id ? { descriptor: deps.descriptor, stores: deps.stores } : undefined)
+          : deps.resolveExecution(run);
+        if (execution === undefined || execution.descriptor.id !== run.envelope.workflow
+          || execution.descriptor.version !== run.envelope.descriptorVersion
+          || execution.descriptor.contractFingerprint !== run.envelope.contractFingerprint) throw new Error("worker-execution-descriptor-unavailable");
+        sessions.configureExecution(run.envelope.workflow, execution.stores);
         const resources = deps.resourcesForRun?.(run);
         if (resources !== undefined) sessions.configureRunResources(resources);
         const taskDeadlineMs = resources?.taskDeadlineMs ?? deps.taskDeadlineMs;
@@ -436,8 +446,9 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           sessions,
           run.envelope.configFingerprint,
           () => executeClaimedRun({
-            descriptor: deps.descriptor,
-            stores: deps.stores,
+            descriptor: execution.descriptor,
+            stores: execution.stores,
+            ...(deps.buildManifest === undefined ? {} : { buildManifest: deps.buildManifest }),
             authority: deps.authority,
             lifecycle: deps.lifecycle,
             sessions,
