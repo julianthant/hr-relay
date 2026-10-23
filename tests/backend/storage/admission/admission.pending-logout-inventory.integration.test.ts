@@ -42,6 +42,7 @@ it("issues exact early pending-logout inspection without runtime, credential, da
     assert.throws(() => purpose.assertCredentialRead());
     assert.throws(() => purpose.assertWritable());
     assert.throws(() => purpose.assertExclusive());
+    assert.throws(() => purpose.beginCredentialErasure({ epoch: 1 }));
     assert.throws(() => purpose.assertReadOnlyAuthorityDatabase(":memory:"));
     assert.throws(() => purpose.assertArtifactRoot(purpose.artifactRoot));
     assert.throws(() => AuthorityDatabase.open(purpose, { path: f.f.path, busyTimeoutMs: 250, migrationOwner: "refused" }));
@@ -96,6 +97,7 @@ for (const phase of ["early", "incomplete", "partial"] as const) it(`observes on
   const head = continuity.erasures.find(row => row.profileId === operation.profileId)?.head; assert.ok(head);
   const before = readFileSync(f.path);
   try {
+    assert.throws(() => purpose.assertCredentialErasureHead(head));
     if (phase === "early") {
       purpose.assertPendingLogoutErasureHead(f.owner, operation, head);
       const unexpected = erasureRequestIdentity(CredentialEraseInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(), expectedRevision: revision,

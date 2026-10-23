@@ -333,6 +333,7 @@ export class RuntimeAdmission {
   }
   assertCredentialErasureHead(head: CredentialErasureHead): void {
     this.assertLive();
+    if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-owner-required");
     this.#authority.assertCredentialErasureHead?.(head);
   }
   resumeCredentialErasure(request: ErasureRequestIdentity, head: CredentialErasureHead): void {
@@ -341,6 +342,7 @@ export class RuntimeAdmission {
   }
   beginCredentialErasure(witness: VerifiedCredentialErasureIntent): void {
     this.assertLive();
+    if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     this.#authority.beginCredentialErasure?.(witness);
   }
   settleCredentialErasure(request: ErasureRequestIdentity, witness: VerifiedCredentialErasureHead): void {
