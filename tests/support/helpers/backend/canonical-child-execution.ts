@@ -40,7 +40,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     await deps.sessions.closeAll("parked");
     const descriptor = resolve(root.envelope.workflow);
     assert.ok(descriptor);
-    const worker = testAdmittedWorker(database, clock, { path, workflow: descriptor.id, poolIndex: 1, browserSystems: [] });
+    const worker = testAdmittedWorker(database, clock, { path, workflow: descriptor.id, poolIndex: 1, browserSystems: deps.stores.stores.flatMap(store => store.kind === "browser" ? [store.namespace] : []) });
     const runtime = database.authority.runtimeConfig.get();
     assert.ok(runtime);
     const owner = testWorkerLifetime(database, descriptor.id, 1);

@@ -5,10 +5,14 @@ import { afterEach, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import { childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
@@ -43,7 +47,7 @@ function fixture(policy: "cascade" | "independent") {
   const child = () => { const children = database.authority.runs.listChildren(root.envelope.runId); assert.equal(children.length, 1); assert.ok(children[0]); return children[0]; };
   const cancel = () => CommandRequestSchema.parse({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard",
     requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { runId: root.envelope.runId, expectedVersion: currentRoot().version } });
-  return { ...h.authority, execution, root, currentRoot, child, cancel };
+  return { ...h.authority, deps: h.deps, execution, root, currentRoot, child, cancel, modules };
 }
 
 for (const policy of ["cascade", "independent"] as const) {
@@ -94,6 +98,49 @@ it("refuses a retained pending cancellation source without the actual canonical 
   assert.equal(f.child().version, child.version);
   assert.equal(f.database.authority.commandAudits.findByCommand(request.commandId), undefined);
   assert.equal(f.database.authority.runResults.get(child.envelope.runId), undefined);
+});
+
+it("refuses a real awaited child outcome after canonical cancellation revokes the original parent claim", async () => {
+  const f = fixture("cascade");
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const completed = await f.execution.step(f.root, world.SIGNAL);
+  assert.equal(completed.outcome.state, "done");
+  const childResult = f.database.authority.runResults.get(f.child().envelope.runId);
+  assert.ok(childResult);
+  const owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1), runtime = f.database.authority.runtimeConfig.get();
+  assert.ok(runtime);
+  await f.deps.sessions.closeAll("parked");
+  const claimed = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
+    workerId: owner.workerId, workerLifetime: owner.workerLifetime, runtimeConfig: { generation: runtime.generation,
+      settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+  assert.ok(claimed.state === "applied" || claimed.state === "applied-already");
+  assert.ok("run" in claimed);
+  assert.equal(claimed.run.envelope.runId, f.root.envelope.runId);
+  const descriptor = f.modules.find(module => module.descriptor.id === f.root.envelope.workflow)?.descriptor;
+  assert.ok(descriptor);
+  f.deps.sessions.configureExecution(descriptor.id, plan1Stores);
+  const actual = createDurableChildRunExecutor({ authority: f.database,
+    admission: { admitAndRelease: (context, plan) => f.execution.lifecycle.admitDelegation(context, plan) },
+    resolveTarget: id => { const module = f.modules.find(module => module.descriptor.id === id); assert.ok(module); return module.descriptor; } });
+  let observed = 0;
+  const outcome = await executeClaimedRun({ ...f.deps, descriptor, lifecycle: workerRunLifecyclePort(f.execution.lifecycle),
+    childRuns: { async executeChildRun(context) {
+      const value = await actual.executeChildRun(context);
+      observed++;
+      assert.equal(f.execution.kernel.execute(f.cancel()).state, "applied");
+      return value;
+    } } }, { run: claimed.run, claim: { workerId: owner.workerId, claimGeneration: claimed.run.claimGeneration }, signal: world.SIGNAL });
+  assert.deepEqual(outcome, { state: "abandoned", runId: f.root.envelope.runId, reason: "lost original execution claim" });
+  assert.equal(observed, 1);
+  terminal(f.currentRoot(), "cancelled");
+  const result = f.database.authority.runResults.get(f.root.envelope.runId);
+  assert.ok(result);
+  const evidence = terminalEvidenceResult(result);
+  assert.ok(evidence?.kind === "lifecycle-evidence");
+  assert.equal(evidence.outcome, "cancelled");
+  assert.deepEqual(f.database.authority.runResults.get(f.child().envelope.runId), childResult);
+  assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
+  assert.equal(f.database.authority.writeIntents.listByRun(f.root.envelope.runId).length, 0);
 });
 
 it("fences an independent queued descendant with its actual physical home reset reservation", async () => {
