@@ -560,6 +560,7 @@ export class RuntimeAdmission {
   }
   assertExclusive(): void {
     this.assertLive();
+    if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     if (this.#mode !== "exclusive" && this.#mode !== "synthetic") throw new Error("runtime-admission: exclusive offline admission required");
   }
   assertWritable(): void {
@@ -583,6 +584,7 @@ export class RuntimeAdmission {
   }
   assertReadOnlyAuthorityDatabase(path: string): void {
     this.assertLive();
+    if (this.#scope === "profile-pending-logout-inventory" && path === ":memory:") throw new Error("profile-pending-logout-path-refused");
     if (this.#scope === "relocation-source-verification" || this.#scope === "adoption-initialization") {
       throw new Error("runtime-admission: inspection database authority unavailable");
     }

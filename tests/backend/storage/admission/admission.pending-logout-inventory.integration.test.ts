@@ -41,6 +41,8 @@ it("issues exact early pending-logout inspection without runtime, credential, da
     assert.throws(() => purpose.assertProfileRuntime());
     assert.throws(() => purpose.assertCredentialRead());
     assert.throws(() => purpose.assertWritable());
+    assert.throws(() => purpose.assertExclusive());
+    assert.throws(() => purpose.assertReadOnlyAuthorityDatabase(":memory:"));
     assert.throws(() => purpose.assertArtifactRoot(purpose.artifactRoot));
     assert.throws(() => AuthorityDatabase.open(purpose, { path: f.f.path, busyTimeoutMs: 250, migrationOwner: "refused" }));
     assert.throws(() => createCredentialStore({ admission: purpose, stateRoot: purpose.stateRoot,
@@ -54,6 +56,7 @@ it("issues exact early pending-logout inspection without runtime, credential, da
     try {
       assert.throws(() => purpose.assertPendingLogoutInventory(foreign.owner, f.operation));
       assert.throws(() => purpose.assertReadOnlyAuthorityDatabase(foreign.f.path));
+      assert.throws(() => purpose.verifiedReadOnlyCopy(foreign.f.path, "a".repeat(64)));
     } finally { foreign.close(); }
   } finally { purpose.release(); f.close(); }
 });
