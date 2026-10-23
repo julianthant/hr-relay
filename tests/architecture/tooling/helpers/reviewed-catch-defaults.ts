@@ -3,12 +3,12 @@
 export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "f228dbf949fd9d8bc4583b6b126330b9219c70503838a54d1d712daeef7a7fc0",
+    "sha256": "f7acac6339c2930091e398dede1afbd410469c71613556d9d01b2c94dd170bfe",
     "reason": "A failed selected-context open marks database closure unproved only for typed custody uncertainty and immediately rethrows; process release remains fenced. Startup and stop cleanup retain every failed required producer closure and original cause before dependent storage release."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "45824c6251bddf1844f786a4fe24f17e9b30e40188e47fb3b616998d82b36b53",
+    "sha256": "610c1b6366e7b60a72ce9b3cc8d79381bfecdad43fd6b15f374f9740cfc6bb5c",
     "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure."
   },
   {

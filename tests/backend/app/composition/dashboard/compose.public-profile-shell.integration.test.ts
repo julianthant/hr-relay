@@ -1,19 +1,23 @@
 import { request as httpRequest } from "node:http";
 import { createHash } from "node:crypto";
+import { createServer } from "node:net";
+import { runSecureEnvironmentBootstrap } from "../../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-session.js";
 import { DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import * as httpServer from "../../../../../src/backend/transports/http/http-server.js";
 import * as storageCompose from "../../../../../src/backend/app/composition/storage-compose.js";
+import * as processLocks from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { runtimeProcessLockIsActive } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 vi.mock("../../../../../src/backend/transports/http/http-server.js", { spy: true });
 vi.mock("../../../../../src/backend/app/composition/storage-compose.js", { spy: true });
+vi.mock("../../../../../src/backend/storage/sqlite/runtime-process-locks.js", { spy: true });
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
@@ -26,6 +30,77 @@ function fixture() {
   const machine = acquireEntrypointAdmission(root, "exclusive");
   return { root, machine };
 }
+
+for (const boundary of ["profile-construction", "listener-start"] as const) it(`retains genuine machine and server custody when ${boundary} startup cleanup cannot release its role claim`, async () => {
+  const f = fixture(), argv = [...process.argv];
+  const processLockRoot = join(f.root, rebuildRuntimeIsolation.processLockRoot);
+  const injected = new Error("fixture profile construction failed");
+  const occupied = createServer();
+  let port = 0, primary: unknown;
+  let held: processLocks.RuntimeProcessLockHandle | undefined;
+  let claimPath: string | undefined, originalClaim: Buffer | undefined;
+  let profileCloses = 0;
+  const actualLocks = await vi.importActual<typeof processLocks>("../../../../../src/backend/storage/sqlite/runtime-process-locks.js");
+  const actualHttp = await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js");
+  const actualStorage = await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js");
+  const locks = vi.spyOn(processLocks, "acquireRuntimeProcessLock").mockImplementation((input, clock, hooks) => {
+    const owner = actualLocks.acquireRuntimeProcessLock(input, clock, hooks);
+    assert.equal(owner.name, "server"); held = owner;
+    return owner;
+  });
+  const start = vi.spyOn(httpServer, "startDashboardHttpServer").mockImplementation(async input => {
+    try { return await actualHttp.startDashboardHttpServer({ ...input, port }); }
+    catch (error) { primary = error; throw error; }
+  });
+  const compose = vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
+    const profile = actualStorage.composeProfileRuntime(input);
+    return { ...profile, async close() { profileCloses++; await profile.close(); } };
+  });
+  const env: NodeJS.ProcessEnv = { get HRAUTO_HOST_PRIMARY_DISPLAY() {
+    assert.ok(held);
+    claimPath = join(processLockRoot, "server-claims", `${String(held.generation)}.claim.json`);
+    originalClaim = readFileSync(claimPath);
+    const record = actualLocks.RuntimeProcessLockFileSchema.parse(JSON.parse(originalClaim.toString("utf8")));
+    writeFileSync(claimPath, JSON.stringify({ ...record, acquiredAt: new Date(Date.parse(record.acquiredAt) - 1).toISOString() }), { mode: 0o600 });
+    if (boundary === "profile-construction") { primary = injected; throw injected; }
+    return "none";
+  } };
+  try {
+    if (boundary === "listener-start") {
+      await new Promise<void>((resolve, reject) => { occupied.once("error", reject); occupied.listen(0, "127.0.0.1", resolve); });
+      const address = occupied.address(); assert.ok(address !== null && typeof address !== "string"); port = address.port;
+    }
+    await assert.rejects(runSecureEnvironmentBootstrap(["cli", "dashboard"], {
+      acquireAdmission: () => f.machine,
+      assertEnvironment: () => undefined,
+      runCli: async admission => { await composeDashboardApplication({ admission, isolation: rebuildRuntimeIsolation,
+        repoRoot: f.root, backendPortOverride: 0, frontendPortOverride: 0, env }); },
+    }), error => {
+      assert.ok(error instanceof storageCompose.RuntimeCustodyUncertainError);
+      assert.equal(error.errors.length, 2);
+      assert.equal(error.errors[0], primary);
+      assert.equal(error.cause, primary);
+      const releaseFailure: unknown = error.errors[1]; assert.ok(releaseFailure instanceof Error);
+      assert.equal(releaseFailure.message, "server-claim-custody-lost");
+      if (boundary === "listener-start") assert.ok(primary instanceof Error && "code" in primary && primary.code === "EADDRINUSE");
+      else assert.equal(primary, injected);
+      return true;
+    });
+    assert.equal(profileCloses, boundary === "listener-start" ? 1 : 0);
+    f.machine.assertLive();
+    assert.equal(actualLocks.runtimeProcessLockIsActive(processLockRoot, "server"), true);
+    assert.ok(claimPath);
+    assert.equal(existsSync(join(processLockRoot, "server-claims", `${String(held?.generation)}-${held?.acquisitionId}.release.json`)), false);
+  } finally {
+    process.argv.splice(0, process.argv.length, ...argv);
+    if (claimPath !== undefined && originalClaim !== undefined) writeFileSync(claimPath, originalClaim, { mode: 0o600 });
+    held?.release();
+    if (occupied.listening) await new Promise<void>((resolve, reject) => occupied.close(error => error === undefined ? resolve() : reject(error)));
+    locks.mockRestore(); start.mockRestore(); compose.mockRestore();
+    vi.restoreAllMocks();
+    f.machine.release(); rmSync(f.root, { recursive: true, force: true });
+  }
+});
 
 it("serves public profile state without minting a selected profile, actor or authority database", async () => {
   const f = fixture();

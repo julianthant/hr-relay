@@ -416,6 +416,8 @@ async function composeDashboardRuntimeStartup(
     try { await close(); }
     catch (error) { custody.failedClosures.push(error); throw new RuntimeCustodyUncertainError([error]); }
   };
+  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
+  assertNoMigratedEnvironmentKeys(env);
   const clock = input.clock ?? systemClock;
   const timeZone = runtimeTimeZone();
   const ids = input.ids ?? systemIdFactory;
@@ -441,8 +443,6 @@ async function composeDashboardRuntimeStartup(
     : undefined;
 
 
-  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
-  assertNoMigratedEnvironmentKeys(env);
   const hostFacts = hostConfigFacts(env);
   // Take the server role lock before opening authority; it fences competing dashboard handles.
   const processLock = input.applicationTransport === undefined ? acquireRuntimeProcessLock(
@@ -892,15 +892,20 @@ async function composeDashboardRuntimeStartup(
 
 
 export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; stop(): Promise<void> }>> {
+  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
+  assertNoMigratedEnvironmentKeys(env);
   const machine = requireRuntimeAdmission(input.admission), clock = input.clock ?? systemClock;
   const repoRoot = input.repoRoot ?? process.cwd();
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
   const bundle = frontend === "built-bundle" ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript) : undefined;
   const processLock = acquireRuntimeProcessLock({ processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "server", pid: process.pid }, clock);
   const profile = (() => {
-    try { return composeProfileRuntime({ admission: machine, clock, hostFacts: hostConfigFacts(input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay)),
+    try { return composeProfileRuntime({ admission: machine, clock, hostFacts: hostConfigFacts(env),
       processLockRoot: join(repoRoot, input.isolation.processLockRoot) }); }
-    catch (error) { processLock.release(); throw error; }
+    catch (error) {
+      try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
+      throw error;
+    }
   })();
   const app = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
   type Selection = { cookie: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
@@ -1026,7 +1031,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     try { return await startDashboardHttpServer({ app, port: input.backendPortOverride ?? input.isolation.backendPort }); }
     catch (error) {
       try { await profile.close(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
-      processLock.release(); throw error;
+      try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
+      throw error;
     }
   })();
   registeredPort = listener.port;

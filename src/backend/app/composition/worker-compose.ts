@@ -400,6 +400,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
 }
 
 async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
+  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
+  assertNoMigratedEnvironmentKeys(env);
   const machine = requireRuntimeAdmission(input.admission);
   const selected = captureSelectedProfileStorage(machine);
   const { workflowId, poolIndex, drain, launch } = parseWorkerArguments(
@@ -429,8 +431,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
 
 
 
-  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
-  assertNoMigratedEnvironmentKeys(env);
   const hostFacts = hostConfigFacts(env);
   const stateRoot = dirname(selected.authorityPath);
   const processLockRoot = join(repoRoot, input.isolation.processLockRoot);
