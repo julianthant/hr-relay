@@ -1,8 +1,6 @@
 import { dryRunScenarioResultRecords } from "../../support/helpers/dry-run-scenario-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
@@ -14,15 +12,15 @@ import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admis
 
 const NOW = "2026-08-25T12:00:00.000Z";
 const HASH = "a".repeat(64);
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const { STARTED_MET_RESULT, NOT_STARTED_BLOCKED_RESULT } = dryRunScenarioResultRecords(HASH, NOW);
 
 
 
 function databasePath(): string {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-dry-run-result-"));
-  roots.push(root);
-  return join(root, "authority.sqlite");
+  const profile = createBoundProfileFixture();
+  profiles.push(profile);
+  return profile.path;
 }
 
 function openDatabase(path = databasePath()): AuthorityDatabase {
@@ -35,7 +33,7 @@ function openDatabase(path = databasePath()): AuthorityDatabase {
 }
 
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) profile.close();
 });
 
 describe("durable dry-run scenario results", () => {

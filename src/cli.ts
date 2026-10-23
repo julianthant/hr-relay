@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { rebuildRuntimeIsolation } from "./backend/app/config/runtime-isolation.js";
 import {
   registerDashboardComposer,
-  registerDryRunScenarioComposer,
   registerExplainComposer,
   registerOcrComposer,
   registerStorageComposer,
@@ -15,11 +14,9 @@ import {
   startRebuildRuntime,
 } from "./backend/app/composition/runtime-composition.js";
 import { composeDashboardRuntime } from "./backend/app/composition/dashboard/compose.js";
-import { composeDryRunScenarioCommand } from "./backend/app/dry-run/compose.js";
 import { listDryRunScenarioWorkflows, loadDryRunScenarioManifest } from "./backend/app/dry-run/manifests.js";
 import { parseDryRunScenarioManifest } from "./models/trust/dry-run-scenario.js";
 import { composeTestDataCommand } from "./backend/app/test-data/compose.js";
-import { createProductionDryRunScenarioRuntime } from "./backend/app/dry-run/runtime.js";
 import { composeExplainRuntime } from "./backend/app/composition/explain-compose.js";
 import { composeOcrCommand } from "./backend/transports/cli/ocr.js";
 import { composeStorageCommand } from "./backend/app/composition/storage-compose.js";
@@ -44,15 +41,6 @@ export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: (
   }
   registerDashboardComposer((runtimeIsolation, options) =>
     composeDashboardRuntime({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend }));
-  registerDryRunScenarioComposer((runtimeIsolation, args) => composeDryRunScenarioCommand({
-    admission,
-    isolation: runtimeIsolation,
-    args,
-    // The loader reports absent manifests before runtime execution.
-    loadManifest: loadDryRunScenarioManifest,
-    createRuntime: createProductionDryRunScenarioRuntime,
-    repoRoot: REPOSITORY_ROOT,
-  }));
   registerTestDataComposer((runtimeIsolation, args) => composeTestDataCommand(admission,runtimeIsolation, args, REPOSITORY_ROOT, {
     loadManifests: async () => Promise.all(listDryRunScenarioWorkflows().map(async (workflow) =>
       parseDryRunScenarioManifest(await loadDryRunScenarioManifest(workflow)))),

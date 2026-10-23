@@ -1,7 +1,6 @@
 
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
-import { DRY_RUN_SCENARIO_USAGE } from "../../runs/start/dry-run-scenario-runner.js";
 import { TEST_DATA_USAGE } from "../../runs/provenance/test-data-usage.js";
 import type { WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 
@@ -30,8 +29,6 @@ export interface RebuildRuntimeStart {
   readonly ocr?: OcrComposer;
   /** Explicit seam override for tests; production registers via `registerStorageComposer`. */
   readonly storage?: StorageComposer;
-  /** Explicit seam override for tests; production registers via `registerDryRunScenarioComposer`. */
-  readonly dryRunScenario?: DryRunScenarioComposer;
   /** Explicit seam override for tests; production registers via `registerTestDataComposer`. */
   readonly testData?: TestDataComposer;
 
@@ -66,11 +63,6 @@ type StorageComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
 ) => Promise<{ readonly output: string; readonly exitCode: number }>;
-type DryRunScenarioComposer = (
-  isolation: RuntimeIsolation,
-  args: readonly string[],
-) => Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }>;
-
 type TestDataComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
@@ -121,15 +113,6 @@ export function registerStorageComposer(composer: StorageComposer): void {
   registeredStorageComposer = composer;
 }
 
-let registeredDryRunScenarioComposer: DryRunScenarioComposer | undefined;
-
-export function registerDryRunScenarioComposer(composer: DryRunScenarioComposer): void {
-  if (registeredDryRunScenarioComposer !== undefined) {
-    throw new Error("a dry-run scenario composer is already registered; two compositions cannot own one runtime");
-  }
-  registeredDryRunScenarioComposer = composer;
-}
-
 let registeredTestDataComposer: TestDataComposer | undefined;
 
 export function registerTestDataComposer(composer: TestDataComposer): void {
@@ -153,7 +136,6 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     // Ref execution-and-sessions names no CLI subcommand for its worker (§3 names only the
     // `runWorker` loop), so `worker` is the recorded choice here.
     "  worker <workflow-id> --pool-index <positive-int> [--drain]  run one indexed browser worker (ref execution-and-sessions §3/§11)",
-    `  ${DRY_RUN_SCENARIO_USAGE}  execute one manifest case through the real dry-run runtime`,
     "  explain run <traceId|runId> [--json]  explain one run from authority (ref operator-trust §2.5)",
     "  explain diagnostics [--after <cursor>] [--through <cursor>] [--limit <1..1000>] [--run <runId>] [--json]  read one persisted debug page",
     "  explain diagnostics --boot [--json]  inspect the stopped boot fault spool without opening the database",
@@ -313,24 +295,6 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
       closure: finished.closure,
       outcomes: finished.outcomes.map(({ state }) => state),
     }));
-    return;
-  }
-  if (command === "dry-run-scenario") {
-    const commandArgs = args.slice(1);
-    if (commandArgs.length === 1 && (commandArgs[0] === "help"
-      || commandArgs[0] === "--help" || commandArgs[0] === "-h")) {
-      write(`usage: ${DRY_RUN_SCENARIO_USAGE}`);
-      return;
-    }
-    const compose = input.dryRunScenario ?? registeredDryRunScenarioComposer;
-    if (compose === undefined) {
-      throw new Error(
-        "the dry-run-scenario command needs its composition seam; start it through src/cli.ts, which registers composeDryRunScenarioCommand",
-      );
-    }
-    const outcome = await compose(input.isolation, commandArgs);
-    write(outcome.output);
-    if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
     return;
   }
   throw new Error(`unknown rebuild command: ${command}`);

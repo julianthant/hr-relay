@@ -415,7 +415,7 @@ it("supported single-authority restore re-checks healthy without inventing repai
     const renewed = profile.renewAfterRestore();
     assert.throws(() => admission.assertLive(), /profile-restore-context-expired|released admission/u);
     const runner=new AuthorityHealthPreflightRunner(renewed.admission,{stateRootTrustAnchor:workspace,stateRoot,authorityPath,
-      backupDirectory:join(stateRoot,"backups","authority"),busyTimeoutMs:100},clock);
+      backupDirectory:join(stateRoot,"backups","authority"),busyTimeoutMs:100},clock,renewed.credentials);
     const observed=await runner.run({signal:new AbortController().signal,timeoutMs:1000,deadlineMonotonicMs:clock.monotonicMs()+1000,redaction:"safe-summary"});
     assert.equal(observed.state,"healthy",JSON.stringify(observed));
   }finally{profile.close();}

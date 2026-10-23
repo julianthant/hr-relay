@@ -25,7 +25,6 @@ import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied, swee
 import { dirname, join } from "node:path";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import type { WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../../runtime/scheduling/deadline-scheduler.js";
@@ -141,7 +140,7 @@ export interface WorkerCliArguments {
 }
 
 /** `worker <workflow-id> --pool-index <positive-int> [--drain]` — anything else refuses by name. */
-export function parseWorkerArguments(args: readonly string[], scenarioStepProofId?: WorkflowId): WorkerCliArguments {
+export function parseWorkerArguments(args: readonly string[]): WorkerCliArguments {
   const [first, ...rest] = args;
   if (first === undefined) {
     throw new Error(
@@ -149,7 +148,7 @@ export function parseWorkerArguments(args: readonly string[], scenarioStepProofI
     );
   }
   const workflowId = WorkflowIdSchema.parse(first);
-  if (SERVER_REGISTRY[workflowId] === undefined && workflowId !== scenarioStepProofId) {
+  if (SERVER_REGISTRY[workflowId] === undefined) {
     throw new Error(
       `workflow ${workflowId} is not registered; registered: ${DESCRIPTORS.map(({ id }) => id).join(", ")}`,
     );
@@ -208,8 +207,6 @@ export interface WorkerComposeInput {
   readonly isolation: RuntimeIsolation;
   /** Raw CLI args after `worker` — see `parseWorkerArguments`. */
   readonly args: readonly string[];
-  /** Isolated dry-run-scenario proof; ordinary workers resolve only the active registry. */
-  readonly scenarioStepProofModule?: WorkflowModule;
   readonly env?: NodeJS.ProcessEnv;
   readonly clock?: Clock;
   readonly ids?: IdFactory;
@@ -403,9 +400,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
 async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
   const machine = requireRuntimeAdmission(input.admission);
   const selected = captureSelectedProfileStorage(machine);
-  const { workflowId, poolIndex, drain, launch } = parseWorkerArguments(
-    input.args, input.scenarioStepProofModule?.descriptor.id,
-  );
+  const { workflowId, poolIndex, drain, launch } = parseWorkerArguments(input.args);
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
@@ -417,17 +412,10 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
   const sweepIntervalMs = input.sweepIntervalMs ?? WORKER_SWEEP_INTERVAL_MS;
   const claimStaleAfterMs = input.claimStaleAfterMs ?? WORKER_CLAIM_STALE_AFTER_MS;
 
-  const scenarioModule = input.scenarioStepProofModule;
-  if (scenarioModule !== undefined && (scenarioModule.role.kind !== "chunk-harness" || !drain)) {
-    throw new Error("scenario step proof requires a chunk harness and a draining worker");
-  }
-  const module = SERVER_REGISTRY[workflowId]
-    ?? (scenarioModule?.descriptor.id === workflowId ? scenarioModule : undefined);
+  const module = SERVER_REGISTRY[workflowId];
   if (module === undefined) throw new Error(`workflow ${workflowId} is not registered`);
   const descriptor = module.descriptor;
-  const resolveDescriptor = (id: string) => SERVER_REGISTRY[id]?.descriptor
-    ?? (scenarioModule?.descriptor.id === id ? scenarioModule.descriptor : undefined);
-
+  const resolveDescriptor = (id: string) => SERVER_REGISTRY[id]?.descriptor;
 
 
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
@@ -514,7 +502,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
     ports: input.gateSourcePorts ?? [],
     clock,
   });
-  const runtimePreflight = composeRuntimePreflight({ admission, database, clock, repoRoot, isolation: input.isolation,
+  const runtimePreflight = composeRuntimePreflight({ admission, credentials: protectedAuthority, database, clock, repoRoot, isolation: input.isolation,
     descriptors: { resolve: resolveDescriptor }, descriptorSetHash: descriptor.contractFingerprint,
     protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });

@@ -3,11 +3,10 @@ import { executeSettingsCommand } from '../../../src/backend/runs/commands/comma
 import { resolveConfigWithProvenance } from '../../../src/backend/app/config/resolve.js';
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from '../../../src/models/config/settings.js';
 import { readSettings } from '../../../src/backend/runtime/settings/settings-runtime.js';
-import { createCredentialStore } from './synthetic-storage-admission.js';
+import { createBoundProfileFixture, boundProfileCredentials } from './admission-fixture.js';
 import { registerChatGptAccountRoutes } from '../../../src/backend/transports/http/routes/chatgpt-account.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createAssistantPlanningAdapters } from '../../../src/backend/app/composition/dashboard/assistant.js';
@@ -31,8 +30,9 @@ import { writeFixtureDescriptor } from '../fixtures/write-sequencer-fixtures.js'
 
 export const SYNTHETIC_ASSISTANT_SOURCE = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision: '9af76694409eeff5e0ac954fc9501bc69991643a' };
 export async function assistantCoupledWorld() {
-  const account = chatGptFixture();
-  const database = AuthorityDatabase.open({ path: join(account.root, 'canonical.sqlite'), busyTimeoutMs: 250, migrationOwner: 'assistant-synthetic' }, account.clock);
+  const profile = createBoundProfileFixture();
+  const account = chatGptFixture(profile.admission);
+  const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: 'assistant-synthetic' }, account.clock);
   try {
   seedInitialSettingsRuntimeConfig(database, account.clock);
   await account.connected();
@@ -78,9 +78,9 @@ export async function assistantCoupledWorld() {
     requests++; assert.equal(new URL(url).pathname, '/api/v1/assistant/respond', 'Confirm must never request a start plan or command');
     return app.request(url, { ...init, headers: { ...init?.headers, host: '127.0.0.1:3938' } });
   } });
-  const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, account.clock), createCredentialStore({ stateRoot: account.root }));
+  const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, account.clock), boundProfileCredentials(profile.admission));
   const controller = createAssistantController(client, { authority: 'synthetic-selected-authority', subjectRef: subject().subjectRef });
-  return { account, database, app, client, controller, subject, adapters, context, service,
+  return { account, database, databasePath: profile.path, app, client, controller, subject, adapters, context, service,
     holdReply() { hold = true; },
     releaseReply() { hold = false; const stream = pendingStream; pendingStream = undefined; if (stream) { stream.enqueue(new TextEncoder().encode(completedOcrStream(JSON.stringify(reply)))); stream.close(); } },
     mapped: () => mapped, plannerIds: () => plannerIds,
@@ -99,7 +99,7 @@ export async function assistantCoupledWorld() {
     descriptor(value: AnyWorkflowDescriptor) { descriptor = value; },
     ambiguous() { candidates = [subject(), { ...subject(), subjectRef: 'synthetic-second-subject' }]; },
     staleRuntime() { runtime = { ...runtime, revision: 'a'.repeat(40) }; },
-    async close() { controller.abort(); database.close(); await account.cleanup(); },
+    async close() { controller.abort(); await account.cleanup(); database.close(); profile.close(); },
   };
-  } catch (error) { database.close(); await account.cleanup(); throw error; }
+  } catch (error) { await account.cleanup(); database.close(); profile.close(); throw error; }
 }

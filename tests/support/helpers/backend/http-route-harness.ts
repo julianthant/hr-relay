@@ -6,19 +6,17 @@ import { createRunLogStreamStore } from "../../../../src/backend/logs/run-log-st
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createProtectedSettingsRuntimeReader } from "../../../../src/backend/runtime/settings/settings-runtime.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import { RunLogsStreamHub } from "../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { seedInitialSettingsRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { sqliteRunReader } from "../canonical-run-reader.js";
-import { syntheticStateRoot } from "../synthetic-storage-admission.js";
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,writeFileSync } from "node:fs";
+import { existsSync,readFileSync,writeFileSync } from "node:fs";
 import { request } from "node:http";
-import { tmpdir } from "node:os";
 import { dirname,join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
@@ -63,7 +61,7 @@ import { CONFIG_SNAPSHOT,UUID_4 } from "../../fixtures/phase1c-contract-fixtures
 import { RUN_ID,sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 import { personLookupQueuedRun } from "../phase1f-executor-harness.js";
-import { AuthorityDatabase,createCredentialStore,type AuthorityRepositories } from "../synthetic-storage-admission.js";
+import { AuthorityDatabase,type AuthorityRepositories } from "../synthetic-storage-admission.js";
 import { AT,DAY,traceOf,uuidOf } from "./dashboard-harness.js";
 export const HASH_B = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), manualClock(AT)).fingerprint;
 
@@ -143,15 +141,15 @@ export function writeStoredArtifactEnvelope(
 }
 
 
-const cleanups: (() => void)[] = [];
+const cleanups: (() => void | Promise<void>)[] = [];
 export const OPERATOR_JSON_HEADERS = Object.freeze({
   host: "localhost",
   origin: "http://localhost",
   "content-type": "application/json",
 });
 
-export const disposeHttpRouteHarness = () => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+export const disposeHttpRouteHarness = async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 };
 
 export function harness(options: {
@@ -180,9 +178,8 @@ export function harness(options: {
     real: DashboardAppDeps["commandJournal"],
   ) => DashboardAppDeps["commandJournal"];
 } = {}): Harness {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-bff-")));
-  const stateRoot = join(root, ".tracker", "data");
-  mkdirSync(stateRoot, { mode: 0o700, recursive: true });
+  const profile = createBoundProfileFixture();
+  const root = profile.workspace, stateRoot = profile.stateRoot;
   const settingsPath = join(root, ".tracker", "settings", "settings.json");
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
@@ -194,11 +191,11 @@ export function harness(options: {
   database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);
   assert.equal("projections" in database, false, "the retired projection repositories have no database capability");
   const artifacts = createContentAddressedArtifactWriter({
-    admission: RuntimeAdmission.syntheticRoots(stateRoot, join(stateRoot, "artifacts")),
+    admission: profile.admission,
   });
   const artifactSourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
-    admission: RuntimeAdmission.syntheticRoots(stateRoot, join(stateRoot, "artifacts")),
+    admission: profile.admission,
     observeIo: (kind, bytes) => {
       if (kind === "source-read") artifactSourceReads.push(bytes);
     },
@@ -206,9 +203,12 @@ export function harness(options: {
       ? {}
       : { observeLeaseClosed: options.observeArtifactLeaseClosed }),
   });
-  cleanups.push(() => {
+  cleanups.push(async () => {
+    const readiness = await Promise.allSettled([artifacts.ready, artifactReader.ready]);
+    const failures = readiness.filter(result => result.status === "rejected").map((result): unknown => result.reason);
+    if (failures.length > 0) throw new AggregateError(failures, "artifact initialization failed");
     database.close();
-    rmSync(root, { recursive: true, force: true });
+    profile.close();
   });
 
   const descriptors = {
@@ -278,7 +278,7 @@ export function harness(options: {
 
   const activeSettings = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
   const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), activeSettings.fingerprint);
-  const credentials = createCredentialStore({ stateRoot });
+  const credentials = boundProfileCredentials(profile.admission);
   const settingsFile = {
     read: () => {
       // Persisted settings do not mutate the running process; model active and saved revisions separately.
@@ -433,7 +433,8 @@ export function harness(options: {
     settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
       environment: {}, clock },
     storage: {
-      admission: syntheticStateRoot(stateRoot),
+      admission: profile.admission,
+      credentials,
       doctorOptions: {
         stateRootTrustAnchor: root,
         stateRoot,
@@ -473,7 +474,7 @@ export function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   const settingsRoot = dirname(h.settingsPath);
   return {
     settingsBytes: optionalFileBytes(h.settingsPath),
-    protectedBytes: optionalFileBytes(join(dirname(settingsRoot), "credentials", "protected.json")),
+    protectedBytes: optionalFileBytes(join(h.stateRoot, "credentials", "protected.json")),
     initializationBytes: optionalFileBytes(join(settingsRoot, "authority.json")),
     lockBytes: optionalFileBytes(join(settingsRoot, "settings.lock")),
     prepareBytes: optionalFileBytes(join(settingsRoot, "prepare.json")),

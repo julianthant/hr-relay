@@ -6,8 +6,9 @@ import { RuntimeAdmission } from "../../../src/backend/storage/admission/admissi
 import { createChatGptAccountService, type ChatGptAuthorization } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
-export function chatGptFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-service-"))), admission = RuntimeAdmission.syntheticRoots(root, root);
+export function chatGptFixture(ownedAdmission?: RuntimeAdmission) {
+  const root = ownedAdmission?.stateRoot ?? realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-service-")));
+  const admission = ownedAdmission ?? RuntimeAdmission.syntheticRoots(root, root);
   const clock = manualClock(new Date("2026-10-12T12:00:00.000Z"));
   const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const jwk = { ...keys.publicKey.export({ format: "jwk" }), kid: "fixture-key", alg: "RS256", use: "sig" };
@@ -49,7 +50,10 @@ export function chatGptFixture() {
     return fetch(callback);
   }
   async function connected(usePlan = true) { const attempt = await service.signIn({ usePlan }); await callback(attempt); return attempt.completion; }
-  async function cleanup() { await service.close(); admission.release(); rmSync(root, { recursive: true, force: true }); }
+  async function cleanup() {
+    await service.close();
+    if (ownedAdmission === undefined) { admission.release(); rmSync(root, { recursive: true, force: true }); }
+  }
   return { root, admission, clock, service, transport, calls, callback, connected, cleanup,
     setClaims(patch: { [key: string]: unknown }) { claimsPatch = patch; },
     setScopes(scopes: string) { grantedScopes = scopes; }, setSse(value: string) { sse = value; },

@@ -56,7 +56,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/intake-kernel-seams.ts` | intake kernel seams |
 | `fixtures/intake-workflow-fixture.ts` | intake workflow fixture |
 | `fixtures/integration/activity-person-pseudonym-fixtures.ts` | activity person pseudonym fixtures |
-| `fixtures/integration/dry-run-admission-fixtures.ts` | dry run admission fixtures |
 | `fixtures/integration/settings-runtime-corruption-fixtures.ts` | settings runtime corruption fixtures |
 | `fixtures/integration/source-bound-fixtures.ts` | source bound fixtures |
 | `fixtures/ledger-projection-fixtures.ts` | ledger projection fixtures |
@@ -195,7 +194,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/test-target-registry-fixtures.ts` | registry subjects and recording public inputs |
 | `helpers/backend/note-scope-fixtures.ts` | note and terminal event fixture inputs |
 | `helpers/backend/owned-vite-probe-fixtures.ts` | owned local Vite probe server |
-| `helpers/dry-run-scenario-fixtures.ts` | fresh authored dry-run manifest |
+| `helpers/dry-run-scenario-fixtures.ts` | fresh rehearsal manifest, evidence assertions and verification-only orchestration |
 
 | `helpers/dashboard/search-page-fixtures.ts` | fresh authored zero-match search page |
 

@@ -96,7 +96,6 @@ export default defineConfig({
         "src/backend/runs/commands/command-application.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/commands/command-kernel.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/commands/command-refusal.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/start/dry-run-scenario-runner.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/provenance/evidence-receipt.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/failure-resolution.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/processing/providers/provider-client.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,

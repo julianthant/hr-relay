@@ -7,8 +7,6 @@ import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { join } from "node:path";
 import { acquireExclusiveRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
-import { parseDryRunScenarioArguments } from "../../runs/start/dry-run-scenario-runner.js";
-import { loadDryRunScenarioManifest } from "../dry-run/manifests.js";
 import { RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
@@ -46,11 +44,6 @@ export async function runSecureEnvironmentBootstrap(
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
   const workspace = fileURLToPath(new URL("../../../..", import.meta.url));
-  if (entrypoint === "cli" && entrypointArgs[0] === "dry-run-scenario"
-    && !["help", "--help", "-h"].includes(entrypointArgs[1] ?? "")) {
-    const request = parseDryRunScenarioArguments(entrypointArgs.slice(1));
-    await loadDryRunScenarioManifest(request.workflow);
-  }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-admission") {
     const empty = entrypointArgs.length === 3 && entrypointArgs[2] === "--empty";
     if (!empty && (entrypointArgs.length !== 4 || entrypointArgs[2] !== "--pid"

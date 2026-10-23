@@ -2,7 +2,6 @@ import { ProtectedStoreRecordSchema } from "../../../../src/models/config/protec
 import { renameSync } from "node:fs";
 import { runtimeFixture, populatedProtectedRecord } from "./runtime-fixture.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { composeRuntimePreflight } from "../../../../src/backend/app/preflight/runtime-admission.js";
 import { createRuntimePreflightRunners } from "../../../../src/backend/app/preflight/runtime-runners.js";
 import { createPreflightAuthority } from "../../../../src/models/preflight/preflight.js";
@@ -33,7 +32,7 @@ export async function servedPreflightRuntime(scene: SetupScene) {
   if(scene==="browser-missing")renameSync(f.executable,`${f.executable}.parked`);
   if(scene==="secret-missing")f.setProtected(populatedProtectedRecord("ucpathPassword"));
   if(scene==="optional-warning") {Reflect.set(f.input.dashboard,"listLiveWorkerProcesses",()=>[{workerId:"synthetic-worker",processId:987654321}]);Reflect.set(f.input.dashboard,"observeProcess",()=>({state:"gone"}));}
-  const runtime=composeRuntimePreflight({admission:RuntimeAdmission.syntheticRoots(f.stateRoot,f.artifactRoot),database,clock:f.clock,repoRoot:f.root,isolation:rebuildRuntimeIsolation,
+  const runtime=composeRuntimePreflight({admission:f.admission,credentials:f.credentials,database,clock:f.clock,repoRoot:f.root,isolation:rebuildRuntimeIsolation,
     descriptors:{resolve:id=>id===personLookupDescriptor.id?personLookupDescriptor:undefined},descriptorSetHash:FIXTURE_DESCRIPTOR_HASH,protectedSecrets:f.input.protectedSecrets,environment:{},
     runnerFactory:input=>createRuntimePreflightRunners({...input,dashboard:f.input.dashboard,browserExecutablePath:()=>f.executable})});
   const scope={...identity,descriptorFingerprint:FIXTURE_DESCRIPTOR_HASH,requestedCapabilities:["dashboard.serve"] as const};

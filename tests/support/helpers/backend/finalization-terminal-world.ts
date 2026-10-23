@@ -1,6 +1,7 @@
-import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { executeClaimedRun, type RunExecutionAuthority, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { UcpathReadJobSummary } from "../../../../src/models/systems/ucpath/read-job-summary.js";
@@ -211,26 +212,21 @@ export function createFinalizationTerminalTestWorld() {
       schemaHash: deriveSchemaHash(IdentityApprovalResultSchema, "output"),
       value: approval,
     };
-    const gateInsert = value.database.authority.gateResults.insert({ nodeId: GATE_NODE,
-      runId: FINALIZATION_RUN_ID,
-      gateId: GATE_NODE,
-      commandId: UUID_7,
-      expectedVersion: parkedRun.version,
-      resolvedBy: "local-operator",
-      resolvedAt: value.clock.now().toISOString(),
-      checkpointFingerprint: deriveGateResultCheckpointFingerprint(result),
-      result,
-    });
-    if (gateInsert.state !== "inserted")
-      throw new Error(`gate insert outcome was ${gateInsert.state}`);
-    const resumed = value.database.authority.runs.resume({
-      runId: FINALIZATION_RUN_ID,
-      expectedVersion: parkedRun.version,
-      startAt: parkedRun.lifecycle.resumeAt,
-      now: value.clock.now().toISOString(),
-    });
-    if (resumed.state !== "applied")
-      throw new Error(`resume outcome was ${resumed.state}`);
+    const active = value.database.authority.runtimeConfig.get();
+    if (active === undefined) throw new Error("finalization fixture runtime identity missing");
+    const unrelated = (): never => { throw new Error("gate command reached an unrelated effect"); };
+    const kernel = createCommandKernel({ lifecycle: testRunService(value.database, value.clock), authority: value.database,
+      clock: value.clock, ids: value.ids, appVersion: "0.1.0",
+      descriptors: { resolve: id => id === separationsKualiFinalizationDescriptor.id ? separationsKualiFinalizationDescriptor : undefined },
+      configIdentity: { configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint },
+      intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+      writeResolution: { resolvePresent: unrelated, resolveAbsent: unrelated },
+      workerRuntime: { pool: { planPoolWorkerCount: unrelated, spawnPoolWorker: unrelated, refreshPoolBrowser: unrelated,
+        reopenPoolBrowser: unrelated, stopPoolWorker: unrelated, pausePoolWorker: unrelated, resumePoolWorker: unrelated } } });
+    const resolved = kernel.execute({ commandId: UUID_7, requestedAt: value.clock.now().toISOString(),
+      requestedBy: "local-operator", source: "dashboard", family: "gate", type: "resolve-gate",
+      target: { runId: FINALIZATION_RUN_ID, gateId: GATE_NODE, expectedVersion: parkedRun.version }, payload: { result } });
+    if (resolved.state !== "applied") throw new Error(`gate command outcome was ${resolved.state}`);
 
     return claimQueued(value);
   }
