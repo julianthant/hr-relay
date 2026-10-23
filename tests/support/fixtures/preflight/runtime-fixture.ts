@@ -1,5 +1,5 @@
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
-import { createBoundProfileFixture } from "../../helpers/admission-fixture.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../helpers/admission-fixture.js";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -34,7 +34,7 @@ export function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
   database.close();
   copyFileSync(join(process.cwd(), "package.json"), join(root, "package.json"));
   copyFileSync(join(process.cwd(), "package-lock.json"), join(root, "package-lock.json"));
-  const config = structuredClone(resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config);
+  const config = structuredClone(resolveConfigWithProvenance({}, hostConfigFacts({}), clock, { stateRoot, artifactRoot }).config);
   config.paths.duoExtensionDir = join(root, "extension"); config.paths.duoCredential = join(root, "credential.json");
   config.features.duoWebAuthn = true;
   mkdirSync(config.paths.duoExtensionDir); writeFileSync(join(config.paths.duoExtensionDir, "manifest.json"), "{}");
@@ -52,11 +52,11 @@ export function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
   const input: RuntimePreflightRunnerInput = { config, providerAvailability, protectedSecrets: { read: () => record }, browserExecutablePath: () => executable,
     scope: PreflightAdmissionScopeSchema.parse({configSnapshotId:"11111111-1111-4111-8111-111111111111", configFingerprint:"a".repeat(64), descriptorFingerprint:"b".repeat(64), requestedCapabilities:capabilities}),
     dashboard: {repoRoot:root, stateRoot, artifactRoot, processLockRoot:join(stateRoot,"locks"), backendPort:0, frontendPort:0, clock,
-      authorityHealth: new AuthorityHealthPreflightRunner(profile.admission, doctorOptions, clock), listLiveWorkerProcesses:()=>[]},
+      authorityHealth: new AuthorityHealthPreflightRunner(profile.admission, doctorOptions, clock, boundProfileCredentials(profile.admission)), listLiveWorkerProcesses:()=>[]},
   };
   const report = (transform?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]) => {
     const runners = createRuntimePreflightRunners(input);
     return createPreflightAuthority({...input.scope, runners: transform === undefined ? runners : transform(runners), clock, scheduler:createTimeoutDeadlineScheduler(clock)}).refresh(new AbortController().signal);
   };
-  return {root, admission: profile.admission, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, close() {profile.close();}};
+  return {root, credentials: boundProfileCredentials(profile.admission), admission: profile.admission, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, close() {profile.close();}};
 }

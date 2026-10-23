@@ -279,11 +279,11 @@ architecture suites. Preserve assertions, membership, isolation, coverage floors
 Parity uses the fixed desktop presentation contract; do not update references to make wiring pass.
 Follow the assigned brief's additional checks and resource limits.
 
-`tests/scenario/` and rehearsal manifests are absent. Scenario path helpers and IDs do not create
-proof. `src/backend/app/dry-run/manifests.ts` returns an empty workflow list and throws
-`DryRunScenarioUnavailableError` for the known unavailable workflows. The command
-`npm run cli -- dry-run-scenario <workflow> --subject <label>` must report unavailability before
-execution; do not substitute a fixture, invent a manifest or start live work to evade it.
+Use the signed-in dashboard Run surface for workflow execution. Select Dry Run only where the
+workflow graph supports a transaction preview; transaction-free reads use their ordinary mode.
+Rehearsal declarations and test-target availability validate verification inputs, not authentication
+or permission to execute. Missing manifests and unavailable subjects remain explicit refusals;
+do not substitute a fixture or another subject.
 
 ## 11 · Debug at the owner
 

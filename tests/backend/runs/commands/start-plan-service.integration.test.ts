@@ -1,8 +1,5 @@
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { StartStepOmissionRefusedError } from "../../../../src/backend/runs/start/step-selection.js";
@@ -16,28 +13,27 @@ import {
 omissionAssertingDescriptor,
 omissionCascadingDescriptor,
 } from "../../../support/fixtures/start-step-omission-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 const CLOCK = manualClock(new Date(NOW));
 // Use a different fact EID; repeating the submitted title would make the wire-leak assertion vacuous.
 const READING_FACTS = { eid: "20111222", effectiveDate: "01/02/2026" };
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const databases: AuthorityDatabase[] = [];
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) profile.close();
 });
 
-function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start") {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-rebuild-omission-plan-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    CLOCK,
-  );
+function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start", initialize = true) {
+  const profile = createBoundProfileFixture(); profiles.push(profile);
+  const database = AuthorityDatabase.open(profile.admission,
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
+    undefined, undefined, undefined, boundProfileCredentials(profile.admission));
   databases.push(database);
-  database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, configSnapshotId: UUID_4 });
+  if (initialize) database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, configSnapshotId: UUID_4 });
   const ids = sequentialIdFactory("b");
   let transactions = 0;
   const service = createStartPlanService({
@@ -231,4 +227,34 @@ describe("start plans have no worker choice", () => {
     assert.equal(h.transactions(), 0);
     assert.deepEqual(h.ids.minted(), []);
   });
+});
+
+
+it("refuses a genuinely never-initialized Settings snapshot before any plan or lifecycle identity is persisted", () => {
+  const h = harnessFor(omissionAssertingDescriptor, undefined, false);
+  const generation = h.database.getMeta().authorityGeneration;
+  assert.throws(() => h.service.plan(request(h.descriptor, {})), /run-settings-snapshot-mismatch/u);
+  assert.equal(h.transactions(), 1);
+  assert.equal(h.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(h.database.authority.runs.listByWorkflow(String(h.descriptor.id)), []);
+});
+
+it("rolls a canonical plan back with its enclosing transaction and retains the exact prior Settings identity", () => {
+  const h = harnessFor(omissionAssertingDescriptor);
+  const generation = h.database.getMeta().authorityGeneration;
+  const active = h.database.authority.runtimeConfig.get();
+  let proposed: ReturnType<typeof h.service.plan> | undefined;
+  const failure = new Error("controlled outer transaction failure");
+  assert.throws(() => h.database.withAuthorityTransaction(() => {
+    proposed = h.service.plan(request(h.descriptor, {}));
+    assert.ok(h.database.authority.startPlans.get(proposed.startPlanId));
+    throw failure;
+  }), error => error === failure);
+  assert.ok(proposed);
+  assert.equal(h.database.authority.startPlans.get(proposed.startPlanId), undefined);
+  assert.equal(h.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(h.database.authority.runtimeConfig.get(), active);
+  assert.deepEqual(h.database.authority.runs.listByWorkflow(String(h.descriptor.id)), []);
+  const accepted = h.service.plan(request(h.descriptor, {}));
+  assert.ok(h.database.authority.startPlans.get(accepted.startPlanId));
 });

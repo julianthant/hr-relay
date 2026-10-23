@@ -13,7 +13,7 @@ import { workflowComposition } from '../../../../src/dashboard/app/workflow-sour
 import { disposeHttpRouteHarness, harness } from '../../../support/helpers/backend/http-route-harness.js';
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
-afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); disposeHttpRouteHarness(); });
+afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); await disposeHttpRouteHarness(); });
 it('registers attached, updated and generated files through HTTP/SQLite, reopens exact versions and isolates chats', async () => {
   const h = harness(), writes: string[] = [];
   const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async (url, init) => {

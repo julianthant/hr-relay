@@ -1,3 +1,5 @@
+import type { CredentialStore } from "../../../models/config/credential-store.js";
+import { assertCredentialStoreOwner } from "../../storage/configuration/credential-store.js";
 import { executePreflightRunner, requiredPreflightChecks } from "../../../models/preflight/preflight.js";
 import { dirname, join } from "node:path";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -21,6 +23,7 @@ import { createRuntimePreflightRunners, type RuntimePreflightRunnerFactory } fro
 
 export function composeRuntimePreflight(input: Readonly<{
   admission?: RuntimeAdmission;
+  credentials: CredentialStore;
   database: AuthorityDatabase; clock: Clock; repoRoot: string; isolation: RuntimeIsolation;
   descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   descriptorSetHash: string; protectedSecrets: ProtectedSecretSource;
@@ -29,6 +32,7 @@ export function composeRuntimePreflight(input: Readonly<{
 }>) {
   const { database, clock } = input;
   const runtimeAdmission = requireRuntimeAdmission(input.admission);
+  assertCredentialStoreOwner(input.credentials, runtimeAdmission);
   const stateRoot = runtimeAdmission.stateRoot;
   const readConfig = (scope: PreflightAdmissionScope) => {
     const snapshot = selectRunSettings(database.authority, scope);
@@ -53,7 +57,7 @@ export function composeRuntimePreflight(input: Readonly<{
         backendPort: input.isolation.backendPort, frontendPort: input.isolation.frontendPort,
         processLockRoot: join(input.repoRoot, input.isolation.processLockRoot), clock,
         authorityHealth: new AuthorityHealthPreflightRunner(runtimeAdmission, { stateRootTrustAnchor: dirname(stateRoot), stateRoot,
-          authorityPath: join(stateRoot, "state.db"), backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 5000 }, clock),
+          authorityPath: join(stateRoot, "state.db"), backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 5000 }, clock, input.credentials),
         listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map(lease => ({ workerId: lease.workerId, processId: lease.processId })),
       },
     });

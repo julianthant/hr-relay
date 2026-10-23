@@ -145,6 +145,7 @@ export function createProfileSession(input: {
   const sessions = new Map<string, { readonly profileId: string; readonly epoch: number; readonly admission: RuntimeAdmission }>();
   const storageAdmissions = new Map<string, { ordinary?: RuntimeAdmission; settlement?: RuntimeAdmission }>();
   const authoritySnapshots = new WeakSet<ProfileAuthoritySnapshot>();
+  let logoutContinuationGeneration = 0;
 
   function writeOperation(operation: ProfileOperation): void {
     admission.publishProfileOperation(operation);
@@ -516,6 +517,7 @@ export function createProfileSession(input: {
 
   return Object.freeze({
     close(): void {
+      logoutContinuationGeneration++;
       sessions.clear();
       for (const [profileId, entry] of storageAdmissions) {
         releaseOrdinary(profileId);
@@ -713,6 +715,46 @@ export function createProfileSession(input: {
         }
         registry.update(session.profileId, { lifecycle: "cancelling" });
         return continueLogout(operation);
+      });
+    },
+    authorizeLogoutContinuation(fields: { readonly email: string; readonly password: string; readonly at: string }) {
+      const at = IsoInstantSchema.parse(fields.at);
+      admission.assertWritable();
+      return withProfileLock(machineRoot, () => {
+        const identified = verifiers.identify(fields.email);
+        if (identified === "unknown") return refusal("PROFILE_SIGN_IN_REFUSED");
+        const nowMs = Date.parse(at);
+        if (verifiers.locked(identified.profileId, nowMs)) return refusal("PROFILE_SIGN_IN_REFUSED");
+        if (!verifiers.passwordMatches(identified.profileId, fields.password)) {
+          verifiers.recordFailure(identified.profileId, nowMs);
+          return refusal("PROFILE_SIGN_IN_REFUSED");
+        }
+        const selection = registry.read();
+        const row = selection.profiles.find(entry => entry.profileId === identified.profileId);
+        const operations = readOperations().filter((entry): entry is LogoutOperation => entry.kind === "logout"
+          && entry.profileId === identified.profileId && entry.phase !== "complete");
+        const operation = operations[0];
+        if (row?.lifecycle !== "cancelling" || selection.activeProfileId !== null || operations.length !== 1 || operation === undefined) {
+          return refusal("PROFILE_SESSION_STALE");
+        }
+        verifiers.clearFailures(row.profileId);
+        const operationSnapshot = canonicalJsonStringify(operation), rowSnapshot = canonicalJsonStringify(row);
+        const generation = ++logoutContinuationGeneration;
+        return Object.freeze({ state: "authorized" as const, resume() {
+          if (generation !== logoutContinuationGeneration) return refusal("PROFILE_SESSION_STALE");
+          logoutContinuationGeneration++;
+          admission.assertWritable();
+          return withProfileLock(machineRoot, () => {
+            const current = registry.read();
+            const pending = readOperations().filter((entry): entry is LogoutOperation => entry.kind === "logout"
+              && entry.profileId === row.profileId && entry.phase !== "complete");
+            const currentRow = current.profiles.find(entry => entry.profileId === row.profileId);
+            if (current.sessionGeneration !== selection.sessionGeneration || current.activeProfileId !== null
+              || currentRow === undefined || canonicalJsonStringify(currentRow) !== rowSnapshot
+              || pending.length !== 1 || canonicalJsonStringify(pending[0]) !== operationSnapshot) return refusal("PROFILE_SESSION_STALE");
+            return continueLogout(operation);
+          });
+        } });
       });
     },
     resumeLogout(operationId: string): { readonly state: "wiped"; readonly inventory: CredentialInventory } | ProfileLogoutResult | ProfileCancelling {

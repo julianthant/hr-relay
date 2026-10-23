@@ -5,10 +5,8 @@ import { admitProtectedInput } from "../../../src/backend/runs/start/protected-i
 import { CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
 import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 
-import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { duoCeremonyGatesOver } from "./duo-ceremony-fixtures.js";
+import { createBoundProfileFixture } from "./admission-fixture.js";
 import { manualClock, type TestClock } from "../../../src/rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-executor.js";
@@ -352,7 +350,9 @@ export function finalizationQueuedRun(
 }
 
 export interface FinalizationHarness {
+  readonly path: string;
   readonly world: KualiFakeWorld;
+  readonly filingWorld: ReturnType<typeof createUcpathSmartHrFakeWorld>;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly emitter: ReturnType<typeof recordingEmitter>;
@@ -378,16 +378,16 @@ export function finalizationHarness(
   }> = {},
 ): FinalizationHarness {
   const clock = manualClock(new Date(FINALIZATION_NOW));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-kuali-finalization-"));
+  const profile = createBoundProfileFixture();
   const database = AuthorityDatabase.open(
     {
-      path: join(root, "authority.sqlite"),
+      path: profile.path,
       busyTimeoutMs: 250,
       migrationOwner: "kuali-finalization-test",
     },
     clock,
   );
-  testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: separationsKualiFinalizationDescriptor, poolIndex: 1 });
+  testWorkerPorts(database, clock, { path: profile.path, descriptor: separationsKualiFinalizationDescriptor, poolIndex: 1 });
   const world = createKualiFakeWorld({
     actionId: FINALIZATION_ACTION_ID,
     documentNumber: FINALIZATION_DOCUMENT,
@@ -449,7 +449,7 @@ export function finalizationHarness(
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: fixtureDuoCeremonyGates(clock),
+    duoCeremony: duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)),
   });
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("b");
@@ -468,7 +468,9 @@ export function finalizationHarness(
     resolveImplFingerprint: () => FINALIZATION_IMPL_FINGERPRINT,
   });
   return {
+    path: profile.path,
     world,
+    filingWorld,
     database,
     clock,
     emitter,
@@ -483,7 +485,7 @@ export function finalizationHarness(
       ),
     dispose: (): void => {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     },
   };
 }

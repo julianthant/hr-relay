@@ -1,5 +1,6 @@
 import { createFinalizationTerminalTestWorld } from "../../../support/helpers/backend/finalization-terminal-world.js";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun, type RunExecutionAuthority } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { deriveTerminalFailureDigest, RunTerminalEvidenceResultSchema } from "../../../../src/models/run/result.js";
@@ -133,4 +134,37 @@ describe("current Kuali finalization transaction is terminal evidence", () => {
     assert.equal(retainedFailure.authorization.failureId, failure.failureId);
     assert.equal(retainedFailure.failureDigest, deriveTerminalFailureDigest(failure));
   });
+});
+
+
+it("refuses a deleted UCPath filing after the real gate before Kuali prepare, fence, or click", async () => {
+  const value = harness();
+  const claimed = await parkApproveAndReclaim(value);
+  const gate = value.database.authority.gateResults.listByRun(FINALIZATION_RUN_ID)[0]; assert.ok(gate);
+  assert.ok("commandId" in gate, "the actual operator gate must retain its command identity");
+  assert.equal(gate.resolvedBy, "local-operator");
+  const command = value.database.authority.commands.get(gate.commandId); assert.ok(command);
+  const audit = value.database.authority.commandAudits.findByCommand(gate.commandId); assert.ok(audit);
+  value.filingWorld.rows = [];
+  const outcome = await value.bound(() => executeClaimedRun(executorDependencies(value), { ...claimed, signal }));
+  assert.equal(outcome.state, "failed");
+  if (outcome.state !== "failed") throw new Error("missing filing must fail");
+  const failure = value.database.authority.failures.get(outcome.failureId);
+  assert.equal(failure?.nodeId, "filing-presence");
+  assert.equal(failure?.taskId, "ucpath/verify-termination-filing-present");
+  assert.equal(failure?.code, "FILING_NOT_CURRENT");
+  assert.match(failure?.summary ?? "", /exact durable UCPath filing transaction is absent/iu);
+  assert.equal(value.world.persistedFinalization, undefined);
+  assert.equal(value.world.events.some(event => event.startsWith("stage-finalization:")), false);
+  assert.deepEqual(value.database.authority.writeIntents.listByRun(FINALIZATION_RUN_ID), []);
+  assert.deepEqual(value.database.authority.gateResults.listByRun(FINALIZATION_RUN_ID), [gate]);
+  assert.deepEqual(value.database.authority.commands.get(gate.commandId), command);
+  assert.deepEqual(value.database.authority.commandAudits.findByCommand(gate.commandId), audit);
+  const raw = new DatabaseSync(value.path, { readOnly: true });
+  try {
+    assert.deepEqual({ intents: raw.prepare("SELECT count(*) AS n FROM write_intents").get()?.n,
+      attempts: raw.prepare("SELECT count(*) AS n FROM write_attempts").get()?.n,
+      confirmations: raw.prepare("SELECT count(*) AS n FROM timeline_events WHERE retention_class = 'confirmed-operation'").get()?.n },
+      { intents: 0, attempts: 0, confirmations: 0 });
+  } finally { raw.close(); }
 });

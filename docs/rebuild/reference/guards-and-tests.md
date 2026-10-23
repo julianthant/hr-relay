@@ -394,34 +394,27 @@ not silent passes.
 
 ## 10. Rehearsal and test-data provenance
 
-The retained CLI is `npm run cli -- dry-run-scenario <workflow> --subject <label>`.
-`src/cli.ts` owns manifest loading; absent `tests/scenario/**/dry-run.scenario.ts` manifests report
-unavailable before execution. There is no current scenario corpus to certify from an ID or fixture.
-`src/models/trust/dry-run-scenario.ts` owns declarations,
-`src/backend/runs/start/dry-run-scenario-runner.ts` owns assertions, and
-`src/backend/app/dry-run/runtime.ts` owns production start/worker/gate/receipt composition.
+Workflow execution uses the signed-in dashboard Run surface and its canonical start-plan,
+command and worker composition. `src/models/trust/dry-run-scenario.ts` owns rehearsal
+declarations; `tests/support/helpers/dry-run-scenario-fixtures.ts` owns verification-only evidence
+assertions and orchestration. Its injected operations use current canonical owners; it grants no
+runtime authority. `src/backend/app/dry-run/manifests.ts` retains manifests used to validate
+committed test-target inputs.
 
 The `dry-run-preview` arm requires a transaction graph and its derived stopping transaction.
-The `live-read` arm requires a graph without transactions and refuses other effect paths that its
-zero-delta proof cannot observe. Its ordinary envelope uses `dryRun: false`; a transaction preview
-uses `dryRun: true`. The command name alone does not authorize a live write or waive graph admission.
-The runner compares per-run authority evidence and exact write-intent/attempt/outbox deltas rather
-than inferring no-write from progress text. Ordinary checkpoints, gate results, and terminal rows
-are legitimate rehearsal effects.
-The dry-run runner compares the complete ordered receipt verification list, including node obligations, and keeps absent, ambiguous, and unknown verdicts distinct.
+The `live-read` evidence arm requires a graph without transactions or delegated effects that its
+zero-delta proof cannot observe. A transaction preview uses `dryRun: true`; a transaction-free
+read uses its ordinary mode. Assertions compare per-run authority evidence and exact
+write-intent/attempt/outbox deltas, never progress text. Ordinary checkpoints, gate results, and
+terminal rows are legitimate rehearsal effects. Complete ordered receipt verification retains
+absent, ambiguous, and unknown verdicts separately.
 
-A case may declare `screenshots: { nodes: [...] }` with a nonempty, ordered list of unique
-task-point node IDs. Its presence sets the immutable run option `captureBrowserScreenshots: true`
-and adds the `screenshot-actions` assertion. Omission keeps capture off and adds no screenshot
-assertion. The assertion requires the exact node order, expected checkpoint attempts, and unique
-bundle/artifact pairs. A mismatch records `screenshot-actions-mismatch`.
-
-The runtime reads the complete paginated native timeline and joins task-point Screenshot actions
-to `readRunCaptureSection`'s verified diagnostic bundles and image bytes. It binds run, node,
-attempt, browser session, bundle, and artifact identities. An invalid action join throws
-`RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH`. Generic lease diagnostics do not satisfy this assertion.
-The prepared Person Lookup canary expects `searching` then `crm-selected-record`; `crm-results`
-is excluded and its receipt obligation is `absent`. This declaration does not prove a live run.
+A case may declare `screenshots: { nodes: [...] }` with ordered unique task-point IDs. The
+operator's Run choice must enable browser screenshots to collect that evidence; the declaration
+does not change runtime options. Verification requires exact node order, checkpoint attempts and
+unique bundle/artifact pairs. Canonical run capture and timeline readers bind run, node, attempt,
+browser session, bundle and artifact identities. Generic lease diagnostics do not satisfy these
+assertions. A declaration alone does not prove an executed run.
 
 ### 10.5 The subject registry — labels in the repo, values outside it
 

@@ -1,3 +1,6 @@
+import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
+import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
+import { usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import { HubPreferencesPreviewContext } from "../surfaces/settings/general/hub-preferences-model.js";
 import { OnboardingSetup } from "../surfaces/shell/onboarding-setup.js";
 import { Onboarding } from "../surfaces/shell/onboarding.js";
@@ -27,7 +30,7 @@ import { resolveDateSelection, routeForStartedRun } from "./navigation/date-stat
 import { RunLaunchHost } from "../surfaces/run-start/run-launch.js";
 import { launchWorkflows, useRunLaunch } from "../surfaces/run-start/run-launch-model.js";
 import { PanelRight } from "lucide-react";
-import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode } from "react";
+import { useCallback,useContext,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode } from "react";
 import { CommandRequestSchema, BulkRunCommandRequestSchema, WorkflowBatchCommandRequestSchema, type BulkRunCommandResponse } from "../../rules/commands/commands.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
@@ -125,9 +128,26 @@ const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 
 
 
-export function DashboardApp({ workflowComposition = productWorkflowComposition }: { workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
+export function DashboardApp({ workflowComposition = productWorkflowComposition, profileSource = "mock" }: { profileSource?: "served" | "mock"; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
   useHubMotion();
-  const bootstrap = useBootstrap();
+  const profileClient = useDashboardClient();
+  const publicProfile = usePublicProfileSession(profileClient, profileSource === "served");
+  const session = profileSource === "served" ? publicProfile.state : undefined;
+  const bootstrap = useBootstrap(session, profileSource === "mock" || session?.state === "active");
+  const inheritedAccount = useContext(ChatGptAccountContext);
+  const profileId = session?.state === "active" ? session.profileId : undefined;
+  const profileEpoch = session?.state === "active" ? session.epoch : undefined;
+  const accountScope = useMemo(() => ({ profileClient, profileSource, profileId, profileEpoch }), [profileClient, profileSource, profileId, profileEpoch]);
+  const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort> }>();
+  const account = accountOwner?.scope === accountScope ? accountOwner.port : undefined;
+  useEffect(() => {
+    if (profileSource !== "served" || profileId === undefined || profileEpoch === undefined) return;
+    const port = createServedChatGptAccountPort(profileClient);
+    setAccountOwner({ scope: accountScope, port });
+    const close = (event: PageTransitionEvent) => { if (!event.persisted) port.dispose(); };
+    window.addEventListener("pagehide", close);
+    return () => { window.removeEventListener("pagehide", close); port.dispose(); };
+  }, [accountScope, profileClient, profileSource, profileId, profileEpoch]);
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const { theme, toggleTheme } = useDemoTheme();
@@ -154,19 +174,30 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition 
       style={{ "--ds-toast-inset-bottom": "calc(var(--ds-h-bar) + var(--ds-space-loose))" } as CSSProperties}
       className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]"
     >
+    <ChatGptAccountContext.Provider value={account ?? inheritedAccount}>
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
       {route.viewInvalid ? (
         <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />
-      ) : route.onboardingSetup !== undefined ? (
+      ) : profileSource === "served" && (publicProfile.failure || session !== undefined && (session.state !== "active" || session.duoState !== "ready")) ? (
+        <Onboarding step={session?.state === "active" ? "duo" : route.onboarding === "signup" ? "signup" : "login"}
+          authenticated={session?.state === "active"} port={publicProfile.port}
+          problem={publicProfile.failure ? operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE")
+            : session?.state === "refused" || session?.state === "error" ? operatorFailureSentence(session.code)
+              : session?.state === "cancelling" ? operatorFailureSentence("PROFILE_LOGOUT_BLOCKED") : undefined}
+          onStep={onboarding => setRoute({ start: false, onboarding })} onDashboard={() => setRoute({ start: false })} />
+      ) : route.onboardingSetup !== undefined && profileSource === "mock" ? (
         <OnboardingSetup page={route.onboardingSetup} />
       ) : route.onboarding !== undefined ? (
-        <Onboarding step={route.onboarding} onStep={onboarding => setRoute({ start: false, onboarding })} onDashboard={() => setRoute({ start: false })} />
+        <Onboarding step={route.onboarding} port={profileSource === "served" ? publicProfile.port : undefined} authenticated={session?.state === "active"} onStep={onboarding => setRoute({ start: false, onboarding })} onDashboard={() => setRoute({ start: false })} />
+      ) : profileSource === "served" && account === undefined && session?.state === "active" ? (
+        <DashboardSkeleton />
       ) : boot === undefined ? (
         <BootGate bootstrap={bootstrap} />
       ) : (
         <ViewNavigationProvider route={route} setRoute={setRoute}><LoadedApp
           boot={boot}
+          onProfileLogout={profileSource === "served" ? publicProfile.logout : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
@@ -190,6 +221,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition 
       )}
     </ToastProvider>
     </TooltipProvider>
+    </ChatGptAccountContext.Provider>
     </div>
   );
 }
@@ -228,6 +260,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
 
 
 interface LoadedAppProps {
+  onProfileLogout?: () => Promise<void>;
   workflowComposition: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition;
   boot: FrontendBootstrapWire;
   route: AppRouteState;
@@ -254,6 +287,7 @@ interface LoadedAppProps {
 
 
 function LoadedApp({
+  onProfileLogout,
   workflowComposition: composeWorkflows,
   boot,
   route,
@@ -996,7 +1030,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       </main>
       </div>
 
-      <HubShell source={workflowComposition.assistant ?? "served"} authority={authorityEpoch} onRunWorkflow={runAssistantWorkflow} settingsOpen={settingsOpen} onLogout={() => leaveSettings(() => setRoute({ start: false, onboarding: "login" }))} />
+      <HubShell source={workflowComposition.assistant ?? "served"} authority={authorityEpoch} onRunWorkflow={runAssistantWorkflow} settingsOpen={settingsOpen} onLogout={() => leaveSettings(() => {
+        if (onProfileLogout === undefined) setRoute({ start: false, onboarding: "login" });
+        else void onProfileLogout();
+      })} />
       <SessionPanel
         source={workflowComposition.sessions ?? "served"}
         binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}

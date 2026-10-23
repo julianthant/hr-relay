@@ -1,3 +1,4 @@
+import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/settings-editor.js";
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -286,13 +287,17 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it.each(["set", "clear"] as const)("settles an uncertain credential %s audit through HTTP after the server clock advances", async (operation) => {
     const h = harness();
+    const current = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable"))).protectedSettings;
+    assert.equal(current.state, "available");
+    if (current.state !== "available") throw new Error("protected-settings-unavailable");
+    const revision = current.readback.revision;
     const commandId = "00000000-0000-4000-8000-000000000903";
-    const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: operation === "clear" ? 2 : 1 },
+    const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: revision + (operation === "clear" ? 1 : 0) },
       payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000904",
         entries: { ucpathPassword: operation === "clear" ? { clear: true } : { set: "synthetic-http-retry-private" } } } };
     const send = (body: unknown = request) => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body) });
     if (operation === "clear") {
-      const seed = { ...request, commandId: "00000000-0000-4000-8000-000000000905", target: { expectedRevision: 1 },
+      const seed = { ...request, commandId: "00000000-0000-4000-8000-000000000905", target: { expectedRevision: revision },
         payload: { ...request.payload, writeId: "00000000-0000-4000-8000-000000000906", entries: { ucpathPassword: { set: "synthetic-http-retry-private" } } } };
       assert.equal((await send(seed)).status, 200);
       h.clock.advanceWall(1000);

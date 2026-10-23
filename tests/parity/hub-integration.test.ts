@@ -169,7 +169,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
       expect(errors).toEqual([]); expect(writes).toHaveLength(3);
       expect(writes.every(path => /^\/api\/v1\/workbooks(?:\/[^/]+\/save)?$/u.test(path))).toBe(true);
       writeFileSync(resolve(evidence, `${name}.json`), JSON.stringify({ engine, width, theme, metrics, errors, writes }, null, 2));
-    } finally { await browser.close(); await server.close(); disposeHttpRouteHarness(); }
+    } finally { await browser.close(); await server.close(); await disposeHttpRouteHarness(); }
   });
 }
 
@@ -253,7 +253,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
       mkdirSync(evidence, { recursive: true });
       await panel.screenshot({ path: resolve(evidence, `${name}.png`), animations: 'disabled' });
       expect(errors).toEqual([]);
-    } finally { await browser.close(); await server.close(); disposeHttpRouteHarness(); }
+    } finally { await browser.close(); await server.close(); await disposeHttpRouteHarness(); }
   });
 }
 

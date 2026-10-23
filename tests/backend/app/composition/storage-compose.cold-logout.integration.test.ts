@@ -77,7 +77,10 @@ for (const phase of ["early", "captured", "incomplete", "journal", "erased"] as 
   const stopped = f.restart();
   try {
     assert.throws(() => stopped.runtime.selectedContext("unissued"));
-    const result = stopped.runtime.session.resumeLogout(operation.operationId);
+    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@example.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
+    assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("fresh verifier refused continuation");
+    const result = authorized.resume();
+    assert.equal(authorized.resume().state, "refused");
     assert.equal(result.state, "wiped"); if (result.state !== "wiped") throw new Error("cold closure did not finish");
     assert.equal(result.inventory.logoutComplete, true);
     assert.equal(existsSync(f.operationPath), false);
@@ -110,7 +113,10 @@ it("refuses incomplete late captured values with a surviving clean canonical log
   const protectedPath = join(f.f.stateRoot, "credentials", "protected.json"), priorProtected = readFileSync(protectedPath), priorOperation = readFileSync(f.operationPath);
   const stopped = f.restart();
   try {
-    assert.throws(() => stopped.runtime.session.resumeLogout(operation.operationId), /credential-maintenance-copy-capture-incomplete/u);
+    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@example.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
+    assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("fresh verifier refused continuation");
+    assert.throws(() => authorized.resume(), /credential-maintenance-copy-capture-incomplete/u);
+    assert.equal(authorized.resume().state, "refused");
     assert.equal(readFileSync(protectedPath).equals(priorProtected), true);
     assert.equal(readFileSync(f.operationPath).equals(priorOperation), true);
     assert.equal(stopped.machine.readProfileRegistry().profiles.find(row => row.profileId === f.profileId)?.lifecycle, "cancelling");
@@ -198,4 +204,28 @@ it("refuses the unreleased process record of an actual exited child without inve
     if (child.exitCode === null && child.signalCode === null) { const exited = once(child, "exit"); child.kill("SIGTERM"); await exited; }
     lock?.release(); f.close();
   }
+});
+
+
+it("requires the genuine verifier and revokes one-use cold continuations on operation change and owner close", async () => {
+  const f = fixture(), operation = f.readOperation(), before = readFileSync(join(f.f.stateRoot, "credentials", "protected.json"));
+  const stopped = f.restart();
+  try {
+    const wrong = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@example.edu", password: "incorrect-synthetic-password", at: f.clock.now().toISOString() });
+    assert.equal(wrong.state, "refused");
+    assert.equal(readFileSync(join(f.f.stateRoot, "credentials", "protected.json")).equals(before), true);
+    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@example.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
+    assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("fresh verifier refused continuation");
+    stopped.machine.publishProfileOperation({ ...operation, phase: "incomplete" });
+    assert.equal(authorized.resume().state, "refused");
+    assert.equal(authorized.resume().state, "refused");
+    assert.equal(f.readOperation().commandId, undefined);
+    const closed = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@example.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
+    assert.equal(closed.state, "authorized"); if (closed.state !== "authorized") throw new Error("fresh verifier refused continuation");
+    await stopped.runtime.close();
+    assert.equal(closed.resume().state, "refused");
+    assert.equal(readFileSync(join(f.f.stateRoot, "credentials", "protected.json")).equals(before), true);
+    assert.equal(f.readOperation().commandId, undefined);
+    assert.throws(() => stopped.runtime.selectedContext("unissued"));
+  } finally { await stopped.close(); }
 });
