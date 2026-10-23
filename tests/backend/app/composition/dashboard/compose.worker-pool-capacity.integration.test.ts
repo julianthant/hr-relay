@@ -3,7 +3,9 @@ import { createProfileRegistry } from "../../../../../src/backend/profiles/regis
 import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../../support/helpers/admission-fixture.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
-import { seedSyntheticRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
+import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
+import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
+import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createDashboardPoolTestWorld, type ControlHarness } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 import { createOperatorCommandIngress } from "../../../../../src/backend/runs/commands/operator-command-ingress.js";
 import { deriveBulkChildCommandId } from "../../../../../src/rules/commands/command-groups.js";
@@ -529,7 +531,14 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "pool-shutdown-fixture" },
       clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
     try {
-      seedSyntheticRuntimeConfig(database);
+      const saved = readSettings(database.authority);
+      const resolved = resolveConfigWithProvenance(saved.settings, hostConfigFacts({}), clock,
+        { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot });
+      assert.equal(resolved.config.paths.browserProfileRoot, join(profile.stateRoot, 'browsers'));
+      const active = database.authority.runtimeConfig.initialize({ configSnapshotId: nextCommandId(), revision: saved.revision,
+        fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
+        capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
+      assert.equal(active.configFingerprint, resolved.fingerprint);
       database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
       const reservation = { commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
         family: "worker-browser", type: "plan-worker-count", target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { desiredWorkers: 1 } };

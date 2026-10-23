@@ -1,3 +1,7 @@
+import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createCredentialStore as createOwnedCredentialStore, type CredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import assert from "node:assert/strict";
 import { describe, it, vi, onTestFinished } from "vitest";
 import { ConfigProvenanceSchema, configLeafPaths, resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -217,10 +221,10 @@ function repoRootWithState() {
   return { repoRoot, stateRoot, admission: profile.admission, profile };
 }
 
-function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
-  const database = AuthorityDatabase.open(
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    clock,
+function reopen(admission: RuntimeAdmission, credentials: CredentialStore, clock: TestClock): AuthorityDatabase {
+  const database = NativeAuthorityDatabase.open(admission,
+    { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    clock, undefined, undefined, undefined, credentials,
   );
   openDatabases.push(database);
   return database;
@@ -246,25 +250,27 @@ function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, pa
 function journalWorkerSettings(
   database: AuthorityDatabase,
   persisted: ReturnType<typeof persistUnjournaledWorkerSettings>,
-  stateRoot: string,
+  admission: RuntimeAdmission,
+  credentials: CredentialStore,
 ): void {
+  const stateRoot = admission.stateRoot;
   const clock = manualClock(new Date(NOW));
   if (database.authority.runtimeConfig.get() === undefined) {
     const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, {
-      stateRoot, artifactRoot: join(stateRoot, "artifacts"),
+      stateRoot, artifactRoot: admission.artifactRoot,
     });
     database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
       fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(),
       capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
   }
   const result = executeSettingsCommand({ authority: database, clock, ids: sequentialIdFactory("4"),
-    settings: createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }), createCredentialStore({ stateRoot })) }, persisted.command);
+    settings: createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock, { stateRoot, artifactRoot: admission.artifactRoot }), credentials) }, persisted.command);
   assert.equal(result.state, "applied");
 }
 
 it("F composed dashboard reads active settings after boot through real HTTP", async () => {
-const acquired: { profile?: ReturnType<typeof composeProfileRuntime> } = {};
- onTestFinished(async () => { await acquired.profile?.close(); cleanupOriginalFixture(); });
+const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?: RuntimeAdmission } = {};
+ onTestFinished(async () => { await acquired.profile?.close(); acquired.admission?.release(); cleanupOriginalFixture(); });
 
  const { repoRoot, stateRoot, profile: owner } = repoRootWithState();
  const clock = manualClock(new Date(NOW));
@@ -276,18 +282,23 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime> } = {};
  const active = profile.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
  assert.equal(active.state, 'active');
  if (active.state !== 'active') throw new Error('config fixture sign-in refused');
+ const currentAdmission = owner.machine.admitProfile(createProfileRegistry(owner.machine).storageClaim(active.profileId));
+ acquired.admission = currentAdmission;
+ const credentials = createOwnedCredentialStore({ admission: currentAdmission, stateRoot,
+   erasureJournalAdmission: owner.machine,
+   erasureJournalPath: join(owner.machine.stateRoot, 'machine', 'erasures', `${active.profileId}.json`) });
  const dashboard = await composeDashboardRuntime({ admission: owner.machine, profile: { runtime: profile, token: active.token },
    isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
  try {
-  const database = reopen(stateRoot, clock);
+  const database = reopen(currentAdmission, credentials, clock);
   const before = database.authority.runtimeConfig.get();
   assert.ok(before !== undefined);
   const snapshot = database.authority.configSnapshots.get(before.configSnapshotId);
   assert.ok(snapshot !== undefined);
   const settings = persistUnjournaledWorkerSettings(repoRoot, clock, { display: { screenWidth: 1980, screenHeight: 1080 } });
-  journalWorkerSettings(database, settings, stateRoot);
+  journalWorkerSettings(database, settings, currentAdmission, credentials);
   const record = readSettings(database.authority);
-  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") });
+  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: currentAdmission.artifactRoot });
   database.authority.configSnapshots.insert({ configSnapshotId: UUID_7, revision: 1,
    fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
    capturedAt: NOW, capturedBy: "local-operator" });
