@@ -338,7 +338,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       const savedBrowserRoot = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
         { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.paths.browserProfileRoot;
       const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, writer);
-      const assessment = assessCredentialInventory({ profileRoot: root, entriesAbsent, inspectEncrypted: copies.inspectEncrypted,
+      const assessment = assessCredentialInventory({ profileRoot: root, entriesAbsent, inspectEncrypted: path => copies.inspectEncrypted(path),
         backupPaths: [], loginDataPaths: membership.loginDataPaths, capturedSecrets: copies.capturedSecrets, capturedSecretsComplete: copies.capturedSecretsComplete });
       if (enumerate() !== before) throw new Error("credential-maintenance-inventory-changed");
       return assessment;
