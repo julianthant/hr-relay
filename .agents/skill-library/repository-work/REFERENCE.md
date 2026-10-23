@@ -54,8 +54,8 @@ npm run test:coverage      # 60/80 lines/statements/functions floors + the suite
 npm run test:watch
 npm run test:reap          # reclaim only validated inactive owned test-run roots; retain live/unknown runs
 
-npm run cli               # the runtime CLI (help | phase | dashboard | worker | dry-run-scenario | explain | storage | ocr)
-npm run cli -- dry-run-scenario <workflow> --subject <label> # missing rehearsal manifest reports unavailable before execution
+# Workflow execution uses the signed-in dashboard Run surface.
+npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr)
 npm run cli -- storage backup  # the ONLY writer of a verified SQLite backup (D322); `storage doctor` / `storage restore --from` beside it
 npm run dashboard         # the dev dashboard in ONE terminal: BFF (3938) + vite (5174); Ctrl+C stops both
 npm run cli -- dashboard  # the BFF alone; `dashboard:prod` passes --prod and serves dist/dashboard from it (run web:build first)

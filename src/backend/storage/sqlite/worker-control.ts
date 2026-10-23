@@ -73,6 +73,15 @@ export function workerBrowserFromRow(input: unknown) {
     || row.opened_at !== record.openedAt || row.observed_at !== record.observedAt) throw new Error("worker-browser-storage-identity-mismatch");
   return record;
 }
+export function readWorkerControl(database: DatabaseSync, id: string) {
+  const row = database.prepare("SELECT * FROM worker_controls WHERE command_id=?").get(CommandIdSchema.parse(id));
+  if (row === undefined) return undefined;
+  const record = workerControlFromRow(row);
+  const command = database.prepare("SELECT * FROM commands WHERE id=?").get(record.commandId);
+  if (command === undefined || canonicalJsonStringify(commandFromRow(command)) !== canonicalJsonStringify(record.request)) throw new Error("worker-control-command-binding-mismatch");
+  return record;
+}
+
 export function createWorkerControlRepository(deps: {
   database: DatabaseSync;
   edgeForChild?(parentRunId: string, childRunId: string): z.infer<typeof DependencyRecordSchema>;
@@ -88,14 +97,7 @@ export function createWorkerControlRepository(deps: {
     if (deps.resetSnapshot === undefined) throw new Error("worker-reset-delegation-authority-unavailable");
     return deps.resetSnapshot(reset, childRunId);
   };
-  const get = (id: string) => {
-    const row = database.prepare("SELECT * FROM worker_controls WHERE command_id=?").get(CommandIdSchema.parse(id));
-    if (row === undefined) return undefined;
-    const record = workerControlFromRow(row);
-    const command = database.prepare("SELECT * FROM commands WHERE id=?").get(record.commandId);
-    if (command === undefined || canonicalJsonStringify(commandFromRow(command)) !== canonicalJsonStringify(record.request)) throw new Error("worker-control-command-binding-mismatch");
-    return record;
-  };
+  const get = (id: string) => readWorkerControl(database, id);
   const pending = (scope: string) => database.prepare("SELECT * FROM worker_controls WHERE scope=? AND audited_at IS NULL ORDER BY rowid").all(scope).map(workerControlFromRow);
   return Object.freeze({
     get,

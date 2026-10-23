@@ -304,7 +304,7 @@ describe("isolated runtime composition", () => {
       seen.push(command);
     };
     try {
-      for (const command of ["ocr", "worker", "test-data", "dry-run-scenario"]) {
+      for (const command of ["ocr", "worker", "test-data"]) {
         await assert.rejects(runtime.startRebuildRuntime({
           isolation: rebuildRuntimeIsolation, args: [command, "registered-argument"], write: value => output.push(value),
         }), /needs its composition seam/u);
@@ -314,7 +314,6 @@ describe("isolated runtime composition", () => {
       runtime.registerOcrComposer(args => { assert.deepEqual(args, ["registered-argument"]); seen.push("ocr"); return { output: "ocr", exitCode: 0 }; });
       runtime.registerStorageComposer((isolation, args) => { record("storage", isolation, args); return Promise.resolve({ output: "storage", exitCode: 0 }); });
       runtime.registerTestDataComposer((isolation, args) => { record("test-data", isolation, args); return Promise.resolve({ output: "test-data", exitCode: 0 }); });
-      runtime.registerDryRunScenarioComposer((isolation, args) => { record("dry-run-scenario", isolation, args); return Promise.resolve({ output: "dry-run-scenario", exitCode: 0 }); });
       runtime.registerWorkerComposer((isolation, args) => { record("worker", isolation, args); return Promise.resolve({ workerId: "registered-worker", workflowId: "separations", stopped: "idle", closure: "proved", outcomes: [] }); });
       runtime.registerDashboardComposer((isolation, options) => {
         assert.equal(isolation, rebuildRuntimeIsolation);
@@ -327,21 +326,20 @@ describe("isolated runtime composition", () => {
         () => runtime.registerOcrComposer(() => { throw new Error("duplicate invoked"); }),
         () => runtime.registerStorageComposer(() => { throw new Error("duplicate invoked"); }),
         () => runtime.registerTestDataComposer(() => { throw new Error("duplicate invoked"); }),
-        () => runtime.registerDryRunScenarioComposer(() => { throw new Error("duplicate invoked"); }),
         () => runtime.registerWorkerComposer(() => { throw new Error("duplicate invoked"); }),
         () => runtime.registerDashboardComposer(() => { throw new Error("duplicate invoked"); }),
       ]) assert.throws(duplicate, /already registered; two compositions cannot own one runtime/u);
-      for (const command of ["explain", "ocr", "storage", "test-data", "dry-run-scenario", "worker"]) {
+      for (const command of ["explain", "ocr", "storage", "test-data", "worker"]) {
         await runtime.startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: [command, "registered-argument"], write: value => output.push(value) });
       }
       const dashboard = runtime.startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["dashboard", "--prod"], signals: signals.seam, write: value => output.push(value) });
       await settleEventLoop();
       signals.emit("SIGINT");
       await dashboard;
-      assert.deepEqual(seen, ["explain", "ocr", "storage", "test-data", "dry-run-scenario", "worker", "dashboard", "stop"]);
-      assert.deepEqual(output.slice(0, 5), ["explain", "ocr", "storage", "test-data", "dry-run-scenario"]);
-      assert.deepEqual(JSON.parse(output[5] ?? ""), { workerId: "registered-worker", workflowId: "separations", stopped: "idle", closure: "proved", outcomes: [] });
-      assert.equal(output[6], "dashboard BFF listening on 127.0.0.1:3938 serving dist/dashboard");
+      assert.deepEqual(seen, ["explain", "ocr", "storage", "test-data", "worker", "dashboard", "stop"]);
+      assert.deepEqual(output.slice(0, 4), ["explain", "ocr", "storage", "test-data"]);
+      assert.deepEqual(JSON.parse(output[4] ?? ""), { workerId: "registered-worker", workflowId: "separations", stopped: "idle", closure: "proved", outcomes: [] });
+      assert.equal(output[5], "dashboard BFF listening on 127.0.0.1:3938 serving dist/dashboard");
       assert.deepEqual(signals.counts, { subscriptions: 1, disposals: 1 });
       await runtime.startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["explain"], write: value => output.push(value), explain: () => "override" });
       assert.equal(output.at(-1), "override");
@@ -629,49 +627,12 @@ describe("isolated runtime composition", () => {
     assert.equal(output[0], runtimeHelp(rebuildRuntimeIsolation));
   });
 
-  it("routes the strict dry-run scenario command and preserves its exit semantics", async () => {
-    const output: string[] = [];
-    const seen: string[][] = [];
-    const previousExitCode = process.exitCode;
-    process.exitCode = undefined;
-    try {
-      await startRebuildRuntime_m0({
-        isolation: rebuildRuntimeIsolation,
-        args: ["dry-run-scenario", "separations-kuali-finalization", "--subject", "finalization-canary"],
-        write: (value) => output.push(value),
-        dryRunScenario: (_isolation, args) => {
-          seen.push([...args]);
-          return Promise.resolve({
-            output: "blocked: needs finalization-canary\nresult: 11111111-1111-4111-8111-111111111111",
-            exitCode: 2,
-          });
-        },
-      });
-      await new Promise((resolve) => setImmediate(resolve));
-      assert.deepEqual(seen, [["separations-kuali-finalization", "--subject", "finalization-canary"]]);
-      assert.deepEqual(output, [
-        "blocked: needs finalization-canary\nresult: 11111111-1111-4111-8111-111111111111",
-      ]);
-      assert.equal(process.exitCode, 2);
-    } finally {
-      process.exitCode = previousExitCode;
+  it("rejects the removed dry-run CLI entry without advertising it", async () => {
+    assert.doesNotMatch(runtimeHelp(rebuildRuntimeIsolation), /dry-run-scenario/u);
+    for (const args of [["dry-run-scenario", "separations", "--subject", "finalization-canary"], ["dry-run-scenario", "--help"]]) {
+      await assert.rejects(startRebuildRuntime_m0({ isolation: rebuildRuntimeIsolation, args }), /unknown rebuild command: dry-run-scenario/u);
     }
   });
 
-  it("serves dry-run scenario help without constructing its composition", async () => {
-    let composed = false;
-    const output: string[] = [];
-    await startRebuildRuntime_m0({
-      isolation: rebuildRuntimeIsolation,
-      args: ["dry-run-scenario", "--help"],
-      write: (value) => output.push(value),
-      dryRunScenario: () => {
-        composed = true;
-        return Promise.reject(new Error("must not compose"));
-      },
-    });
-    assert.equal(composed, false);
-    assert.deepEqual(output, ["usage: dry-run-scenario <workflow> --subject <label>"]);
-  });
 });
 }

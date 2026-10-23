@@ -1,3 +1,6 @@
+import * as filesystem from "node:fs/promises";
+import * as artifactReaders from "../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
+import * as explorerComposition from "../../../../../src/backend/app/composition/dashboard/explorer.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, readFileSync } from "node:fs";
@@ -20,6 +23,8 @@ import { NonNegativeIntSchema } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
+
+vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 
 function fixture() {
   const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
@@ -204,6 +209,58 @@ for (const failure of ["http", "http-and-feed"] as const) it(`unwinds actual sta
     }
   } finally {
     hubFactory.mockRestore(); closeFeed?.();
+    await f.runtime.close(); f.close();
+  }
+});
+
+
+it("settles actual artifact initialization before releasing startup database and profile custody after a constructor failure", async () => {
+  const f = fixture(), context = f.runtime.selectedContext(f.active.token);
+  const primary = new Error("synthetic Explorer constructor failure");
+  let release!: () => void, entered!: () => void, readyObserved!: () => void, databaseClosing!: () => void;
+  const barrier = new Promise<void>(resolve => { release = resolve; });
+  const rootEntered = new Promise<void>(resolve => { entered = resolve; });
+  const applicationReady = new Promise<void>(resolve => { readyObserved = resolve; });
+  const databaseClosed = new Promise<void>(resolve => { databaseClosing = resolve; });
+  let initializingReader = false, initialized = false, closedBeforeInitialization = false;
+  let initializationFailure: unknown, observation: Promise<void> | undefined;
+  const nativeLstat = filesystem.lstat;
+  const filesystemProbe = vi.spyOn(filesystem, "lstat").mockImplementation(async (...args) => {
+    if (initializingReader && args[0] === context.admission.artifactRoot) { entered(); await barrier; }
+    return nativeLstat(...args);
+  });
+  const createReader = artifactReaders.createServerVerifiedArtifactReader;
+  const readerFactory = vi.spyOn(artifactReaders, "createServerVerifiedArtifactReader").mockImplementation(options => {
+    initializingReader = true;
+    const actual = createReader(options);
+    initializingReader = false;
+    const ready = actual.ready;
+    observation = ready.then(() => { initialized = true; }, error => { initialized = true; initializationFailure = error; });
+    return { verify: actual.verify.bind(actual), prepare: actual.prepare.bind(actual), get ready() { readyObserved(); return ready; } };
+  });
+  const constructor = vi.spyOn(explorerComposition, "composeExplorer").mockImplementation(() => { throw primary; });
+  const close = context.database.close.bind(context.database);
+  const databaseClose = vi.spyOn(context.database, "close").mockImplementation(() => {
+    closedBeforeInitialization ||= !initialized;
+    databaseClosing(); close();
+  });
+  const boot = composeDashboardRuntime(f.input).then(
+    () => { throw new Error("startup unexpectedly accepted"); },
+    (error: unknown) => error,
+  );
+  try {
+    await rootEntered;
+    await Promise.race([applicationReady, databaseClosed]);
+    release();
+    assert.equal(await boot, primary);
+    await observation;
+    assert.equal(initializationFailure, undefined);
+    assert.equal(closedBeforeInitialization, false);
+    assert.throws(() => context.admission.assertLive());
+    assert.throws(() => context.database.getMeta(), /closed/u);
+  } finally {
+    release(); await boot; await observation;
+    filesystemProbe.mockRestore(); readerFactory.mockRestore(); constructor.mockRestore(); databaseClose.mockRestore();
     await f.runtime.close(); f.close();
   }
 });

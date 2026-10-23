@@ -3,12 +3,12 @@
 export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "3c41948e014c1314c2eb3c0328d65208ef664094c1ca7d37efbb856b79767614",
+    "sha256": "56edffacc3b4fc3b502b55929d41e3c571c3e34e7320c024a1e575134450e6a5",
     "reason": "A failed selected-context open marks database closure unproved only for typed custody uncertainty and immediately rethrows; process release remains fenced. Startup and stop cleanup retain every failed required producer closure and original cause before dependent storage release."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "ff84d40d36416bd1c3ae052c05031b283b73f989183a5550aa80bf755039362f",
+    "sha256": "8a3ab372d817534f3ab80a6e06dcf34a30f2ef7495b5c8cbdd41a9d2ca8f7c69",
     "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure."
   },
   {
@@ -58,7 +58,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "88e06c3ab405023c7af5289bbeeb646d8668bd4be0159d17c8f95f76a0589f04",
+      "sha256": "b6e5de7382da8545a8d82a708e1854968a040dcedd84f311da65d8fe64591790",
     "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate."
   },
   {
@@ -103,7 +103,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "0a0faf0b8846f8df490a26a9119afd33edfe7d7ad58c7112bd5363c1beb0f5a7",
+    "sha256": "5b5d0ebd797366488f7bbc62d44bd45f220fe377d2400724b82e08abfb2c1da4",
     "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success."
   },
   {

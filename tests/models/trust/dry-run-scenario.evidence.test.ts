@@ -1,13 +1,12 @@
-import { createDryRunScenarioFixtures } from "../../../support/helpers/dry-run-scenario-fixtures.js";
+import { createDryRunScenarioFixtures, evaluateDryRunScenarioEvidence, runDryRunScenario } from "../../support/helpers/dry-run-scenario-fixtures.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { evaluateDryRunScenarioEvidence, parseDryRunScenarioArguments, runDryRunScenario } from "../../../../src/backend/runs/start/dry-run-scenario-runner.js";
-import { DiagnosticBundleBytesMissingError } from "../../../../src/backend/runs/commands/refusals.js";
-import type { DryRunScenarioResult } from "../../../../src/models/trust/dry-run-scenario-result.js";
+import { DiagnosticBundleBytesMissingError } from "../../../src/backend/runs/commands/refusals.js";
+import type { DryRunScenarioResult } from "../../../src/models/trust/dry-run-scenario-result.js";
 import {
 parseDryRunScenarioManifest
-} from "../../../../src/models/trust/dry-run-scenario.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
+} from "../../../src/models/trust/dry-run-scenario.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
 
 const { MANIFEST } = createDryRunScenarioFixtures();
 
@@ -49,33 +48,6 @@ const READY_EVIDENCE = {
     preview: { outcome: "would-prepare", subject: "match", staged: true },
   },
 } as const;
-
-describe("dry-run scenario CLI arguments", () => {
-  it("accepts exactly one workflow and one subject label", () => {
-    assert.deepEqual(
-      parseDryRunScenarioArguments([
-        "separations-kuali-finalization",
-        "--subject",
-        "finalization-canary",
-      ]),
-      {
-        workflow: "separations-kuali-finalization",
-        subjectLabel: "finalization-canary",
-      },
-    );
-  });
-
-  it.each([
-    { args: [] },
-    { args: ["fixture-workflow"] },
-    { args: ["fixture-workflow", "--subject"] },
-    { args: ["fixture-workflow", "--subject", "fixture-canary", "duplicate"] },
-    { args: ["fixture-workflow", "--label", "fixture-canary"] },
-    { args: ["fixture-workflow", "--subject", "Not A Label"] },
-  ])("rejects malformed arguments without supplying defaults: $args", ({ args }) => {
-    assert.throws(() => parseDryRunScenarioArguments(args));
-  });
-});
 
 describe("dry-run scenario execution", () => {
   it("fails loud on unknown workflows, manifest mismatch, and missing cases", async () => {

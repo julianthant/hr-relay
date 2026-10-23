@@ -552,7 +552,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
     ports: input.gateSourcePorts ?? [],
     clock,
   });
-  const runtimePreflight = composeRuntimePreflight({ admission, database, clock, repoRoot, isolation: input.isolation,
+  const runtimePreflight = composeRuntimePreflight({ admission, credentials: protectedAuthority, database, clock, repoRoot, isolation: input.isolation,
     descriptors: { resolve: resolveDescriptor }, descriptorSetHash: descriptor.contractFingerprint,
     protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });

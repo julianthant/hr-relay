@@ -542,7 +542,7 @@ async function composeDashboardRuntimeStartup(
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
   };
   const setHash = descriptorSetHash(DESCRIPTORS.map((descriptor) => descriptor.contractFingerprint));
-  const runtimePreflight = composeRuntimePreflight({ admission, database, clock, repoRoot, isolation: input.isolation,
+  const runtimePreflight = composeRuntimePreflight({ admission, credentials: context.credentials, database, clock, repoRoot, isolation: input.isolation,
     descriptors, descriptorSetHash: setHash, protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
   const lifecycle = new RunRecordService({ database, clock, ids,
@@ -693,9 +693,11 @@ async function composeDashboardRuntimeStartup(
   const artifacts = createContentAddressedArtifactWriter({
     admission,
   });
+  await artifacts.ready;
   const artifactReader = createServerVerifiedArtifactReader({
     admission,
   });
+  await artifactReader.ready;
   const intakeParser = createIntakeParser({ artifacts });
   const intakeProjections = {
     resolve: (workflowId: string) => INTAKE_PROJECTIONS[workflowId],
@@ -769,12 +771,6 @@ async function composeDashboardRuntimeStartup(
   const { hub } = shell;
   startupCleanups.push(requiredClosure(() => hub.close()));
 
-  // Await artifact-root initialization before serving; initialization failure refuses boot.
-  try {
-    await Promise.all([artifacts.ready, artifactReader.ready]);
-  } catch (error: unknown) {
-    throw new Error("dashboard artifact roots could not be initialized", { cause: error });
-  }
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
   const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
   if (blockingChecks.length > 0) {

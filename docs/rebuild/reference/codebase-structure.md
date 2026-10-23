@@ -56,7 +56,7 @@ Paths in this table are relative to `src/backend/`.
 | Path | Ownership |
 | --- | --- |
 | `accounts/` | ChatGPT OAuth, verified account and usage state, and Responses OCR. Browser-safe account and sign-in lifecycle schemas live in `models/dashboard/chatgpt-account.ts`; HTTP routes own the latest account attempt. |
-| `app/` | Bootstrap, configuration, host admission, preflight, dry-run setup, and application composition. |
+| `app/` | Bootstrap, configuration, host admission, preflight, rehearsal manifest validation, and application composition. |
 | `app/composition/` | Storage, dashboard, and worker dependency assembly. `profile-credential-inventory.ts` owns canonical profile copy membership, credential maintenance assessment, and browser-root validation. |
 | `app/registries/` | Workflow, task, step-proof, and test-target registration. `task-registry.ts` composes system, processing, and workflow task stores. |
 | `logs/` | Spans, observed data, artifacts, confirmed actions, declared step results, and diagnostics. `run-log-stream.ts` reads confirmed events through native timeline cursors. `emergency-faults.ts` owns the capped database-unavailable spool and its import. |
@@ -69,7 +69,7 @@ Paths in this table are relative to `src/backend/`.
 | `storage/` | Admission, artifacts, configuration, events, maintenance, and SQLite persistence. |
 | `storage/configuration/` | Settings and private credential persistence, including opaque committed-replay witnesses. `credential-store.ts` exposes the protected-settings and ChatGPT account records under `<stateRoot>/credentials/`, which also holds the Duo key; both use `credential-safe-file.ts` for file safety. |
 | `storage/events/` | Native timeline writers, readers, and emitters. |
-| `storage/sqlite/` | Database authority, repositories, migrations, process locks, backup inspection, recovery status, and deletion custody. `timeline-repository.ts` owns ordered event persistence. |
+| `storage/sqlite/` | Database authority, repositories, migrations, process locks, backup inspection, recovery status, and deletion custody. `timeline-repository.ts` owns ordered event persistence. `worker-slots.ts` authenticates reservation and retirement lineage for both live custody and isolated maintenance snapshots; `worker-control.ts` owns their authenticated control reads. |
 | `systems/` | Browser-system sessions, drivers, semantic UI registries, and tasks. CRM, Kuali, New Kronos, and UCPath have driver implementations. I-9, Old Kronos, OnBase, ServiceNow, and SharePoint have session declarations and empty task stores with `unwired` drivers. |
 | `systems/browser-shared/` | Shared sign-in, authenticated application, action-note, and semantic UI effect behavior. |
 | `systems/kronos-shared/` | Shared timecard models. |
@@ -171,3 +171,7 @@ Person Lookup folds UCPath/CRM identity and employment facts in `rules/matching/
 selected-record verification live in the CRM driver and their corresponding system tasks.
 
 `storage/admission/admission-identity.ts` owns issued identity membership and validation; constructor-only registration is enforced by the admission identity guard. `admission.ts` owns registered profile setup, runtime and logout settlement children; `installation.ts` publishes registry and pending-operation continuity under installation control.
+
+Rehearsal declarations remain in `models/trust/dry-run-scenario.ts`; verification-only evidence
+assertions and graph checks live in `tests/support/helpers/dry-run-scenario-fixtures.ts`.
+Workflow execution uses the signed-in dashboard Run and its canonical start-plan, command and worker owners.

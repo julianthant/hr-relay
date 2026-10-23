@@ -1,13 +1,14 @@
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { default as assert } from "node:assert/strict";
-import fs, { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync } from "node:fs";
+import fs, { renameSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { composeWorkerProcessControl } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { composeRuntimePreflight } from "../../../../src/backend/app/preflight/runtime-admission.js";
 import { createRuntimePreflightRunners } from "../../../../src/backend/app/preflight/runtime-runners.js";
 import { claimWithPreflight, preflightSessionFactory } from "../../../../src/backend/app/preflight/worker-admission.js";
@@ -18,17 +19,16 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { workflowPreflightScope } from "../../../../src/backend/runs/start/preflight-scope.js";
 import { createPreflightReportService } from "../../../../src/backend/runtime/preflight/report-service.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
-import type { PreflightRunner, PreflightRunnerContext } from "../../../../src/models/preflight/preflight.js";
+import { requiredPreflightChecks, type PreflightRunner, type PreflightRunnerContext } from "../../../../src/models/preflight/preflight.js";
 import { type RuntimeCapability } from "../../../../src/models/preflight/preflight-contract.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { ActorIdSchema, FingerprintSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
-import { PreflightAdmissionRefusal } from "../../../../src/rules/preflight/preflight-admission.js";
+import { PreflightAdmissionRefusal, PreflightAdmissionScopeSchema } from "../../../../src/rules/preflight/preflight-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -39,7 +39,7 @@ import { populatedProtectedRecord, runtimeFixture } from "../../../support/fixtu
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { AuthorityBackupService, AuthorityDatabase, doctorAuthorityStorage } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityBackupService, AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 {
 
@@ -47,19 +47,20 @@ const cleanup: (() => void)[] = [];
 const _afterEachFixture0 = () => { for (const dispose of cleanup.splice(0).reverse()) dispose(); };
 const signal = (): AbortSignal => new AbortController().signal;
 function harness(configureRunners?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]) {
-  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "preflight-admission-"));
-  const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot); mkdirSync(stateRoot, { recursive: true });
+  const profile = createBoundProfileFixture();
+  const repoRoot = profile.workspace, stateRoot = profile.stateRoot;
   const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
   const database = AuthorityDatabase.open({ path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "preflight-test" }, clock);
-  cleanup.push(() => { database.close(); rmSync(repoRoot, { recursive: true, force: true }); });
-  const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
+  cleanup.push(() => { database.close(); profile.close(); });
+  const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock,
+    { stateRoot, artifactRoot: profile.admission.artifactRoot });
   const identity = { configSnapshotId: "66666666-6666-4666-8666-666666666666", configFingerprint: resolved.fingerprint };
   database.authority.runtimeConfig.initialize({ configSnapshotId: identity.configSnapshotId, fingerprint: resolved.fingerprint,
     config: resolved.config, provenance: resolved.provenance, revision: 1, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
   const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
   let protectedRecord = initialProtectedStoreRecord();
   const faults = new Set<string>(); const probes: string[] = []; let supportMissing = false;
-  const preflight = composeRuntimePreflight({ admission: RuntimeAdmission.syntheticRoots(stateRoot, join(repoRoot, rebuildRuntimeIsolation.artifactRoot)),
+  const preflight = composeRuntimePreflight({ admission: profile.admission, credentials: boundProfileCredentials(profile.admission),
     database, clock, repoRoot, isolation: rebuildRuntimeIsolation, descriptors,
     descriptorSetHash: personLookupDescriptor.contractFingerprint, protectedSecrets: { read: () => protectedRecord }, environment: {},
     runnerFactory: input => {
@@ -188,7 +189,7 @@ try {
   assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
   const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
   h.clock.advanceWall(60_000); h.clock.advanceMonotonic(60_000); h.faults.add("endpoint.ucpath.prod");
-  const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
+  const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
     workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
   const request = { commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
   const generation = h.database.getMeta().authorityGeneration;
@@ -363,7 +364,7 @@ function harness(beforeCrmEndpoint?: () => Promise<void>) {
     config: resolved.config, provenance: resolved.provenance, revision: 1, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
   const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
   let probes=0;
-  const preflight=composeRuntimePreflight({ admission: RuntimeAdmission.syntheticRoots(join(repoRoot, rebuildRuntimeIsolation.stateRoot), join(repoRoot, rebuildRuntimeIsolation.artifactRoot)),database,clock,repoRoot,isolation:rebuildRuntimeIsolation,descriptors,
+  const preflight=composeRuntimePreflight({ admission: f.admission, credentials: f.credentials,database,clock,repoRoot,isolation:rebuildRuntimeIsolation,descriptors,
     descriptorSetHash:personLookupDescriptor.contractFingerprint,protectedSecrets:f.input.protectedSecrets,environment:{},
     runnerFactory:input=>createRuntimePreflightRunners({...input,browserExecutablePath:()=>f.executable,dashboard:f.input.dashboard,providerAvailability:f.input.providerAvailability}).map(runner=>({...runner,run(context){probes++;return runner.check === "endpoint.crm.prod" && beforeCrmEndpoint !== undefined ? beforeCrmEndpoint().then(() => runner.run(context)) : runner.run(context);}}))});
   let publications = 0;
@@ -438,7 +439,7 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     });
     syncBuiltinESMExports();
     restoreRead = () => { spy.mockRestore(); syncBuiltinESMExports(); };
-    doctorOutcome = doctorAuthorityStorage(h.f.doctorOptions, h.clock).catch((error: unknown) => error);
+    doctorOutcome = doctorAuthorityStorage(h.f.admission, h.f.doctorOptions, h.clock, h.f.credentials).catch((error: unknown) => error);
     await backupReadReached.promise;
     gateSession = true;
     openOutcome = factory.open({ ...open, system: "crm" }).catch((error: unknown) => error);
@@ -572,3 +573,42 @@ _afterEachFixture0();
 }
 });
 }
+
+
+for (const capability of ["dashboard.serve", "executor.run"] as const) it(`the default runtime factory verifies actual credential-owned authority for ${capability}`, async () => {
+  const f = runtimeFixture([capability]);
+  const database = AuthorityDatabase.open({ path: f.databasePath, busyTimeoutMs: 250, migrationOwner: "default-preflight-owner" }, f.clock);
+  try {
+    const config = f.input.config, fingerprint = sha256Hex(canonicalJsonStringify(config));
+    database.authority.runtimeConfig.initialize({ configSnapshotId: f.input.scope.configSnapshotId, fingerprint,
+      config, provenance: resolveConfigWithProvenance({}, hostConfigFacts({}), f.clock).provenance,
+      revision: 1, capturedAt: f.clock.now().toISOString(), capturedBy: "local-operator" });
+    const scope = PreflightAdmissionScopeSchema.parse({ ...f.input.scope, configFingerprint: fingerprint, requestedCapabilities: [capability] });
+    const preflight = composeRuntimePreflight({ admission: f.admission, credentials: f.credentials, database,
+      clock: f.clock, repoRoot: f.root, isolation: rebuildRuntimeIsolation, descriptors: { resolve: () => undefined },
+      descriptorSetHash: scope.descriptorFingerprint, protectedSecrets: { read: () => f.credentials.read() }, environment: {} });
+    const generation = database.getMeta().authorityGeneration;
+    const report = await preflight.admission.prepare(scope, new AbortController().signal);
+    assert.deepEqual(report.results.map(result => result.check).sort(), [...requiredPreflightChecks([capability])].sort());
+    assert.equal(report.results.find(result => result.check === "authority.health")?.status, "pass");
+    assert.equal(database.getMeta().authorityGeneration, generation);
+  } finally { database.close(); f.close(); }
+});
+
+for (const fault of ["missing", "foreign", "stale"] as const) it(`the default runtime composition refuses a ${fault} credential owner before protected value reads`, () => {
+  const f = runtimeFixture(["executor.run"]), foreign = fault === "foreign" ? runtimeFixture(["executor.run"]) : undefined;
+  const database = AuthorityDatabase.open({ path: f.databasePath, busyTimeoutMs: 250, migrationOwner: "preflight-owner-refusal" }, f.clock);
+  let secretReads = 0;
+  const input = { admission: f.admission, credentials: f.credentials, database, clock: f.clock, repoRoot: f.root,
+    isolation: rebuildRuntimeIsolation, descriptors: { resolve: () => undefined }, descriptorSetHash: personLookupDescriptor.contractFingerprint,
+    protectedSecrets: { read: () => { secretReads++; return f.credentials.read(); } }, environment: {} };
+  try {
+    composeRuntimePreflight(input);
+    if (fault === "missing") Reflect.deleteProperty(input, "credentials");
+    else if (fault === "foreign") { assert.ok(foreign); input.credentials = foreign.credentials; }
+    else { database.close(); f.admission.release(); }
+    assert.throws(() => composeRuntimePreflight(input), fault === "stale"
+      ? /runtime-admission: missing or released admission/u : /credential-store-owner-mismatch/u);
+    assert.equal(secretReads, 0);
+  } finally { database.close(); foreign?.close(); f.close(); }
+});

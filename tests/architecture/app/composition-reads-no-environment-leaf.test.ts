@@ -11,12 +11,9 @@ import { resolveConfigWithProvenance } from "../../../src/backend/app/config/res
 import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
-import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { composeDashboardRuntime } from "../../../src/backend/app/composition/dashboard/compose.js";
 import { composeWorkerRuntime } from "../../../src/backend/app/composition/worker-compose.js";
-import { composeDryRunScenarioCommand } from "../../../src/backend/app/dry-run/compose.js";
-import { createProductionDryRunScenarioRuntime } from "../../../src/backend/app/dry-run/runtime.js";
 import { inventoryEnvironmentAccesses } from "../runtime/helpers/environment-read-audit.js";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
@@ -109,10 +106,6 @@ describe("composition-reads-no-environment-leaf", () => {
     const refuse = (error: unknown): boolean => error instanceof Error && error.message === expected;
     await assert.rejects(composeDashboardRuntime({ ...common, backendPortOverride: 0, frontendPortOverride: 0 }), refuse);
     await assert.rejects(composeWorkerRuntime({ ...common, args: ["person-lookup", "--pool-index", "1", "--drain"] }), refuse);
-    await assert.rejects(composeDryRunScenarioCommand({ ...common, args: ["separations", "--subject", "finalization-canary"],
-      loadManifest: () => { throw new Error("manifest must not be read"); },
-      createRuntime: () => { throw new Error("runtime must not be created"); } }), refuse);
-    assert.throws(() => createProductionDryRunScenarioRuntime({ ...common, ids: sequentialIdFactory("d") }), refuse);
     assert.equal(hostile.reads(), 0);
     assert.deepEqual(readdirSync(root), ["package.json"]);
   });

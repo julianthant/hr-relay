@@ -1,3 +1,5 @@
+import type { WorkerControlRecord } from "../../../models/run/worker-control.js";
+import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { createOrphanRetirementProof } from "./orphan-verification-proof.js";
@@ -7,11 +9,11 @@ import { join } from "node:path";
 import { commandFromRow } from "./command-record-row.js";
 import { RuntimeProcessLockFileSchema, readLiveSmokeRuntimeFile, readRuntimeProcessLock, observeProcessIdentity } from "./runtime-process-locks.js";
 import { validateOrphanRetirementProof, WorkerStandingRecoveryRequestSchema, WorkerVerificationClaimSchema, WorkerVerificationClosureProofSchema, WorkerVerificationRecoveryProofSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema } from "./run-store-contracts.js";
-import { RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../rules/commands/commands.js";
+import { AuthorityCommandAuditRecordSchema, RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../rules/commands/commands.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { WorkerPoolMemberSchema, WorkerPoolRosterAdmissionSchema, WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
+import { WorkerPoolMemberSchema, WorkerPoolRosterAdmissionSchema, WorkerSlotRecordSchema, workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
@@ -120,6 +122,121 @@ export function recoveryFromSlot(database: DatabaseSync, slot: WorkerSlotRecord)
   return { command, request, slot };
 }
 
+export function requireVerificationRetirements(database: DatabaseSync, workflow: string): void {
+  for (const slot of database.prepare("SELECT * FROM worker_slots WHERE workflow=? ORDER BY ordinal").all(WorkflowIdSchema.parse(workflow)).map(workerSlotFromRow)) {
+    if (slot.retiredAt === null || slot.reservationCommandId === null) continue;
+    const grantRow = database.prepare("SELECT * FROM commands WHERE id=?").get(slot.reservationCommandId);
+    if (grantRow === undefined) throw new Error("worker-slot-reservation-authority-unavailable");
+    const grant = commandFromRow(grantRow);
+    if (!("kind" in grant) || grant.kind !== "run-lifecycle" || grant.operation !== "worker-verification-admission") continue;
+    const admissionRequest = WorkerVerificationAdmissionRequestSchema.parse(grant.request);
+    const owner = admissionRequest.owner;
+    const rows = database.prepare("SELECT payload_json FROM command_audits WHERE command_id=?").all(slot.retirementCommandId);
+    if (rows.length !== 1) throw new Error("worker-verification-retirement-unproved");
+    const audit = RunLifecycleCommandAuditRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(rows[0]).payload_json));
+    const retirementRow = database.prepare("SELECT * FROM commands WHERE id=?").get(slot.retirementCommandId);
+    if (retirementRow === undefined || canonicalJsonStringify(commandFromRow(retirementRow)) !== canonicalJsonStringify(audit.request)) throw new Error("worker-verification-retirement-unproved");
+    const retirement = WorkerVerificationRetirementRequestSchema.parse(audit.request.request);
+    if (retirement.cleanup.evidence === "orphan-retired") {
+      validateOrphanRetirementProof(retirement, admissionRequest, retirement.cleanup.proof.slot);
+      const original = retirement.cleanup.proof.slot;
+      if (canonicalJsonStringify({ ...original, membershipRevision: slot.membershipRevision, retiredAt: slot.retiredAt,
+        retirementCommandId: slot.retirementCommandId, updatedAt: slot.updatedAt }) !== canonicalJsonStringify(slot)) throw new Error("worker-verification-retirement-unproved");
+    }
+    if (audit.request.operation !== "worker-verification-retirement" || audit.request.commandId !== slot.retirementCommandId
+      || retirement.grantCommandId !== grant.commandId || retirement.workerId !== slot.workerId
+      || retirement.expectedRevision + 1 !== slot.membershipRevision || retirement.cleanup.acquisitionId !== owner.acquisitionId
+      || audit.result.kind !== "worker" || canonicalJsonStringify(audit.result.slot) !== canonicalJsonStringify(slot)
+      || audit.result.beforePoolVersion !== retirement.expectedPoolVersion
+      || audit.result.afterPoolVersion !== retirement.expectedPoolVersion + 1) throw new Error("worker-verification-retirement-unproved");
+  }
+}
+
+export type WorkerReservationCustody = Readonly<
+  | { state: "none"; workerId: string; reservationCommandId: null }
+  | { state: "pending"; workerId: string; reservationCommandId: string }
+  | { state: "settled"; workerId: string; reservationCommandId: string }
+>;
+
+export function readWorkerReservationCustody(database: DatabaseSync, slots: readonly WorkerSlotRecord[], controls: readonly WorkerControlRecord[]): readonly WorkerReservationCustody[] {
+  const readCommand = (commandId: string) => {
+    const row = database.prepare("SELECT * FROM commands WHERE id=?").get(commandId);
+    return row === undefined ? undefined : commandFromRow(row);
+  };
+  const readAudit = (commandId: string) => {
+    const rows = database.prepare("SELECT * FROM command_audits WHERE command_id=? ORDER BY id").all(commandId);
+    if (rows.length > 1) throw new Error(`command ${commandId} has ${String(rows.length)} recorded audits; exactly one outcome may exist`);
+    const row = rows[0];
+    return row === undefined ? undefined : AuthorityCommandAuditRecordSchema.parse(nativeOrdinaryRecordFromRow("command_audits", row));
+  };
+  const sameOrigin = (slot: WorkerSlotRecord, origin: WorkerSlotRecord): boolean =>
+    slot.workerId === origin.workerId && slot.workflow === origin.workflow && slot.ordinal === origin.ordinal
+    && slot.poolIndex === origin.poolIndex && slot.createdAt === origin.createdAt && slot.reservationCommandId === origin.reservationCommandId;
+  const settled = (control: WorkerControlRecord): boolean => control.phase.state === "succeeded" && control.auditedAt !== undefined;
+  const requireLineage = (slot: WorkerSlotRecord, origin: WorkerSlotRecord): void => {
+    if (!sameOrigin(slot, origin) || origin.retiredAt !== null) throw new Error("profile-worker-reservation-lineage-unavailable");
+    if (slot.retiredAt === null) {
+      if (slot.membershipRevision !== origin.membershipRevision) throw new Error("profile-worker-reservation-lineage-unavailable");
+      return;
+    }
+    if (slot.membershipRevision !== origin.membershipRevision + 1) throw new Error("profile-worker-retirement-lineage-unavailable");
+    const retirement = controls.find(control => control.commandId === slot.retirementCommandId);
+    if (retirement === undefined || !settled(retirement) || retirement.phase.state !== "succeeded") throw new Error("profile-worker-retirement-authority-unavailable");
+    const acknowledgement = retirement.phase.acknowledgement;
+    const proof = acknowledgement.kind === "remove" && retirement.request.type === "remove-worker"
+      && retirement.lifecycle?.operation.kind === "remove"
+      && canonicalJsonStringify(retirement.lifecycle.member) === canonicalJsonStringify(workerPoolMember(origin))
+      ? acknowledgement.retirement
+      : acknowledgement.kind === "plan" && retirement.request.type === "plan-worker-count"
+        && retirement.request.target.workflowId === slot.workflow
+        && retirement.roster?.excess.some(excess => sameOrigin(excess, origin) && excess.membershipRevision === origin.membershipRevision)
+        ? acknowledgement.retirements.find(value => value.workerId === slot.workerId) : undefined;
+    if (proof === undefined || proof.workerId !== slot.workerId || proof.membershipRevision !== origin.membershipRevision) throw new Error("profile-worker-retirement-lineage-unavailable");
+    if (acknowledgement.kind === "remove") {
+      if (slot.retiredAt !== retirement.auditedAt || slot.retiredAt !== retirement.phase.completedAt
+        || Date.parse(proof.checkedAt) < Date.parse(retirement.admittedAt)
+        || Date.parse(proof.checkedAt) > Date.parse(retirement.phase.completedAt)) throw new Error("profile-worker-retirement-lineage-unavailable");
+    } else if (proof.checkedAt !== slot.retiredAt) throw new Error("profile-worker-retirement-lineage-unavailable");
+  };
+  const reservationState = (slot: WorkerSlotRecord): "none" | "pending" | "settled" => {
+    if (slot.reservationCommandId === null) return "none";
+    const control = controls.find(record => record.commandId === slot.reservationCommandId);
+    if (control !== undefined) {
+      if (control.request.type !== "plan-worker-count" || control.request.target.workflowId !== slot.workflow) throw new Error("profile-worker-reservation-authority-unavailable");
+      const origin = control.roster?.selected.find(selected => selected.workerId === slot.workerId);
+      if (origin === undefined || !sameOrigin(slot, origin)) throw new Error("profile-worker-reservation-lineage-unavailable");
+      if (control.phase.state === "refused") throw new Error("profile-worker-reservation-refused");
+      if (!settled(control)) {
+        if (slot.retiredAt !== null || slot.membershipRevision !== origin.membershipRevision) throw new Error("profile-worker-reservation-lineage-unavailable");
+        return "pending";
+      }
+      requireLineage(slot, origin);
+      return "settled";
+    }
+    if (verificationFromSlot(database, slot) !== undefined
+      || recoveryFromSlot(database, slot) !== undefined) return "pending";
+    const command = readCommand(slot.reservationCommandId);
+    if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle") throw new Error("profile-worker-reservation-authority-unavailable");
+    if (command.operation === "worker-verification-admission" && slot.retiredAt !== null) {
+      requireVerificationRetirements(database, slot.workflow);
+      return "settled";
+    }
+    const audit = readAudit(slot.reservationCommandId);
+    if (command.operation !== "worker-admission" || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+      || audit.result.kind !== "worker" || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) throw new Error("profile-worker-reservation-authority-unavailable");
+    requireLineage(slot, audit.result.slot);
+    return "settled";
+  };
+  return Object.freeze(slots.map((slot): WorkerReservationCustody => {
+    const state = reservationState(slot);
+    if (state === "none") return Object.freeze({ state, workerId: slot.workerId, reservationCommandId: null });
+    if (slot.reservationCommandId === null) throw new Error("profile-worker-reservation-authority-unavailable");
+    return state === "pending"
+      ? Object.freeze({ state, workerId: slot.workerId, reservationCommandId: slot.reservationCommandId })
+      : Object.freeze({ state: "settled", workerId: slot.workerId, reservationCommandId: slot.reservationCommandId });
+  }));
+}
+
 export function createWorkerSlotRepository({ database, admission, clock = systemClock, mutate }: WorkerSlotPorts) {
   const get = (workerId: string) => { const row = database.prepare("SELECT * FROM worker_slots WHERE id=?").get(WorkerIdSchema.parse(workerId)); return row === undefined ? undefined : workerSlotFromRow(row); };
   const list = (workflow?: string) => (workflow === undefined ? database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all()
@@ -150,35 +267,7 @@ export function createWorkerSlotRepository({ database, admission, clock = system
       const pool = z.object({ version: z.number().int().nonnegative() }).parse(database.prepare("SELECT version FROM worker_pools WHERE workflow=?").get(hold.slot.workflow));
       return { hold, proof, poolVersion: pool.version };
     },
-    requireVerificationRetirements(workflow: string) {
-      for (const slot of list(workflow)) {
-        if (slot.retiredAt === null || slot.reservationCommandId === null) continue;
-        const grantRow = database.prepare("SELECT * FROM commands WHERE id=?").get(slot.reservationCommandId);
-        if (grantRow === undefined) throw new Error("worker-slot-reservation-authority-unavailable");
-        const grant = commandFromRow(grantRow);
-        if (!("kind" in grant) || grant.kind !== "run-lifecycle" || grant.operation !== "worker-verification-admission") continue;
-        const admissionRequest = WorkerVerificationAdmissionRequestSchema.parse(grant.request);
-        const owner = admissionRequest.owner;
-        const rows = database.prepare("SELECT payload_json FROM command_audits WHERE command_id=?").all(slot.retirementCommandId);
-        if (rows.length !== 1) throw new Error("worker-verification-retirement-unproved");
-        const audit = RunLifecycleCommandAuditRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(rows[0]).payload_json));
-        const retirementRow = database.prepare("SELECT * FROM commands WHERE id=?").get(slot.retirementCommandId);
-        if (retirementRow === undefined || canonicalJsonStringify(commandFromRow(retirementRow)) !== canonicalJsonStringify(audit.request)) throw new Error("worker-verification-retirement-unproved");
-        const retirement = WorkerVerificationRetirementRequestSchema.parse(audit.request.request);
-        if (retirement.cleanup.evidence === "orphan-retired") {
-          validateOrphanRetirementProof(retirement, admissionRequest, retirement.cleanup.proof.slot);
-          const original = retirement.cleanup.proof.slot;
-          if (canonicalJsonStringify({ ...original, membershipRevision: slot.membershipRevision, retiredAt: slot.retiredAt,
-            retirementCommandId: slot.retirementCommandId, updatedAt: slot.updatedAt }) !== canonicalJsonStringify(slot)) throw new Error("worker-verification-retirement-unproved");
-        }
-        if (audit.request.operation !== "worker-verification-retirement" || audit.request.commandId !== slot.retirementCommandId
-          || retirement.grantCommandId !== grant.commandId || retirement.workerId !== slot.workerId
-          || retirement.expectedRevision + 1 !== slot.membershipRevision || retirement.cleanup.acquisitionId !== owner.acquisitionId
-          || audit.result.kind !== "worker" || canonicalJsonStringify(audit.result.slot) !== canonicalJsonStringify(slot)
-          || audit.result.beforePoolVersion !== retirement.expectedPoolVersion
-          || audit.result.afterPoolVersion !== retirement.expectedPoolVersion + 1) throw new Error("worker-verification-retirement-unproved");
-      }
-    },
+    requireVerificationRetirements: (workflow: string) => requireVerificationRetirements(database, workflow),
     observeVerificationAcquisition(input: unknown) {
       const request = z.strictObject({ workerId: WorkerIdSchema, grantCommandId: CommandIdSchema, now: IsoInstantSchema }).parse(input);
       return mutate(() => {

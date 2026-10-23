@@ -360,7 +360,7 @@ function openDatabase(path: string): AuthorityDatabase {
 function corruptTerminalRun(
   path: string,
   runId: string,
-  mutate: (run: RunRecord) => unknown,
+  mutate: ((run: RunRecord) => unknown) | RunRecord,
 ): void {
   const raw = new DatabaseSync(path);
   const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger'").all();
@@ -371,8 +371,9 @@ function corruptTerminalRun(
     const row = raw.prepare(`SELECT ${RUN_RECORD_JSON_SQL} AS record_json FROM runs WHERE id = ?`)
       .get(runId) as { record_json: string } | undefined;
     if (row === undefined) throw new Error(`run ${runId} is absent from corruption fixture`);
-    const current = RunRecordSchema.parse(JSON.parse(row.record_json));
-    const corrupted = mutate(current) as RunRecord;
+    const corrupted = typeof mutate === "function"
+      ? mutate(RunRecordSchema.parse(JSON.parse(row.record_json))) as RunRecord
+      : RunRecordSchema.parse(mutate);
     const ownerWorkerId = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
     const heartbeatAt = "heartbeatAt" in corrupted.lifecycle ? corrupted.lifecycle.heartbeatAt : null;
     const { envelope, ...lifecycle } = corrupted;
@@ -1594,11 +1595,23 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     ] as const;
 
     for (const arm of arms) {
+      const path = join(testRoot(), "state.db");
+      const database = openDatabase(path);
+      seedTerminalAuthority(database);
+      const originalRun = database.authority.runs.get(arm.runId);
+      assert.ok(originalRun);
+      database.close();
+      corruptTerminalRun(path, arm.runId, originalRun);
+      const baseline = AuthorityDatabase.inspectExistingReadOnly(admissionFor(path), path);
+      const assertBaseline = (): void => {
+        const current = AuthorityDatabase.inspectExistingReadOnly(admissionFor(path), path);
+        assert.equal(current.authorityGeneration, baseline.authorityGeneration);
+        assert.equal(current.authorityContentFingerprint, baseline.authorityContentFingerprint);
+        assert.deepEqual(current.counts, baseline.counts);
+        assert.deepEqual(current.tables, baseline.tables);
+      };
       for (const [name, mutate] of arm.cases) {
-        const path = join(testRoot(), "state.db");
-        const database = openDatabase(path);
-        seedTerminalAuthority(database);
-        database.close();
+        assertBaseline();
         corruptTerminalRun(path, arm.runId, mutate);
         assert.throws(
           () => AuthorityDatabase.inspectExistingReadOnly(admissionFor(path), path),
@@ -1611,6 +1624,10 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         if (report.state !== "degraded-read-only") throw new Error("expected degraded terminal authority");
         assert.ok(["authority-invariant", "authority-record-invalid"].includes(report.cause.code), `${arm.name}/${name}: ${report.cause.code}`);
         assert.match(report.cause.summary, /completion|strict|schema|native record validation/);
+        store.close();
+        bootStores.splice(bootStores.indexOf(store), 1);
+        corruptTerminalRun(path, arm.runId, originalRun);
+        assertBaseline();
       }
     }
   });
@@ -2526,7 +2543,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
-    }, CLOCK);
+    }, CLOCK, boundProfileCredentials(admissionFor(authorityPath)));
     const healthy = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
     assert.equal(healthy.state, "healthy");
 

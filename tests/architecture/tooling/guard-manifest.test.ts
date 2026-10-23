@@ -384,7 +384,6 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runs/commands/command-application.ts",
       "src/backend/runs/commands/command-kernel.ts",
       "src/backend/runs/commands/command-refusal.ts",
-      "src/backend/runs/start/dry-run-scenario-runner.ts",
       "src/backend/runs/provenance/evidence-receipt.ts",
       "src/backend/runs/lifecycle/failure-resolution.ts",
       "src/backend/processing/providers/provider-client.ts",

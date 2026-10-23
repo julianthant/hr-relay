@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { it, vi } from 'vitest';
 import { z } from 'zod';
 import { DatabaseSync } from 'node:sqlite';
-import { join } from 'node:path';
 import { assistantCoupledWorld, SYNTHETIC_ASSISTANT_SOURCE } from '../../../../support/helpers/assistant-coupled-world.js';
 import { createAssistantController } from '../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ASSISTANT_FAILURES } from '../../../../../src/models/dashboard/assistant.js';
@@ -12,8 +11,8 @@ import { runRecordOf } from '../../../../support/helpers/backend/dashboard-harne
 import { personLookupDescriptor, separationsDescriptor } from '../../../../support/helpers/registered-workflows.js';
 import { writeFixtureDescriptorWithoutDryRunArm } from '../../../../support/fixtures/write-sequencer-fixtures.js';
 
-function authorityRows(root: string) {
-  const db = new DatabaseSync(join(root, 'canonical.sqlite'), { readOnly: true });
+function authorityRows(path: string) {
+  const db = new DatabaseSync(path, { readOnly: true });
   try {
     return db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => {
       assert.equal(typeof row.name, 'string');
@@ -25,7 +24,7 @@ function authorityRows(root: string) {
 it('couples controller, shared client, admitted mounted HTTP, actual account parser, pure planner and canonical repositories with zero durable effects', async () => {
   const f = await assistantCoupledWorld();
   try {
-    const before = authorityRows(f.account.root);
+    const before = authorityRows(f.databasePath);
     f.controller.action({ type: 'edit', value: 'Propose a dry run for the selected synthetic subject' });
     f.controller.action({ type: 'send' });
     await vi.waitFor(() => assert.equal(f.controller.snapshot().turn.state, 'proposal'));
@@ -37,7 +36,7 @@ it('couples controller, shared client, admitted mounted HTTP, actual account par
     const accountCalls = f.account.calls.filter(call => call.url.endsWith('/responses')); assert.equal(accountCalls.length, 1);
     f.controller.action({ type: 'confirm' }); f.controller.action({ type: 'confirm' });
     assert.equal(f.requests(), 1, 'zero additional plan/preparation/dispatch HTTP calls');
-    assert.deepEqual(authorityRows(f.account.root), before, 'zero plan rows, command acceptance, preparation, HR writes or other durable deltas');
+    assert.deepEqual(authorityRows(f.databasePath), before, 'zero plan rows, command acceptance, preparation, HR writes or other durable deltas');
     assert.equal(f.controller.snapshot().turn.state, 'proposal');
   } finally { await f.close(); }
 });
@@ -52,14 +51,14 @@ it('coupled actual account/broker/planner refuses ambiguity, changed selection, 
         const descriptor = kind === 'protected' ? separationsDescriptor : personLookupDescriptor;
         f.descriptor(descriptor); f.reply({ action: 'propose', workflowId: descriptor.id, intent: 'dry-run' });
       }
-      const before = authorityRows(f.account.root);
+      const before = authorityRows(f.databasePath);
       const result = await f.client.assistantRespond({ message: 'Prepare', subjectRef: f.subject().subjectRef });
       if (kind === 'ambiguity') assert.equal(result.state, 'resolution-required');
       else {
         assert.equal(result.state, 'refused');
         if (result.state === 'refused') assert.equal(result.code, kind === 'subject' ? 'ASSISTANT_SUBJECT_REQUIRED' : kind === 'policy' ? 'ASSISTANT_MODEL_UNVERIFIED' : 'ASSISTANT_PROPOSAL_REFUSED');
       }
-      assert.deepEqual(authorityRows(f.account.root), before);
+      assert.deepEqual(authorityRows(f.databasePath), before);
       if (kind === 'protected') assert.equal(f.mapped(), 0, 'protected descriptors refuse before mapping or pure planning');
       assert.equal(f.plannerIds(), 0, 'refused proposals never enter pure planning');
     } finally { await f.close(); }
@@ -95,7 +94,7 @@ it('canonical client validates inputs/results and production app exposes named u
     await assert.rejects(client.assistantRespond({ message: 'x'.repeat(4001) })); assert.equal(calls, 1);
     const malformed = createDashboardClient({ baseUrl: 'http://127.0.0.1:3938', fetchImpl: async () => Response.json({ state: 'answered', text: 'bad', citations: [{ path: 'bad' }] }) });
     await assert.rejects(malformed.assistantRespond({ message: 'Explain' }));
-  } finally { disposeHttpRouteHarness(); }
+  } finally { await disposeHttpRouteHarness(); }
 });
 it('coupled citations are bounded, policy/config authority changes cancel settlement, and cancellation/New Chat cannot admit a late response', async () => {
   const f = await assistantCoupledWorld();

@@ -1,9 +1,11 @@
+import { isDeepStrictEqual } from "node:util";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { copyFileSync } from "node:fs";
 import { it } from "vitest";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { DatabaseSync } from "node:sqlite";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
@@ -12,8 +14,8 @@ import { composeProfileRuntime, composeProfileActivity, composeSelectedProfileSt
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { CommandResultSchema, WorkerBrowserCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { admitWorkerPoolRoster, admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { acquireRuntimeProcessLock, bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { admitWorkerPoolRoster, admitDirectWorker, admitWorkerVerification, retireWorkerVerification } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { acquireRuntimeProcessLock, bindWorkerProcessAdmission, readRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { WorkerChildEvidenceSchema } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
@@ -32,6 +34,41 @@ function fixture() {
   return { ...f, context, input, async cleanup() { await context.account.close(); context.database.close(); f.close(); } };
 }
 
+// Hash outside the SQLite owner's process so descriptor closure cannot release its locks.
+function byteSnapshot(root: string): unknown {
+  const observed = spawnSync(process.execPath, ["-e", `
+const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto"), rows = {};
+const visit = (root, prefix) => {
+  for (const name of fs.readdirSync(root).sort()) {
+    const child = path.join(root, name), key = prefix + name, info = fs.lstatSync(child);
+    if (info.isSymbolicLink()) rows[key] = "symlink:" + fs.readlinkSync(child);
+    else if (info.isDirectory()) visit(child, key + "/");
+    else rows[key] = crypto.createHash("sha256").update(fs.readFileSync(child)).digest("hex");
+  }
+};
+visit(process.argv[1], ""); process.stdout.write(JSON.stringify(rows));
+`, root], { encoding: "utf8", maxBuffer: 1024 * 1024 });
+  if (observed.status !== 0) throw new Error("fixture-byte-snapshot-failed");
+  return JSON.parse(observed.stdout) as unknown;
+}
+
+function reservationReaders(f: ReturnType<typeof fixture>) {
+  const generation = f.context.database.getMeta().authorityGeneration, before = byteSnapshot(f.workspace);
+  const live = f.context.database.readProfileResourceCustody().reservations;
+  const closed = AuthorityDatabase.readProfileMaintenanceInventory(f.admission).reservations;
+  assert.deepEqual(closed, live);
+  assert.equal(f.context.database.getMeta().authorityGeneration, generation);
+  assert.equal(isDeepStrictEqual(byteSnapshot(f.workspace), before), true, "reservation readers cannot mutate source or custody bytes");
+  return live;
+}
+
+function closedReservationRefuses(f: ReturnType<typeof fixture>, expected: RegExp) {
+  const generation = f.context.database.getMeta().authorityGeneration, before = byteSnapshot(f.workspace);
+  assert.throws(() => AuthorityDatabase.readProfileMaintenanceInventory(f.admission), error => error instanceof Error && expected.test(error.message));
+  assert.equal(f.context.database.getMeta().authorityGeneration, generation);
+  assert.equal(isDeepStrictEqual(byteSnapshot(f.workspace), before), true, "refused maintenance cannot mutate source or custody bytes");
+}
+
 it("observes actual empty canonical owners and awaits synthetic drain scheduling without certifying real browser closure", async () => {
   const f = fixture();
   let settle: (() => void) | undefined;
@@ -40,6 +77,7 @@ it("observes actual empty canonical owners and awaits synthetic drain scheduling
     const activity = composeProfileActivity({ ...f.input, supervisor: { ...f.input.supervisor, drainOwnedChildren: () => completion } });
     const profileId = f.admission.profileBinding.profileId;
     assert.equal(activity.hasUnquiescedWork(profileId), false);
+    assert.deepEqual(reservationReaders(f), []);
     assert.throws(() => activity.hasUnquiescedWork(randomUUID()), /owner-mismatch/u);
     activity.requestCancellation(profileId);
     assert.equal(activity.hasUnquiescedWork(profileId), true);
@@ -87,15 +125,15 @@ it("includes an idle owned lifetime and refuses absent supervisor acknowledgemen
 });
 
 
-function plan(f: ReturnType<typeof fixture>, settled = true) {
+function plan(f: ReturnType<typeof fixture>, settled = true, workflow: "person-lookup" | "separations" = "person-lookup") {
   const now = f.input.clock.now().toISOString();
   const request = WorkerBrowserCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard",
-    family: "worker-browser", type: "plan-worker-count", target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 1 } });
+    family: "worker-browser", type: "plan-worker-count", target: { workflowId: workflow, expectedVersion: 0 }, payload: { desiredWorkers: 1 } });
   if (request.type !== "plan-worker-count") throw new Error("fixture-plan-required");
   const roster = f.context.database.withAuthorityTransaction(repositories => {
     repositories.commands.insert(request);
     const roster = admitWorkerPoolRoster(repositories, request, now);
-    repositories.workerControls.admit({ commandId: request.commandId, request, scope: "worker-pool:person-lookup", executorId: randomUUID(),
+    repositories.workerControls.admit({ commandId: request.commandId, request, scope: `worker-pool:${workflow}`, executorId: randomUUID(),
       admittedAt: now, expiresAt: new Date(f.input.clock.nowMs() + 60_000).toISOString(), basisVersion: 0, phase: { state: "admitted" }, roster });
     return roster;
   });
@@ -155,13 +193,14 @@ it("accepts authenticated settled plan provenance only after a real owned proces
     const activity = composeProfileActivity(input), profileId = f.admission.profileBinding.profileId;
     assert.equal(f.context.database.authority.workerSlots.get(planned.slot.workerId)?.reservationCommandId, planned.request.commandId);
     assert.equal(activity.hasUnquiescedWork(profileId), false);
+    assert.equal(reservationReaders(f).find(value => value.workerId === planned.slot.workerId)?.state, "settled");
     activity.requestCancellation(profileId); await activity.awaitCancellation();
     assert.equal(activity.hasUnquiescedWork(profileId), false);
     assert.equal(f.context.database.authority.workerSlots.get(planned.slot.workerId)?.reservationCommandId, planned.request.commandId);
   } finally { await f.cleanup(); }
 });
 
-it.each(["unfinished", "refused", "missing", "foreign", "revision"] as const)("does not certify plan reservation with %s authority", async mutation => {
+it.each(["unfinished", "uncertain", "refused", "missing", "foreign", "revision"] as const)("does not certify plan reservation with %s authority", async mutation => {
   const { f, planned, input } = await stoppedPlanFixture();
   try {
     const raw = new DatabaseSync(f.path);
@@ -174,15 +213,21 @@ it.each(["unfinished", "refused", "missing", "foreign", "revision"] as const)("d
         const current = f.context.database.authority.workerControls.get(planned.request.commandId); assert.ok(current);
         const { auditedAt: _auditedAt, ...unaudited } = current;
         const changed = mutation === "unfinished" ? { ...unaudited, phase: { state: "executing", startedAt: current.admittedAt } }
+          : mutation === "uncertain" ? { ...unaudited, phase: { state: "uncertain", startedAt: current.admittedAt, observedAt: current.admittedAt, message: "fixture uncertain" } }
           : mutation === "refused" ? { ...current, phase: { state: "refused", completedAt: current.admittedAt, message: "fixture refusal" } }
             : { ...current, roster: { ...current.roster, selected: current.roster?.selected.map(slot => ({ ...slot, createdAt: "2026-10-20T12:00:00.000Z" })) } };
         raw.prepare("UPDATE worker_controls SET phase=?,audited_at=?,payload_json=? WHERE command_id=?")
-          .run(changed.phase.state, mutation === "unfinished" ? null : current.auditedAt ?? null, canonicalJsonStringify(changed), planned.request.commandId);
+          .run(changed.phase.state, mutation === "unfinished" || mutation === "uncertain" ? null : current.auditedAt ?? null, canonicalJsonStringify(changed), planned.request.commandId);
       }
     } finally { raw.close(); }
     const inspect = () => composeProfileActivity(input).hasUnquiescedWork(f.admission.profileBinding.profileId);
-    if (mutation === "unfinished") assert.equal(inspect(), true);
-    else assert.throws(inspect, /profile-worker-reservation-(?:authority-unavailable|lineage-unavailable|refused)/u);
+    if (mutation === "unfinished" || mutation === "uncertain") {
+      assert.equal(inspect(), true);
+      assert.equal(reservationReaders(f).find(value => value.workerId === planned.slot.workerId)?.state, "pending");
+    } else {
+      assert.throws(inspect, /profile-worker-reservation-(?:authority-unavailable|lineage-unavailable|refused)/u);
+      closedReservationRefuses(f, /profile-worker-reservation-(?:authority-unavailable|lineage-unavailable|refused)/u);
+    }
   } finally { await f.cleanup(); }
 });
 
@@ -191,6 +236,7 @@ it("accepts exact audited direct admission provenance after an actual owned chil
   const { f, planned, input } = await stoppedPlanFixture("direct");
   try {
     assert.ok(f.context.database.authority.lifecycleJournal.findAuditByCommand(planned.request.commandId));
+    assert.equal(reservationReaders(f).find(value => value.workerId === planned.slot.workerId)?.state, "settled");
     assert.equal(composeProfileActivity(input).hasUnquiescedWork(f.admission.profileBinding.profileId), false);
   } finally { await f.cleanup(); }
 });
@@ -209,6 +255,7 @@ it.each(["plan", "direct"] as const)("refuses %s provenance with a forged retire
           .run(slot.membershipRevision, slot.retiredAt, slot.retirementCommandId, canonicalJsonStringify(slot), slot.workerId);
         assert.throws(() => composeProfileActivity(input).hasUnquiescedWork(f.admission.profileBinding.profileId),
           increment === 2 ? /profile-worker-retirement-lineage-unavailable/u : /profile-worker-retirement-authority-unavailable/u);
+        closedReservationRefuses(f, /^authority database foreign-key validation failed for 1 row\(s\)$/u);
       }
     } finally { raw.close(); }
   } finally { await f.cleanup(); }
@@ -219,11 +266,15 @@ it("refuses a missing direct-admission audit instead of treating its retained ID
   try {
     const raw = new DatabaseSync(f.path);
     try {
+      const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='command_audits_retained'").get();
+      assert.ok(typeof trigger?.sql === "string");
       raw.exec("DROP TRIGGER command_audits_retained");
       raw.prepare("DELETE FROM command_audits WHERE command_id=?").run(planned.request.commandId);
+      raw.exec(trigger.sql);
     }
     finally { raw.close(); }
     assert.throws(() => composeProfileActivity(input).hasUnquiescedWork(f.admission.profileBinding.profileId), /profile-worker-reservation-authority-unavailable/u);
+    closedReservationRefuses(f, /profile-worker-reservation-authority-unavailable/u);
   } finally { await f.cleanup(); }
 });
 
@@ -306,6 +357,11 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
       supervisor: { memberEvidence: () => { throw new Error("retired member must not require a live supervisor"); }, drainOwnedChildren: async () => { throw new Error("retirement fixture must not request another drain"); } } });
     const profileId = profile.selectedContext(active.token).admission.profileBinding.profileId;
     assert.equal(activity.hasUnquiescedWork(profileId), false);
+    const beforeMaintenance = byteSnapshot(f.workspace), generation = database.getMeta().authorityGeneration;
+    assert.deepEqual(AuthorityDatabase.readProfileMaintenanceInventory(profile.selectedContext(active.token).admission).reservations,
+      database.readProfileResourceCustody().reservations);
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.equal(isDeepStrictEqual(byteSnapshot(f.workspace), beforeMaintenance), true);
     if (kind === "remove-worker") {
       const raw = new DatabaseSync(f.path);
       const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='worker_slots_identity'").get();
@@ -317,7 +373,10 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
         raw.prepare("UPDATE worker_slots SET retired_at=?,payload_json=? WHERE id=?")
           .run(altered.retiredAt, canonicalJsonStringify(altered), retired.workerId);
         assert.throws(() => activity.hasUnquiescedWork(profileId), /profile-worker-retirement-lineage-unavailable/u);
+        raw.exec(trigger.sql);
+        assert.throws(() => AuthorityDatabase.readProfileMaintenanceInventory(profile.selectedContext(active.token).admission), /profile-worker-retirement-lineage-unavailable/u);
       } finally {
+        raw.exec("DROP TRIGGER IF EXISTS worker_slots_identity");
         raw.prepare("UPDATE worker_slots SET retired_at=?,payload_json=? WHERE id=?")
           .run(retired.retiredAt, canonicalJsonStringify(retired), retired.workerId);
         raw.exec(trigger.sql); raw.close();
@@ -340,3 +399,53 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
   }
   if (failures.length > 0) throw new AggregateError(failures, "canonical retirement proof failed");
 }, 60_000);
+
+it("refuses a real other-workflow plan bound to a previously valid stopped slot in both readers", async () => {
+  const { f, planned, input } = await stoppedPlanFixture();
+  try {
+    assert.equal(reservationReaders(f).find(value => value.workerId === planned.slot.workerId)?.state, "settled");
+    const foreign = plan(f, false, "separations"), raw = new DatabaseSync(f.path);
+    try {
+      const changed = { ...planned.slot, reservationCommandId: foreign.request.commandId };
+      raw.prepare("UPDATE worker_slots SET reservation_command_id=?,payload_json=? WHERE id=?")
+        .run(changed.reservationCommandId, canonicalJsonStringify(changed), changed.workerId);
+    } finally { raw.close(); }
+    assert.throws(() => composeProfileActivity(input).hasUnquiescedWork(f.admission.profileBinding.profileId), /profile-worker-reservation-authority-unavailable/u);
+    closedReservationRefuses(f, /profile-worker-reservation-authority-unavailable/u);
+  } finally { await f.cleanup(); }
+});
+
+it("authenticates canonical verification pending and exact retired provenance through both readers", async () => {
+  const f = fixture();
+  const ownerHandle = acquireRuntimeProcessLock({ processLockRoot: f.input.processLockRoot, name: "live-smoke", pid: process.pid }, f.input.clock);
+  let released = false;
+  try {
+    const owner = readRuntimeProcessLock(f.input.processLockRoot, "live-smoke"); assert.ok(owner);
+    const grantCommandId = randomUUID(), now = f.input.clock.now().toISOString();
+    const slot = f.context.database.withAuthorityTransaction(repositories => admitWorkerVerification(repositories, {
+      commandId: grantCommandId, workflow: "person-lookup", expectedPoolVersion: 0,
+      processLockRoot: f.input.processLockRoot, stateRoot: f.stateRoot, owner, now,
+    }, randomUUID()));
+    assert.deepEqual(reservationReaders(f), [{ state: "pending", workerId: slot.workerId, reservationCommandId: grantCommandId }]);
+    const retirementCommandId = randomUUID();
+    const retired = f.context.database.withAuthorityTransaction(repositories => retireWorkerVerification(repositories, {
+      commandId: retirementCommandId, grantCommandId, workerId: slot.workerId, expectedRevision: slot.membershipRevision,
+      expectedPoolVersion: 1, now, cleanup: { acquisitionId: owner.acquisitionId, browsersClosed: true,
+        profilesReleased: true, duoReleased: true, mode: "live", evidence: "browserless" },
+    }, randomUUID()));
+    assert.ok(retired.retiredAt);
+    ownerHandle.release(); released = true;
+    assert.deepEqual(reservationReaders(f), [{ state: "settled", workerId: slot.workerId, reservationCommandId: grantCommandId }]);
+    assert.equal(composeProfileActivity(f.input).hasUnquiescedWork(f.admission.profileBinding.profileId), false);
+    const raw = new DatabaseSync(f.path);
+    try {
+      const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='command_audits_retained'").get();
+      assert.ok(typeof trigger?.sql === "string");
+      raw.exec("DROP TRIGGER command_audits_retained");
+      raw.prepare("DELETE FROM command_audits WHERE command_id=?").run(retirementCommandId);
+      raw.exec(trigger.sql);
+    } finally { raw.close(); }
+    assert.throws(() => f.context.database.readProfileResourceCustody(), /worker-verification-retirement-unproved/u);
+    closedReservationRefuses(f, /worker-verification-retirement-unproved/u);
+  } finally { if (!released) ownerHandle.release(); await f.cleanup(); }
+});
