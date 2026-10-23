@@ -58,7 +58,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "88e06c3ab405023c7af5289bbeeb646d8668bd4be0159d17c8f95f76a0589f04",
+      "sha256": "b6e5de7382da8545a8d82a708e1854968a040dcedd84f311da65d8fe64591790",
     "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate."
   },
   {
@@ -103,7 +103,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "0a0faf0b8846f8df490a26a9119afd33edfe7d7ad58c7112bd5363c1beb0f5a7",
+    "sha256": "5b5d0ebd797366488f7bbc62d44bd45f220fe377d2400724b82e08abfb2c1da4",
     "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success."
   },
   {

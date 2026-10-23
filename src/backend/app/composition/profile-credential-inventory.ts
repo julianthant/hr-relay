@@ -93,7 +93,7 @@ export function scanProfileCredentialCopy(path: string, capturedSecrets: readonl
   } finally { closeSync(fd); }
 }
 
-type CredentialMembershipCustody = Pick<ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, "slots" | "browsers" | "configSnapshots" | "artifactReferences">;
+type CredentialMembershipCustody = Pick<ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, "slots" | "reservations" | "browsers" | "configSnapshots" | "artifactReferences">;
 function enumerateProfileCredentialMembership(admission: RuntimeAdmission, custody: CredentialMembershipCustody, savedBrowserRoot: string, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>) {
   admission.assertLive();
   const root = admission.stateRoot;
@@ -259,7 +259,8 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       if (Object.entries(locks.processLocks).some(([name, state]) => name !== "server" && state.state !== "stopped")
         || orphans.staleWorkerRecords > 0) throw new Error("credential-maintenance-process-custody-unproved");
       const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
-      if (facts.slots.some(slot => slot.reservationCommandId !== null || slot.retiredAt === null && !facts.leases.some(lease => lease.workerId === slot.workerId))
+      if (facts.reservations.some(reservation => reservation.state === "pending")
+        || facts.slots.some(slot => slot.retiredAt === null && !facts.leases.some(lease => lease.workerId === slot.workerId))
         || facts.leases.some(lease => !facts.slots.some(slot => slot.workerId === lease.workerId))
         || facts.writeIntents.some(intent => intent.status !== "committed" && intent.status !== "observed-present") || facts.pendingArtifacts.length > 0
         || facts.leases.some(lease => lease.lifecycle.state !== "stopped") || facts.browsers.some(browser => browser.health !== "closed")

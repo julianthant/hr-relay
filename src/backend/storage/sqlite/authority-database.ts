@@ -16,7 +16,7 @@ import { workerSlotFromRow } from "./worker-slots.js";
 import { authenticateWorkerSupervisorEffect, consumeWorkerSupervisorEffect, type WorkerSupervisorEffect, authenticateWorkerControlClosure, consumeWorkerControlClosure, type WorkerControlClosure, assertWorkerResetParkedWrite, workerControlFromRow, workerBrowserFromRow } from "./worker-control.js";
 import { readAppSettings } from "./settings-storage.js";
 import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
-import { requireWorkerPoolRoster, createWorkerSlotRepository } from "./worker-slots.js";
+import { requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody } from "./worker-slots.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
@@ -24,7 +24,7 @@ import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflo
 import { selectTransactions } from "./transaction-selection.js";
 import { createRunSearchIndex, runSearchIndexFromRow } from "./run-search-index.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
-import { createWorkerControlRepository, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
+import { createWorkerControlRepository, readWorkerControl, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
 import { WorkerControlBasisSchema } from "../../../models/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
 import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
@@ -1750,12 +1750,17 @@ export class AuthorityDatabase implements Disposable {
       const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
       const browsers = database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow);
       const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
-      const controls = database.prepare("SELECT * FROM worker_controls ORDER BY command_id").all().map(workerControlFromRow);
+      const controls = database.prepare("SELECT * FROM worker_controls ORDER BY command_id").all().map(row => {
+        const record = workerControlFromRow(row), authenticated = readWorkerControl(database, record.commandId);
+        if (authenticated === undefined) throw new Error("worker-control-command-binding-mismatch");
+        return authenticated;
+      });
+      const reservations = readWorkerReservationCustody(database, slots, controls);
       const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
       const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
       const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
       const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
-      return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+      return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
     });
   }
 
@@ -1956,27 +1961,32 @@ export class AuthorityDatabase implements Disposable {
 
   readProfileResourceCustody() {
     this.#assertOpen();
-    return this.#withReadSnapshot(() => Object.freeze({
-      authorityGeneration: this.getMeta().authorityGeneration,
-      slots: this.authority.workerSlots.list(),
-      leases: this.#database.prepare("SELECT * FROM worker_leases ORDER BY id").all()
-        .map(row => this.#parseNativeRow("worker_leases", row, WorkerLeaseRecordSchema)),
-      controls: this.authority.workerControls.list().map(record => {
+    return this.#withReadSnapshot(() => {
+      const slots = this.authority.workerSlots.list();
+      const controls = this.authority.workerControls.list().map(record => {
         const authenticated = this.authority.workerControls.get(record.commandId);
         if (authenticated === undefined) throw new Error("worker-control-command-binding-mismatch");
         return authenticated;
-      }),
-      browsers: this.#database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow),
-      runs: this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow),
-      writeIntents: this.#database.prepare("SELECT * FROM write_intents ORDER BY id").all()
-        .map(row => this.#parseNativeRow("write_intents", row, WriteIntentRecordSchema)),
-      duoLeases: this.#database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all()
-        .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema)),
-      pendingArtifacts: this.authority.artifactOutbox.listPending(),
-      artifactReferences: this.readManagedArtifactReferences(),
-      configSnapshots: this.#database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
-        .map(row => this.#parseNativeRow("settings_snapshots", row, ConfigSnapshotRecordSchema)),
-    }));
+      });
+      return Object.freeze({
+        authorityGeneration: this.getMeta().authorityGeneration,
+        slots,
+        reservations: readWorkerReservationCustody(this.#database, slots, controls),
+        leases: this.#database.prepare("SELECT * FROM worker_leases ORDER BY id").all()
+          .map(row => this.#parseNativeRow("worker_leases", row, WorkerLeaseRecordSchema)),
+        controls,
+        browsers: this.#database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow),
+        runs: this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow),
+        writeIntents: this.#database.prepare("SELECT * FROM write_intents ORDER BY id").all()
+          .map(row => this.#parseNativeRow("write_intents", row, WriteIntentRecordSchema)),
+        duoLeases: this.#database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all()
+          .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema)),
+        pendingArtifacts: this.authority.artifactOutbox.listPending(),
+        artifactReferences: this.readManagedArtifactReferences(),
+        configSnapshots: this.#database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
+          .map(row => this.#parseNativeRow("settings_snapshots", row, ConfigSnapshotRecordSchema)),
+      });
+    });
   }
 
   readManagedArtifactReferences(candidate?: ArtifactRef): readonly ArtifactRef[] {
