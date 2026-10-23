@@ -96,10 +96,10 @@ describe("worker-loop-writes-only-through-the-service", () => {
     assert.ok(violations.some((entry) => entry.includes("database.terminalizeSuccess")));
   });
 
-  it("keeps the worker capability closed to its five admitted operations", () => {
+  it("keeps the worker capability closed to its six admitted operations", () => {
     const source = readFileSync(resolve(REPO_ROOT, "src/backend/runs/lifecycle/run-record-service.ts"), "utf8");
     const port = source.slice(source.indexOf("export type WorkerRunLifecyclePort"), source.indexOf("export interface RunContinuationPort"));
     assert.deepEqual([...port.matchAll(/"([a-zA-Z]+)"/gu)].map((match) => match[1]).sort(),
-      ["claimNext", "renewClaim", "workerTransition", "terminalize", "requeue"].sort());
+      ["claimNext", "renewClaim", "workerTransition", "terminalize", "requeue", "admitDelegation"].sort());
   });
 });

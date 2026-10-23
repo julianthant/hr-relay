@@ -1,3 +1,5 @@
+import { RunDisplayNameSchema } from "../../models/run/display-name.js";
+export { RunDisplayNameSchema } from "../../models/run/display-name.js";
 import { WorkerSlotRecordSchema } from "../../models/run/worker-slot.js";
 import { WriteIntentRecordSchema } from "../write-safety/write-safety.js";
 import { WorkerControlBasisSchema } from "../../models/run/worker.js";
@@ -79,21 +81,6 @@ export const OperatorReasonSchema = z.string().min(1).max(500).refine(
   "operator reason must already be trimmed",
 );
 
-export const RunDisplayNameSchema = z.string().superRefine((value, context) => {
-  if (value.trim() !== value) {
-    context.addIssue({ code: "custom", message: "run display name must already be trimmed" });
-  }
-  if (value.normalize("NFC") !== value) {
-    context.addIssue({ code: "custom", message: "run display name must be NFC-normalized" });
-  }
-  const codePoints = [...value].length;
-  if (codePoints < 1 || codePoints > 120) {
-    context.addIssue({ code: "custom", message: "run display name must contain 1 to 120 Unicode code points" });
-  }
-  if (/\p{Cc}/u.test(value)) {
-    context.addIssue({ code: "custom", message: "run display name cannot contain control characters" });
-  }
-});
 
 export const SemverSchema = z.string().regex(
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
@@ -523,6 +510,10 @@ export const CommandAuditRecordSchema = z.strictObject({
 
 /** Internal persistence for lifecycle idempotency, deliberately separate from the product command union: it cannot be submitted through the command kernel and carries no run input. */
 export const RunLifecycleCommandOperationSchema = z.enum([
+  "delegation-invocation",
+  "delegation-admission",
+  "delegation-settlement",
+  "delegation-retry",
   "create",
   "claim-next",
   "transition",

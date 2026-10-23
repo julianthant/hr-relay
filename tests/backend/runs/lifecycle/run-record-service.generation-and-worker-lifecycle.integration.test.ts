@@ -16,6 +16,9 @@ import { LATER, NOW, UUID_1, UUID_5, UUID_6, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPT
 import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { planDelegationFanOut } from "../../../../src/models/workflow/delegation.js";
+import { plan1Parent, Plan1Input } from "../../../support/fixtures/plan1-operation-workflows.js";
 
 const {fixture, created, runningRun, raceConnection, closeRaceConnections, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
 
@@ -86,6 +89,16 @@ describe("canonical run-record service", () => {
     if (claim.state !== "applied" || claim.run.envelope.runId !== workerRun.envelope.runId) {
       throw new Error("coverage claim refused or selected the wrong run");
     }
+    const childNode = descriptorRuntimeNodes(plan1Parent.descriptor).find(node => node.kind === "child-run");
+    assert.ok(childNode?.kind === "child-run");
+    const input = Plan1Input.parse({ emplId: "10800000", text: "same", mode: "ok" });
+    const plan = planDelegationFanOut({ edgeId: childNode.edgeId, target: childNode.target, cardinality: childNode.cardinality,
+      join: childNode.join, policy: childNode.policy, bound: input, deriveChildItemId: () => source.envelope.itemId });
+    measure("admitDelegation", 0, () => assert.throws(() => service.admitDelegation({
+      descriptor: plan1Parent.descriptor, node: childNode, run: source,
+      claim: { workerId: WORKER_ID, claimGeneration: claim.run.claimGeneration },
+      scope: { input, outputs: {} }, signal: new AbortController().signal,
+    }, plan), /delegation-parent-claim-stale/u));
     const renewed = measure("renewClaim", 1, () => service.renewClaim({
       commandId: commandId(), runId: workerRun.envelope.runId,
       claim: { workerId: WORKER_ID, claimGeneration: claim.run.claimGeneration },

@@ -1,4 +1,5 @@
 import { admitWorkerLifecycle, admitWorkerReset } from "../../storage/sqlite/worker-control.js";
+import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { admitProtectedInput, protectedSubjectDisplay } from "../start/protected-input.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { requireWorkerPoolRoster, admitWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
@@ -603,12 +604,12 @@ function executeRetry(
       `run ${request.target.runId} is ${current.lifecycle.state}; only a terminal run can be retried`,
     );
   }
-  if (current.envelope.parent !== undefined) {
+  if (current.envelope.parent !== undefined && request.type !== "retry") {
     reject(
       request,
       "policy-refused",
       `run ${request.target.runId} is a delegated child of ${current.envelope.parent.runId}; `
-      + "child retries route through their delegation edge policy, not generic retry",
+      + "delegated children use reviewed Retry; Restart is unavailable",
     );
   }
   const descriptor = resolveDescriptorOrReject(dependencies, request, current.envelope.workflow);
@@ -632,6 +633,7 @@ function executeRetry(
     commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
     runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
     runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
+    sourceCommandId: request.commandId,
   }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }));
   return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId)], [
     { target: runTarget(record.envelope.runId), before: 0, after: record.version },
@@ -701,7 +703,8 @@ function executeCancel(
         throw new Error(`run ${childRunId} appears twice in the dependency tree under ${request.target.runId}`);
       }
       visited.add(childRunId);
-      const edge = edges.find((candidate) => candidate.childRunId === childRunId);
+      const edge = edges.find((candidate) => candidate.childRunId === childRunId
+        || repositories.dependencies.childHistory(candidate.dependencyId).includes(childRunId));
       if (edge === undefined) {
         throw new Error(
           `run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; `
@@ -725,6 +728,7 @@ function executeCancel(
       runId: target.run.envelope.runId,
       expectedVersion: target.run.version,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: now },
+      cancellationSource: { commandId: request.commandId, rootRunId: request.target.runId },
     });
     const cancelled = lifecycleRun(request, outcome);
     affectedTargets.push(runTarget(target.run.envelope.runId));
@@ -2643,7 +2647,10 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           const journal = repositories.commands.insert(journalRequest, parentCommandId);
           if (journal.state === "existing") return replay(dependencies, repositories, request, now);
           const auditId = dependencies.ids.uuid();
-          const application = dispatchActive(dependencies, repositories, request, now, auditId);
+          const application = request.family === "run" && (request.type === "retry" || request.type === "cancel")
+            ? withCanonicalRunCommandScope(repositories, request,
+              () => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)
+            : dispatchActive(dependencies, repositories, request, now, auditId);
           rollback = application.rollback;
           commit = application.commit;
           repositories.commandAudits.insert({

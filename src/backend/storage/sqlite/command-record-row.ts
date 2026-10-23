@@ -6,6 +6,35 @@ import { SettingsInitializationCommandSchema, SettingsInitializationAuditSchema 
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
+import type { CommandRequest } from "../../../rules/commands/commands.js";
+import type { CommandApplication } from "../../runs/commands/command-application.js";
+import type { AuthorityRepositories } from "./authority-database.js";
+
+let activeRunCommand: Readonly<{ repositories: AuthorityRepositories; request: string }> | undefined;
+
+export function withCanonicalRunCommandScope(repositories: AuthorityRepositories, request: CommandRequest,
+  work: () => CommandApplication, parentCommandId?: string): CommandApplication {
+  if (activeRunCommand !== undefined || request.family !== "run" || (request.type !== "retry" && request.type !== "cancel")) {
+    throw new Error("canonical-run-command-scope-unavailable");
+  }
+  repositories.commands.assertIdentity(request, parentCommandId);
+  if (canonicalJsonStringify(repositories.commands.get(request.commandId)) !== canonicalJsonStringify(request)
+    || repositories.commandAudits.findByCommand(request.commandId) !== undefined) throw new Error("canonical-run-command-scope-unavailable");
+  activeRunCommand = { repositories, request: canonicalJsonStringify(request) };
+  try {
+    const result = work();
+    if ("then" in result) throw new Error("canonical-run-command-scope-must-be-synchronous");
+    return result;
+  } finally {
+    activeRunCommand = undefined;
+  }
+}
+
+export function assertCanonicalRunCommandScope(repositories: AuthorityRepositories, request: CommandRequest): void {
+  if (activeRunCommand?.repositories !== repositories || activeRunCommand.request !== canonicalJsonStringify(request)) {
+    throw new Error("canonical-run-command-scope-unavailable");
+  }
+}
 
 export const NativeCommandRequestSchema = z.union([StoredAuthorityCommandRecordSchema, SettingsInitializationCommandSchema]);
 export const NativeCommandAuditSchema = z.union([AuthorityCommandAuditRecordSchema, SettingsInitializationAuditSchema]);

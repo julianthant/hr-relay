@@ -31,6 +31,8 @@ This map names the current source, test, and documentation owners. Relay runs lo
 `npm run web:build` produces the dashboard bundle in `dist/`.
 Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. Git worktrees live in its gitignored `.worktrees/<branch>/` folder.
 
+`src/models/run/display-name.ts` owns the browser-safe run display-name schema; command and run records share that leaf.
+
 ## Source tree
 
 ```text

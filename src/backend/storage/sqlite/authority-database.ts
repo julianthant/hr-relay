@@ -1,5 +1,7 @@
 import { createWorkbookLibraryRepository, validateWorkbookLibrary } from "./workbook-library-repository.js";
-import { WorkerControlRecordSchema } from "../../../models/run/worker-control.js";
+import { WorkerControlRecordSchema, type WorkerResetBinding } from "../../../models/run/worker-control.js";
+import { terminalDelegationDependencyRecord } from "../../../models/run/result.js";
+import { delegationJoinDisposition } from "../../../rules/workflow/dependencies.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, type RuntimeProcessLockHandle, observeRuntimeLockSnapshot } from "./runtime-process-locks.js";
@@ -46,7 +48,7 @@ import { createTransactionHistory } from "./transaction-history.js";
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { ConfirmationPublicationSchema, confirmationPublicationFromRow, type ConfirmationPublication, confirmedOperationTimeline, reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
 import { timelineAppendContent, timelineCheckpointReference } from "../../../models/events/timeline.js";
-import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
+import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
 import { withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { TimelinePageRequestSchema } from "../../../models/events/timeline.js";
@@ -73,6 +75,9 @@ import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../../
 import { type ActiveRuntimeConfigRecord, type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
+import type { DelegationReadiness } from "../../../rules/workflow/dependencies.js";
+import { DelegationSettlementRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
+import { authenticateDescendantHome, authenticateDelegationGroup, authenticateDelegationDependency, assertDelegationReplacement, authenticateCancellationSource, delegationEdgeForChild, resetDependencySnapshot, readDelegationCancellation, prepareDelegationRetry, childTerminalSettlement, readDelegationReadiness, retainedDelegationManifests, lifecycleChildEdge, readDelegationEvidence } from "./delegation-authority.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
 import { ActorIdSchema, ArtifactIdSchema, BrowserSystemIdSchema, CommandAuditIdSchema, CommandIdSchema, DiagnosticBundleIdSchema, FailureFingerprintSchema, FingerprintSchema, IsoInstantSchema, ItemIdSchema, LOCAL_OPERATOR_ACTOR_ID, RunIdSchema, RunSessionIdSchema, TraceIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema } from "../../../rules/identity/ids.js";
 
@@ -190,6 +195,7 @@ type CommandRepository = Readonly<{
   getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
   listStorageRelocationCommands(): readonly z.infer<typeof StorageRelocationCommandRequestSchema>[];
+  listRunBumpCommands(runId: string): readonly z.infer<typeof CommandRequestSchema>[];
 }>;
 type CommandAuditRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandAuditRecordSchema>>;
@@ -203,6 +209,10 @@ type RunLifecycleJournalRepository = Readonly<{
   getCommand(commandId: string): z.infer<typeof AuthorityCommandRecordSchema> | undefined;
   insertAudit(input: unknown): ImmutableInsertResult<z.infer<typeof RunLifecycleCommandAuditRecordSchema>>;
   findAuditByCommand(commandId: string): z.infer<typeof AuthorityCommandAuditRecordSchema> | undefined;
+  findRunOrigin(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
+  findCancellation(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
+  listDelegationInvocations(parentRunId: string): readonly z.infer<typeof RunLifecycleCommandRecordSchema>[];
+  findDelegationInvocation(manifestId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
 }>;
 
 type RuntimeConfigRepository = Readonly<{
@@ -230,6 +240,17 @@ type DependencyRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
   get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
   listByParentRun(parentRunId: string): readonly z.infer<typeof DependencyRecordSchema>[];
+  activateRetry(input: unknown, now: string): void;
+  settle(input: unknown): z.infer<typeof DependencyRecordSchema>;
+  reconcile(parentRunId: string, now: string): void;
+  effectiveChild(dependencyId: string): RunRecord;
+  childHistory(dependencyId: string): readonly string[];
+  lifecycleEdgeForChild(parentRunId: string, childRunId: string): z.infer<typeof DependencyRecordSchema> | undefined;
+  edgeForChild(parentRunId: string, childRunId: string): z.infer<typeof DependencyRecordSchema>;
+  resetSnapshot(reset: WorkerResetBinding, childRunId: string): z.infer<typeof DependencyRecordSchema>;
+  cancellationOutcome(runId: string): ReturnType<typeof readDelegationCancellation>;
+  evidence(parentRunId: string, nodeId: string): ReturnType<typeof readDelegationEvidence>;
+  readiness(parentRunId: string, intent: "join" | "cancel"): DelegationReadiness;
 }>;
 
 type WriteIntentRepository = Readonly<{
@@ -337,13 +358,13 @@ type RunRepository = Readonly<{
   listWorkflows(): readonly string[];
   claimNext(input: unknown): RunClaimOutcome;
 
-  claimEligible(input: unknown, admit?: (run: RunRecord) => void): CanonicalRunClaimOutcome;
+  claimEligible(input: unknown, admit?: (run: RunRecord) => void, eligible?: (run: RunRecord) => boolean): CanonicalRunClaimOutcome;
   renewClaim(input: unknown): RunHeartbeatOutcome;
   transition(input: unknown): RunUpdateOutcome;
   requeue(input: unknown): RunUpdateOutcome;
   resume(input: unknown): RunUpdateOutcome;
   updatePresentation(input: unknown): RunUpdateOutcome;
-  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
+  requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
   advanceRevision(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
 
   bumpPriority(input: unknown): RunUpdateOutcome;
@@ -531,7 +552,9 @@ export type AuthorityRepositories = Readonly<{
   commandAudits: CommandAuditRepository;
   lifecycleJournal: RunLifecycleJournalRepository;
   dependencies: DependencyRepository;
-  delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
+  delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>> & Readonly<{
+    listByParentRun(parentRunId: string): readonly z.infer<typeof DelegationManifestSchema>[];
+  }>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>> & Readonly<{
 
     listByRun(runId: string): readonly z.infer<typeof GateResultRecordSchema>[];
@@ -559,7 +582,6 @@ const ProtectedSettingsWriteIdLookupSchema = z.strictObject({
   writeId: z.uuid(),
   excludingCommandId: CommandIdSchema,
 });
-const NextEligibleRowSchema = z.strictObject({ next_eligible_at: z.string().nullable() });
 const HeldRunRowSchema = z.strictObject({ run_id: z.string().nullable() });
 const IntPragmaRowSchema = z.record(z.string(), z.number().int());
 const TextPragmaRowSchema = z.record(z.string(), z.string());
@@ -982,6 +1004,7 @@ function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRe
   const run = runRecordFromRow(rawRun);
   if (evidence === undefined) {
     if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") throw new Error("terminal-evidence-payload-required");
+    if (run.completion?.kind !== "done" || run.completion.resultDigest !== record.resultDigest) throw new Error("terminal-result-completion-mismatch");
     return;
   }
   if (evidence.kind === "failed-evidence") {
@@ -2740,24 +2763,26 @@ export class AuthorityDatabase implements Disposable {
   #assertStoredTerminalDependencies(result: RunResultRecord, current: RunRecord, depth = 0, visited = new Set<string>()): void {
     if (depth > 16 || visited.has(result.runId)) throw new Error("terminal-child-dependency-cycle-or-depth");
     visited.add(result.runId);
+    const invocations = this.authority.lifecycleJournal.listDelegationInvocations(current.envelope.runId);
+    const receipts = result.dependencies.filter(dependency => dependency.state === "child-resolved" || dependency.state === "delegation-resolved");
+    const receiptIds = receipts.map(dependency => dependency.state === "delegation-resolved" ? dependency.invocationCommandId
+      : lifecycleCommandId("delegation-invocation", { runId: current.envelope.runId, attempt: current.envelope.attempt, nodeId: dependency.nodeId }));
+    if (canonicalJsonStringify(invocations.map(command => command.commandId).sort()) !== canonicalJsonStringify([...receiptIds].sort())) {
+      throw new Error("terminal-delegation-receipt-set-mismatch");
+    }
     for (const dependency of result.dependencies) {
-      if (dependency.state === "child-resolved") {
-        const child = this.#readRunRow(dependency.child.runId);
-        const childResult = this.#readRecord("run_results", dependency.child.runId, RunResultRecordSchema);
-        if ((child?.lifecycle.state !== "terminal" || child.lifecycle.outcome !== "done") || childResult === undefined
-          || dependency.parentRunId !== current.envelope.runId || child.envelope.parent?.runId !== current.envelope.runId
-          || child.envelope.parent.edgeId !== dependency.edgeId || child.envelope.itemId !== dependency.child.itemId
-          || child.envelope.workflow !== dependency.child.workflowId || child.envelope.attempt !== dependency.child.attempt
-          || child.envelope.descriptorVersion !== dependency.child.descriptorVersion || child.envelope.contractFingerprint !== dependency.child.contractFingerprint
-          || childResult.resultSchemaHash !== dependency.child.resultSchemaHash || childResult.resultDigest !== dependency.child.resultDigest
-          || childResult.dependencyDigest !== dependency.child.dependencyDigest
-          || canonicalJsonStringify(childResult.operationSources ?? null) !== canonicalJsonStringify(dependency.operationSources ?? null)
-          || canonicalJsonStringify(childResult.operationLineage ?? null) !== canonicalJsonStringify(dependency.operationLineage ?? null)) throw new Error("terminal-child-dependency-canonical-mismatch");
-        this.#assertResultMatchesRun(childResult, child);
-        this.#assertStoredTerminalDependencies(childResult, child, depth + 1, visited);
+      if (dependency.state === "child-resolved" || dependency.state === "delegation-resolved") {
+        const evidence = readDelegationEvidence(this.authority, current.envelope.runId, dependency.nodeId);
+        if (canonicalJsonStringify(terminalDelegationDependencyRecord(evidence)) !== canonicalJsonStringify(dependency)
+          || delegationJoinDisposition(evidence.manifest, evidence.children.map(member => member.run.lifecycle.state === "terminal"
+            ? member.run.lifecycle.outcome : "active")) !== "satisfied") throw new Error("terminal-delegation-dependency-canonical-mismatch");
+        for (const member of evidence.children) {
+          this.#assertResultMatchesRun(member.result, member.run);
+          if (terminalEvidenceResult(member.result) === undefined) this.#assertStoredTerminalDependencies(member.result, member.run, depth + 1, visited);
+          else assertTerminalEvidenceOwner(this.#database, member.result);
+        }
         continue;
       }
-
       if (dependency.state === "asserted") {
 
         const rows = this.#database.prepare(`
@@ -3630,6 +3655,10 @@ export class AuthorityDatabase implements Disposable {
       }) }),
       runSessions: this.#buildRunSessionRepository(),
       commands: Object.freeze({
+        listRunBumpCommands: (runId: string) => this.#database.prepare(`SELECT * FROM commands WHERE family='run'
+          AND json_extract(request_json,'$.type')='bump' AND json_extract(request_json,'$.target.runId')=? ORDER BY id`)
+          .all(RunIdSchema.parse(runId)).map(row => CommandRequestSchema.parse(commandFromRow(row))),
+
         assertIdentity: (input: unknown, parentCommandId?: string) => this.#assertCommandIdentity(AuthorityCommandRecordSchema.parse(input), parentCommandId),
         insert: (input: unknown, parentCommandId?: string) => {
           const record = CommandRequestSchema.parse(input);
@@ -3729,6 +3758,33 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       lifecycleJournal: Object.freeze({
+        findRunOrigin: (runId: string) => {
+          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+            AND json_extract(request_json,'$.operation') IN ('create','retry','restart')
+            AND json_extract(outcome_json,'$.result.kind')='run'
+            AND json_extract(outcome_json,'$.result.runId')=? ORDER BY id`).all(RunIdSchema.parse(runId));
+          if (rows.length > 1) throw new Error("delegation-root-origin-ambiguous");
+          return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
+        },
+        findCancellation: (runId: string) => {
+          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+            AND json_extract(request_json,'$.operation') IN ('transition','terminalize')
+            AND json_extract(request_json,'$.request.runId')=?
+            AND json_type(request_json,'$.request.cancellationSource')='object' ORDER BY id`).all(runId);
+          if (rows.length > 1) throw new Error("delegation-cancellation-source-ambiguous");
+          return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
+        },
+        listDelegationInvocations: (parentRunId: string) => this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+          AND json_extract(request_json,'$.operation')='delegation-invocation'
+          AND json_extract(request_json,'$.request.runId')=? ORDER BY id`).all(parentRunId)
+          .map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row))),
+        findDelegationInvocation: (manifestId: string) => {
+          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+            AND json_extract(request_json,'$.operation')='delegation-invocation'
+            AND json_extract(request_json,'$.request.manifestId')=? ORDER BY id`).all(manifestId);
+          if (rows.length > 1) throw new Error("delegation-invocation-ambiguous");
+          return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
+        },
         insertCommand: (input: unknown) => {
           const record = RunLifecycleCommandRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
@@ -3797,6 +3853,87 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       dependencies: Object.freeze({
+        evidence: (parentRunId: string, nodeId: string) => readDelegationEvidence(this.authority, parentRunId, nodeId),
+        lifecycleEdgeForChild: (parentRunId: string, childRunId: string) => lifecycleChildEdge(this.authority, parentRunId, childRunId),
+        edgeForChild: (parentRunId: string, childRunId: string) => delegationEdgeForChild(this.authority, parentRunId, childRunId),
+        resetSnapshot: (reset: WorkerResetBinding, childRunId: string) => resetDependencySnapshot(this.authority, reset, childRunId),
+        cancellationOutcome: (runId: string) => readDelegationCancellation(this.authority, runId),
+        childHistory: (dependencyId: string) => authenticateDelegationDependency(this.authority, dependencyId).history,
+        effectiveChild: (dependencyId: string) => authenticateDelegationDependency(this.authority, dependencyId).child,
+        readiness: (parentRunId: string, intent: "join" | "cancel") => readDelegationReadiness(this.authority, parentRunId, intent),
+        reconcile: (parentRunId: string, now: string) => this.withAuthorityTransaction(repositories => {
+          for (const manifest of retainedDelegationManifests(repositories, parentRunId)) {
+            const group = authenticateDelegationGroup(repositories, manifest);
+            for (const { child, dependency } of group.children) {
+              const terminal = childTerminalSettlement(child, repositories);
+              if (terminal === undefined || dependency.state !== "active") continue;
+              repositories.dependencies.settle({ commandId: lifecycleCommandId("delegation-settlement", {
+                dependencyId: dependency.dependencyId, childRunId: child.envelope.runId, childAttempt: child.envelope.attempt, resultDigest: terminal.result.resultDigest }),
+              dependencyId: dependency.dependencyId, expectedVersion: dependency.version, runId: child.envelope.runId,
+              childAttempt: child.envelope.attempt, resultDigest: terminal.result.resultDigest, state: terminal.state, now });
+            }
+          }
+        }),
+        activateRetry: (input: unknown, now: string) => this.withAuthorityTransaction(repositories => {
+          const request = DelegationRetryRequestSchema.parse(input);
+          const previous = repositories.runs.get(request.previousRunId), next = repositories.runs.get(request.replacementRunId);
+          if (previous === undefined || next === undefined) throw new Error("delegation-retry-run-unavailable");
+          const proof = prepareDelegationRetry(repositories, previous, { sourceCommandId: request.sourceCommandId,
+            commandId: lifecycleCommandId("operator-retry", request.sourceCommandId) });
+          const dependency = proof.child.dependency;
+          assertDelegationReplacement(this.authority, proof.child.original, previous, next);
+          if (request.commandId !== lifecycleCommandId("delegation-retry", { dependencyId: dependency.dependencyId, previousRunId: previous.envelope.runId })
+            || request.expectedVersion !== dependency.version || request.parentVersion !== proof.parent.version
+            || request.invocationCommandId !== proof.group.invocation.commandId || request.manifestId !== proof.group.manifest.manifestId
+            || request.dependencyId !== dependency.dependencyId || request.originalRunId !== proof.child.original.envelope.runId
+            || request.originalAttempt !== proof.child.original.envelope.attempt || request.previousAttempt !== previous.envelope.attempt
+            || request.resultDigest !== proof.terminal.result.resultDigest || request.replacementAttempt !== next.envelope.attempt
+            || request.planFingerprint !== proof.group.manifest.manifestFingerprint || canonicalJsonStringify(request.policy) !== canonicalJsonStringify(dependency.policy)
+            || next.envelope.retryOf !== previous.envelope.runId || next.lifecycle.state !== "queued" || next.version !== 1) throw new Error("delegation-retry-binding-mismatch");
+          const record = DependencyRecordSchema.parse({ ...dependency, state: "active", version: dependency.version + 1, updatedAt: now });
+          this.#authorityWrite("delegation_dependencies", () => {
+            const changes = sqliteChanges(this.#database.prepare("UPDATE delegation_dependencies SET payload_json=? WHERE id=? AND payload_json=?")
+              .run(canonicalJsonStringify(record), dependency.dependencyId, canonicalJsonStringify(dependency)).changes);
+            if (changes !== 1) throw new Error("delegation-dependency-cas-conflict");
+            return { result: undefined, changes };
+          });
+        }),
+        settle: (input: unknown) => this.withAuthorityTransaction(repositories => {
+          const request = DelegationSettlementRequestSchema.parse(input), current = repositories.dependencies.get(request.dependencyId);
+          if (current === undefined) throw new Error("delegation-dependency-unavailable");
+          const manifest = repositories.delegationManifests.get(current.manifestId);
+          if (manifest === undefined) throw new Error("delegation-manifest-unavailable");
+          const selected = authenticateDelegationGroup(repositories, manifest).children.find(child => child.dependency.dependencyId === request.dependencyId);
+          if (selected === undefined || selected.child.envelope.runId !== request.runId || selected.child.envelope.attempt !== request.childAttempt) throw new Error("delegation-settlement-child-mismatch");
+          const terminal = childTerminalSettlement(selected.child, repositories);
+          if (terminal === undefined || terminal.state !== request.state || terminal.result.resultDigest !== request.resultDigest
+            || request.commandId !== lifecycleCommandId("delegation-settlement", { dependencyId: request.dependencyId,
+              childRunId: request.runId, childAttempt: request.childAttempt, resultDigest: request.resultDigest })) throw new Error("delegation-settlement-evidence-mismatch");
+          const fingerprint = sha256Hex(`hrauto:run-lifecycle-command:v1\0delegation-settlement\0${canonicalJsonStringify(request)}`);
+          const previous = repositories.lifecycleJournal.getCommand(request.commandId);
+          if (previous !== undefined) {
+            const audit = repositories.lifecycleJournal.findAuditByCommand(request.commandId);
+            if (!("kind" in previous) || previous.kind !== "run-lifecycle" || previous.operation !== "delegation-settlement"
+              || previous.requestFingerprint !== fingerprint || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+              || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(previous)
+              || current.version !== request.expectedVersion + 1 || current.state !== request.state) throw new Error("delegation-settlement-replay-divergent");
+            return current;
+          }
+          if (current.version !== request.expectedVersion || current.state !== "active") throw new Error("delegation-dependency-cas-conflict");
+          const record = DependencyRecordSchema.parse({ ...current, state: request.state, version: current.version + 1, updatedAt: request.now });
+          this.#authorityWrite("delegation_dependencies", () => {
+            const changes = sqliteChanges(this.#database.prepare("UPDATE delegation_dependencies SET payload_json=? WHERE id=? AND payload_json=?")
+              .run(canonicalJsonStringify(record), current.dependencyId, canonicalJsonStringify(current)).changes);
+            if (changes !== 1) throw new Error("delegation-dependency-cas-conflict");
+            return { result: undefined, changes };
+          });
+          const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", operation: "delegation-settlement", commandId: request.commandId,
+            request, requestFingerprint: fingerprint, fence: { kind: "version", expectedVersion: request.expectedVersion }, recordedAt: request.now });
+          repositories.lifecycleJournal.insertCommand(command);
+          repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: request.commandId, request: command,
+            result: { kind: "run", runId: selected.child.envelope.runId, appliedVersion: selected.child.version }, completedAt: request.now });
+          return record;
+        }),
         insert: (input: unknown) => {
           const record = DependencyRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
@@ -3823,6 +3960,8 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       delegationManifests: Object.freeze({
+        listByParentRun: (parentRunId: string) => Object.freeze(this.#database.prepare(`SELECT * FROM run_delegations WHERE parent_run_id=? ORDER BY created_at,id`)
+          .all(RunIdSchema.parse(parentRunId)).map(row => this.#parseNativeRow("run_delegations", row, DelegationManifestSchema))),
         insert: (input: unknown) => {
           const record = DelegationManifestSchema.parse(input);
           return this.#insertSimpleRecord("run_delegations", record.manifestId, record, DelegationManifestSchema, record.createdAt);
@@ -4255,8 +4394,8 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #claimNextRun(input: unknown, canonical: false): RunClaimOutcome;
-  #claimNextRun(input: unknown, canonical: true, admit?: (run: RunRecord) => void): CanonicalRunClaimOutcome;
-  #claimNextRun(input: unknown, canonical: boolean, admit?: (run: RunRecord) => void): CanonicalRunClaimOutcome {
+  #claimNextRun(input: unknown, canonical: true, admit?: (run: RunRecord) => void, eligible?: (run: RunRecord) => boolean): CanonicalRunClaimOutcome;
+  #claimNextRun(input: unknown, canonical: boolean, admit?: (run: RunRecord) => void, eligible?: (run: RunRecord) => boolean): CanonicalRunClaimOutcome {
     const request = RunClaimRequestSchema.parse(input);
     if (canonical && request.runtimeConfig === undefined) {
       return { state: "refused", refusal: { reason: "runtime-stale" } };
@@ -4307,38 +4446,29 @@ export class AuthorityDatabase implements Disposable {
         if (canonical) return { state: "refused", refusal: { reason: "worker-busy", runId: RunIdSchema.parse(held.run_id) } };
         throw new Error(`worker ${request.workerId} already holds active run ${held.run_id}`);
       }
-      const row = this.#database.prepare(`
-        SELECT * FROM runs
-        WHERE workflow = ? AND state = 'queued'
-          AND (not_before IS NULL OR not_before <= ?)
-          AND (? = 0 OR (
-            1=1
-            AND NOT EXISTS (
-              SELECT 1 FROM delegation_dependencies d
-              WHERE json_extract(d.payload_json, '$.parentRunId') = runs.id
-                AND json_extract(d.payload_json, '$.state') <> 'satisfied'
-            )
-          ))
-        ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END, created_at, id
-        LIMIT 1
-      `).get(request.workflow, request.now, canonical ? 1 : 0);
-      if (row === undefined) {
-        const deferred = NextEligibleRowSchema.parse(this.#database.prepare(`
-          SELECT min(not_before) AS next_eligible_at FROM runs
-          WHERE workflow = ? AND state = 'queued' AND not_before > ?
-            AND (? = 0 OR (
-              1=1
-              AND NOT EXISTS (
-                SELECT 1 FROM delegation_dependencies d
-                WHERE json_extract(d.payload_json, '$.parentRunId') = runs.id
-                  AND json_extract(d.payload_json, '$.state') <> 'satisfied'
-              )
-            ))
-        `).get(request.workflow, request.now, canonical ? 1 : 0));
-        if (deferred.next_eligible_at === null) return RunClaimOutcomeSchema.parse({ state: "idle" });
-        return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
+      const candidates = eligible === undefined
+        ? this.#database.prepare(`SELECT * FROM runs WHERE workflow=? AND state='queued'
+          ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all(request.workflow)
+        : this.#database.prepare(`SELECT * FROM runs WHERE state='queued'
+          ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all();
+      let current: RunRecord | undefined;
+      let nextEligibleAt: string | undefined;
+      for (const row of candidates) {
+        const candidate = runRecordFromRow(row);
+        if (candidate.envelope.parent !== undefined && (request.workerLifetime === undefined || lease?.workflow !== slot.workflow)) continue;
+        if (eligible !== undefined && (!authenticateDescendantHome(this.authority, candidate, slot.workflow) || !eligible(candidate))) continue;
+        this.authority.dependencies.reconcile(candidate.envelope.runId, request.now);
+        if (this.authority.dependencies.readiness(candidate.envelope.runId, candidate.cancelRequested === true ? "cancel" : "join").state !== "ready") continue;
+        const notBefore = candidate.lifecycle.state === "queued" ? candidate.lifecycle.notBefore : undefined;
+        if (notBefore !== undefined && Date.parse(notBefore) > Date.parse(request.now)) {
+          if (nextEligibleAt === undefined || Date.parse(notBefore) < Date.parse(nextEligibleAt)) nextEligibleAt = notBefore;
+          continue;
+        }
+        current = candidate;
+        break;
       }
-      const current = runRecordFromRow(row);
+      if (current === undefined) return RunClaimOutcomeSchema.parse(nextEligibleAt === undefined
+        ? { state: "idle" } : { state: "deferred", nextEligibleAt });
       if (this.authority.workerControls.resetForRun(current.envelope.runId) !== undefined) {
         if (canonical) return { state: "refused", refusal: { reason: "none-eligible" } };
         throw new Error("worker-reset-cascade-reserved");
@@ -4594,7 +4724,7 @@ export class AuthorityDatabase implements Disposable {
         return Object.freeze(rows.map((row) => runRecordFromRow(row)));
       },
       claimNext: (input: unknown) => this.#claimNextRun(input, false),
-      claimEligible: (input: unknown, admit?: (run: RunRecord) => void) => this.#claimNextRun(input, true, admit),
+      claimEligible: (input: unknown, admit?: (run: RunRecord) => void, eligible?: (run: RunRecord) => boolean) => this.#claimNextRun(input, true, admit, eligible),
       renewClaim: (input: unknown) => {
         const request = RunHeartbeatRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
@@ -4673,10 +4803,15 @@ export class AuthorityDatabase implements Disposable {
           },
         );
       },
-      requestCancellation: ({ runId, expectedVersion, now }) => this.#mutateRun(
+      requestCancellation: ({ runId, expectedVersion, now, cancellationSource }) => this.#mutateRun(
         RunIdSchema.parse(runId), z.number().int().positive().parse(expectedVersion), IsoInstantSchema.parse(now),
         undefined, (current) => {
-          if (runClaim(current) === undefined) throw new Error(`run ${runId} holds no claim for a cancel request`);
+          if (runClaim(current) === undefined) {
+            if (current.lifecycle.state !== "queued" || cancellationSource === undefined
+              || this.authority.delegationManifests.listByParentRun(runId).length === 0) throw new Error(`run ${runId} holds no claim for a cancel request`);
+            authenticateCancellationSource(this.authority, current, cancellationSource);
+            for (const manifest of this.authority.delegationManifests.listByParentRun(runId)) authenticateDelegationGroup(this.authority, manifest);
+          }
           return RunRecordSchema.parse({ ...current, cancelRequested: true });
         },
       ),
@@ -5887,6 +6022,13 @@ export class AuthorityDatabase implements Disposable {
     if (held === undefined || held.workerId !== claim.workerId || held.claimGeneration !== claim.claimGeneration) {
       return { reason: "lost" };
     }
+    const slot = this.authority.workerSlots.get(claim.workerId), lease = this.authority.workerLeases.get(claim.workerId);
+    if (run?.envelope.parent !== undefined && (slot === undefined || lease === undefined || slot.retiredAt !== null
+      || !isLiveWorker(lease) || lease.workflow !== slot.workflow || !("workerLifetime" in run.lifecycle)
+      || run.lifecycle.workerLifetime?.leaseGeneration !== lease.leaseGeneration
+      || run.lifecycle.workerLifetime.membershipRevision !== slot.membershipRevision
+      || !authenticateDescendantHome(this.authority, run, slot.workflow))) return { reason: "lost" };
+    if (slot !== undefined && this.authority.workerControls.pending(`worker-pool:${slot.workflow}`).length !== 0) return { reason: "invalid-state" };
     if (this.authority.workerControls.pending(`worker-pool:${intent.workflowId}`).some(record => record.request.type === "stop-worker" && record.reset === undefined)) throw new Error("worker-reset-authority-unavailable");
     if (this.authority.workerControls.lifecycleForWorker(claim.workerId) !== undefined) return { reason: "invalid-state" };
     if (this.authority.workerSlots.recovery(claim.workerId) !== undefined) return { reason: "invalid-state" };

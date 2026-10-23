@@ -281,9 +281,15 @@ export const CanonicalWriteResolutionTransitionRequestSchema = z.strictObject({
   startAt: NodeIdSchema,
 });
 
+export const CancellationSourceSchema = z.union([
+  z.strictObject({ commandId: CommandIdSchema, rootRunId: RunIdSchema }),
+  z.strictObject({ kind: z.literal("worker-reset"), commandId: CommandIdSchema, rootRunId: RunIdSchema }),
+]);
+
 export const CanonicalTransitionRequestSchema = z.union([
   CanonicalWriteResolutionTransitionRequestSchema,
-  z.strictObject({ ...CanonicalVersionIdentityFields, lifecycle: RunLifecycleSchema }),
+  z.strictObject({ ...CanonicalVersionIdentityFields, lifecycle: RunLifecycleSchema,
+    cancellationSource: CancellationSourceSchema.optional() }),
   z.strictObject({ ...CanonicalVersionIdentityFields, displayName: RunDisplayNameSchema }),
   z.strictObject({ ...CanonicalVersionIdentityFields, priority: z.literal("interactive") }),
 ]);
@@ -314,6 +320,7 @@ export const CanonicalSuccessTerminalizeRequestSchema = z.strictObject({
 });
 
 export const CanonicalCancellationTerminalizeRequestSchema = z.strictObject({
+  cancellationSource: CancellationSourceSchema.optional(),
   kind: z.literal("cancelled"),
   commandId: CommandIdSchema,
   runId: RunIdSchema,
@@ -345,6 +352,7 @@ export const CanonicalRequeueRequestSchema = z.strictObject({
 });
 
 export const CanonicalRetrySourceRequestSchema = z.strictObject({
+  sourceCommandId: CommandIdSchema.optional(),
   ...CanonicalVersionIdentityFields,
   runtimeConfig: RuntimeConfigClaimTokenSchema,
   appVersion: RunRecordSchema.shape.appVersion,

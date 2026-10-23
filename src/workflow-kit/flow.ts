@@ -14,6 +14,7 @@ import { parseNodeCondition } from "../models/workflow/node-condition.js";
 import type { NodeConditionSpec } from "../models/workflow/node-condition.js";
 import type {
   AnyWorkflowRef,
+  ChildRunIdentityContext,
   BranchNode,
   ChildRunNode,
   ChildRunOutcome,
@@ -142,7 +143,7 @@ export type ChildRunOpts<
     edgeId: DelegationEdgeId;
     cardinality: "one";
     bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<Target["input"]>;
-    deriveChildItemId: (input: z.output<Target["input"]>) => ItemId;
+    deriveChildItemId: (input: z.output<Target["input"]>, context: ChildRunIdentityContext) => ItemId;
     await: "terminal";
     join: "one";
     policy: DelegationPolicy;
@@ -153,7 +154,7 @@ export type ChildRunOpts<
     edgeId: DelegationEdgeId;
     cardinality: "many";
     bind: (scope: ScopeFor<InputSchema, S, D>) => readonly z.input<Target["input"]>[];
-    deriveChildItemId: (input: z.output<Target["input"]>) => ItemId;
+    deriveChildItemId: (input: z.output<Target["input"]>, context: ChildRunIdentityContext) => ItemId;
     await: "terminal";
     join: "all" | "all-settled";
     policy: DelegationPolicy;
@@ -165,7 +166,7 @@ export type ChildRunOpts<
     cardinality: "one" | "many";
     bind: (scope: ScopeFor<InputSchema, S, D>) =>
       z.input<Target["input"]> | readonly z.input<Target["input"]>[];
-    deriveChildItemId: (input: z.output<Target["input"]>) => ItemId;
+    deriveChildItemId: (input: z.output<Target["input"]>, context: ChildRunIdentityContext) => ItemId;
     await: "none";
     join: "none";
     policy: DelegationPolicy;
@@ -605,7 +606,7 @@ function makeBuilder(state: MutableFlowState): unknown {
       edgeId: DelegationEdgeId;
       cardinality: "one" | "many";
       bind: (scope: never) => unknown;
-      deriveChildItemId: (input: never) => ItemId;
+      deriveChildItemId: (input: never, context: ChildRunIdentityContext) => ItemId;
       await: "none" | "terminal";
       join: "one" | "all" | "all-settled" | "none";
       policy: DelegationPolicy;

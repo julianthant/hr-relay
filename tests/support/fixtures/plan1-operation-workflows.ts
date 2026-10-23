@@ -1,10 +1,9 @@
-import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { z } from "zod";
 import { compileWorkflow, defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../src/workflow-kit/task.js";
 import { defineTaskContract } from "../../../src/models/task/task-contract.js";
-import { EidSchema, ItemIdSchema, ScenarioIdSchema, taskId } from "../../../src/rules/identity/ids.js";
+import { EidSchema, ScenarioIdSchema, taskId } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
@@ -72,7 +71,7 @@ export const plan1Leaf = compileWorkflow(defineWorkflow({ ...common, id: ids[0],
 } }), { manifest });
 const leafRef = { id: plan1Leaf.descriptor.id, input: Plan1Input, result: Plan1Output };
 export const plan1Child = compileWorkflow(defineWorkflow({ ...common, id: ids[1], operationDisplay: { capability: "complete", version: 1, invocations: [], presentation: [{ id: "nested-node", kind: "delegate", entryId: "nested", targetWorkflowId: leafRef.id }] }, steps: ({ delegate, result }) => {
-  const child = delegate({ id: "nested", target: leafRef, edgeId: "plan1-nested", cardinality: "one", await: "terminal", join: "one", policy }, [], { bind: ({ input }) => input, deriveChildItemId: (input) => ItemIdSchema.parse(`00000000-0000-4000-8001-${sha256Hex(input.text).slice(0, 12)}`) });
+  const child = delegate({ id: "nested", target: leafRef, edgeId: "plan1-nested", cardinality: "one", await: "terminal", join: "one", policy }, [], { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
   return { steps: [[{ key: "nested", label: "Nested" }, [child]]], result: result(Plan1Output, [child], ({ outputs }) => { const outcome = outputs.nested; if (outcome.state !== "done") throw new Error("child-not-done"); return outcome.output; }, [
     { path: "eid", source: { kind: "child-output", entryId: "nested", path: "eid" } },
     { path: "providerState", source: { kind: "child-output", entryId: "nested", path: "providerState" } },
@@ -89,8 +88,8 @@ export const plan1Parent = compileWorkflow(defineWorkflow({ ...common, id: ids[2
     example: { left: "same/same", right: "same", label: "Operator" }, derive: plan1Summary },
 ], invocations: [{ id: "observe-operation", entryId: "observe", contractRole: "task", occurrencePath: ["observe"], bindings: [{ slot: "text", value: { kind: "transformation", transformId: "child-summary", path: "text" } }] }],
   presentation: [{ id: "left-node", kind: "delegate", entryId: "left", targetWorkflowId: plan1Child.descriptor.id }, { id: "right-node", kind: "delegate", entryId: "right", targetWorkflowId: leafRef.id }, { id: "observe-node", kind: "operation", invocationId: "observe-operation" }] }, steps: ({ delegate, task, result }) => {
-  const left = delegate({ id: "left", target: { id: plan1Child.descriptor.id, input: Plan1Input, result: Plan1Output }, edgeId: "plan1-left", cardinality: "one", await: "terminal", join: "one", policy }, [], { bind: ({ input }) => input, deriveChildItemId: (input) => ItemIdSchema.parse(`00000000-0000-4000-8002-${sha256Hex(input.text).slice(0, 12)}`) });
-  const right = delegate({ id: "right", target: leafRef, edgeId: "plan1-right", cardinality: "one", await: "terminal", join: "one", policy }, [], { bind: ({ input }) => input, deriveChildItemId: (input) => ItemIdSchema.parse(`00000000-0000-4000-8003-${sha256Hex(input.text).slice(0, 12)}`) });
+  const left = delegate({ id: "left", target: { id: plan1Child.descriptor.id, input: Plan1Input, result: Plan1Output }, edgeId: "plan1-left", cardinality: "one", await: "terminal", join: "one", policy }, [], { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+  const right = delegate({ id: "right", target: leafRef, edgeId: "plan1-right", cardinality: "one", await: "terminal", join: "one", policy }, [], { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
   const observe = task({ id: "observe", contract: plan1Contract, replay: "checkpoint" }, [left, right], ({ input, outputs, configuration }) => {
     if (outputs.left.state !== "done" || outputs.right.state !== "done") throw new Error("child-not-done");
     return { ...input, text: plan1Summary({ left: outputs.left.output.disposition, right: outputs.right.output.providerState, label: configuration?.["actor.label"] }).text };

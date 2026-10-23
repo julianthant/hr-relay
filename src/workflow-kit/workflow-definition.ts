@@ -34,6 +34,7 @@ import {
 import type { StepOmissionDeclaration } from "../models/workflow/step-omission.js";
 import type {
   AnyWorkflowRef,
+  ChildRunIdentityContext,
   ChildRunOutcome,
   DelegationManifestRef,
   RuntimeFlowNode,
@@ -249,7 +250,7 @@ interface DelegateEntry<Id extends string, Output> extends WorkflowEntry<Id, Out
   readonly join: "one" | "all" | "all-settled" | "none";
   readonly policy: DelegationPolicy;
   readonly bind: (scope: unknown) => unknown;
-  readonly deriveChildItemId: (input: unknown) => ItemId;
+  readonly deriveChildItemId: (input: unknown, context: ChildRunIdentityContext) => ItemId;
 }
 
 type RuntimeEntry =
@@ -336,7 +337,7 @@ export interface WorkflowAuthor<InputSchema extends z.ZodType> {
         Identity["cardinality"] extends "one"
           ? z.input<Identity["target"]["input"]>
           : readonly z.input<Identity["target"]["input"]>[];
-      deriveChildItemId: (input: z.output<Identity["target"]["input"]>) => ItemId;
+      deriveChildItemId: (input: z.output<Identity["target"]["input"]>, context: ChildRunIdentityContext) => ItemId;
     }>,
   ): WorkflowEntry<Identity["id"], DelegateEntryOutput<Identity["target"], Identity>, false>;
 
@@ -505,7 +506,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
       references: readonly AnyWorkflowEntry[],
       binds: Readonly<{
         bind: (scope: never) => unknown;
-        deriveChildItemId: (input: never) => ItemId;
+        deriveChildItemId: (input: never, context: ChildRunIdentityContext) => ItemId;
       }>,
     ) {
       DelegationEdgeIdSchema.parse(identity.edgeId);
@@ -537,7 +538,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
         join: identity.join,
         policy: identity.policy,
         bind: (scope) => binds.bind(scope as never),
-        deriveChildItemId: (input) => binds.deriveChildItemId(input as never),
+        deriveChildItemId: (input, context) => binds.deriveChildItemId(input as never, context),
       };
       return Object.freeze(entry);
     },
@@ -867,7 +868,7 @@ interface RuntimeFlowBuilder {
     edgeId: string;
     cardinality: "one" | "many";
     bind: (scope: unknown) => unknown;
-    deriveChildItemId: (input: unknown) => ItemId;
+    deriveChildItemId: (input: unknown, context: ChildRunIdentityContext) => ItemId;
     await: "none" | "terminal";
     join: "one" | "all" | "all-settled" | "none";
     policy: DelegationPolicy;

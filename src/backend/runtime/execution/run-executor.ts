@@ -44,7 +44,6 @@ import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-ki
 import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, RunCheckpointRecordSchema, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
 import { deriveArtifactProjectionRows } from "../../../models/workflow/artifact-projection.js";
-import { childRunOutcomeSchema, DelegationManifestRefSchema } from "../../../models/workflow/graph.js";
 import type { RuntimeFlowNode, RuntimeScope } from "../../../models/workflow/graph.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -61,11 +60,12 @@ import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
 import { createTaskProvenanceCollector } from "../../runs/provenance/task-provenance.js";
-import { RunResultRecordSchema } from "../../../models/run/result.js";
+import { RunResultRecordSchema, delegationEvidenceOutput, singleDelegationResult } from "../../../models/run/result.js";
 import { createDeclaredActionBinder } from "../writes/operation-action-binding.js";
 import { buildTerminalAuthorization } from "../../runs/lifecycle/terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
-import type { WorkerSessionManager } from "../workers/worker-sessions.js";
+import { WorkerSessionClosureUnprovedError, type WorkerSessionManager } from "../workers/worker-sessions.js";
+import { DelegationPendingSchema } from "./durable-child-executor.js";
 
 /* ── injected seams ──────────────────────────────────────────────────────── */
 
@@ -223,6 +223,7 @@ export interface ClaimedRunInput {
 }
 
 export const RunExecutionOutcomeSchema = z.discriminatedUnion("state", [
+  DelegationPendingSchema.extend({ state: z.literal("yielded-delegation") }),
   z.strictObject({ state: z.literal("done"), runId: z.string().min(1) }),
   z.strictObject({ state: z.literal("failed"), runId: z.string().min(1), failureId: z.string().min(1) }),
   z.strictObject({ state: z.literal("parked-gate"), runId: z.string().min(1), gateId: z.string().min(1) }),
@@ -542,7 +543,7 @@ export async function executeClaimedRun(
     const plan = new Map<string, PlanEntry>();
     const outputs: Record<string, JsonValue> = {};
     const checkpointRecords = new Map<string, RunCheckpointRecord>();
-    const childResultEvidence = new Map<string, Extract<TerminalDependencyEvidence, { state: "child-resolved" }>>();
+    const childResultEvidence = new Map<string, Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>>();
     const childSources: NonNullable<Parameters<typeof createDeclaredActionBinder>[0]["childSources"]> = new Map();
     const actionSources: NonNullable<Parameters<typeof createDeclaredActionBinder>[0]["sources"]> = new Map();
     const hydrateActionSources = (record: RunCheckpointRecord): void => {
@@ -565,29 +566,39 @@ export async function executeClaimedRun(
     const childUpstreamEvidenceFor = (nodeId: NodeId) => {
       const child = childResultEvidence.get(String(nodeId));
       if (child === undefined) return undefined;
-      const result = RunResultRecordSchema.parse(child.result);
       const results: RunResultRecord[] = [];
       const checkpoints: RunCheckpointRecord[] = [];
       const visited = new Set<string>();
-      const visit = (record: RunResultRecord): void => {
-        if (visited.has(record.runId) || visited.size >= 16) throw new Error("child-upstream-cycle-or-depth");
+      const visit = (record: RunResultRecord, depth = 0): void => {
+        if (depth > 16 || visited.has(record.runId) || visited.size >= 256) throw new Error("child-upstream-cycle-or-depth");
         visited.add(record.runId); results.push(record);
         for (const dependency of record.dependencies) {
           if (dependency.state === "resolved") {
             const address = dependency.checkpoint;
             const checkpoint = deps.authority.authority.runCheckpoints.get(address.workflowId, address.itemId, dependency.nodeId, address.attempt, address.claimGeneration);
             if (checkpoint === undefined || checkpoints.length >= 256) throw new Error("child-upstream-checkpoint-unavailable-or-limit");
-            checkpoints.push(checkpoint);
+            if (!checkpoints.some(retained => canonicalJsonStringify(retained) === canonicalJsonStringify(checkpoint))) checkpoints.push(checkpoint);
           } else if (dependency.state === "child-resolved") {
             const nested = deps.authority.authority.runResults.get(dependency.child.runId);
             const nestedRun = deps.authority.authority.runs.get(dependency.child.runId);
-            if (nested === undefined || (nestedRun?.lifecycle.state !== "terminal" || nestedRun.lifecycle.outcome !== "done") || nestedRun.envelope.parent?.runId !== record.runId || nestedRun.envelope.parent.edgeId !== dependency.edgeId) throw new Error("child-upstream-canonical-descendant-mismatch");
-            visit(RunResultRecordSchema.parse(nested));
+            if (nested === undefined || nestedRun?.lifecycle.state !== "terminal" || nestedRun.envelope.parent?.runId !== record.runId
+              || nestedRun.envelope.parent.edgeId !== dependency.edgeId || nested.resultDigest !== dependency.child.resultDigest
+              || nested.dependencyDigest !== dependency.child.dependencyDigest || nested.contractFingerprint !== dependency.child.contractFingerprint
+              || nested.resultSchemaHash !== dependency.child.resultSchemaHash) throw new Error("child-upstream-canonical-descendant-mismatch");
+            visit(RunResultRecordSchema.parse(nested), depth + 1);
+          } else if (dependency.state === "delegation-resolved") {
+            for (const member of dependency.members) {
+              const nested = deps.authority.authority.runResults.get(member.runId);
+              const nestedRun = deps.authority.authority.runs.get(member.runId);
+              if (nested === undefined || nestedRun?.lifecycle.state !== "terminal" || nestedRun.envelope.parent?.runId !== record.runId
+                || nestedRun.envelope.parent.edgeId !== dependency.edgeId || nested.resultDigest !== member.resultDigest) throw new Error("child-upstream-canonical-descendant-mismatch");
+              visit(RunResultRecordSchema.parse(nested), depth + 1);
+            }
           }
         }
       };
-      visit(result);
-      return { nodeId, parentRunId: child.parentRunId, edgeId: child.edgeId, result, results, checkpoints };
+      for (const member of child.children) visit(member.result);
+      return { evidence: child, results, checkpoints };
     };
 
     const dependencyEvidenceFor = (
@@ -638,10 +649,8 @@ export async function executeClaimedRun(
         descriptor,
         current,
         preview,
-        dependencyEvidenceFor(
-          node.dependsOn.map((nodeId) => NodeIdSchema.parse(nodeId)),
-          "dry-run preview",
-        ),
+        [...dependencyEvidenceFor(node.dependsOn.map(nodeId => NodeIdSchema.parse(nodeId)), "dry-run preview"),
+          ...[...childResultEvidence.values()].filter(entry => !node.dependsOn.includes(entry.nodeId))],
         clock,
       ));
     };
@@ -1886,6 +1895,22 @@ export async function executeClaimedRun(
         }
         case "child-run": {
           transitionTo(runningLifecycle(node.id));
+          const unresolved = deps.authority.withAuthorityTransaction?.(repositories =>
+            repositories.writeIntents.listAttemptingByItem({ workflowId: envelope.workflow, itemId: envelope.itemId })[0]
+              ?? repositories.writeIntents.listByRun(runId).find(intent => intent.status === "parked"));
+          if (unresolved !== undefined) {
+            const current = getRun();
+            const recovery = deps.lifecycle.requeue({ commandId: lifecycleCommandId("delegation-write-recovery", { runId, version: current.version }),
+              runId, expectedVersion: current.version, claim, cause: "recovery" });
+            if (recovery.state !== "recovery-required" || recovery.writeIntentId !== unresolved.writeIntentId
+              || recovery.intentGeneration !== unresolved.generation) throw new Error("delegation-write-recovery-unproved");
+            const parked = getRun();
+            if (!recovery.parked || parked.lifecycle.state !== "parked-write" || parked.lifecycle.writeIntentId !== unresolved.writeIntentId
+              || parked.lifecycle.intentGeneration !== unresolved.generation || runClaim(parked) !== undefined) throw new Error("delegation-write-recovery-unproved");
+            await deps.sessions.closeAll("parked");
+            return RunExecutionOutcomeSchema.parse({ state: "parked-write", runId, writeIntentId: parked.lifecycle.writeIntentId,
+              intentGeneration: parked.lifecycle.intentGeneration, code: parked.lifecycle.code });
+          }
           if (deps.childRuns === undefined) {
             return await failNode(node, undefined, new Error(
               `child-run node "${node.id}" requires the delegation executor seam, which is not wired `
@@ -1893,49 +1918,55 @@ export async function executeClaimedRun(
             ));
           }
           try {
+            await deps.sessions.closeAll("parked");
+            input.signal.throwIfAborted();
+            checkCancellation();
+            requireOriginalClaim(getRun());
             const raw = await deps.childRuns.executeChildRun({
               descriptor, node, run: getRun(), claim,
               scope: scopeFor(node.dependsOn),
               signal: input.signal,
             });
-            const schema = node.await === "none"
-              ? DelegationManifestRefSchema
-              : node.cardinality === "one"
-                ? childRunOutcomeSchema(node.target.result)
-                : z.array(childRunOutcomeSchema(node.target.result));
-            outputs[String(node.id)] = JsonValueSchema.parse(schema.parse(raw));
-            if (node.await === "terminal" && node.cardinality === "one") {
-              const outcome = childRunOutcomeSchema(node.target.result).parse(raw);
-              if (outcome.state === "done" && (descriptor.operationDisplay?.capability === "complete" || deps.authority.authority.runs.get(outcome.runId) !== undefined)) {
-                const child = deps.authority.authority.runs.get(outcome.runId);
-                if ((child?.lifecycle.state !== "terminal" || child.lifecycle.outcome !== "done") || child.envelope.parent?.runId !== runId || child.envelope.parent.edgeId !== node.edgeId || child.envelope.itemId !== outcome.itemId || child.envelope.workflow !== node.target.id) throw new Error("child-output-source-parent-mismatch");
-                const result = deps.authority.authority.runResults.get(outcome.runId);
-                if (result === undefined) throw new Error("child-output-source-result-unavailable");
-                if (result !== undefined) {
-                  const retainedResult = RunResultRecordSchema.parse(result);
-                  if (retainedResult.runId !== outcome.runId || retainedResult.contractFingerprint !== child.envelope.contractFingerprint
-                    || retainedResult.workflowId !== child.envelope.workflow || retainedResult.attempt !== child.envelope.attempt
-                    || retainedResult.descriptorVersion !== child.envelope.descriptorVersion
-                    || retainedResult.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")
-                    || canonicalJsonStringify(retainedResult.result.value) !== canonicalJsonStringify(outcome.output)) throw new Error("child-output-source-result-mismatch");
-                  childResultEvidence.set(String(node.id), { state: "child-resolved", nodeId: node.id, parentRunId: getRun().envelope.runId, edgeId: node.edgeId,
-                    childRun: { runId: child.envelope.runId, itemId: child.envelope.itemId, workflowId: child.envelope.workflow, attempt: child.envelope.attempt,
-                      descriptorVersion: child.envelope.descriptorVersion, contractFingerprint: child.envelope.contractFingerprint, lifecycle: "done" }, result: retainedResult });
-                  for (const lineage of retainedResult.operationLineage ?? []) {
-                    childSources.set(`${node.id}/${lineage.path}`, { result: { runId: retainedResult.runId, definitionFingerprint: retainedResult.contractFingerprint,
-                      resultSchemaHash: retainedResult.resultSchemaHash, resultDigest: retainedResult.resultDigest, dependencyDigest: retainedResult.dependencyDigest }, inputs: lineage.inputs });
-                  }
-                  for (const source of retainedResult.operationSources ?? []) {
-                    let value: unknown = outcome.output;
-                    for (const segment of source.path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
-                    if (value === undefined) throw new Error("child-output-source-field-unavailable");
-                    actionSources.set(`${node.id}/${source.path}`, { identity: source.identity, value: JsonValueSchema.parse(value) });
-                  }
-                }
+            input.signal.throwIfAborted();
+            const pending = DelegationPendingSchema.safeParse(raw);
+            if (pending.success) {
+              const released = getRun();
+              if (pending.data.runId !== runId || released.lifecycle.state !== "queued" || runClaim(released) !== undefined
+                || released.cancelRequested === true || Number(released.claimGeneration) !== Number(claim.claimGeneration)) throw new Error("delegation-release-unproved");
+              const manifest = deps.authority.withAuthorityTransaction?.(repositories => {
+                const manifest = repositories.delegationManifests.get(pending.data.manifestId);
+                if (manifest === undefined || manifest.parentRunId !== runId || manifest.edgeId !== node.edgeId) throw new Error("delegation-release-manifest-unavailable");
+                repositories.dependencies.readiness(runId, "join");
+                return manifest;
+              });
+              if (manifest === undefined || node.await === "none") throw new Error("delegation-release-authority-unavailable");
+              await deps.sessions.closeAll("parked");
+              return RunExecutionOutcomeSchema.parse({ ...pending.data, state: "yielded-delegation" });
+            }
+            checkCancellation();
+            requireOriginalClaim(getRun());
+            const evidence = deps.authority.withAuthorityTransaction?.(repositories => repositories.dependencies.evidence(runId, node.id));
+            if (evidence === undefined) throw new Error("delegation-outcome-authority-unavailable");
+            const output = delegationEvidenceOutput(evidence, node.target.result);
+            if (canonicalJsonStringify(raw) !== canonicalJsonStringify(output)) throw new Error("delegation-outcome-value-mismatch");
+            outputs[String(node.id)] = JsonValueSchema.parse(output);
+            childResultEvidence.set(String(node.id), evidence);
+            const retainedResult = singleDelegationResult(evidence);
+            if (retainedResult !== undefined) {
+              for (const lineage of retainedResult.operationLineage ?? []) {
+                childSources.set(`${node.id}/${lineage.path}`, { result: { runId: retainedResult.runId, definitionFingerprint: retainedResult.contractFingerprint,
+                  resultSchemaHash: retainedResult.resultSchemaHash, resultDigest: retainedResult.resultDigest, dependencyDigest: retainedResult.dependencyDigest }, inputs: lineage.inputs });
+              }
+              for (const source of retainedResult.operationSources ?? []) {
+                let value: unknown = retainedResult.result.value;
+                for (const segment of source.path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
+                if (value === undefined) throw new Error("child-output-source-field-unavailable");
+                actionSources.set(`${node.id}/${source.path}`, { identity: source.identity, value: JsonValueSchema.parse(value) });
               }
             }
           } catch (error) {
-            if (error instanceof RunAbandonedError) throw error;
+            if (error instanceof RunAbandonedError || error instanceof WorkerSessionClosureUnprovedError) throw error;
+            if (runClaim(getRun())?.claimGeneration !== claim.claimGeneration) throw error;
             return await failNode(node, undefined, error);
           }
           continue;
@@ -1949,7 +1980,7 @@ export async function executeClaimedRun(
     return settleSuccess(current, buildRunResult(
       descriptor,
       current,
-      dependencyEvidenceFor(terminal.dependsOn, "terminal"),
+      [...dependencyEvidenceFor(terminal.dependsOn, "terminal"), ...[...childResultEvidence.values()].filter(entry => !terminal.dependsOn.includes(entry.nodeId))],
       clock,
     ));
   };

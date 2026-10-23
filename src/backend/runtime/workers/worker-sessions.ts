@@ -354,8 +354,8 @@ export async function withBoundRunConfigFingerprint<Result>(
 
 export class WorkerSessionManager {
   readonly #workerId: WorkerId;
-  readonly #workflowId: WorkflowId;
-  readonly #stores: TaskStoreRegistry;
+  #executionWorkflowId: WorkflowId;
+  #stores: TaskStoreRegistry;
   #factory: WorkerBrowserSessionFactory;
   readonly #clock: Clock;
   readonly #scheduler: MonotonicDeadlineScheduler;
@@ -388,7 +388,7 @@ export class WorkerSessionManager {
   constructor(options: WorkerSessionManagerOptions) {
     this.#resetOwner = options.resetOwner === undefined ? undefined : structuredClone(options.resetOwner);
     this.#workerId = WorkerIdSchema.parse(options.workerId);
-    this.#workflowId = WorkflowIdSchema.parse(options.workflowId);
+    this.#executionWorkflowId = WorkflowIdSchema.parse(options.workflowId);
     this.#stores = options.stores;
     this.#onObservation = options.onObservation;
     this.#onActivity = options.onActivity;
@@ -400,6 +400,15 @@ export class WorkerSessionManager {
     this.#acquireDeadlineMs = z.number().int().positive().parse(options.acquireDeadlineMs);
     this.#duoCeremony = options.duoCeremony;
     this.#onEvent = options.onEvent ?? (() => undefined);
+  }
+
+  configureExecution(workflowId: WorkflowId, stores: TaskStoreRegistry): void {
+    if (workflowId === this.#executionWorkflowId && stores === this.#stores) return;
+    if (this.#controlInFlight || this.#runConfigFingerprint !== undefined || this.#closingReason !== undefined
+      || this.#starting.size > 0 || this.#tails.size > 0 || this.#resources.size > 0 || this.#retained.size > 0
+      || this.#poisoned.size > 0 || this.#acquisitionCleanupFailures.size > 0) throw new WorkerSessionClosureUnprovedError(this.#workerId);
+    this.#executionWorkflowId = WorkflowIdSchema.parse(workflowId);
+    this.#stores = stores;
   }
 
   configureRunResources(resources: Readonly<{sessionFactory:WorkerBrowserSessionFactory;sessionAcquireMs:number;duoCeremony:DuoCeremonyGateFactory;defaultBrowserMode:BrowserPresentationMode}>): void {
@@ -984,7 +993,7 @@ export class WorkerSessionManager {
     try {
     resource = await this.#factory.open({
       workerId: this.#workerId,
-      workflowId: this.#workflowId,
+      workflowId: this.#executionWorkflowId,
       system: need.system,
       ...(instance === undefined ? {} : { instance }),
       configFingerprint,
@@ -1098,7 +1107,7 @@ export class WorkerSessionManager {
   #emit(event: WorkerSessionEventCore): void {
     const common = {
       workerId: this.#workerId,
-      workflowId: this.#workflowId,
+      workflowId: this.#executionWorkflowId,
       system: event.system,
       sessionId: event.sessionId,
       at: IsoInstantSchema.parse(this.#clock.now().toISOString()),

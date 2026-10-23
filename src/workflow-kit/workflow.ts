@@ -1,3 +1,4 @@
+import { lifecycleCommandId } from "../rules/identity/identifiers.js";
 import { sha256Hex } from "../rules/validation/sha256.js";
 import type { RerunValueMappingSpec } from "../models/workflow/rerun-values.js";
 import {
@@ -22,6 +23,7 @@ import {
 import type { Fingerprint, NodeId, ScenarioId, WorkflowId } from "../rules/identity/ids.js";
 import {
   RunDryRunPreviewResultSchema,
+  delegationEvidenceOutput, terminalDelegationDependencyRecord, singleDelegationResult,
   RunResultRecordSchema,
   TerminalDependencyEvidenceSchema,
   deriveCheckpointOutputDigest,
@@ -47,7 +49,7 @@ import {
   CompletionConsumptionSpecSchema,
   CoordinatorPolicySchema,
 } from "../models/workflow/completion.js";
-import { GraphNodeKindSchema, childRunOutcomeSchema, projectTransactionOutcome } from "../models/workflow/graph.js";
+import { GraphNodeKindSchema, DelegationManifestRefSchema, childRunOutcomeSchema, projectTransactionOutcome } from "../models/workflow/graph.js";
 import type { GraphNodeBase, RuntimeFlowNode } from "../models/workflow/graph.js";
 import {
   TransactionDryRunPreviewSchema,
@@ -563,8 +565,8 @@ function terminalEvidenceOf(node: RuntimeFlowNode): TerminalEvidenceBinding | un
     case "task":
       return { checkpointSchema: node.uses.output, project: (value) => node.uses.output.parse(value) };
     case "child-run":
-      if (node.await !== "terminal" || node.cardinality !== "one") return undefined;
-      return { checkpointSchema: childRunOutcomeSchema(node.target.result), project: (value) => childRunOutcomeSchema(node.target.result).parse(value) };
+      { const schema = node.await === "none" ? DelegationManifestRefSchema : node.cardinality === "one" ? childRunOutcomeSchema(node.target.result) : z.array(childRunOutcomeSchema(node.target.result));
+        return { checkpointSchema: schema, project: value => schema.parse(value) }; }
     case "gate":
       return { checkpointSchema: node.result, project: (value) => node.result.parse(value) };
     case "transaction": {
@@ -1225,7 +1227,8 @@ export function defineWorkflowDescriptor<
     if (new Set(evidenceNodeIds).size !== evidenceNodeIds.length) {
       throw new Error(`${purpose} dependency evidence contains a duplicate node identity`);
     }
-    const extras = evidenceNodeIds.filter((nodeId) => !expectedIds.includes(nodeId));
+    const additional = evidence.filter(entry => !expectedIds.includes(entry.nodeId) && entry.state === "delegation-resolved");
+    const extras = evidenceNodeIds.filter(nodeId => !expectedIds.includes(nodeId) && !additional.some(entry => entry.nodeId === nodeId));
     const missing = expectedIds.filter((nodeId) => !evidenceNodeIds.includes(nodeId));
     if (extras.length > 0 || missing.length > 0) {
       throw new Error(
@@ -1235,9 +1238,22 @@ export function defineWorkflowDescriptor<
     }
     const byNode = new Map(evidence.map((entry) => [entry.nodeId, entry]));
     const outputs: Record<string, unknown> = {};
-    const dependencies: TerminalDependencyRecord[] = expectedDependencies.map((expected) => {
+    const dependencies: TerminalDependencyRecord[] = [...expectedDependencies, ...dependencySpecFor(additional.map(entry => entry.nodeId), purpose)].map((expected) => {
       const entry = byNode.get(expected.nodeId);
       if (entry === undefined) throw new Error(`${purpose} dependency ${expected.nodeId} is missing`);
+      if (entry.state === "delegation-resolved") {
+        const node = nodeByIdOrThrow(id, nodes, entry.nodeId, purpose);
+        if (node.kind !== "child-run" || entry.parentRunId !== currentRun.envelope.runId || entry.edgeId !== node.edgeId
+          || entry.invocationCommandId !== lifecycleCommandId("delegation-invocation", { runId: currentRun.envelope.runId, attempt: currentRun.envelope.attempt, nodeId: node.id })
+          || entry.manifest.cardinality !== node.cardinality || entry.manifest.join !== node.join
+          || canonicalJsonStringify(entry.manifest.policy) !== canonicalJsonStringify(node.policy)
+          || entry.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")
+          || entry.manifest.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")
+          || entry.children.some(child => child.run.envelope.workflow !== node.target.id || child.run.envelope.dryRun !== currentRun.envelope.dryRun)) throw new Error("terminal-delegation-dependency-identity-mismatch");
+        const output = delegationEvidenceOutput(entry, node.target.result);
+        if (expectedIds.includes(entry.nodeId)) outputs[entry.nodeId] = output;
+        return terminalDelegationDependencyRecord(entry);
+      }
       if (entry.state === "child-resolved") {
         const node = nodeByIdOrThrow(id, nodes, entry.nodeId, purpose);
         if (node.kind !== "child-run" || node.await !== "terminal" || node.cardinality !== "one" || node.join !== "one") throw new Error("terminal-child-dependency-shape-mismatch");
@@ -1439,13 +1455,14 @@ export function defineWorkflowDescriptor<
           const inputs = source.inputs.map((input) => {
             const dependency = sourceEvidence.find((entry) => entry.nodeId === input.source.entryId);
             const sources = dependency?.state === "resolved" ? dependency.checkpoint.operationSources
-              : dependency?.state === "child-resolved" ? RunResultRecordSchema.parse(dependency.result).operationSources : undefined;
+              : dependency?.state === "child-resolved" || dependency?.state === "delegation-resolved" ? singleDelegationResult(dependency)?.operationSources : undefined;
             const dependencyOutput = outputs[input.source.entryId];
             const output: unknown = input.source.kind === "child-output" ? Reflect.get(Object(dependencyOutput), "output") : dependencyOutput;
             if (readPath(output, input.source.path) === undefined) throw new Error("workflow-result-lineage-input-unavailable");
 
-            if (dependency?.state === "child-resolved") {
-              const childResult = RunResultRecordSchema.parse(dependency.result);
+            const childResult = dependency?.state === "child-resolved" || dependency?.state === "delegation-resolved"
+              ? singleDelegationResult(dependency) : undefined;
+            if (childResult !== undefined) {
               const lineage = childResult.operationLineage?.find((lineage) => lineage.path === input.source.path);
               const identities = lineage?.inputs.flatMap((input) => input.identity === undefined ? input.identities ?? [] : [input.identity]) ?? [];
               if (lineage?.inputs.some((input) => input.state === "unavailable")) return { inputId: input.id, source: input.source, state: "unavailable" as const, reason: "exact-input-occurrence-not-retained" as const };
@@ -1468,7 +1485,7 @@ export function defineWorkflowDescriptor<
         if (output === undefined || resultOutput === undefined || canonicalJsonStringify(output) !== canonicalJsonStringify(resultOutput)) throw new Error("workflow-result-source-value-mismatch");
         const dependency = sourceEvidence.find((entry) => entry.nodeId === source.entryId);
         const sources = dependency?.state === "resolved" ? dependency.checkpoint.operationSources
-          : dependency?.state === "child-resolved" ? RunResultRecordSchema.parse(dependency.result).operationSources : undefined;
+          : dependency?.state === "child-resolved" || dependency?.state === "delegation-resolved" ? singleDelegationResult(dependency)?.operationSources : undefined;
         const candidates = sources?.filter((candidate) => candidate.path === source.path) ?? [];
         if (candidates.length > 1) throw new Error("workflow-result-source-ambiguous");
         if (candidates[0] !== undefined) retainedSources.push({ path: binding.path, identity: candidates[0].identity });

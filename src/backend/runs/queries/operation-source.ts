@@ -69,7 +69,7 @@ function resolveOperationSourceInSnapshot(
     || ownerResult.configFingerprint !== owner.envelope.configFingerprint || ownerResult.configSnapshotId !== owner.envelope.configSnapshotId)) throw new Error("operation-source-owner-result-identity-mismatch");
   const retainedReferences = ownerResult === undefined || evidence !== undefined ? [] : [
     ...(ownerResult.operationSources ?? []).map((source) => source.identity),
-    ...ownerResult.dependencies.flatMap((dependency) => dependency.state === "resolved" || dependency.state === "child-resolved" ? (dependency.operationSources ?? []).map((source) => source.identity) : []),
+    ...ownerResult.dependencies.flatMap((dependency) => dependency.state === "resolved" || dependency.state === "child-resolved" || dependency.state === "delegation-resolved" ? (dependency.operationSources ?? []).map((source) => source.identity) : []),
     ...(ownerResult.operationLineage ?? []).flatMap((lineage) => lineage.inputs.flatMap((input) => input.identity === undefined ? input.identities ?? [] : [input.identity])),
   ];
   if (retainedReferences.length > 4096) throw new Error("operation-source-retained-reference-bound");

@@ -1,5 +1,5 @@
 import { OperationChildResultReferenceSchema } from "../../models/workflow/operation-action-identity.js";
-import { RunResultRecordSchema } from "../../models/run/result.js";
+import { DelegationTerminalEvidenceSchema, RunResultRecordSchema } from "../../models/run/result.js";
 import { SnapshotWorkflowValueReferenceSchema } from "../../models/workflow/operation-display-snapshot.js";
 import { OperationInputLineageSchema, OperationChildResultIdentitySchema, DeclaredActionIdentitySchema } from "../../models/workflow/operation-action-identity.js";
 export { DeclaredActionIdentitySchema } from "../../models/workflow/operation-action-identity.js";
@@ -17,7 +17,6 @@ import {
   OperationValueIdSchema,
 } from "../../models/workflow/operation-display.js";
 import {
-  DelegationEdgeIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   NodeIdSchema,
@@ -108,8 +107,8 @@ export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
   conditionEvidence: z.strictObject({ checkpoints: z.array(RunCheckpointRecordSchema), gateResults: z.array(GateResultRecordSchema),
     skippedTasks: z.array(NodeIdSchema), skippedGates: z.array(GateIdSchema) }).default({ checkpoints: [], gateResults: [], skippedTasks: [], skippedGates: [] }),
   checkpoints: z.array(RunCheckpointRecordSchema),
-  children: z.array(z.strictObject({ nodeId: NodeIdSchema, parentRunId: RunIdSchema, edgeId: DelegationEdgeIdSchema,
-    result: RunResultRecordSchema, results: z.array(RunResultRecordSchema).max(16), checkpoints: z.array(RunCheckpointRecordSchema).max(256) })).max(16).optional(),
+  children: z.array(z.strictObject({ evidence: DelegationTerminalEvidenceSchema,
+    results: z.array(RunResultRecordSchema).max(256), checkpoints: z.array(RunCheckpointRecordSchema).max(256) })).max(16).optional(),
   /** A false descriptor condition, re-evaluated by the collector; no operator fact. */
   skippedGates: z.array(GateIdSchema).default([]),
   skippedTasks: z.array(NodeIdSchema).default([]),
@@ -142,9 +141,9 @@ export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
   }
   const childNodes = new Set<string>();
   for (const child of evidence.children ?? []) {
-    if (childNodes.has(child.nodeId) || checkpointNodes.has(child.nodeId) || evidence.skippedTasks.includes(child.nodeId)
-      || evidence.skippedGates.some((gateId) => String(gateId) === String(child.nodeId))) context.addIssue({ code: "custom", message: "duplicate child upstream evidence" });
-    childNodes.add(child.nodeId);
+    if (childNodes.has(child.evidence.nodeId) || checkpointNodes.has(child.evidence.nodeId) || evidence.skippedTasks.includes(child.evidence.nodeId)
+      || evidence.skippedGates.some((gateId) => String(gateId) === String(child.evidence.nodeId))) context.addIssue({ code: "custom", message: "duplicate child upstream evidence" });
+    childNodes.add(child.evidence.nodeId);
   }
   const gateNodes = new Set<string>();
   for (const [index, gate] of evidence.gateResults.entries()) {
