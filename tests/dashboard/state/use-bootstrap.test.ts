@@ -34,3 +34,19 @@ it("never renders a previous client's bootstrap and ignores superseded A -> B ->
     assert.deepEqual(seen.at(-1), { state: "loaded", value: FIXTURE_BOOTSTRAP });
   } finally { await act(async () => root.unmount()); }
 });
+
+it("does not read selected bootstrap before explicit public session admission", async () => {
+  let calls = 0;
+  const client = { bootstrap: async () => { calls++; return FIXTURE_BOOTSTRAP; } } as DashboardClient;
+  const root = createRoot(document.createElement("div"));
+  let state!: ReturnType<typeof useBootstrap>;
+  const current = () => state;
+  function Probe({ enabled }: { enabled: boolean }) { state = useBootstrap(undefined, enabled); return null; }
+  const render = async (enabled: boolean) => { await act(async () => root.render(createElement(DashboardClientProvider,
+    { client, children: createElement(Probe, { enabled }) }))); };
+  try {
+    await render(false); assert.equal(calls, 0); assert.equal(current().state, "loading");
+    await render(true); assert.equal(calls, 1); assert.equal(current().state, "loaded");
+    await render(false); assert.equal(calls, 1); assert.equal(current().state, "loading");
+  } finally { await act(async () => root.unmount()); }
+});

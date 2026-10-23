@@ -1,10 +1,11 @@
+import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, CircleCheck, Fingerprint, KeyRound, Monitor, PanelTopClose, RefreshCw } from "lucide-react";
 import { duoSummary, useDuoBrowser, mockOnboardingPort, type DuoMethods, type OnboardingDetails, type OnboardingErrors, type OnboardingPort, type OnboardingStep } from "./onboarding-model.js";
 import "./onboarding.css";
 
-export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPort }: {
-  step: OnboardingStep; onStep: (step: OnboardingStep) => void; onDashboard: () => void; port?: OnboardingPort;
+export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPort, authenticated = false, problem }: {
+  step: OnboardingStep; onStep: (step: OnboardingStep) => void; onDashboard: () => void; port?: OnboardingPort; authenticated?: boolean; problem?: string;
 }) {
   const [forms, setForms] = useState<Record<"login" | "signup", OnboardingDetails>>({ login: { firstName: "", lastName: "", email: "", password: "" }, signup: { firstName: "", lastName: "", email: "", password: "" } });
   const formStep = step === "login" ? "login" : "signup";
@@ -12,12 +13,16 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
   const previousStep = useRef(step);
   const [errors, setErrors] = useState<OnboardingErrors>({});
   const [methods, setMethods] = useState<DuoMethods>({ key: false, touch: false });
-  const [detailsDone, setDetailsDone] = useState(false);
+  const [detailsAccepted, setDetailsDone] = useState(false);
+  const detailsDone = port.source === "served" ? authenticated : detailsAccepted;
+  const [submitting, setSubmitting] = useState(false);
+  const submitted = useRef(0);
+  useEffect(() => () => { submitted.current++; }, []);
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [attempts, setAttempts] = useState(0);
   const [seconds, setSeconds] = useState(0);
-  const browser = useDuoBrowser(methods, setMethods);
+  const browser = useDuoBrowser(methods, setMethods, port.source);
   const launching = browser.status === "launching", closed = browser.status === "browser-closed", failed = browser.status === "error";
   const heading = useRef<HTMLHeadingElement>(null);
   const form = useRef<HTMLFormElement>(null);
@@ -34,6 +39,7 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
     const previous = previousStep.current;
     if (previous === step) return;
     previousStep.current = step;
+    submitted.current++; setSubmitting(false);
     if (previous === "login" || previous === "signup") setForms(current => ({ ...current, [previous]: { ...current[previous], password: "" } }));
     if (step === "login" || step === "signup") setSeconds(0);
     setErrors({}); setLoginError(""); setShowPassword(false);
@@ -67,9 +73,32 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
         return <li key={item} aria-current={item === step ? "step" : undefined} data-complete={index < current}><button tabIndex={0} className="step-link" type="button" disabled={item === "duo" && !detailsDone || item === "ready" && !both} onClick={() => navigate(item)}><span className="progress-marker" aria-hidden="true">{index < current ? <Check className="icon" /> : index + 1}</span>{["Your details", "Duo setup", "Ready"][index]}</button></li>;
       })}</ol>}
       <div className="stack"><header className="heading"><h1 ref={heading} tabIndex={-1}>{title}</h1><p>{description}</p></header>
-        {(step === "login" || signup) ? <><form ref={form} noValidate onSubmit={event => {
-          event.preventDefault(); const nextErrors = port.validate(signup ? "signup" : "login", details); setErrors(nextErrors);
+        {(step === "login" || signup) ? <><form ref={form} noValidate onSubmit={async event => {
+          event.preventDefault();
+          if (submitting) return; const nextErrors = port.validate(signup ? "signup" : "login", details); setErrors(nextErrors);
           if (Object.values(nextErrors).some(Boolean)) { form.current?.querySelector<HTMLInputElement>(`[name="${Object.keys(nextErrors)[0]}"]`)?.focus(); return; }
+          if (port.source === "served") {
+            const request = ++submitted.current;
+            setSubmitting(true); setLoginError("");
+            try {
+              const result = await port.submit(signup ? "signup" : "login", details);
+              if (request !== submitted.current) return;
+              if (result.state === "signed-out") {
+                setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "" } } : current);
+                onStep("login"); return;
+              }
+              if (result.state !== "active") {
+                setLoginError(operatorFailureSentence(result.state === "refused" || result.state === "error" ? result.code : "PROFILE_LOGOUT_BLOCKED"));
+                return;
+              }
+              setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "" } } : current);
+              setDetailsDone(true);
+              if (result.duoState === "ready") onDashboard(); else onStep("duo");
+            } catch {
+              if (request === submitted.current) setLoginError(operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE"));
+            } finally { if (request === submitted.current) setSubmitting(false); }
+            return;
+          }
           const result = signup ? "accepted" : port.login(details);
           if (result !== "accepted") {
             const count = attempts + 1; setAttempts(count);
@@ -81,14 +110,14 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
         }}>
           {signup && <div className="name-row">{field("firstName", "First name", "text", "given-name")}{field("lastName", "Last name", "text", "family-name")}</div>}
           {field("email", "Work email", "email", "username")}{field("password", "Password", "password", signup ? "new-password" : "current-password")}
-          <div className="login-actions"><p className="form-error" role="alert">{loginError}</p><button tabIndex={0} className="btn primary full" type="submit" disabled={seconds > 0}>{signup ? "Create profile" : seconds > 0 ? `Log in in 0:${String(seconds).padStart(2, "0")}` : "Log in"}</button></div>
+          <div className="login-actions"><p className="form-error" role="alert">{loginError || problem}</p><button tabIndex={0} className="btn primary full" type="submit" disabled={seconds > 0 || submitting}>{signup ? "Create profile" : seconds > 0 ? `Log in in 0:${String(seconds).padStart(2, "0")}` : "Log in"}</button></div>
         </form><div className="switch-row"><span>{signup ? "Already have a profile?" : "New to Relay?"}</span><a tabIndex={0} className="text-link" href={`?onboarding=${signup ? "login" : "signup"}`} onClick={event => { event.preventDefault(); navigate(signup ? "login" : "signup"); }}>{signup ? "Log in" : "Sign up"}</a></div>
-          {!signup && <p className="field-help">Demo: alex.rivera@ucsd.edu / Relay-demo-42</p>}</> : step === "duo" ? <>
+          {!signup && port.source === "mock" && <p className="field-help">Demo: alex.rivera@ucsd.edu / Relay-demo-42</p>}</> : step === "duo" ? <>
           <div className="method-summary" aria-label="Duo method status"><span className={methods.key ? "confirmed" : undefined}>{methods.key ? <Check className="icon" /> : <KeyRound className="icon" />}Security key{methods.key && " confirmed"}</span><span className={methods.touch ? "confirmed" : undefined}>{methods.touch ? <Check className="icon" /> : <Fingerprint className="icon" />}Touch ID{methods.touch && " confirmed"}</span></div>
           <section className="focus-task" aria-label="Next action">{both ? <CircleCheck className="icon" /> : launching ? <Monitor className="icon" /> : closed ? <PanelTopClose className="icon" /> : failed ? <RefreshCw className="icon" /> : methods.key ? <Fingerprint className="icon" /> : <KeyRound className="icon" />}<h2>{both ? "Ready to finish" : launching ? "Preparing Fast Duo" : closed || failed ? `${methods.key ? "Touch ID" : "Security key"} is next` : methods.key ? "Next, add Touch ID" : methods.touch ? "Next, add a security key" : "Start with a security key"}</h2><p>{both ? "Both methods are registered in Duo." : launching ? "The setup page opens in a browser with the Fast Duo extension ready." : closed || failed ? `Reopen the browser, then add ${methods.key ? "Touch ID" : "a security key"}. Your completed methods stay confirmed.` : `In the setup browser, follow Fast Duo’s ${methods.key ? "Touch ID" : "security key"} instructions. You can add the methods in either order.`}</p></section>
           <p className="readiness" role="status">{duoSummary(methods)}</p><footer className="actions"><div className="buttons"><button tabIndex={0} className="btn primary" type="button" onClick={() => both ? navigate("ready") : browser.open()}>{both ? "Finish setup" : closed || failed ? "Reopen browser" : "Show setup browser"}</button></div></footer>
         </> : <><ul className="ready-list">{["Your details saved", "Security key confirmed", "Touch ID confirmed"].map(text => <li key={text}><Check className="icon" />{text}</li>)}</ul><button tabIndex={0} className="btn primary" type="button" disabled={!detailsDone || !both} onClick={onDashboard}>Go to dashboard</button></>}
       </div></div></main>
-    <p className="sr-only">UI mock. Browser handoff and Duo results are simulated. No details are sent or saved.</p>
+    {port.source === "mock" && <p className="sr-only">UI mock. Browser handoff and Duo results are simulated. No details are sent or saved.</p>}
   </div>;
 }

@@ -5,7 +5,7 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { randomUUID } from "node:crypto";
-import { copyFileSync, readFileSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, readFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
@@ -64,7 +64,9 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "profile-runtime-composed-")));
   const machine = acquireEntrypointAdmission(workspace, "exclusive"), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const transport = vi.spyOn(globalThis, "fetch").mockImplementation(() => { throw new Error("composed profile proof forbids transport"); });
-  const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(workspace, "process-locks") });
+  const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
+  mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
+  const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot });
   try {
     const fields = { firstName: "Synthetic", lastName: "Operator", email: "profile@example.edu", password: "synthetic-profile-password", createdAt: clock.now().toISOString() };
     const active = runtime.session.signUp(fields); assert.equal(active.state, "active");

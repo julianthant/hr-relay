@@ -1,3 +1,10 @@
+import { failureStatus } from "../../../transports/http/routes/failure-status.js";
+import { randomUUID } from "node:crypto";
+import { Hono } from "hono";
+import { ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema } from "../../../../models/profiles/public-profile.js";
+import { ProfileSessionRefusedError } from "../../../profiles/profile-session.js";
+import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
+import { staticBundleHandler } from "../../../transports/http/static-bundle.js";
 import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
@@ -82,7 +89,7 @@ import { createStartPlanService } from "../../../runs/commands/start-plan-servic
 import { createDashboardApp } from "../../../transports/http/routes/api.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
-import { startDashboardHttpServer, type DashboardHttpServer } from "../../../transports/http/http-server.js";
+import { startDashboardHttpServer, type DashboardHttpServer, type DashboardHttpListener } from "../../../transports/http/http-server.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
 
 import { createDashboardPreflightRunners } from "../../preflight/dashboard-runners.js";
@@ -91,6 +98,7 @@ export interface DashboardRuntime {
   readonly port: number;
   readonly noteWriter: NoteTimelineWriter;
   readonly notificationStatus: ReturnType<typeof createTrustNotifications>["observer"]["status"];
+  detach(): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -114,7 +122,8 @@ export interface DashboardComposeInput {
   readonly backendPortOverride?: 0;
   readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   /** Test-only replacement for injecting an HTTP bind failure after startup admission. */
-  readonly httpServerStarter?: typeof startDashboardHttpServer;
+  readonly httpServerStarter?: (input: Parameters<typeof startDashboardHttpServer>[0]) => Promise<DashboardHttpServer>;
+  readonly applicationTransport?: Readonly<{ listener: DashboardHttpListener; accepts: (request: Request) => boolean }>;
   /** Test-only preflight probe override; production always checks the isolated frontend port. */
   readonly frontendPortOverride?: 0;
 
@@ -407,6 +416,8 @@ async function composeDashboardRuntimeStartup(
     try { await close(); }
     catch (error) { custody.failedClosures.push(error); throw new RuntimeCustodyUncertainError([error]); }
   };
+  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
+  assertNoMigratedEnvironmentKeys(env);
   const clock = input.clock ?? systemClock;
   const timeZone = runtimeTimeZone();
   const ids = input.ids ?? systemIdFactory;
@@ -432,21 +443,19 @@ async function composeDashboardRuntimeStartup(
     : undefined;
 
 
-  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
-  assertNoMigratedEnvironmentKeys(env);
   const hostFacts = hostConfigFacts(env);
   // Take the server role lock before opening authority; it fences competing dashboard handles.
-  const processLock = acquireRuntimeProcessLock(
+  const processLock = input.applicationTransport === undefined ? acquireRuntimeProcessLock(
     { processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "server", pid: process.pid },
     clock,
-  );
+  ) : undefined;
   let databaseClosed = true, transportClosed = true;
   startupCleanups.push(() => {
     requireProducerClosure();
     if (!databaseClosed || !transportClosed) {
       throw new RuntimeCustodyUncertainError([new Error("dashboard authority closure is unproved")]);
     }
-    try { processLock.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+    try { processLock?.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
   });
   const context = (() => {
     try { return profile.runtime.selectedContext(profile.token); }
@@ -819,11 +828,12 @@ async function composeDashboardRuntimeStartup(
   });
 
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
-  const server: DashboardHttpServer = await startHttpServer({
+  const server: DashboardHttpServer = input.applicationTransport === undefined ? await startHttpServer({
     app,
     port: input.backendPortOverride ?? input.isolation.backendPort,
     onTransferError: reportDashboardTransferFault,
-  });
+  }) : { port: input.applicationTransport.listener.port,
+    close: input.applicationTransport.listener.mount(app, input.applicationTransport.accepts).close };
   transportClosed = false;
   startupCleanups.push(requiredClosure(async () => {
     const failures: unknown[] = [];
@@ -837,43 +847,210 @@ async function composeDashboardRuntimeStartup(
   gateParkTimer.unref();
   startupCleanups.push(() => clearInterval(gateParkTimer));
 
+  let detaching: Promise<void> | undefined;
+  const detach = (): Promise<void> => {
+    detaching ??= (async () => {
+      const failures: unknown[] = [];
+      try { await server.close(); transportClosed = true; } catch (error) { failures.push(error); }
+      try { hub.close(); } catch (error) { failures.push(error); }
+      try { runLogsHub.close(); } catch (error) { failures.push(error); }
+      clearInterval(timelineTimer);
+      clearInterval(gateParkTimer);
+      try { await notificationObserver.stop(); } catch (error) { failures.push(error); }
+      try { await profile.runtime.awaitClosurePreparation(selected); } catch (error) { failures.push(error); }
+      try { if (workerControl.supervisor.close().length > 0) throw new Error("dashboard worker closure is unproved"); }
+      catch (error) { failures.push(error); }
+      if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
+    })();
+    return detaching;
+  };
   return Object.freeze({
     port: server.port,
     notificationStatus: notificationObserver.status,
     noteWriter,
+    detach,
     stop: async (): Promise<void> => {
       const failures: unknown[] = [];
       try { await prepareRuntimeClosure(); } catch (error: unknown) { failures.push(error); }
-      try {
-        await server.close(); transportClosed = true;
-      } catch (error: unknown) {
-        failures.push(error);
-      }
-      try {
-        hub.close();
-      } catch (error: unknown) {
-        failures.push(error);
-      }
-      try { runLogsHub.close(); } catch (error: unknown) { failures.push(error); }
-      clearInterval(timelineTimer);
-      clearInterval(gateParkTimer);
-      try {
-        await notificationObserver.stop();
-      } catch (error: unknown) {
-        failures.push(error);
-      }
-
+      try { await detach(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       try { await profile.runtime.close(); }
       catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
-      try {
-        const evidence = workerControl.supervisor.close();
-        if (evidence.length > 0) throw new Error("dashboard worker closure is unproved");
-      } catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
-      try { processLock.release(); }
+      try { processLock?.release(); }
       catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
-      try { machineAdmission.release(); }
-      catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
+      if (input.applicationTransport === undefined) {
+        try { machineAdmission.release(); }
+        catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
+      }
     },
   });
+}
+
+
+export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; stop(): Promise<void> }>> {
+  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
+  assertNoMigratedEnvironmentKeys(env);
+  const machine = requireRuntimeAdmission(input.admission), clock = input.clock ?? systemClock;
+  const repoRoot = input.repoRoot ?? process.cwd();
+  const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
+  const bundle = frontend === "built-bundle" ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript) : undefined;
+  const processLock = acquireRuntimeProcessLock({ processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "server", pid: process.pid }, clock);
+  const profile = (() => {
+    try { return composeProfileRuntime({ admission: machine, clock, hostFacts: hostConfigFacts(env),
+      processLockRoot: join(repoRoot, input.isolation.processLockRoot) }); }
+    catch (error) {
+      try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
+      throw error;
+    }
+  })();
+  const app = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
+  type Selection = { cookie: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
+  let selection: Selection | undefined;
+  let pending: { cookie: string; operationId: string; profileId: string; runtime: DashboardRuntime } | undefined;
+  let transitioning = false;
+  const retainedFailures: unknown[] = [];
+  const cookieName = "relay-profile-session";
+  let registeredPort: number = input.backendPortOverride ?? input.isolation.backendPort;
+  const cookieOf = (request: Request): string | undefined => {
+    const cookies = request.headers.get("cookie")?.split(";").map(value => value.trim()).filter(value => value.startsWith(`${cookieName}=`));
+    if (cookies?.length !== 1) return undefined;
+    return cookies[0]?.slice(cookieName.length + 1);
+  };
+  const loopback = (request: Request): boolean => {
+    const host = request.headers.get("host");
+    if (host === null || !URL.canParse(`http://${host}`)) return false;
+    const url = new URL(`http://${host}`);
+    const allowedPorts = frontend === "vite-dev" ? [registeredPort, input.isolation.frontendPort] : [registeredPort];
+    return (url.hostname === "127.0.0.1" || url.hostname === "localhost") && allowedPorts.includes(Number(url.port || 80))
+      && url.pathname === "/" && url.search === "" && url.hash === "" && url.username === "" && url.password === ""
+      && (request.headers.get("origin") === null || request.headers.get("origin") === url.origin);
+  };
+  const current = (request: Request): Selection => {
+    if (!loopback(request) || transitioning || selection === undefined || cookieOf(request) !== selection.cookie) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    profile.assertCurrent(selection.token);
+    return selection;
+  };
+  const selectedPath = (request: Request): boolean => {
+    const path = new URL(request.url).pathname;
+    return (path.startsWith("/api/") && !path.startsWith("/api/v1/profile/")) || path.startsWith("/events") || path.startsWith("/artifacts");
+  };
+  const publicFailure = (error: Error) => {
+    if (error instanceof ProfileSessionRefusedError) return { status: 409 as const,
+      body: PublicProfileStateSchema.parse({ state: "refused", code: error.code }) };
+    const mapped = failureStatus(error);
+    if (mapped.status === 500) retainedFailures.push(error);
+    return { status: mapped.status, body: PublicProfileStateSchema.parse({ state: "error",
+      code: error instanceof RuntimeCustodyUncertainError ? "RUNTIME_CUSTODY_UNCERTAIN" : mapped.body.code }) };
+  };
+  app.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
+  app.use("/api/v1/profile/*", async (c, next) => {
+    if (!loopback(c.req.raw)) return c.json(PublicProfileStateSchema.parse({ state: "refused", code: "PROFILE_SESSION_STALE" }), 403);
+    return next();
+  });
+  app.get("/api/v1/profile/state", c => {
+    if (selection === undefined) return c.json(PublicProfileStateSchema.parse(pending !== undefined && cookieOf(c.req.raw) === pending.cookie
+      ? { state: "cancelling", operationId: pending.operationId } : { state: "signed-out" }));
+    const active = current(c.req.raw);
+    return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,
+      duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.duoState }));
+  });
+  app.use("/api/v1/profile/sign-in", operatorMutationIngressGuard);
+  app.use("/api/v1/profile/sign-up", operatorMutationIngressGuard);
+  app.use("/api/v1/profile/logout", operatorMutationIngressGuard);
+  const activate = async (request: Request, signup: boolean) => {
+    if (transitioning || selection !== undefined || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+    transitioning = true;
+    try {
+      const result = await (async () => {
+        if (signup) return profile.session.signUp({ ...ProfileSignUpRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
+        const fields = { ...ProfileLoginRequestSchema.parse(await request.json()), at: clock.now().toISOString() };
+        const signed = profile.session.signIn(fields);
+        if (signed.state !== "cancelling") return signed;
+        const continuation = profile.session.authorizeLogoutContinuation(fields);
+        if (continuation.state !== "authorized") return continuation;
+        return continuation.resume();
+      })();
+      if (result.state === "wiped") return { state: "signed-out" as const };
+      if (result.state === "cancelling" && result.operationId !== undefined) return { state: "cancelling" as const, operationId: result.operationId };
+      if (result.state !== "active") return { state: "refused" as const, code: result.code };
+      const guarded = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
+      guarded.use("*", async (c, next) => {
+        try { current(c.req.raw); } catch (error) {
+          if (!(error instanceof ProfileSessionRefusedError)) throw error;
+          return c.json(PublicProfileStateSchema.parse({ state: "refused", code: error.code }), 401);
+        }
+        return next();
+      });
+      guarded.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
+      let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
+      guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return selectedApp.fetch(c.req.raw); });
+      const runtime = await composeDashboardRuntime({ ...input, profile: { runtime: profile, token: result.token },
+        applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } });
+      selection = { cookie: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
+      const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
+      if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+      return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
+    } finally { transitioning = false; }
+  };
+  for (const [path, signup] of [["sign-in", false], ["sign-up", true]] as const) app.post(`/api/v1/profile/${path}`, async c => {
+    const result = PublicProfileStateSchema.parse(await activate(c.req.raw, signup));
+    if (result.state === "active" && selection !== undefined) c.header("set-cookie", `${cookieName}=${selection.cookie}; HttpOnly; SameSite=Strict; Path=/`);
+    return c.json(result);
+  });
+  app.post("/api/v1/profile/logout", async c => {
+    const active = selection === undefined ? undefined : current(c.req.raw);
+    if (active === undefined && (pending === undefined || cookieOf(c.req.raw) !== pending.cookie)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    if (transitioning) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+    transitioning = true;
+    try {
+      if (active !== undefined) {
+        const result = profile.session.logOut(active.token, { at: clock.now().toISOString() });
+        if (result.state !== "cancelling" || result.operationId === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
+        pending = { cookie: active.cookie, operationId: result.operationId, profileId: active.profileId, runtime: active.runtime };
+        selection = undefined;
+      }
+      const operation = pending;
+      if (operation === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
+      await operation.runtime.detach();
+      await profile.awaitClosurePreparation(operation.profileId);
+      const result = profile.session.resumeLogout(operation.operationId);
+      if (result.state !== "wiped") return c.json(PublicProfileStateSchema.parse(result.state === "refused"
+        ? { state: "refused", code: result.code } : { state: "cancelling", operationId: operation.operationId }));
+      pending = undefined;
+      c.header("set-cookie", `${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
+      return c.json(PublicProfileStateSchema.parse({ state: "signed-out" }));
+    } finally { transitioning = false; }
+  });
+  if (bundle !== undefined) app.use("*", staticBundleHandler(bundle));
+  app.notFound(c => c.json(PublicProfileStateSchema.parse({ state: "refused", code: "PROFILE_SESSION_STALE" }), 401));
+  const listener = await (async () => {
+    try { return await startDashboardHttpServer({ app, port: input.backendPortOverride ?? input.isolation.backendPort }); }
+    catch (error) {
+      try { await profile.close(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
+      try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
+      throw error;
+    }
+  })();
+  registeredPort = listener.port;
+  let stopping: Promise<void> | undefined;
+  return Object.freeze({ port: listener.port, stop(): Promise<void> {
+    if (stopping !== undefined) return stopping;
+    transitioning = true;
+    const failures: unknown[] = [];
+    try { profile.beginClose(); } catch (error) { failures.push(error); }
+    const transportClosure = listener.close();
+    stopping = (async () => {
+      try { await transportClosure; } catch (error) { failures.push(error); }
+      failures.unshift(...retainedFailures);
+      const selectedRuntime = selection?.runtime ?? pending?.runtime;
+      if (selectedRuntime !== undefined) {
+        try { await selectedRuntime.detach(); } catch (error) { failures.push(error); }
+      }
+      if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
+      try { await profile.close(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try { processLock.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try { machine.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+    })();
+    return stopping;
+  } });
 }
