@@ -89,7 +89,7 @@ it("registers the real account adapter in run resources and persists canonical a
   const queued={...originalQueued,envelope:{...originalQueued.envelope,runId,itemId:runId}};
   const inserted=f.db.authority.runs.enqueue({...queued,envelope:{...queued.envelope,configSnapshotId:f.snapshot.configSnapshotId,configFingerprint:f.snapshot.fingerprint}});
   assert.equal(inserted.state,"inserted");
-  const claimed=world.claim({database:f.db,clock:f.clock,path:f.path,stateRoot:admission.stateRoot,dispose:f.dispose},descriptor);
+  const claimed=world.claim({database:f.db,clock:f.clock,path:f.path,stateRoot:admission.stateRoot,profile:f.profile,dispose:f.dispose},descriptor);
   const ocr=createChatGptOcrAdapter({account:account.service,artifacts:writer,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
   resources=createRunResourcesFactory({ocr,authority:f.db.authority,artifacts:writer,clock:f.clock,ids:{uuid:randomUUID},isolation:rebuildRuntimeIsolation,
    processLockRoot:join(f.root,"locks"),protectedSecrets:{read:()=>{throw new Error("OCR cannot read HR credentials");}},scheduler,environment:{},

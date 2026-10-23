@@ -5530,7 +5530,7 @@ export class AuthorityDatabase implements Disposable {
       const expectedFingerprint = sha256Hex(`hrauto:run-lifecycle-command:v1\0claim-next\0${canonicalJsonStringify(request)}`);
       if (command.operation !== "claim-next" || command.fence.kind !== "none" || command.commandId !== request.commandId
         || command.requestFingerprint !== expectedFingerprint || canonicalJsonStringify(command.request) !== canonicalJsonStringify(request)
-        || audit.auditId !== command.commandId || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+        || String(audit.auditId) !== String(command.commandId) || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
         || z.object({ outcome_json: z.string() }).parse(raw).outcome_json !== canonicalJsonStringify(audit)
         || audit.result.kind !== "run" || audit.result.runId !== run.envelope.runId || audit.result.appliedVersion > run.version
         || claimed.runId !== run.envelope.runId || claimed.attempt !== run.envelope.attempt

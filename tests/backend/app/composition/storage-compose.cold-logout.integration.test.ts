@@ -1,5 +1,6 @@
+import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -74,6 +75,7 @@ for (const phase of ["early", "captured", "incomplete", "journal", "erased"] as 
       expectedRevision: operation.expectedRevision, commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: operation.at })).state, "applied");
   }
   const before = AuthorityDatabase.readProfileMaintenanceInventory(f.owner), selection = f.f.machine.readProfileRegistry();
+  const originalBinding = f.owner.profileBinding;
   const stopped = f.restart();
   try {
     assert.throws(() => stopped.runtime.selectedContext("unissued"));
@@ -96,9 +98,17 @@ for (const phase of ["early", "captured", "incomplete", "journal", "erased"] as 
       assert.equal(payload.latestRequest.request.commandId, operation.commandId); assert.equal(payload.latestRequest.request.writeId, operation.writeId);
       assert.equal(payload.latestRequest.request.expectedRevision, operation.expectedRevision);
     }
-    const settled = stopped.machine.admitProfile(createProfileRegistry(stopped.machine).storageClaim(f.profileId));
-    try { assert.equal(AuthorityDatabase.readProfileMaintenanceInventory(settled).authorityGeneration, before.authorityGeneration); }
-    finally { settled.release(); }
+    const sourceBytes = readFileSync(f.f.path);
+    const copy = stopped.machine.verifiedReadOnlyCopy(f.f.path, createHash('sha256').update(sourceBytes).digest('hex'));
+    try {
+      const binding = z.strictObject({ installationId: z.uuid(), profileId: z.uuid(), authorityGeneration: z.number().int().nonnegative() })
+        .parse(withAuthorityDatabaseReadOnly(copy, f.f.path, database => database.prepare(
+          'SELECT installation_id AS installationId,profile_id AS profileId,authority_generation AS authorityGeneration FROM database_states').get()));
+      assert.equal(binding.installationId, originalBinding.installationId);
+      assert.equal(binding.profileId, f.profileId);
+      assert.equal(binding.authorityGeneration, before.authorityGeneration);
+      assert.equal(readFileSync(f.f.path).equals(sourceBytes), true);
+    } finally { copy.release(); }
   } finally { await stopped.close(); }
 });
 

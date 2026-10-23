@@ -1,7 +1,8 @@
+import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createCredentialStore as createOwnedCredentialStore, type CredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createCredentialStore as createOwnedCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import assert from "node:assert/strict";
 import { describe, it, vi, onTestFinished } from "vitest";
 import { ConfigProvenanceSchema, configLeafPaths, resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";

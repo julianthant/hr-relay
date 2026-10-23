@@ -362,6 +362,8 @@ it("parks a real attempting child after its owned OS process dies without retry 
         generation: unresolvedIntent.generation, expectedVersion: unresolvedIntent.version, code: "unknown",
         message: "controlled unknown", authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "controlled unknown"),
         now: systemClock.now().toISOString() });
+      assert.equal(durableParked.status, 'parked');
+      if (durableParked.status !== 'parked') throw new Error('canonical parked successor required');
       const durableAttempt = database.authority.writeAttempts.get(durableParked.currentAttemptId);
       assert.ok(durableAttempt?.outcome.state === "parked");
       const durableGeneration = database.getMeta().authorityGeneration;

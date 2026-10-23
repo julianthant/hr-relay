@@ -26,7 +26,7 @@ import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER 
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
-import type { BuildManifest } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import type { BuildManifest } from "../../../../src/models/workflow/build-manifest.js";
 
 vi.mock("../../../../src/backend/storage/sqlite/storage-doctor.js", { spy: true });
 
