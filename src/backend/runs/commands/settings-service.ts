@@ -5,7 +5,7 @@ import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint
 import { ResolvedConfigSchema, type ResolvedConfig } from "../../app/config/resolve.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, protectedSettingsReadback } from "../../../models/config/protected-settings.js";
-import { SETTINGS_SCHEMA_HASH, SettingsApplyRefusalSchema, deriveSettingsPatchFingerprint, derivePersistedSettingsFingerprint, mergeSettingsPatch, containsRetiredTestRoutePatch, type SettingsFileRecord } from "../../../models/config/settings.js";
+import { SETTINGS_SCHEMA_HASH, SettingsApplyRefusalSchema, deriveRawSettingsPatchFingerprint, derivePersistedSettingsFingerprint, mergeSettingsPatch, containsRetiredTestRoutePatch, type SettingsFileRecord } from "../../../models/config/settings.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { z } from "zod";
@@ -33,7 +33,7 @@ function ordinaryRequestRefusal(command: Extract<SettingsCommand, { type: "apply
   if (command.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
     return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "schema-mismatch", message: "settings schema-mismatch" });
   }
-  if (deriveSettingsPatchFingerprint(command.payload.patch) !== command.payload.patchFingerprint) {
+  if (deriveRawSettingsPatchFingerprint(command.payload.patch) !== command.payload.patchFingerprint) {
     return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "patch-fingerprint-mismatch", message: "settings patch-fingerprint-mismatch" });
   }
   return undefined;
@@ -63,7 +63,7 @@ export function createSettingsApplicationExecutor(
       let resolved: ResolvedConfig;
       try {
         const currentConfig = ResolvedConfigSchema.parse(resolveCandidate(current.settings));
-        settings = mergeSettingsPatch(current.settings, command.payload.patch);
+        settings = command.payload.assistantPermission === undefined ? mergeSettingsPatch(current.settings, command.payload.patch) : current.settings;
         resolved = ResolvedConfigSchema.parse(resolveCandidate(settings));
         if (sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) {
           throw new Error("settings-resolution-fingerprint-mismatch");

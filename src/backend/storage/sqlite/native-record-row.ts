@@ -12,6 +12,9 @@ import { type AuthorityTableName } from "../../../models/config/authority.js";
 
 const RowSchema = z.record(z.string(), z.union([z.string(),z.number(),z.null()]));
 const fields = {
+  assistant_grants: {id:"id",profile_id:"profileId",revision:"policy.revision",command_id:"commandId",updated_at:"updatedAt"},
+  assistant_chats: {id:"id",profile_id:"profileId",epoch:"epoch",created_at:"createdAt",expires_at:"expiresAt"},
+  assistant_actions: {id:"id",chat_id:"chatId",command_id:"command.commandId",revision:"revision",state:"state",created_at:"createdAt",expires_at:"expiresAt"},
   database_upgrades: {id:"recordKey",upgrade_id:"upgradeId",phase:"phase",backup_digest:"backup.sha256",created_at:"recordedAt"},
   settings_snapshots: {id:"configSnapshotId",revision:"revision",fingerprint:"fingerprint",captured_at:"capturedAt"},
   command_audits: {id:"auditId",command_id:"request.commandId",code:"result.code",created_at:"completedAt"},

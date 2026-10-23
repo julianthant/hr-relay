@@ -6,15 +6,16 @@ import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { PositiveIntSchema } from "../../../src/rules/identity/ids.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../src/models/config/settings.js";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import ts from "typescript";
 import { createCommandKernel, PHASE1_ACTIVE_COMMAND_ARMS, PHASE1_DEFERRED_COMMAND_ARMS, type CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
 import { CommandRequestSchema, CommandResultSchema, COMMAND_FAMILY_REGISTRY } from "../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { AuthorityDatabase, type AuthorityRepositories } from "../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase, type AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 import { fixtureDescriptor } from "../../support/fixtures/descriptor-fixtures.js";
@@ -48,71 +49,56 @@ function withoutIntakeCommandReceiptRead(content: string): string {
   return content.slice(0, start) + "receiptReads" + content.slice(admitted.name.end);
 }
 
-function withoutReadOnlyHistoryFacade(content: string): string {
+function withoutAssistantReconciliationAuditRead(content: string): string {
   const source = ts.createSourceFile("candidate.ts", content, ts.ScriptTarget.Latest, true);
   const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
-  const readonlyImport = source.statements.some(node => ts.isImportDeclaration(node)
-    && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === "./readonly-authority-snapshot.js"
-    && node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
-    && node.importClause.namedBindings.elements.some(binding => binding.name.text === "withAuthorityDatabaseReadOnly" && binding.propertyName === undefined));
-  if (!readonlyImport) return content;
-  let unsafe = false;
-  let admittedReads = 0;
+  const auditUses: ts.PropertyAccessExpression[] = [];
+  let admitted: ts.PropertyAccessExpression | undefined;
   function inspect(node: ts.Node): void {
-    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-      && /^(?:exec|run|insert|execute|consume)$/u.test(node.expression.name.text)) unsafe = true;
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "readHistory") {
-      let parent: ts.Node | undefined = node.parent;
-      while (parent !== undefined && !ts.isArrowFunction(parent)) parent = parent.parent;
-      if (parent !== undefined && ts.isArrowFunction(parent) && ts.isCallExpression(parent.parent)
-        && parent.parent.expression.getText(source) === "withAuthorityDatabaseReadOnly"
-        && parent.parent.arguments.length === 3 && parent.parent.arguments[2] === parent
-        && compact(parent.parent.arguments[0]) === "copyAdmission" && compact(parent.parent.arguments[1]) === "backupPath"
-        && compact(node) === "readHistory(database)") admittedReads += 1;
-      else unsafe = true;
+    if (ts.isIdentifier(node) && node.text === "commandAudits" && ts.isPropertyAccessExpression(node.parent)
+      && node.parent.name === node) auditUses.push(node.parent);
+    if (ts.isMethodDeclaration(node) && node.name.getText(source) === "reconcile" && node.body !== undefined
+      && node.parameters.map(compact).join(",") === "capability:Chat,id:string" && node.body.statements.length === 1) {
+      const returned = node.body.statements[0];
+      const transaction = ts.isReturnStatement(returned) ? returned.expression : undefined;
+      const callback = transaction !== undefined && ts.isCallExpression(transaction) ? transaction.arguments[0] : undefined;
+      const object = node.parent;
+      if (!ts.isObjectLiteralExpression(object)) return;
+      const freeze = object.parent;
+      if (!ts.isCallExpression(freeze)) return;
+      const outerReturn = freeze.parent, factory = outerReturn.parent?.parent;
+      if (compact(freeze.expression) !== "Object.freeze"
+        || freeze.arguments.length !== 1 || freeze.arguments[0] !== object || !ts.isReturnStatement(outerReturn)
+        || factory === undefined || !ts.isFunctionDeclaration(factory) || factory.name?.text !== "createAssistantAuthorization"
+        || factory.parameters.map(compact).join(",") !== "ports:Ports" || transaction === undefined || !ts.isCallExpression(transaction)
+        || compact(transaction.expression) !== "ports.database.withAuthorityTransaction" || transaction.arguments.length !== 1
+        || callback === undefined || !ts.isArrowFunction(callback) || callback.parameters.length !== 0 || !ts.isBlock(callback.body)) return;
+      const expected = [
+        'constrow=repository.action(z.uuid().parse(id));',
+        'if(row===undefined)thrownewAssistantAuthorizationError("assistant-action-missing");',
+        'chat(capability);',
+        'if(row.chatId!==capability.chatId||(row.state!=="claimed"&&row.state!=="unknown"))thrownewAssistantAuthorizationError("assistant-action-not-reconcilable");',
+        'constaudit=ports.database.authority.commandAudits.findByCommand(row.command.commandId);',
+        'if(audit===undefined||!same(audit.request,row.command)||audit.result.state==="pending")thrownewAssistantAuthorizationError("assistant-canonical-outcome-unproved");',
+        'repository.transition(row.id,row.revision,"settled",audit.result);',
+        'returnaudit.result;',
+      ];
+      if (callback.body.statements.length !== expected.length
+        || callback.body.statements.some((statement, index) => compact(statement) !== expected[index])) return;
+      function findRead(child: ts.Node): void {
+        if (ts.isCallExpression(child) && ts.isPropertyAccessExpression(child.expression)
+          && compact(child) === "ports.database.authority.commandAudits.findByCommand(row.command.commandId)"
+          && ts.isPropertyAccessExpression(child.expression.expression)) admitted = child.expression.expression;
+        ts.forEachChild(child, findRead);
+      }
+      findRead(callback.body);
     }
-    if ((ts.isVariableDeclaration(node) || ts.isFunctionDeclaration(node)) && node.name?.getText(source) === "withAuthorityDatabaseReadOnly") unsafe = true;
     ts.forEachChild(node, inspect);
   }
   inspect(source);
-  if (unsafe || admittedReads !== 1
-    || !compact(source).includes('constcopyAdmission=admission.verifiedReadOnlyCopy(backupPath,input.verifiedBackup.manifest.sha256);')
-    || !compact(source).includes('finally{copyAdmission.release();}')) return content;
-  const functions = source.statements.filter(ts.isFunctionDeclaration).filter(node => node.name?.text === "readHistory");
-  if (functions.length !== 1) return content;
-  const fn = functions[0];
-  if (fn.parameters.length !== 1 || compact(fn.parameters[0]) !== "database:DatabaseSync"
-    || fn.type?.getText(source) !== "StorageRelocationHistoryRepositories" || fn.body?.statements.length !== 5) return content;
-  const [commands, audits, index, fold, result] = fn.body.statements;
-  const reads = [
-    [commands, "commands", "SELECT * FROM commands WHERE family='storage-relocation' ORDER BY rowid",
-      'StorageRelocationCommandRequestSchema.parse(commandFromRow(raw))'],
-    [audits, "audits", "SELECT audit.* FROM command_audits AS audit JOIN commands AS command ON command.id=audit.command_id WHERE command.family='storage-relocation' ORDER BY audit.rowid",
-      'CommandAuditRecordSchema.parse(nativeOrdinaryRecordFromRow("command_audits",raw))'],
-  ] as const;
-  for (const [statement, name, sql, mapping] of reads) {
-    if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0
-      || statement.declarationList.declarations.length !== 1) return content;
-    const declaration = statement.declarationList.declarations[0];
-    const map = declaration.initializer;
-    if (declaration.name.getText(source) !== name || map === undefined || !ts.isCallExpression(map)
-      || !ts.isPropertyAccessExpression(map.expression) || map.expression.name.text !== "map" || map.arguments.length !== 1
-      || !ts.isArrowFunction(map.arguments[0]) || compact(map.arguments[0].parameters[0]) !== "raw"
-      || compact(map.arguments[0].body) !== mapping) return content;
-    const all = map.expression.expression;
-    if (!ts.isCallExpression(all) || all.arguments.length !== 0 || !ts.isPropertyAccessExpression(all.expression)
-      || all.expression.name.text !== "all") return content;
-    const prepare = all.expression.expression;
-    if (!ts.isCallExpression(prepare) || compact(prepare.expression) !== "database.prepare" || prepare.arguments.length !== 1
-      || !ts.isStringLiteralLike(prepare.arguments[0])
-      || prepare.arguments[0].text.replace(/\s+/gu, " ").trim() !== sql) return content;
-  }
-  if (compact(index) !== 'constbyCommand=newMap<string,(typeofaudits)[number]>();'
-    || compact(fold) !== 'for(constauditofaudits){if(byCommand.has(audit.request.commandId))refuse("duplicaterelocationcommandaudit");byCommand.set(audit.request.commandId,audit);}'
-    || compact(result) !== 'return{commands:{listStorageRelocationCommands:()=>commands},commandAudits:{findByCommand:(commandId)=>byCommand.get(commandId)},};') return content;
-
-  const offset = content.indexOf("commandAudits", result.getStart(source));
-  return content.slice(0, offset) + content.slice(offset + "commandAudits".length);
+  if (auditUses.length !== 1 || admitted !== auditUses[0]) return content;
+  const start = admitted.name.getStart(source);
+  return content.slice(0, start) + "receiptReads" + content.slice(admitted.name.end);
 }
 
 function withoutWorkerControlAdmissions(content: string, kernelContent: string): string {
@@ -300,18 +286,21 @@ const DEFERRED_KEYS = new Set(
 
 /* ── harness ─────────────────────────────────────────────────────────────── */
 
-const roots: string[] = [];
+const profileFixtures: ReturnType<typeof createBoundProfileFixture>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 
 afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  const failures: unknown[] = [];
+  for (const database of openDatabases.splice(0)) { try { database.close(); } catch (error) { failures.push(error); } }
+  for (const fixture of profileFixtures.splice(0)) { try { fixture.close(); } catch (error) { failures.push(error); } }
+  if (failures.length) throw new AggregateError(failures, "command guard fixture cleanup failed");
 });
 
 type RepositoryWrap = (repositories: AuthorityRepositories) => AuthorityRepositories;
 
 interface GuardHarness {
   readonly path: string;
+  readonly processLockRoot: string;
   readonly database: AuthorityDatabase;
   readonly kernel: CommandKernel;
   readonly clock: ReturnType<typeof manualClock>;
@@ -319,13 +308,12 @@ interface GuardHarness {
 }
 
 function createHarness(wrap?: RepositoryWrap): GuardHarness {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-command-guard-"));
-  roots.push(root);
+  const fixture = createBoundProfileFixture();
+  profileFixtures.push(fixture);
   const clock = manualClock(new Date(NOW));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "guard.sqlite"), busyTimeoutMs: 250, migrationOwner: "command-guard" },
-    clock,
-  );
+  const database = AuthorityDatabase.open(fixture.admission,
+    { path: fixture.path, busyTimeoutMs: 250, migrationOwner: "command-guard" }, clock,
+    undefined, undefined, undefined, boundProfileCredentials(fixture.admission));
 
   seedSyntheticRuntimeConfig(database);
   openDatabases.push(database);
@@ -385,7 +373,7 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       }),
     },
   });
-  return { path: join(root, "guard.sqlite"), database, kernel, clock, plannerIds: sequentialIdFactory("f") };
+  return { path: fixture.path, processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot), database, kernel, clock, plannerIds: sequentialIdFactory("f") };
 }
 
 let guardCommandSequence = 0;
@@ -447,19 +435,58 @@ describe("control-command-single-path", () => {
     assert.equal(new Set(partitioned).size, partitioned.length);
   });
 
-  it("allows only the closed SELECT-derived command/audit history facade", () => {
+  it("refuses prohibited audit authority in the relocation restore candidate", () => {
     const source = readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/relocation-restore-candidate.ts"), "utf8");
-    assert.ok(!withoutReadOnlyHistoryFacade(source).includes("commandAudits"));
-    for (const bad of [
-      source.replace("SELECT audit.*", "DELETE audit.*"),
-      source.replace(".all().map(raw", ".run().map(raw"),
-      source.replace("byCommand.get(commandId)", "database.exec(commandId)"),
-      source.replace("return {\n    commands:", 'database.exec("DELETE FROM command_audits"); return {\n    commands:'),
-      source.replace("withAuthorityDatabaseReadOnly(copyAdmission, backupPath", "withAuthorityDatabaseReadOnly(input.admission, backupPath"),
-      source.replace('from "./readonly-authority-snapshot.js"', 'from "./forged-readonly.js"'),
-      `${source}\nfunction arbitrary(repo: any) { repo.commandAudits.insert({}); }`,
-      `${source}\nconst forged = { commandAudits: { findByCommand: () => undefined } };`,
-    ]) assert.ok(withoutReadOnlyHistoryFacade(bad).includes("commandAudits"), "mutating or unrelated audit authority must remain visible");
+    assert.ok(!source.includes("commandAudits"));
+    const additions = [
+      'function probe(repo: any) { repo.commandAudits.insert({}); }',
+      'function probe(repo: any) { return repo.commandAudits.findByCommand("other"); }',
+      'const forged = { commandAudits: { findByCommand: () => undefined } };',
+      'function probe(repo: any) { return repo["commandAudits"]; }',
+      'function probe(repo: any) { return Reflect.get(repo, "commandAudits"); }',
+      'function probe(repo: any) { const { commandAudits } = repo; return commandAudits; }',
+      'function probe(repo: any) { const audit = repo.commandAudits; return audit; }',
+      'export function probe(repo: any) { return repo.commandAudits.get("other"); }',
+    ];
+    for (const addition of additions) {
+      const bad = `${source}\n${addition}`;
+      assert.notEqual(bad, source);
+      assert.ok(bad.includes("commandAudits"), "unrelated audit authority must remain visible");
+    }
+  });
+
+  it("admits only the chat-bound terminal assistant reconciliation audit read", () => {
+    const source = readFileSync(join(REPO_ROOT, "src/backend/assistant/authorization.ts"), "utf8");
+    assert.ok(!withoutAssistantReconciliationAuditRead(source).includes("commandAudits"));
+    const parsed = ts.createSourceFile("candidate.ts", source, ts.ScriptTarget.Latest, true);
+    let method: ts.MethodDeclaration | undefined;
+    function find(node: ts.Node): void {
+      if (ts.isMethodDeclaration(node) && node.name.getText(parsed) === "reconcile") method = node;
+      ts.forEachChild(node, find);
+    }
+    find(parsed); assert.ok(method);
+    const admittedMethod = method;
+    const original = admittedMethod.getText(parsed);
+    const mutate = (from: string, to: string): string => {
+      const changed = original.replace(from, to); assert.notEqual(changed, original);
+      return source.slice(0, admittedMethod.getStart(parsed)) + changed + source.slice(admittedMethod.end);
+    };
+    const mutants = [
+      mutate("findByCommand(row.command.commandId)", "findByCommand(id)"),
+      mutate("commandAudits.findByCommand", "commandAudits.get"),
+      mutate("commandAudits.findByCommand", "commandAudits.insert"),
+      mutate("ports.database.withAuthorityTransaction", "ports.database.withAuthorityReadSnapshot"),
+      mutate("!same(audit.request, row.command) || ", ""),
+      mutate("same(audit.request, row.command)", "same(audit.request, audit.request)"),
+      mutate("chat(capability);", "chat(Object.freeze({ chatId: id }));"),
+      mutate(' || audit.result.state === "pending"', ""),
+      `${source}\nconst extra = ports.database.authority.commandAudits.findByCommand(id);`,
+      `${source}\nconst aliased = ports.database.authority.commandAudits;`,
+    ];
+    for (const bad of mutants) {
+      assert.notEqual(bad, source);
+      assert.ok(withoutAssistantReconciliationAuditRead(bad).includes("commandAudits"));
+    }
   });
 
   it("admits only the intake receipt query's snapshot-bound audit read", () => {
@@ -506,6 +533,10 @@ describe("control-command-single-path", () => {
           if (withoutIntakeCommandReceiptRead(content).includes(token)) violations.push(`${path} may only read its actual intake receipt in an authority snapshot`);
           continue;
         }
+        if (path === "src/backend/assistant/authorization.ts" && token === "commandAudits") {
+          if (withoutAssistantReconciliationAuditRead(content).includes(token)) violations.push(`${path} may only reconcile its chat-bound exact terminal command audit`);
+          continue;
+        }
         if (expectedSettingsAuditReads !== undefined && token === "commandAudits") {
           const auditUses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
           if (auditUses.length !== expectedSettingsAuditReads
@@ -518,7 +549,7 @@ describe("control-command-single-path", () => {
           }
           continue;
         }
-        if ((token === "commandAudits" ? withoutReadOnlyHistoryFacade(content) : content).includes(token)) violations.push(`${path} reaches ${token} outside the command kernel`);
+        if (content.includes(token)) violations.push(`${path} reaches ${token} outside the command kernel`);
       }
     }
     assert.deepEqual(violations, []);
@@ -693,7 +724,7 @@ describe("control-command-single-path", () => {
     const slot = harness.database.withAuthorityTransaction(repositories => {
       const member = admitDirectWorker(repositories, { commandId: randomUUID(), workflow: "fixture-graph", poolIndex: 1,
         expectedPoolVersion: 0, processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: harness.path,
-        processLockRoot: join(harness.path, "..", "locks"), now: NOW }, randomUUID());
+        processLockRoot: harness.processLockRoot, now: NOW }, randomUUID());
       assert.equal(repositories.workerLeases.start({ workerId: member.workerId, workflow: "fixture-graph", browserSystems: [],
         processId: process.pid, requestedBy: "local-operator", now: NOW }).state, "started");
       return member;

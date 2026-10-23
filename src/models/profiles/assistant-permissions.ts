@@ -20,12 +20,8 @@ import { SubjectEvidenceSchema } from "../../rules/write-safety/write-safety-pri
 /** Settings may initialize this mode only together with an explicit operator grant. */
 export const ASSISTANT_PERMISSION_INITIAL_MODE = "before-submits" as const;
 
-export const AssistantPermissionModeSchema = z.enum([
-  "every-action",
-  "before-submits",
-  "without-asking",
-]);
-export type AssistantPermissionMode = z.infer<typeof AssistantPermissionModeSchema>;
+export { AssistantPermissionModeSchema, type AssistantPermissionMode } from "./assistant-permission-mode.js";
+import { AssistantPermissionModeSchema } from "./assistant-permission-mode.js";
 
 export const AssistantOperatorGrantSchema = z.strictObject({
   grantId: z.uuid(),

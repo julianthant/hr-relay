@@ -1,3 +1,5 @@
+import { AssistantActionRecordSchema, AssistantChatRecordSchema, AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
+import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createWorkbookLibraryRepository, validateWorkbookLibrary } from "./workbook-library-repository.js";
 import { WorkerControlRecordSchema } from "../../../models/run/worker-control.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
@@ -505,6 +507,7 @@ export type DuoCeremonyLeaseRepository = Readonly<{
 }>;
 
 export type AuthorityRepositories = Readonly<{
+  assistantAuthorization: ReturnType<typeof createAssistantAuthorizationRepository>;
   explorerOverrides: ReturnType<typeof createExplorerOverrideRepository>;
   timelineEvents: TimelineRepository;
   runs: RunRepository;
@@ -1058,6 +1061,23 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             inspected = { ...raw, payload_json: canonicalJsonStringify(plan) };
           }
           const record = nativeOrdinaryRecordFromRow(table,inspected);
+          if (table === "assistant_grants") {
+            const grant = AssistantGrantRecordSchema.parse(record), owner = readMetaRow(database);
+            if (grant.profileId !== owner.profile_id) throw new Error("assistant-grant-profile-mismatch");
+            const command = CommandRequestSchema.parse(commandFromRow(database.prepare("SELECT * FROM commands WHERE id=?").get(grant.commandId)));
+            if (command.type !== "apply-settings" || command.payload.assistantPermission === undefined
+              || command.payload.assistantPermission.mode !== grant.policy.mode
+              || command.payload.assistantPermission.expectedPolicyRevision !== grant.policy.revision - 1) throw new Error("assistant-grant-command-mismatch");
+          }
+          if (table === "assistant_chats") {
+            if (AssistantChatRecordSchema.parse(record).profileId !== readMetaRow(database).profile_id) throw new Error("assistant-chat-profile-mismatch");
+          }
+          if (table === "assistant_actions") {
+            const action = AssistantActionRecordSchema.parse(record);
+            const rawChat = database.prepare("SELECT * FROM assistant_chats WHERE id=?").get(action.chatId);
+            const chat = AssistantChatRecordSchema.parse(nativeOrdinaryRecordFromRow("assistant_chats", rawChat));
+            if (chat.profileId !== action.binding.profileId || chat.epoch !== action.binding.accountSessionEpoch) throw new Error("assistant-action-chat-mismatch");
+          }
           if (table === "run_results") assertTerminalEvidenceOwner(database,RunResultRecordSchema.parse(record));
           if (table === "write_intents") { authenticateStoredWriteResolution(database,record); assertConfirmationPublication(database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId); }
           if (table === "command_audits") {
@@ -1072,6 +1092,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
       validated++;
     }
   }
+  if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
+    && database.prepare("SELECT 1 FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' LIMIT 1").get() !== undefined) throw new Error("assistant-grant-missing-with-history");
   if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database);
   try{readAppSettings(database);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
@@ -1255,7 +1277,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
     if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
   }
-  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -3401,6 +3423,7 @@ export class AuthorityDatabase implements Disposable {
     const imports = createImportedArtifactRepositories({ database: this.#database,
       mutate: (work) => this.#authorityWrite("artifacts", work) });
     return Object.freeze({
+      assistantAuthorization: createAssistantAuthorizationRepository({ database: this.#database, mutate: (table, work) => this.#authorityWrite(table, work) }),
       workbooks: createWorkbookLibraryRepository({ database: this.#database,
         mutate: work => this.#authorityWrite("workbook_library", work),
         read: work => this.#withReadSnapshot(work) }),

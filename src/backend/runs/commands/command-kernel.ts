@@ -1,3 +1,4 @@
+import { AssistantActionManifestSchema } from "../../../models/profiles/assistant-permissions.js";
 import { admitWorkerLifecycle, admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { admitProtectedInput, protectedSubjectDisplay } from "../start/protected-input.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
@@ -24,7 +25,7 @@ import { activeRunsForItem, fanOutQueuedRuns, requireApplied, runTarget, type Ta
 import { buildRerunPlan, RerunRefusedError } from "../start/rerun.js";
 import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { LiveWorkerResetRequestSchema, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandRequestSchema, CommandResultSchema, StorageRelocationCommandRequestSchema, deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
+import { LiveWorkerResetRequestSchema, COMMAND_EFFECT_BY_ACTION, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandRequestSchema, CommandResultSchema, StorageRelocationCommandRequestSchema, deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
 import { deriveItemId, deriveStableUuid, type IdFactory } from "../../../rules/identity/identifiers.js";
 import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
 import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
@@ -281,6 +282,8 @@ export interface CommandKernelDependencies {
   readonly configIdentity: RunConfigIdentity;
   /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
   readonly settings?: SettingsApplicationExecutor;
+  readonly authorityProfileId?: string;
+  readonly assistantRevalidate?: (command: CommandRequest) => void;
   readonly storageRelocationPlans?: StorageRelocationPlanReader;
   readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
 
@@ -289,6 +292,7 @@ export interface CommandKernelDependencies {
 }
 
 export interface CommandKernel {
+  assistantManifest(): z.infer<typeof AssistantActionManifestSchema>;
   execute(input: unknown, parentCommandId?: string): CommandResult;
 
   executeWorkerPool(input: unknown): Promise<CommandResult>;
@@ -2528,7 +2532,7 @@ export function executeStorageRelocationCommand(
 
 /** The same settings command path is used by the BFF and stopped migration. */
 export function executeSettingsCommand(
-  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "settings">,
+  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "settings" | "authorityProfileId">,
   input: unknown,
 ): CommandResult {
   const request = CommandRequestSchema.parse(input);
@@ -2555,6 +2559,11 @@ export function executeSettingsCommand(
       // Replays use their existing journal and do not need a new read snapshot.
       const ordinarySnapshot = request.type === "apply-settings" && repositories.commands.get(request.commandId) === undefined
         ? readSettings(repositories) : undefined;
+      if (request.type === "apply-settings" && request.payload.assistantPermission !== undefined
+        && repositories.commands.get(request.commandId) === undefined) {
+        const actualRevision = repositories.assistantAuthorization.grant()?.policy.revision ?? 0;
+        if (actualRevision !== request.payload.assistantPermission.expectedPolicyRevision) conflict(request, actualRevision, "assistant policy revision conflict");
+      }
       if (request.type === "apply-protected-settings") {
         // BEGIN IMMEDIATE holds identity admission, private commit and audit; SQL rollback cannot undo the private commit.
         const protectedRefusal = executor.commitPrivate(request);
@@ -2574,6 +2583,16 @@ export function executeSettingsCommand(
       if (application.settingsCurrent !== undefined) repositories.settingsCurrent.advance({
         ...application.settingsCurrent, commandId: request.commandId, auditId, committedAt: now,
       });
+      if (request.type === "apply-settings" && application.result.state === "applied") {
+        const change = request.payload.assistantPermission;
+        if (change !== undefined) {
+          const profileId = dependencies.authorityProfileId;
+          if (profileId === undefined) throw new Error("assistant-grant-profile-owner-required");
+          const revision = change.expectedPolicyRevision + 1;
+          repositories.assistantAuthorization.grantBySettings({ id: "current", profileId, commandId: request.commandId, updatedAt: now,
+            policy: { revision, mode: change.mode, grant: { grantId: dependencies.ids.uuid(), profileId, policyRevision: revision, mode: change.mode, grantedAt: now } } });
+        }
+      }
       return application.result;
     });
     return result;
@@ -2693,8 +2712,24 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       }
   };
   return Object.freeze({
+    assistantManifest() {
+      const entries: z.infer<typeof AssistantActionManifestSchema>["entries"] = [];
+      for (const family of COMMAND_FAMILY_REGISTRY) {
+        if (family.family === "worker-browser" && dependencies.assistantRevalidate !== undefined) entries.push({
+          family: family.family, action: "spawn-worker", classification: COMMAND_EFFECT_BY_ACTION["spawn-worker"], subject: "none",
+        });
+        if (family.family !== "notification" && family.family !== "workflow-batch" && family.family !== "settings") continue;
+        for (const action of family.actions) {
+          if (DEFERRED_ARM_KEYS.has(`${family.family}/${action}`) || action === "apply-protected-settings"
+            || (family.family === "settings" && dependencies.settings === undefined)) continue;
+          entries.push({ family: family.family, action, classification: COMMAND_EFFECT_BY_ACTION[action], subject: "none" });
+        }
+      }
+      return AssistantActionManifestSchema.parse({ revision: 1, entries });
+    },
     execute(input: unknown, parentCommandId?: string): CommandResult {
       const request = CommandRequestSchema.parse(input);
+      dependencies.assistantRevalidate?.(request);
   if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
       if (request.family === "failure-resolution" && (dependencies.failureResolution?.capability ?? failureResolutionCapability)().state === "unavailable") {
         return {state:"rejected",commandId:request.commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."};
@@ -2710,9 +2745,13 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         );
       }
       try {
+        dependencies.assistantRevalidate?.(request);
         return await withPoolCommandSerialization(
           workerPoolSerializationKey(request),
-          () => executeWorkerPoolCommand(dependencies, pool, request),
+          () => {
+            dependencies.assistantRevalidate?.(request);
+            return executeWorkerPoolCommand(dependencies, pool, request);
+          },
         );
       } catch (error) {
         // Typed admission and settlement refusals return results; process-effect failures remain structured throws.

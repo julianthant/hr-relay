@@ -1,3 +1,5 @@
+import { createAssistantAuthorization } from "../../assistant/authorization.js";
+import type { CommandKernel } from "../../runs/commands/command-kernel.js";
 import { retireOrphanVerification } from "../../storage/maintenance/orphan-verification-retirement.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
@@ -463,7 +465,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
         return account.revalidateAuthority(captured, admission);
       },
     });
-    return Object.freeze({ admission, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings });
+    return Object.freeze({ admission, profileEpoch: selected.epoch, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings });
   } catch (error) {
     try { database.close(); }
     catch (closeError) { throw new RuntimeCustodyUncertainError([error, closeError]); }
@@ -1224,4 +1226,16 @@ export async function composeStorageCommand(
     output: json ? JSON.stringify(report, null, 2) : formatReport(report),
     exitCode: healthy ? 0 : 1,
   };
+}
+
+export function composeProfileAssistantAuthorization(
+  runtime: ReturnType<typeof composeProfileRuntime>, token: string, kernel: CommandKernel, clock: Clock,
+) {
+  runtime.assertCurrent(token);
+  const context = runtime.selectedContext(token);
+  return createAssistantAuthorization({ database: context.database, kernel, clock, current: () => {
+    runtime.assertCurrent(token);
+    if (runtime.selectedContext(token) !== context) throw new Error("assistant-profile-owner-changed");
+    return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch };
+  } });
 }

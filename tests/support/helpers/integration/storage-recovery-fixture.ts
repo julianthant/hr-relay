@@ -14,8 +14,10 @@ export function storageRecoveryFixture(version = 0) {
   if (version > 0) {
     const database = new DatabaseSync(path);
     try {
-      for (const migration of SQLITE_MIGRATIONS.filter(row => row.version <= Math.min(version, 6))) for (const statement of migration.statements) database.exec(statement);
-      database.prepare(`INSERT INTO ${"database_states"}(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES (1,?,7,?,NULL,'unbuilt')`).run(version, clock.now().toISOString());
+      for (const migration of SQLITE_MIGRATIONS.filter(row => row.version <= Math.min(version, 7))) for (const statement of migration.statements) database.exec(statement);
+      if (version >= 7) database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,?,7,?,NULL,'unbuilt',?,?)")
+        .run(version, clock.now().toISOString(), fixture.admission.profileBinding.installationId, fixture.admission.profileBinding.profileId);
+      else database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES(1,?,7,?,NULL,'unbuilt')").run(version, clock.now().toISOString());
       database.exec(`PRAGMA user_version=${String(version)}; PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}`);
     } finally { database.close(); }
   }

@@ -20,6 +20,9 @@ export const AuthorityTableNameSchema = z.enum([
   "commands",
   "command_audits",
   "settings",
+  "assistant_grants",
+  "assistant_chats",
+  "assistant_actions",
   "run_batches",
   "deleted_runs",
   "runs",
@@ -143,7 +146,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)]),
+  toSchemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8)]),
 });
 
 const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({

@@ -88,6 +88,7 @@ function optionIdentity(command: CommandRequest): OptionIdentity {
   // markProtectedSettingsPatch replaces every set value with "<set>", so that fingerprint cannot tell two passwords apart.
   if (command.type === "apply-protected-settings") return { kind: "unbound" };
   if (command.type === "apply-settings") {
+    if (command.payload.assistantPermission !== undefined || safeJson(command.payload.patch) === undefined) return { kind: "unbound" };
     return { kind: "existing-fingerprint", fingerprint: FingerprintSchema.parse(deriveSettingsCommandFingerprint(command)) };
   }
   if (command.family === "storage-relocation") {

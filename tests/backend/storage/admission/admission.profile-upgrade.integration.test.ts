@@ -7,7 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
@@ -33,6 +33,7 @@ it("keeps pending setup database-only until canonical binding, then upgrades dis
     assert.throws(() => AuthorityDatabase.open(setup, { path, busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
     const raw = new DatabaseSync(path);
     try {
+      raw.exec("DROP TABLE assistant_actions; DROP TABLE assistant_chats; DROP TABLE assistant_grants");
       raw.exec("DROP TRIGGER database_states_binding_immutable; ALTER TABLE database_states RENAME TO database_states_bound");
       const original = SQLITE_MIGRATIONS[0]?.statements[0]?.split("CREATE TABLE database_upgrades")[0];
       assert.ok(original !== undefined);
@@ -47,14 +48,14 @@ it("keeps pending setup database-only until canonical binding, then upgrades dis
     const upgraded = await upgradeStorage(setup, input, systemClock);
     assert.equal(upgraded.state, "upgraded");
     assert.equal(upgraded.fromSchemaVersion, 6);
-    assert.equal(upgraded.toSchemaVersion, 7);
+    assert.equal(upgraded.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(store.apply(request).state, "applied");
     setup.release();
     assert.throws(() => setup.forStoppedProfileUpgrade(), /released admission/u);
   } finally { machine.release(); rmSync(workspace, { recursive: true, force: true }); }
 });
 
-it.each([1, 2, 3, 4, 5, 6])("upgrades supported stopped native schema%s under genuine pending setup without reading independent credentials", async version => {
+it.each([1, 2, 3, 4, 5, 6, 7])("upgrades supported stopped native schema%s under genuine pending setup without reading independent credentials", async version => {
   const f = storageRecoveryFixture(version);
   try {
     credentialTrap(f.root);
@@ -67,7 +68,7 @@ it.each([1, 2, 3, 4, 5, 6])("upgrades supported stopped native schema%s under ge
     const report = await f.run();
     assert.equal(report.state, "upgraded");
     assert.equal(report.fromSchemaVersion, version);
-    assert.equal(report.toSchemaVersion, 7);
+    assert.equal(report.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(readFileSync(f.input.environmentFile, "utf8"), "malformed-disposable-environment");
     assert.equal(readFileSync(join(f.root, "settings.json"), "utf8"), "malformed-disposable-settings");
     assert.equal(lstatSync(join(f.root, "credentials", "protected.json")).isDirectory(), true);
@@ -83,11 +84,11 @@ it.each([1, 2, 3, 4, 5, 6])("upgrades supported stopped native schema%s under ge
 });
 
 it("rejects unsupported stopped native version at canonical inspection without touching trapped credentials or source bytes", async () => {
-  const f = storageRecoveryFixture(8);
+  const f = storageRecoveryFixture(CURRENT_AUTHORITY_SCHEMA_VERSION + 1);
   try {
     credentialTrap(f.root);
     const before = readFileSync(f.path);
-    await assert.rejects(f.run(), error => error instanceof AuthoritySchemaVersionError && error.schemaVersion === 8);
+    await assert.rejects(f.run(), error => error instanceof AuthoritySchemaVersionError && error.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION + 1);
     assert.deepEqual(readFileSync(f.path), before);
     assert.equal(lstatSync(join(f.root, "credentials", "protected.json")).isDirectory(), true);
   } finally { f.dispose(); }

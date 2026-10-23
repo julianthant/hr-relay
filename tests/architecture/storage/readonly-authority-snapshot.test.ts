@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { spawnSync } from "node:child_process";
 import { it, vi } from "vitest";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "../../../src/backend/storage/sqlite/backup-inspection.js";
 import { createReadonlyAuthoritySnapshot } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
@@ -28,11 +28,11 @@ function inventory(directory: string) {
 }
 
 it.each([false, true])("inspects committed WAL: %s without creating or changing source companions", async liveWal => {
-  const workspace = mkdtempSync(join(realpathSync(tmpdir()), "readonly-authority-test-"));
-  const admission = acquireEntrypointAdmission(workspace, "exclusive");
-  const path = join(admission.stateRoot, "state.db");
+  const fixture = createBoundProfileFixture(), { workspace, path, admission } = fixture;
   let writer: DatabaseSync | undefined;
+  const failures: unknown[] = [];
   try {
+    AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "readonly-authority-test" }).close();
     if (liveWal) {
       writer = new DatabaseSync(path);
       writer.exec("PRAGMA wal_autocheckpoint=0; UPDATE database_states SET authority_generation=authority_generation+1,search_generation=search_generation+1 WHERE id=1");
@@ -56,9 +56,11 @@ it.each([false, true])("inspects committed WAL: %s without creating or changing 
       const original = before[index]; assert.ok(original);
       assert.ok(file.bytes.equals(original.bytes), `${file.name} changed`);
     }
-  } finally {
-    writer?.close(); admission.release(); rmSync(workspace, { recursive: true, force: true });
+  } catch (error) { failures.push(error); } finally {
+    try { writer?.close(); } catch (error) { failures.push(error); }
+    try { fixture.close(); } catch (error) { failures.push(error); }
   }
+  if (failures.length) throw new AggregateError(failures, "readonly authority fixture failed");
 });
 
 it("refuses unsafe companions and detects changed original source identity", () => {

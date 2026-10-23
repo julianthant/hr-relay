@@ -37,7 +37,7 @@ function isUcsdIdentity(value: string | undefined): boolean {
 
 
 export function readProfileDatabaseBinding(path: string):
-  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
+  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7 | 8; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
   requireDatabaseSourcePath(path);
   const before = lstatSync(path, { throwIfNoEntry: false });
   if (before === undefined) throw new Error("profile-database-binding-required");
@@ -55,7 +55,7 @@ export function readProfileDatabaseBinding(path: string):
 }
 
 function readProfileDatabaseBindingCopy(path: string):
-  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
+  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7 | 8; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
   requireDatabaseSourcePath(path);
   const before = lstatSync(path, { throwIfNoEntry: false });
   if (before === undefined) throw new Error("profile-database-binding-required");
@@ -67,15 +67,16 @@ function readProfileDatabaseBindingCopy(path: string):
     const application = database.prepare("PRAGMA application_id").get();
     if ((version?.user_version !== CURRENT_AUTHORITY_SCHEMA_VERSION && (typeof version?.user_version !== "number" || !isSupportedStoppedAuthoritySchemaVersion(version.user_version)))
       || application?.application_id !== AUTHORITY_APPLICATION_ID) throw new Error("profile-database-schema-mismatch");
-    const binding = version.user_version === 7 ? ProfileDatabaseBindingSchema.parse(database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get()) : undefined;
+    const boundVersion = z.union([z.literal(7), z.literal(8)]).safeParse(version.user_version);
+    const binding = boundVersion.success ? ProfileDatabaseBindingSchema.parse(database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get()) : undefined;
     const after = lstatSync(path);
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
       || before.ctimeMs !== after.ctimeMs || after.nlink !== 1) throw new Error("profile-database-identity-changed");
     if (binding === undefined) {
-      if (typeof version.user_version !== "number" || !isSupportedStoppedAuthoritySchemaVersion(version.user_version)) throw new Error("profile-database-schema-mismatch");
-      return { schemaVersion: version.user_version, state: "unbound" };
+      if (typeof version.user_version !== "number" || !isSupportedStoppedAuthoritySchemaVersion(version.user_version) || version.user_version >= 7) throw new Error("profile-database-schema-mismatch");
+      return { schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).parse(version.user_version), state: "unbound" };
     }
-    return { schemaVersion: 7, state: "bound", binding };
+    return { schemaVersion: z.union([z.literal(7), z.literal(8)]).parse(version.user_version), state: "bound", binding };
   } finally { database.close(); }
 }
 

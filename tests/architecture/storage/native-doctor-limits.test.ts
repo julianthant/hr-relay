@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
 import { TimelineRecordError } from "../../../src/backend/storage/sqlite/timeline-repository.js";
@@ -18,10 +17,9 @@ it.each([
   { label: "one payload's UTF-8 bytes", count: 1, payloadBytes: 262_145, distinctRuns: false, code: "event" },
   { label: "distinct run-scope IDs", count: 10_001, payloadBytes: 2, distinctRuns: true, code: "run" },
 ])("refuses excess $label before parsing records and leaves authority unchanged", async (limit) => {
-  const workspace = mkdtempSync(join(realpathSync(tmpdir()), "native-doctor-limit-"));
-  const admission = acquireEntrypointAdmission(workspace, "exclusive");
-  const path = join(admission.stateRoot, "state.db");
+  const fixture = createBoundProfileFixture(), { workspace, path, admission } = fixture;
   try {
+    AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-doctor-limit" }).close();
     // Offline-corrupt rows exercise the metric refusal before strict record parsing.
     const raw = new DatabaseSync(path, { enableForeignKeyConstraints: false });
     try {
@@ -52,7 +50,6 @@ it.each([
     assert.match(report.spanAuthority.cause.summary, new RegExp(`^timeline-doctor-${limit.code}-limit-exceeded`));
     assert.deepEqual(readFileSync(path), before);
   } finally {
-    admission.release();
-    rmSync(workspace, { recursive: true, force: true });
+    fixture.close();
   }
 });

@@ -53,6 +53,7 @@ Paths in this table are relative to `src/backend/`.
 
 | Path | Ownership |
 | --- | --- |
+| `assistant/` | Pure action policy, private profile-token authorization, server-issued chat custody and once-consumable canonical actions. Profile SQLite owns grants, chats and action records. |
 | `accounts/` | ChatGPT OAuth, verified account and usage state, and Responses OCR. Browser-safe account and sign-in lifecycle schemas live in `models/dashboard/chatgpt-account.ts`; HTTP routes own the latest account attempt. |
 | `app/` | Bootstrap, configuration, host admission, preflight, dry-run setup, and application composition. |
 | `app/composition/` | Storage, dashboard, and worker dependency assembly. |

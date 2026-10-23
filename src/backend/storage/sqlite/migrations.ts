@@ -3,9 +3,9 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 7;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 8;
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -700,15 +700,42 @@ BEGIN SELECT RAISE(ABORT,'imported-artifact-workbook-source-immutable'); END;`] 
 ) STRICT;`, "DROP TABLE database_states", "ALTER TABLE database_states_bound RENAME TO database_states",
     `CREATE TRIGGER database_states_binding_immutable BEFORE UPDATE OF installation_id,profile_id ON database_states
 BEGIN SELECT RAISE(ABORT,'profile-database-binding-immutable'); END;`] },
+  { version: 8, statements: [`CREATE TABLE assistant_grants (
+ id TEXT PRIMARY KEY CHECK(id='current'), profile_id TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision>0),
+ command_id TEXT NOT NULL REFERENCES commands(id), payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), updated_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE assistant_chats (
+ id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, epoch INTEGER NOT NULL CHECK(epoch>0),
+ payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE assistant_actions (
+ id TEXT PRIMARY KEY, chat_id TEXT NOT NULL REFERENCES assistant_chats(id), command_id TEXT NOT NULL UNIQUE,
+ revision INTEGER NOT NULL CHECK(revision>0), state TEXT NOT NULL CHECK(state IN ('prepared','approved','claimed','settled','unknown','cancelled')),
+ payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+) STRICT;
+CREATE TRIGGER assistant_chats_immutable BEFORE UPDATE ON assistant_chats
+BEGIN SELECT RAISE(ABORT,'assistant-chat-immutable'); END;
+CREATE TRIGGER assistant_grants_revision BEFORE UPDATE ON assistant_grants
+WHEN NEW.profile_id IS NOT OLD.profile_id OR NEW.revision <> OLD.revision+1 OR NEW.command_id IS OLD.command_id
+BEGIN SELECT RAISE(ABORT,'assistant-grant-revision-conflict'); END;
+CREATE TRIGGER assistant_actions_transition BEFORE UPDATE ON assistant_actions
+WHEN NEW.id IS NOT OLD.id OR NEW.chat_id IS NOT OLD.chat_id OR NEW.command_id IS NOT OLD.command_id
+ OR NEW.created_at IS NOT OLD.created_at OR NEW.expires_at IS NOT OLD.expires_at OR NEW.revision <> OLD.revision+1
+ OR json_remove(NEW.payload_json,'$.revision','$.state','$.result') IS NOT json_remove(OLD.payload_json,'$.revision','$.state','$.result')
+ OR NOT ((OLD.state='prepared' AND NEW.state IN ('approved','cancelled'))
+ OR (OLD.state='approved' AND NEW.state IN ('claimed','cancelled'))
+ OR (OLD.state='claimed' AND NEW.state IN ('settled','unknown')) OR (OLD.state='unknown' AND NEW.state='settled'))
+BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
 ]);
 
 export function migrationTableNames(version: number): readonly AuthorityTableName[] {
-  return AuthorityTableNameSchema.options.filter(name => version >= 4
-    || (name !== "workbook_library" && name !== "workbook_library_history"));
+  return AuthorityTableNameSchema.options.filter(name => (version >= 4
+    || (name !== "workbook_library" && name !== "workbook_library_history"))
+    && (version >= 8 || !name.startsWith("assistant_")));
 }
 
 export function auditMigrationTableCoverage(): readonly string[] {
-  const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements];
+  const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements, ...SQLITE_MIGRATIONS.filter(migration => migration.version === 8).flatMap(migration => migration.statements)];
   const names = statements.flatMap(statement => [...statement.matchAll(/CREATE TABLE ([a-z_]+)/gu)].map(match => match[1]));
   const registered = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
   return [

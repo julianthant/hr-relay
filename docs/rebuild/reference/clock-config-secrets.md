@@ -407,12 +407,22 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 7` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 8` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
 ordinary startup; only an absent database receives the current baseline in an exclusive transaction.
-Schemas 1–6 are inspected only by the stopped upgrade path; ordinary readers use the current layout.
+Schemas 1–7 are inspected only by the stopped upgrade path; ordinary readers use the current layout.
+
+Assistant grants, chats and once-consumable actions use three profile-owned authority tables.
+An explicit operator `apply-settings` command may carry `assistantPermission` with the expected
+policy revision and mode, together with an empty ordinary patch. Settings and grant revisions
+settle in the same transaction; stale revisions refuse without partial changes. Ordinary Settings
+catalogue, persisted schema hash and commands without that field retain their existing grammar.
+Neither displayed permission defaults nor assistant-issued commands can mint a grant. The private
+profile-token composition issues chat custody and revalidates grants and canonical action bindings
+before consumption and at the asynchronous effect boundary. Subject-dependent, protected and
+unbound private/freeform actions remain unavailable until their actual owners are connected.
 
 `AuthorityBootStore` reports `healthy` with mutations `available`, or `degraded-read-only` with
 mutations `blocked`. Empty, corrupt, unavailable, or incompatible existing authority does not become a
