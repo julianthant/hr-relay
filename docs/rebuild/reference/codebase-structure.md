@@ -168,4 +168,4 @@ Person Lookup folds UCPath/CRM identity and employment facts in `rules/matching/
 `rules/matching/ucpath-person.ts` owns shared appointment preference. CRM discovery and exact
 selected-record verification live in the CRM driver and their corresponding system tasks.
 
-`storage/admission/admission-identity.ts` owns issued identity membership and validation; constructor-only registration is enforced by the admission identity guard. `admission.ts` owns registered profile setup, runtime and logout settlement children; `installation.ts` publishes registry and pending-operation continuity under installation control.
+`storage/admission/admission-identity.ts` owns issued identity membership and validation; constructor-only registration is enforced by the admission identity guard. `admission.ts` owns registered profile setup, runtime, logout settlement and exact pending-logout readonly inventory children; `installation.ts` publishes registry and pending-operation continuity under installation control.

@@ -168,6 +168,7 @@ export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator
   assertHeld(): void; assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void;
   readRelocationReceipts(): readonly RelocationCompletionReceipt[];
   readProfileRegistry(): ProfileRegistryDocument;
+  capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(): void }>;
   assertProfileErasureHead(profileId: string, head: CredentialErasureHead): void;
   resumeProfileErasure(profileId: string, request: ErasureRequestIdentity, head: CredentialErasureHead): void;
   beginProfileErasure(profileId: string, witness: VerifiedCredentialErasureIntent): void;
@@ -1754,6 +1755,30 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (before !== after || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
       return document;
+    },
+    capturePendingProfileLogout(input: z.infer<typeof LogoutOperationSchema>) {
+      const operation = LogoutOperationSchema.parse(input);
+      const read = () => mutex(control, () => {
+        assertHeld();
+        if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-pending-logout-locator-changed");
+        const document = readMachineRegistry(control, locator, false);
+        const row = document.profiles.find(entry => entry.profileId === operation.profileId);
+        if (document.activeProfileId !== null || row?.lifecycle !== "cancelling" || operation.phase === "complete") {
+          fail("profile-pending-logout-unavailable");
+        }
+        const current = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), LogoutOperationSchema);
+        if (canonicalJsonStringify(current) !== canonicalJsonStringify(operation)) fail("profile-pending-logout-operation-changed");
+        const observation = profileObservation(control, locator);
+        const publication = readPrivateFile(join(control, "profile-publication.json"), { label: "lock", maxBytes: 1_048_576 });
+        const pending = publication === undefined ? { absent: true } : { device: publication.identity.device, inode: publication.identity.inode,
+          digest: createHash("sha256").update(publication.bytes).digest("hex") };
+        assertHeld();
+        return canonicalJsonStringify({ document, observation, pending });
+      });
+      const original = read();
+      return Object.freeze({ assertHeld() {
+        if (read() !== original) fail("profile-pending-logout-authority-changed");
+      } });
     },
     assertProfileErasureHead(profileId: string, head: CredentialErasureHead) {
       assertHeld();
