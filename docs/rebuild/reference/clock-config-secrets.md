@@ -287,6 +287,21 @@ Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 
 0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
 Each record retains its own transaction and recovery contract.
 
+The selected ChatGPT account owner fetches its current model catalog in server order and returns only
+list-visible slugs and display names. Assistant requests use that catalog, explicit trusted model
+policy, and current account/profile authority; catalog presence grants no execution permission. The
+requested default is `gpt-6.1-sol` with medium reasoning. Missing availability refuses without a model
+fallback. Per-profile choice persistence and served selector wiring are separate; no Settings leaf or
+credential field stores that choice here. OCR keeps its own requested model.
+
+OCR and assistant inference share the existing bounded Responses transport, cancellation and usage
+owner. Assistant functions are strict and namespaced. One trusted per-request server binding captures
+request-specific private state before catalog or inference awaits and returns its closure-bound
+validators and handlers; captured state is not automatically sent to the model. The absent binding
+returns an empty set without subject reads. Continuation retains every returned item and exact call
+identity. A completed model response is required before any local handler; handler completion and citations are validated before return.
+Function calls and trusted synthetic fixture bindings grant no production command authority.
+
 `createCredentialStore` stores `<profileRoot>/credentials/protected.json` using the exact issued
 profile child and its machine journal owner. The schema-4 envelope authenticates the whole current
 record, value-free history and latest exact request with AES-256-GCM. Authentication finishes before

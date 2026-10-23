@@ -194,6 +194,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/test-target-registry-fixtures.ts` | registry subjects and recording public inputs |
 | `helpers/backend/note-scope-fixtures.ts` | note and terminal event fixture inputs |
 | `helpers/backend/owned-vite-probe-fixtures.ts` | owned local Vite probe server |
+| `helpers/assistant-function-fixtures.ts` | explicit synthetic namespaced functions and typed Responses fixtures; no production tool bindings |
 | `helpers/dry-run-scenario-fixtures.ts` | fresh rehearsal manifest, evidence assertions and verification-only orchestration |
 
 | `helpers/dashboard/search-page-fixtures.ts` | fresh authored zero-match search page |

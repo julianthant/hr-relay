@@ -13,7 +13,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
-    "sha256": "ccdf0e6037f44786d46e26c8f2b4231e3b7aa45b7e88fa0fa6e927ba157d0fe8",
+    "sha256": "787a3b251eff61dc5c980fa745dfd22930ad908c72ad4ce70b8d73cefde43d05",
     "reason": "Rejected authority activation clears only the same failed promise and rethrows its error; no account authority or availability is substituted. Other catches publish explicit errors or unconfirmed revocation."
   },
   {

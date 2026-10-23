@@ -1,3 +1,4 @@
+import { bindSyntheticAssistantFunctions, completedAssistantStream, type SyntheticAssistantTurn } from "./assistant-function-fixtures.js";
 import { createSettingsApplicationExecutor } from '../../../src/backend/runs/commands/settings-service.js';
 import { executeSettingsCommand } from '../../../src/backend/runs/commands/command-kernel.js';
 import { resolveConfigWithProvenance } from '../../../src/backend/app/config/resolve.js';
@@ -19,10 +20,10 @@ import { createDashboardClient } from '../../../src/dashboard/client/index.js';
 import { createAssistantController } from '../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { deriveSchemaHash } from '../../../src/models/validation/schema-bound-value.js';
 import { RunRecordSchema } from '../../../src/models/run/record.js';
-import type { AssistantSubject, AssistantTurn } from '../../../src/models/dashboard/assistant.js';
+import type { AssistantSubject } from '../../../src/models/dashboard/assistant.js';
 import type { AnyWorkflowDescriptor } from '../../../src/workflow-kit/workflow.js';
 import { AuthorityDatabase } from './synthetic-storage-admission.js';
-import { chatGptFixture, completedOcrStream } from './chatgpt-account-fixtures.js';
+import { chatGptFixture } from './chatgpt-account-fixtures.js';
 import { runRecordOf } from './backend/dashboard-harness.js';
 import { seedInitialSettingsRuntimeConfig } from '../fixtures/operator-command-fixtures.js';
 import { sequentialIdFactory } from '../fixtures/phase1f-run-fixtures.js';
@@ -42,7 +43,7 @@ export async function assistantCoupledWorld() {
     input: { raw: { eid: '10812345' }, parsed: { schemaHash: deriveSchemaHash(writeFixtureDescriptor.canonicalInput, 'output'), protectedBindings: [], value: { eid: '10812345' } }, ingressSchemaHash: deriveSchemaHash(writeFixtureDescriptor.input, 'input') } });
   database.authority.runs.enqueue(selectedRun);
   let descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, currentPolicy = true;
-  let subjectVersion = '', reply: AssistantTurn = { action: 'propose', workflowId: 'write-fixture', intent: 'dry-run' };
+  let subjectVersion = '', reply: SyntheticAssistantTurn = { action: 'propose', workflowId: 'write-fixture', intent: 'dry-run' };
   let hold = false, pendingStream: ReadableStreamDefaultController<Uint8Array> | undefined;
   let beforeInference: (() => void) | undefined;
   const subject = (): AssistantSubject => {
@@ -64,10 +65,10 @@ export async function assistantCoupledWorld() {
   account.setResponse(() => {
     beforeInference?.();
     return new Response(hold ? new ReadableStream<Uint8Array>({ start(controller) { pendingStream = controller; }, cancel() { pendingStream = undefined; } })
-      : completedOcrStream(JSON.stringify(reply)), { headers: { 'content-type': 'text/event-stream' } });
+      : completedAssistantStream(reply), { headers: { 'content-type': 'text/event-stream' } });
   });
   let runtime = { ...SYNTHETIC_ASSISTANT_SOURCE }, requests = 0, identities = 0;
-  const service = createAssistantService({ ...adapters, account: account.service, context, clock: account.clock, runtime: () => runtime,
+  const service = createAssistantService({ bindFunctions: bindSyntheticAssistantFunctions, ...adapters, account: account.service, context, clock: account.clock, runtime: () => runtime,
     modelPolicy: { model: 'gpt-6.1-sol', eligible: true, consented: true, billing: 'chatgpt-plan', verifiedUntil: '2026-10-19T00:00:00Z' }, isModelPolicyCurrent: () => currentPolicy });
   const app: DashboardApp = new Hono();
   const identity = createSoloRequestIdentityCheckpoint({ id: 'local-operator', label: 'Local operator' });
@@ -82,10 +83,10 @@ export async function assistantCoupledWorld() {
   const controller = createAssistantController(client, { authority: 'synthetic-selected-authority', subjectRef: subject().subjectRef });
   return { account, database, databasePath: profile.path, app, client, controller, subject, adapters, context, service,
     holdReply() { hold = true; },
-    releaseReply() { hold = false; const stream = pendingStream; pendingStream = undefined; if (stream) { stream.enqueue(new TextEncoder().encode(completedOcrStream(JSON.stringify(reply)))); stream.close(); } },
+    releaseReply() { hold = false; const stream = pendingStream; pendingStream = undefined; if (stream) { stream.enqueue(new TextEncoder().encode(completedAssistantStream(reply))); stream.close(); } },
     mapped: () => mapped, plannerIds: () => plannerIds,
     requests: () => requests, identities: () => identities,
-    reply(value: AssistantTurn) { reply = value; }, beforeInference(hook: () => void) { beforeInference = hook; },
+    reply(value: SyntheticAssistantTurn) { reply = value; }, beforeInference(hook: () => void) { beforeInference = hook; },
     changeConfig() {
       const patch = { 'features.debugScreenshots': { set: true } };
       const result = executeSettingsCommand({ authority: database, clock: account.clock, ids: sequentialIdFactory('b'), settings }, {
