@@ -6,6 +6,8 @@ import { registerChatGptAccountRoutes } from "../../../../../src/backend/transpo
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { operatorMutationIngressGuard } from "../../../../../src/backend/transports/http/routes/operator-mutation-ingress.js";
 import { ChatGptSignInCompletionSchema, ChatGptSignInStartSchema } from "../../../../../src/models/dashboard/chatgpt-account.js";
+import { ChatGptResourceClosureUnprovedError } from "../../../../../src/backend/accounts/chatgpt-account-service.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import type { ChatGptAuthorization } from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 const path = "/api/v1/settings/chatgpt-account";
 function setup() {
@@ -68,4 +70,12 @@ it("keeps local sign-out authoritative when remote revocation is unconfirmed", a
     assert.deepEqual(await (await f.request("/sign-out", {})).json(), { state: "signed-out", remoteRevocation: "unconfirmed" });
     assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
   } finally { await f.cleanup(); }
+});
+
+it("keeps typed OCR resource closure uncertainty distinct and exposes only its defined operator text", async () => {
+  const app: DashboardApp = new Hono();
+  registerChatGptAccountRoutes(app, { chatGptOcrTest: { testOcr: async () => { throw new ChatGptResourceClosureUnprovedError(new Error("synthetic private cause")); } } });
+  const response = await app.request(`http://127.0.0.1${path}/test-ocr`, { method: "POST",
+    headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/json" }, body: "{}" });
+  assert.deepEqual(await response.json(), { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text });
 });

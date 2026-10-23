@@ -377,7 +377,7 @@ for (const boundary of ["catalog", "handler"] as const) it(`refuses genuine sele
     await Promise.race([started, pending.then(() => { throw new Error("selected boundary was not reached"); })]);
     createProfileRegistry(profile.machine).advanceSession(null); release();
     const result = await pending;
-    assert.equal(result.state, "refused"); if (result.state === "refused") assert.equal(result.code, "ASSISTANT_MODEL_UNVERIFIED");
+    assert.equal(result.state, "refused"); if (result.state === "refused") assert.equal(result.code, boundary === "catalog" ? "ASSISTANT_UNAVAILABLE" : "ASSISTANT_MODEL_UNVERIFIED");
     assert.equal(handlers, boundary === "handler" ? 1 : 0);
     assert.equal(account.calls.filter(call => call.url.endsWith("/responses")).length - before, boundary === "handler" ? 1 : 0);
     assert.equal(f.planned(), 0); assert.equal(f.resolved(), 0);

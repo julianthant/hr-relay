@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { it } from "vitest";
+import { it, vi } from "vitest";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/credential-store.js";
@@ -10,7 +11,18 @@ import { createChatGptAccountService } from "../../../src/backend/accounts/chatg
 
 const image = { model: "gpt-6.1-sol", instruction: "Read this synthetic form", input: { kind: "image" as const, mediaType: "image/png" as const, base64: "YQ==" } };
 it("absent account read is signed out without creating storage", async () => {
-  const f = chatGptFixture(); try { assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); assert.equal(existsSync(join(f.root, "credentials")), false); assert.equal(f.calls.length, 0); } finally { await f.cleanup(); }
+  const f = chatGptFixture();
+  try {
+    const directory = join(f.root, "credentials"), names = readdirSync(directory).sort();
+    const baseline = names.map(name => ({ name, bytes: readFileSync(join(directory, name)) }));
+    assert.equal(existsSync(join(directory, "chatgpt-account.json")), false);
+    assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+    assert.deepEqual(readdirSync(directory).sort(), names);
+    for (const file of baseline) assert.equal(readFileSync(join(directory, file.name)).equals(file.bytes), true);
+    assert.equal(existsSync(join(directory, "chatgpt-account.json")), false);
+    assert.equal(existsSync(join(directory, ".chatgpt-account.lock")), false);
+    assert.equal(f.calls.length, 0);
+  } finally { await f.cleanup(); }
 });
 it("binds PKCE, nonce and exact loopback URI and keeps tokens private", async () => {
   const f = chatGptFixture(); try {
@@ -174,16 +186,78 @@ it("parses split UTF-8 and split CRLF event boundaries", async () => {
     assert.deepEqual(await f.service.extractText(image), { text: "Synthetic café", model: image.model, responseId: "resp_synthetic" });
   } finally { await f.cleanup(); }
 });
-it("signout stops a live response stream before clearing credentials", async () => {
-  const f = chatGptFixture(); try {
+it("signout refuses an errored live stream's unproved closure without clearing credentials", async () => {
+  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  let observedClosure = false;
+  try {
     await f.connected(); let began: () => void = () => { throw new Error("not started"); }; const started = new Promise<void>(resolve => { began = resolve; });
+    const path = join(f.root, "credentials", "chatgpt-account.json"), before = readFileSync(path);
+    const callsBefore = f.calls.length;
     f.setResponse(init => new Response(new ReadableStream<Uint8Array>({ start(controller) {
       controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"Partial"}\n\n')); began();
       init.signal?.addEventListener("abort", () => controller.error(new Error("synthetic-sensitive")), { once: true });
     } }), { headers: { "Content-Type": "text/event-stream" } }));
-    const running = f.service.extractText(image); const rejected = assert.rejects(running, { code: "CHATGPT_OCR_CANCELLED" }); await started;
-    await f.service.signOut(); await rejected; assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
-  } finally { await f.cleanup(); }
+    const running = f.service.extractText(image);
+    const rejected = assert.rejects(running, { code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" }); await started;
+    await assert.rejects(f.service.signOut(), { code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" }); await rejected;
+    assert.equal(readFileSync(path).equals(before), true);
+    assert.equal(f.service.readAccount().state, "connected");
+    assert.equal(f.calls.slice(callsBefore).filter(call => !call.url.endsWith("/responses")).length, 0);
+    await assert.rejects(f.service.close(), { code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" });
+    observedClosure = true;
+  } finally { if (observedClosure) profile.close(); }
+});
+it("signout drains actual graceful stream cancellation before clearing credentials", async () => {
+  const f = chatGptFixture(), started = Promise.withResolvers<void>();
+  const cancelling = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let cancelCalls = 0, releaseCalls = 0, signedOut = false;
+  let restoreReader: (() => void) | undefined;
+  let restoreBodyReader: (() => void) | undefined;
+  let isNativeReader: (reader: unknown) => boolean = () => false;
+  let signingOut: ReturnType<typeof f.service.signOut> | undefined;
+  try {
+    await f.connected();
+    const path = join(f.root, "credentials", "chatgpt-account.json"), before = readFileSync(path);
+    const releaseLock: unknown = Reflect.get(ReadableStreamDefaultReader.prototype, "releaseLock");
+    assert.ok(typeof releaseLock === "function");
+    const readerSpy = vi.spyOn(ReadableStreamDefaultReader.prototype, "releaseLock").mockImplementation(function (this: ReadableStreamDefaultReader<Uint8Array>) {
+      if (isNativeReader(this)) releaseCalls++;
+      Reflect.apply(releaseLock, this, []);
+    });
+    restoreReader = () => readerSpy.mockRestore();
+    f.setResponse(() => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"Partial"}\n\n'));
+          started.resolve();
+        },
+        async cancel() { cancelCalls++; cancelling.resolve(); await release.promise; },
+      });
+      const readerProbe = vi.spyOn(body, "getReader");
+      isNativeReader = reader => readerProbe.mock.results.some(result => result.type === "return" && result.value === reader);
+      restoreBodyReader = () => readerProbe.mockRestore();
+      return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
+    });
+    const running = f.service.extractText(image);
+    const rejected = assert.rejects(running, { code: "CHATGPT_OCR_CANCELLED" });
+    await started.promise;
+    signingOut = f.service.signOut().then(result => { signedOut = true; return result; });
+    await cancelling.promise;
+    assert.equal(signedOut, false);
+    assert.equal(readFileSync(path).equals(before), true);
+    assert.equal((await f.service.readAuthority()).availability, "pending");
+    await assert.rejects(f.service.extractText(image), { code: "CHATGPT_OCR_CANCELLED" });
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 1);
+    assert.equal(cancelCalls, 1); assert.equal(releaseCalls, 0);
+    release.resolve(); await rejected; await signingOut;
+    assert.equal(signedOut, true);
+    assert.equal(cancelCalls, 1); assert.equal(releaseCalls, 1);
+    assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+  } finally {
+    release.resolve();
+    try { await signingOut; }
+    finally { restoreReader?.(); restoreBodyReader?.(); await f.cleanup(); }
+  }
 });
 it("cancelled code exchange cannot resurrect an account after signout", async () => {
   const f = chatGptFixture(); try {
@@ -321,7 +395,7 @@ it("does not return success when cancellation races successful usage recovery pe
   } finally { await f.cleanup(); }
 });
 
-for (const status of [401, 403] as const) it(`keeps HTTP ${status} refusal bound to the token during a concurrent quota metadata update`, async () => {
+for (const status of [401, 403] as const) it(`refuses stale HTTP ${status} before ephemeral state publication after a concurrent quota revision`, async () => {
   const f = chatGptFixture();
   let release = () => {};
   try {
@@ -340,15 +414,18 @@ for (const status of [401, 403] as const) it(`keeps HTTP ${status} refusal bound
       return Response.json({ error: { code: "subscription_sharing_usage_limit_exceeded" } }, { status: 429 });
     });
     const first = f.service.extractText(image);
-    const refused = assert.rejects(first, { code: status === 401 ? "CHATGPT_ACCOUNT_EXPIRED" : "CHATGPT_PLAN_DISABLED" });
+    const refused = assert.rejects(first, { code: "CHATGPT_OCR_CANCELLED" });
     await started;
     await assert.rejects(f.service.extractText(image), { code: "CHATGPT_USAGE_LIMIT" });
+    const latest = readFileSync(join(f.root, "credentials/chatgpt-account.json"));
     release(); await refused;
-    const state = f.service.readAccount(); assert.equal(state.state, status === 401 ? "expired" : "unavailable");
-    if (status === 403 && state.state === "unavailable") assert.equal(state.code, "CHATGPT_PLAN_DISABLED");
+    assert.equal(readFileSync(join(f.root, "credentials/chatgpt-account.json")).equals(latest), true);
+    const state = f.service.readAccount(); assert.equal(state.state, "connected");
+    if (state.state === "connected") assert.equal(state.planUsage, "limit-reached");
     f.setResponse(() => new Response(completedOcrStream("Synthetic form"), { headers: { "Content-Type": "text/event-stream" } }));
     assert.equal((await f.service.extractText(image)).text, "Synthetic form");
-    assert.equal(f.calls.filter(call => call.url.endsWith("/oauth/token")).length, status === 401 ? 2 : 1);
+    assert.equal(f.calls.filter(call => call.url.endsWith("/oauth/token")).length, 1);
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 3);
     const recovered = f.service.readAccount(); assert.equal(recovered.state, "connected");
     if (recovered.state === "connected") assert.equal(recovered.planUsage, "enabled");
   } finally { release(); await f.cleanup(); }
@@ -372,10 +449,12 @@ it("revalidates token-free account authority against durable revision, expiry an
     await repository.withLock(async transaction => { const current = transaction.read(); assert.ok(current); transaction.replace({ ...current, revision: current.revision + 1 }, current.revision); });
     assert.equal(f.service.revalidateAuthority(first), false);
     const fresh = await f.service.readAuthority(); assert.equal(f.service.revalidateAuthority(fresh), true);
+    await f.service.close();
+    assert.equal(f.service.revalidateAuthority(fresh), false);
     const restarted = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: f.transport });
     try {
       const afterRestart = await restarted.readAuthority(); assert.equal(afterRestart.availability, "available");
-      assert.ok(afterRestart.revision !== null && fresh.revision !== null && afterRestart.revision > fresh.revision);
+      assert.equal(afterRestart.revision, fresh.revision);
       assert.equal(f.service.revalidateAuthority(fresh), false);
       assert.equal(restarted.revalidateAuthority(afterRestart), true);
       f.clock.advanceWall(3_600_001);
@@ -414,43 +493,57 @@ async function seedAuthorityAccount(f: ReturnType<typeof chatGptFixture>) {
   return repository;
 }
 
-it("R3 account authority retries repeated real busy locks on the same service and shares one successful activation", async () => {
+it("R3 account authority reads concurrently through real busy writer locks without writing or acquiring authority", async () => {
   const f = chatGptFixture();
   try {
     const repository = await seedAuthorityAccount(f);
+    const before = readFileSync(join(f.root, "credentials/chatgpt-account.json"));
     for (let index = 0; index < 2; index++) {
       let release!: () => void;
       const held = new Promise<void>(resolve => { release = resolve; });
       const lock = repository.withLock(async () => held);
       try {
         for (const result of await Promise.allSettled([f.service.readAuthority(), f.service.readAuthority()])) {
-          assert.equal(result.status, "rejected");
-          if (result.status === "rejected") assert.equal(result.reason instanceof Error && "code" in result.reason && result.reason.code === "CHATGPT_CREDENTIAL_BUSY", true);
+          assert.equal(result.status, "fulfilled");
+          if (result.status === "fulfilled") {
+            assert.equal(result.value.revision, 1); assert.equal(f.service.revalidateAuthority(result.value), true);
+          }
         }
         assert.equal(repository.read()?.revision === 1, true);
       } finally { release(); await lock; }
     }
     const captures = await Promise.all([f.service.readAuthority(), f.service.readAuthority(), f.service.readAuthority()]);
-    assert.equal(repository.read()?.revision === 2, true);
+    assert.equal(repository.read()?.revision === 1, true);
     for (const capture of captures) {
-      assert.equal(capture.availability, "available"); assert.equal(capture.revision === 2, true);
+      assert.equal(capture.availability, "available"); assert.equal(capture.revision === 1, true);
       assert.equal(f.service.revalidateAuthority(capture), true); assert.equal(f.service.revalidateAuthority({ ...capture }), false);
     }
     const cached = await f.service.readAuthority();
-    assert.equal(cached.revision === 2 && f.service.revalidateAuthority(cached), true);
+    assert.equal(cached.revision === 1 && f.service.revalidateAuthority(cached), true);
+    assert.equal(readFileSync(join(f.root, "credentials/chatgpt-account.json")).equals(before), true);
     assert.equal(f.calls.length, 0);
   } finally { await f.cleanup(); }
 });
 
-it("R3 account authority keeps permanent corrupt and uncertain activation refusals without publishing a capture", async () => {
+it("R3 account authority preserves corrupt refusal and uncertain real mutation without implicit activation writes", async () => {
   const f = chatGptFixture();
   let attempts = 0;
   const uncertain = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: f.transport,
     credentialHooks: { afterRename() { attempts++; throw new Error("synthetic failure"); } } });
   try {
     const repository = await seedAuthorityAccount(f);
-    for (let index = 0; index < 2; index++) await assert.rejects(uncertain.readAuthority(), { code: "CHATGPT_CREDENTIAL_UNCERTAIN" });
-    assert.equal(attempts === 2 && repository.read()?.revision === 3, true);
+    const before = await uncertain.readAuthority();
+    assert.equal(before.revision, 1); assert.equal(attempts, 0);
+    const writer = createChatGptCredentialRepository({ admission: f.admission, stateRoot: f.root,
+      afterRename() { attempts++; throw new Error("synthetic failure"); } });
+    for (let index = 0; index < 2; index++) await assert.rejects(writer.withLock(async transaction => {
+      const current = transaction.read(); assert.ok(current);
+      transaction.replace({ ...current, revision: current.revision + 1 }, current.revision);
+    }), { code: "CHATGPT_CREDENTIAL_UNCERTAIN" });
+    assert.equal(attempts, 2); assert.equal(repository.read()?.revision, 3);
+    assert.equal(uncertain.revalidateAuthority(before), false);
+    assert.equal((await uncertain.readAuthority()).revision, 3);
+    assert.equal(attempts, 2);
     writeFileSync(join(f.root, "credentials/chatgpt-account.json"), "{", { mode: 0o600 });
     for (let index = 0; index < 2; index++) await assert.rejects(f.service.readAuthority(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
     assert.equal(f.calls.length, 0);

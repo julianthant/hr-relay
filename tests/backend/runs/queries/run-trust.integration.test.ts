@@ -1,6 +1,5 @@
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { projectFailureResolution } from "../../../../src/backend/runs/queries/failure-resolution.js";
@@ -103,7 +102,7 @@ afterEach(_afterEachFixture0);
 
   it("serves a real derived receipt and Explain by run or trace without any span fold", () => {
     const f = fixture();
-    testWorkerPorts(f.database, f.world.clock, { path: join(f.world.stateRoot, "trust.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+    testWorkerPorts(f.database, f.world.clock, { path: f.profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
     const { run } = seedPersonLookupExitRun(f.database);
     assert.equal(f.world.projection.runFold(run.envelope.runId), undefined);
     const result = buildRunSection(f.deps, run.envelope.runId, "receipt");

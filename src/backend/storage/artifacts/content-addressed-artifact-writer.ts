@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { createHash, randomUUID } from "node:crypto";
 import { constants, openSync, closeSync, fstatSync, readFileSync, readSync, lstatSync, unlinkSync, fsyncSync, linkSync, readdirSync } from "node:fs";
@@ -22,6 +23,11 @@ import {
 } from "../../../models/artifacts/artifacts.js";
 import type { ArtifactPutMetadata, ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { ArtifactIdSchema } from "../../../rules/identity/ids.js";
+
+export class ArtifactReadClosureUnprovedError extends Error {
+  readonly code = "ARTIFACT_READ_CLOSURE_UNPROVED";
+  constructor(cause: unknown) { super(ERROR_CATALOG.ARTIFACT_READ_CLOSURE_UNPROVED.text, { cause }); this.name = "ArtifactReadClosureUnprovedError"; }
+}
 
 const StoredArtifactSchema = z.strictObject({
   ref: ArtifactRefSchema,
@@ -136,13 +142,16 @@ export function removeArtifactDeletionFile(admission: RuntimeAdmission,
 
 async function readStoredArtifact(path: string, expectedDigest: string) {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  let text: string;
+  let outcome: { readonly kind: "read"; readonly text: string } | { readonly kind: "error"; readonly error: unknown };
   try {
     if (!(await handle.stat()).isFile()) throw new Error(`artifact ${expectedDigest} is not a regular file`);
-    text = await handle.readFile("utf8");
-  } finally {
-    await handle.close();
-  }
+    outcome = { kind: "read", text: await handle.readFile("utf8") };
+  } catch (error) { outcome = { kind: "error", error }; }
+  try { await handle.close(); }
+  catch (error) { throw new ArtifactReadClosureUnprovedError(outcome.kind === "read" ? error
+    : new AggregateError([outcome.error, error], "Artifact read and closure failed")); }
+  if (outcome.kind === "error") throw outcome.error;
+  const text = outcome.text;
   let parsed: unknown;
   try {
     parsed = JSON.parse(text) as unknown;

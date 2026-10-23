@@ -1,3 +1,5 @@
+import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
+import { createChatGptOcrAdapter, CHATGPT_OCR_MODEL } from "../../processing/providers/chatgpt-ocr-adapter.js";
 import { isLiveWorker } from "../../../models/run/worker.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
@@ -483,6 +485,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
   const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
   let resources: ReturnType<typeof createRunResourcesFactory> | undefined;
+  let ocrAccount: ReturnType<typeof createChatGptAccountService> | undefined;
+  let accountClosureProven = true;
   let removeStopListeners: (() => void) | undefined;
 
   try {
@@ -546,7 +550,10 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
   const diagnostics = bindFailureCapture(createRunDiagnosticCapture({ service: diagnosticService }));
   const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
-  resources = createRunResourcesFactory({processLockRoot:join(repoRoot,input.isolation.processLockRoot),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+  ocrAccount = createChatGptAccountService({ admission, stateRoot, clock });
+  accountClosureProven = false;
+  const ocr = createChatGptOcrAdapter({ account: ocrAccount, artifacts, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
+  resources = createRunResourcesFactory({ocr,processLockRoot:join(repoRoot,input.isolation.processLockRoot),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
     assertBrowserRoot,
     onDebug: (category, debugWorkerId, event) => {
       debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
@@ -858,10 +865,13 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
     runtimeError = error;
   } finally {
     try { await resources?.stop(); } catch (error) { cleanupErrors.push(error); }
+    try { if (ocrAccount !== undefined) await ocrAccount.close(); accountClosureProven = true; }
+    catch (error) { cleanupErrors.push(error); }
     removeStopListeners?.();
   }
   let databaseClosureProven = false;
   try {
+    if (!accountClosureProven) throw new RuntimeCustodyUncertainError(cleanupErrors);
     (input.closeDatabase ?? ((opened) => opened.close()))(database);
     databaseClosureProven = true;
   } catch (error) {

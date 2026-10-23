@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
-import { chmodSync, linkSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
+import { copyFileSync, chmodSync, linkSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import {
 copyRelocationFile,inspectRelocationFiles,prepareRelocationDirectories,
@@ -19,7 +20,7 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } fro
 import { GeneratedArtifactSchema } from "../../../../src/models/artifacts/generated-artifact.js";
 import { importedArtifact } from "../../../../src/models/intake/imported-artifact.js";
 import { IntakeSessionSchema } from "../../../../src/models/intake/session.js";
-import { createCredentialStore, createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
 
 function artifactBytes(bytes: Buffer): Readonly<{ name: string; stored: string }> {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -35,10 +36,16 @@ it("relocates the Duo key with the other credentials and refuses an unsafe one",
   const destination = { stateRoot: join(workspace, "destination"), artifactRoot: join(workspace, "destination", "artifacts") };
   for (const path of [source.stateRoot, source.artifactRoot, destination.stateRoot, destination.artifactRoot]) mkdirSync(path, { recursive: true, mode: 0o700 });
   const sourceAdmission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot), destinationAdmission = RuntimeAdmission.syntheticRoots(destination.stateRoot, destination.artifactRoot);
+  const profile = createBoundProfileFixture();
   try {
-    const protectedStore = createCredentialStore({ admission: sourceAdmission, stateRoot: source.stateRoot });
-    assert.equal(protectedStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision: 1,
+    const protectedStore = boundProfileCredentials(profile.admission);
+    const revision = protectedStore.read().revision;
+    assert.equal(protectedStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision: revision,
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-12T12:00:00.000Z", entries: { ucpathPassword: { set: "synthetic-relocation-protected" } } })).state, "applied");
+    assert.ok(protectedStore.read().entries.ucpathPassword);
+    mkdirSync(join(source.stateRoot, "credentials"), { mode: 0o700 });
+    copyFileSync(join(profile.stateRoot, "credentials", "protected.json"), join(source.stateRoot, "credentials", "protected.json"));
+    assert.throws(() => profile.admission.assertStorageRelocationSupported(), { code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED" });
     const duo = join(source.stateRoot, "credentials", "duo-webauthn.json");
     writeFileSync(duo, '{"synthetic":"duo-key"}', { mode: 0o600 });
     const input = { admission: sourceAdmission, source, destination, fixedLockRoot: join(source.stateRoot, "locks") };
@@ -49,7 +56,7 @@ it("relocates the Duo key with the other credentials and refuses an unsafe one",
     assert.equal(lstatSync(join(destination.stateRoot, file.relativePath)).mode & 0o777, 0o600);
     chmodSync(duo, 0o644);
     assert.throws(() => inspectRelocationFiles(input), /unsafe Duo credential/u);
-  } finally { sourceAdmission.release(); destinationAdmission.release(); rmSync(workspace, { recursive: true, force: true }); }
+  } finally { sourceAdmission.release(); destinationAdmission.release(); profile.close(); rmSync(workspace, { recursive: true, force: true }); }
 });
 
 it("relocates only a validated private ChatGPT record and refuses unsafe token authority", async () => {
@@ -58,16 +65,22 @@ it("relocates only a validated private ChatGPT record and refuses unsafe token a
   const destination = { stateRoot: join(workspace, "destination"), artifactRoot: join(workspace, "destination", "artifacts") };
   for (const path of [source.stateRoot, source.artifactRoot, destination.stateRoot, destination.artifactRoot]) mkdirSync(path, { recursive: true, mode: 0o700 });
   const sourceAdmission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot), destinationAdmission = RuntimeAdmission.syntheticRoots(destination.stateRoot, destination.artifactRoot);
+  const profile = createBoundProfileFixture(), foreign = createBoundProfileFixture();
   try {
     const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: "oaiapp_fixture",
       registration: { subject: "synthetic-subject", name: "Synthetic", email: "synthetic@example.com" },
       session: { accessToken: "synthetic-relocation-access", refreshToken: "synthetic-relocation-refresh", idToken: "synthetic-relocation-id",
         expiresAt: IsoInstantSchema.parse("2026-10-12T12:00:00.000Z"), earliestRefreshAt: null, scopes: [], usePlan: false, usage: "available" } };
     await createChatGptCredentialRepository({ admission: sourceAdmission, stateRoot: source.stateRoot }).withLock(async tx => { tx.replace(record, null); });
-    const protectedStore = createCredentialStore({ admission: sourceAdmission, stateRoot: source.stateRoot });
-    const protectedOutcome = protectedStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision: 1,
+    const protectedStore = boundProfileCredentials(profile.admission);
+    const revision = protectedStore.read().revision;
+    const protectedOutcome = protectedStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision: revision,
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-12T12:00:00.000Z", entries: { ucpathPassword: { set: "synthetic-relocation-protected" } } }));
     assert.equal(protectedOutcome.state, "applied");
+    const protectedBytes = readFileSync(join(profile.stateRoot, "credentials", "protected.json"));
+    assert.ok(protectedStore.read().entries.ucpathPassword);
+    writeFileSync(join(source.stateRoot, "credentials", "protected.json"), protectedBytes, { mode: 0o600 });
+    assert.throws(() => profile.admission.assertStorageRelocationSupported(), { code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED" });
     const input = { admission: sourceAdmission, source, destination, fixedLockRoot: join(source.stateRoot, "locks") };
     const inventory = inspectRelocationFiles(input), file = inventory.files.find(file => file.relativePath === "credentials/chatgpt-account.json"); assert.ok(file);
     assert.equal(JSON.stringify(inventory).includes("synthetic-relocation"), false);
@@ -76,7 +89,14 @@ it("relocates only a validated private ChatGPT record and refuses unsafe token a
     const protectedFile = inventory.files.find(file => file.relativePath === "credentials/protected.json");
     assert.ok(protectedFile);
     copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file: protectedFile, operationId: randomUUID() });
-    assert.deepEqual(createCredentialStore({ admission: destinationAdmission, stateRoot: destination.stateRoot }).read(), protectedStore.read());
+    assert.equal(readFileSync(join(destination.stateRoot, protectedFile.relativePath)).equals(protectedBytes), true);
+    assert.equal(lstatSync(join(destination.stateRoot, protectedFile.relativePath)).mode & 0o777, 0o600);
+    const foreignPath = join(foreign.stateRoot, "credentials", "protected.json"), originalForeignBytes = readFileSync(foreignPath);
+    try {
+      writeFileSync(foreignPath, protectedBytes);
+      assert.throws(() => boundProfileCredentials(foreign.admission).read());
+    } finally { writeFileSync(foreignPath, originalForeignBytes); }
+    assert.equal(readFileSync(join(profile.stateRoot, "credentials", "protected.json")).equals(protectedBytes), true);
     verifyRelocationFileCopies({ sourceAdmission, destinationAdmission, inventory });
     assert.deepEqual(createChatGptCredentialRepository({ admission: destinationAdmission, stateRoot: destination.stateRoot }).read(), record);
     assert.equal(lstatSync(join(destination.stateRoot, "credentials")).mode & 0o777, 0o700); assert.equal(lstatSync(join(destination.stateRoot, file.relativePath)).mode & 0o777, 0o600);
@@ -93,7 +113,7 @@ it("relocates only a validated private ChatGPT record and refuses unsafe token a
     rmSync(stage);
     writeFileSync(join(source.stateRoot, "credentials", ".chatgpt-account.lock"), "synthetic");
     assert.throws(() => inspectRelocationFiles(input), /unsafe state descendant|unknown or unsafe ChatGPT/u);
-  } finally { sourceAdmission.release(); destinationAdmission.release(); rmSync(workspace, { recursive: true, force: true }); }
+  } finally { sourceAdmission.release(); destinationAdmission.release(); foreign.close(); profile.close(); rmSync(workspace, { recursive: true, force: true }); }
 });
 
 it("enumerates nested artifacts once and copies private bytes with exact retry", () => {
@@ -220,15 +240,15 @@ it("refuses pending credential writes, invalid event records, and malformed back
 });
 
 it("refuses a generated artifact whose verified SQLite reference has no bytes", () => {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-inventory-reference-")));
-  const source = { stateRoot: join(workspace, "source"), artifactRoot: join(workspace, "source", "artifacts") };
+  const profile = createBoundProfileFixture();
+  const source = { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot };
   try {
     mkdirSync(source.artifactRoot, { recursive: true, mode: 0o700 });
-    const admission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot);
+    const admission = profile.admission;
     try {
       const path = join(source.stateRoot, "state.db");
       const authority = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250,
-        migrationOwner: "relocation-inventory-test" });
+        migrationOwner: "relocation-inventory-test" }, undefined, undefined, undefined, undefined, boundProfileCredentials(admission));
       authority.close();
       const exportId = randomUUID();
       const ref = { id: randomUUID(), sha256: "a".repeat(64), bytes: 8, mediaType: "text/plain" };
@@ -239,20 +259,20 @@ it("refuses a generated artifact whose verified SQLite reference has no bytes", 
         createdAt: "2026-09-26T12:00:00.000Z" });
       const raw = new DatabaseSync(path);
       try { insertGeneratedArtifact(raw, record); } finally { raw.close(); }
-      assert.throws(() => verifyRelocationLiveReferences({ admission, source }), /ENOENT|no such file/u);
-    } finally { admission.release(); }
-  } finally { rmSync(workspace, { recursive: true, force: true }); }
+      assert.throws(() => verifyRelocationLiveReferences({ admission, source, credentials: boundProfileCredentials(admission) }), /ENOENT|no such file/u);
+    } finally { admission.assertLive(); }
+  } finally { profile.close(); }
 });
 
 it("refuses a durable intake session whose source artifact is missing", () => {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-intake-reference-")));
-  const source = { stateRoot: join(workspace, "source"), artifactRoot: join(workspace, "source", "artifacts") };
+  const profile = createBoundProfileFixture();
+  const source = { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot };
   try {
     mkdirSync(source.artifactRoot, { recursive: true, mode: 0o700 });
-    const admission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot);
+    const admission = profile.admission;
     try {
       const path = join(source.stateRoot, "state.db");
-      AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "relocation-intake-test" }).close();
+      AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "relocation-intake-test" }, undefined, undefined, undefined, undefined, boundProfileCredentials(admission)).close();
       const session = IntakeSessionSchema.parse({ intakeSessionId: randomUUID(), actorId: "local-operator",
         workflow: "person-lookup", artifact: { id: randomUUID(), sha256: "b".repeat(64), bytes: 5,
           mediaType: "text/csv" }, sheet: "default", headerRowIndex: null, bindings: [], constants: [],
@@ -261,8 +281,8 @@ it("refuses a durable intake session whose source artifact is missing", () => {
         updatedAt: "2026-09-26T12:00:00.000Z" });
       const raw = new DatabaseSync(path);
       try { insertImportedArtifact(raw, importedArtifact(JSON.stringify(session), null)); } finally { raw.close(); }
-      assert.throws(() => verifyRelocationLiveReferences({ admission, source }), /ENOENT|no such file/u);
-    } finally { admission.release(); }
-  } finally { rmSync(workspace, { recursive: true, force: true }); }
+      assert.throws(() => verifyRelocationLiveReferences({ admission, source, credentials: boundProfileCredentials(admission) }), /ENOENT|no such file/u);
+    } finally { admission.assertLive(); }
+  } finally { profile.close(); }
 });
 

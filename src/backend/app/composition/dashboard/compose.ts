@@ -1,3 +1,8 @@
+import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
+import { createChatGptOcrPageReader, CHATGPT_OCR_MODEL } from "../../../processing/providers/chatgpt-ocr-adapter.js";
+import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
+import { buildExtractionInstruction } from "../../../../models/ocr/instruction.js";
+import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
 import { failureStatus } from "../../../transports/http/routes/failure-status.js";
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
@@ -805,7 +810,16 @@ async function composeDashboardRuntimeStartup(
 
   startupCleanups.push(prepareRuntimeClosure);
   const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
+  const chatGptOcrTest = createChatGptOcrTestService({ assertCurrent, dispatch: async (input, signal, source) => {
+    const reader = createChatGptOcrPageReader({ account: chatGptAccount, artifacts: source, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
+    const { submitted } = await reader.readPage({ ...input, instruction: buildExtractionInstruction(input.formType) }, signal);
+    assertCurrent();
+    const result = admitOcrExtraction(submitted);
+    if (!result.admitted) throw new ChatGptAccountError("CHATGPT_OCR_INVALID");
+    return result.extraction;
+  } });
   const app = createDashboardApp({
+    chatGptOcrTest,
     chatGptAccount: {
       readAccount: () => { assertCurrent(); const result = chatGptAccount.readAccount(); assertCurrent(); return result; },
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },

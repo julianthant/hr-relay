@@ -9,7 +9,7 @@ import { rmSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey, WriteFixtureProofSchema } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
+import { closePersonLookupReceiptDatabase, openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 
 import { buildRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
@@ -473,7 +473,7 @@ function refusalFor(overrides: Partial<ReceiptBuildInput>): string {
 
 describe("receipt derivation binding — a moved closure does not strand a receipt", () => {
 afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
+  for (const database of databases.splice(0)) closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -499,7 +499,7 @@ afterEach(() => {
 
 describe("receipt derivation binding — a moved surface refuses by name", () => {
 afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
+  for (const database of databases.splice(0)) closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -566,7 +566,7 @@ function storedVariant(
 
 describe("receipt derivation binding — the stored receipt survives a moved closure", () => {
 afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
+  for (const database of databases.splice(0)) closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

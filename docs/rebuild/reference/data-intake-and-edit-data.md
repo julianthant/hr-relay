@@ -111,7 +111,11 @@ Canonical fields use the same coercers and schemas as intake. Invalid readings r
 
 `ocr/extract-form-page` builds the generated instruction, calls the `ocr.extract` capability, and passes its response to the shared gate. The task output is `AdmittedExtraction`, not a separate provider shape. Its declared errors are `ocr-provider-not-connected`, `provider-unavailable`, `incomplete-extraction`, and `unreadable-page`. The contract's default freshness limit is four hours with overrides forbidden.
 
-The current `createProviderClient` in `src/backend/processing/providers/provider-client.ts` refuses a supplied OCR adapter with `OCR provider policy not connected`. With no adapter, an OCR call returns `unavailable` / `adapter-unavailable` / `OCR provider not connected`. The task maps that result to `ocr-provider-not-connected`. No ChatGPT sign-in or live OCR adapter is implemented.
+`createProviderClient` in `src/backend/processing/providers/provider-client.ts` requires the subscription-only OCR adapter policy. With no adapter, an OCR call returns `unavailable` / `adapter-unavailable` / `OCR provider not connected`; the task maps that result to `ocr-provider-not-connected`.
+
+Worker composition registers `ChatGptOcrAdapter` against its issued profile and account owner. The adapter validates artifact bytes, singleton PDFs and response metadata before returning a submitted extraction to the task's admission gate. Its fixed backend model is `gpt-6.1-sol`, independently of assistant preference; an account or model refusal has no fallback. The account establishes a single-use operation before page reads, permits its authenticated initial refresh, and checks the same account revision, profile custody and cancellation through response and usage publication.
+
+Settings Test OCR uses the same page reader and selected account with one fixed synthetic PDF held only in memory. Its exact schema-validated reference identifies those bytes for one invocation; it never publishes a disk artifact. It returns safe completion metadata after extraction admission and known-content verification. It accepts no operator document and creates no workflow checkpoint or business receipt. Composition does not establish live account/model availability or enable a workflow's served switch.
 
 The retained CLI helpers in `src/backend/transports/cli/ocr.ts` generate instructions and admit supplied JSON. They do not implement the subscription connection or authorize agent operation of the HR app.
 

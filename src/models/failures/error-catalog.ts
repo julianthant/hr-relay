@@ -512,6 +512,14 @@ export const ERROR_CATALOG = Object.freeze({
     "The OCR request was cancelled.",
     EmptyParametersSchema,
   ),
+  ARTIFACT_READ_CLOSURE_UNPROVED: catalogEntry(
+    "The artifact reader could not prove its file was closed. Keep this profile stopped and review local resource custody.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_RESOURCE_CLOSURE_UNPROVED: catalogEntry(
+    "ChatGPT operation resources could not be closed. Keep this profile stopped and review local resource custody.",
+    EmptyParametersSchema,
+  ),
   CHATGPT_SERVICE_CLOSED: catalogEntry(
     "The ChatGPT account service is closed.",
     EmptyParametersSchema,

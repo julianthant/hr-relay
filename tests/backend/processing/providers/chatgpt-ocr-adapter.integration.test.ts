@@ -1,10 +1,15 @@
+import { createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/credential-store.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Readable } from "node:stream";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { z } from "zod";
 import { pdf } from "pdf-to-img";
+import * as pdfReader from "pdf-to-img";
+import { createChatGptAccountService } from "../../../../src/backend/accounts/chatgpt-account-service.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { join } from "node:path";
 import { chatGptFixture, completedOcrStream } from "../../../support/helpers/chatgpt-account-fixtures.js";
 import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
@@ -29,6 +34,8 @@ import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/wor
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 
+vi.mock("pdf-to-img", async importOriginal => ({ ...await importOriginal<typeof import("pdf-to-img")>() }));
+
 const world = createCapabilityWiringTestWorld();
 afterEach(world.cleanup);
 const bytes = Buffer.from("synthetic page bytes");
@@ -41,7 +48,7 @@ function submission(readAt: string) {
     } } };
 }
 function adapterFor(f: ReturnType<typeof chatGptFixture>, body = bytes) {
-  return createChatGptOcrAdapter({ account: f.service, clock: f.clock, model: "gpt-6.1-sol", artifacts: { open: async () => Readable.from([body]) } });
+  return createChatGptOcrAdapter({ assertCurrent: () => f.admission.assertProfileRuntime(), account: f.service, clock: f.clock, model: "gpt-6.1-sol", artifacts: { open: async () => Readable.from([body]) } });
 }
 function request() { return { capability: "ocr.extract" as const, payload: { schemaHash: OCR_EXTRACTION_REQUEST_HASH,
   value: { formType: "oath", sourcePage: 4, page, instruction: buildExtractionInstruction("oath") } } }; }
@@ -102,7 +109,7 @@ for (const [formType, pageKind, control] of [
     harness.authority.database.authority.runs.enqueue(world.queuedRunFor(descriptor));
     const claimed = world.claim(harness.authority, descriptor);
     const outcome = await executeClaimedRun({ ...harness.deps, providers: {
-      adapters: { "ocr.extract": createChatGptOcrAdapter({ account: f.service, artifacts, clock: f.clock, model: "gpt-6.1-sol" }) },
+      adapters: { "ocr.extract": createChatGptOcrAdapter({ assertCurrent: () => f.admission.assertProfileRuntime(), account: f.service, artifacts, clock: f.clock, model: "gpt-6.1-sol" }) },
       idFactory: { next: randomUUID }, configSnapshots: harness.authority.database.authority.configSnapshots,
     } }, { ...claimed, signal: world.SIGNAL });
     const run = harness.authority.database.authority.runs.get(claimed.run.envelope.runId);
@@ -268,10 +275,67 @@ for (const pageCount of [1, 2] as const)
       const sourceSha256 = createHash("sha256").update(documentBytes).digest("hex");
       const document = ArtifactRefSchema.parse({ ...page, sha256: sourceSha256, bytes: documentBytes.byteLength, mediaType: "application/pdf" });
       f.setSse(completedOcrStream(JSON.stringify({ ...submission(f.clock.now().toISOString()), sourceSha256 })));
-      const adapter = createChatGptOcrAdapter({ account: f.service, clock: f.clock, model: "gpt-6.1-sol", artifacts: { open: async () => Readable.from([documentBytes]) } });
+      const adapter = createChatGptOcrAdapter({ assertCurrent: () => f.admission.assertProfileRuntime(), account: f.service, clock: f.clock, model: "gpt-6.1-sol", artifacts: { open: async () => Readable.from([documentBytes]) } });
       const original = request();
       const result = await adapter.invoke({ ...original, payload: { ...original.payload, value: { ...original.payload.value, page: document } } }, options());
       assert.equal(result.response.state, pageCount === 1 ? "produced" : "invalid-response");
       assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, pageCount === 1 ? 1 : 0);
     } finally { await f.cleanup(); }
   });
+
+for (const boundary of ["artifact", "pdf"] as const) it(`refuses an actual account revision change during ${boundary} work before sending the page`, async () => {
+  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const peer = createChatGptAccountService({ admission: profile.admission, stateRoot: profile.stateRoot, clock: f.clock, fetch: f.transport });
+  let restore: (() => void) | undefined, expected: Buffer | undefined;
+  try {
+    await f.connected();
+    const documentBytes = boundary === "pdf" ? readFileSync(new URL("../../../support/fixtures/documents/synthetic-sample.pdf", import.meta.url)) : bytes;
+    const document = ArtifactRefSchema.parse({ ...page, sha256: createHash("sha256").update(documentBytes).digest("hex"), bytes: documentBytes.byteLength,
+      mediaType: boundary === "pdf" ? "application/pdf" : "image/png" });
+    const changed = async () => {
+      await createChatGptCredentialRepository({ admission: profile.admission, stateRoot: profile.stateRoot }).withLock(async transaction => {
+        const current = transaction.read(); assert.ok(current);
+        transaction.replace({ ...current, revision: current.revision + 1 }, current.revision);
+      });
+      expected = readFileSync(join(profile.stateRoot, "credentials", "chatgpt-account.json")); };
+    if (boundary === "pdf") {
+      const actual = pdfReader.pdf;
+      const spy = vi.spyOn(pdfReader, "pdf").mockImplementation(async (...args) => { const document = await actual(...args); await changed(); return document; });
+      restore = () => spy.mockRestore();
+    }
+    const adapter = createChatGptOcrAdapter({ assertCurrent: () => profile.admission.assertProfileRuntime(), account: f.service,
+      clock: f.clock, model: "gpt-6.1-sol", artifacts: { open: async () => { if (boundary === "artifact") await changed(); return Readable.from([documentBytes]); } } });
+    const original = request();
+    const result = await adapter.invoke({ ...original, payload: { ...original.payload, value: { ...original.payload.value, page: document } } }, options());
+    assert.equal(result.response.state, "unavailable"); assert.ok(expected);
+    assert.equal(readFileSync(join(profile.stateRoot, "credentials", "chatgpt-account.json")).equals(expected), true);
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
+  } finally { restore?.(); await peer.close(); await f.cleanup(); profile.close(); }
+});
+
+it("account closure waits for actual PDF destruction before releasing its page operation", async () => {
+  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+  const actual = pdfReader.pdf;
+  let destroyed = false, closed = false;
+  const spy = vi.spyOn(pdfReader, "pdf").mockImplementation(async (...args) => {
+    const document = await actual(...args), destroy = document.destroy.bind(document);
+    vi.spyOn(document, "destroy").mockImplementation(async () => { entered.resolve(); await gate.promise; await destroy(); destroyed = true; });
+    return document;
+  });
+  try {
+    await f.connected();
+    const documentBytes = readFileSync(new URL("../../../support/fixtures/documents/synthetic-sample.pdf", import.meta.url));
+    const document = ArtifactRefSchema.parse({ ...page, sha256: createHash("sha256").update(documentBytes).digest("hex"), bytes: documentBytes.byteLength, mediaType: "application/pdf" });
+    const adapter = createChatGptOcrAdapter({ assertCurrent: () => profile.admission.assertProfileRuntime(), account: f.service,
+      clock: f.clock, model: "gpt-6.1-sol", artifacts: { open: async () => Readable.from([documentBytes]) } });
+    const original = request();
+    const pending = adapter.invoke({ ...original, payload: { ...original.payload, value: { ...original.payload.value, page: document } } }, options());
+    await entered.promise;
+    const closing = f.service.close().then(() => { closed = true; });
+    await Promise.resolve(); assert.equal(closed, false); assert.equal(destroyed, false);
+    gate.resolve(); const result = await pending; await closing;
+    assert.equal(result.response.state, "unavailable"); assert.equal(destroyed, true); assert.equal(closed, true);
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
+  } finally { gate.resolve(); spy.mockRestore(); await f.cleanup(); profile.close(); }
+});

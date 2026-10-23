@@ -1,25 +1,40 @@
-import { mkdtempSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 
+const profiles = new WeakMap<AuthorityDatabase, ReturnType<typeof createBoundProfileFixture>>();
+
+export function closePersonLookupReceiptDatabase(database: AuthorityDatabase): void {
+  const profile = profiles.get(database);
+  if (profile === undefined) { database.close(); return; }
+  database.close();
+  profile.close();
+  profiles.delete(database);
+}
+
 export function openPersonLookupReceiptDatabase(
   roots: string[],
   databases: AuthorityDatabase[],
-  prefix: string,
+  _prefix: string,
   migrationOwner: string,
 ): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), prefix));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner },
-    manualClock(new Date("2026-08-04T00:11:13.500Z")),
-  );
+  const profile = createBoundProfileFixture();
+  roots.push(profile.workspace);
+  let database: AuthorityDatabase;
+  try {
+    database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner },
+      manualClock(new Date("2026-08-04T00:11:13.500Z")), undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+  } catch (error) {
+    const failures: unknown[] = [error];
+    try { profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+    if (failures.length > 1) throw new AggregateError(failures, "receipt fixture opening cleanup failed", { cause: error });
+    throw error;
+  }
+  profiles.set(database, profile);
   testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), {
-    path: join(root, "state.sqlite"),
+    path: profile.path,
     descriptor: personLookupDescriptor,
     poolIndex: 1,
   });

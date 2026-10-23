@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { it } from "vitest";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createContentAddressedArtifactWriter, pendingDiagnosticArtifacts, reclaimDiagnosticStages } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 
 {
@@ -52,12 +52,7 @@ it("refuses a root replaced by a symlink before ready or put", async () => {
 {
 
 it("never deletes an unregistered shared winner during stopped cleanup and preserves its accounted witness", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "diagnostic-shared-cleanup-")));
-  const admission = RuntimeAdmission.acquireInitial(root, (pair, inspection) => ({ kind: "verified-existing", pair,
-    authorityGeneration: AuthorityDatabase.inspectExistingReadOnly(inspection, join(pair.stateRoot, "state.db")).authorityGeneration,
-    databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(pair.stateRoot, "state.db")) }), (pair, initialization) => {
-    AuthorityDatabase.open(initialization, { path: join(pair.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "diagnostic-shared" }).close();
-  });
+  const profile = createBoundProfileFixture(), admission = profile.admission;
   try {
     const writer = createContentAddressedArtifactWriter({ admission });
     const bytes = Buffer.from("shared winner bytes");
@@ -71,6 +66,6 @@ it("never deletes an unregistered shared winner during stopped cleanup and prese
     assert.equal(reclaimDiagnosticStages(admission, ref => ref.id === winner.id), 1);
     assert.deepEqual(readdirSync(admission.artifactRoot).sort(), before.filter(name => !name.endsWith(".diagnostic.tmp")));
     assert.equal(existsSync(join(admission.artifactRoot, `${winner.sha256}.artifact`)), true);
-  } finally { admission.release(); rmSync(root, { recursive: true, force: true }); }
+  } finally { profile.close(); }
 });
 }

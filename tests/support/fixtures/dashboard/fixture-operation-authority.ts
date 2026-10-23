@@ -1,3 +1,6 @@
+import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
+import { duoCeremonyGatesOver } from "../../helpers/duo-ceremony-fixtures.js";
+import { EXECUTOR_WORKER_ID, EXECUTOR_WORKFLOW_ID, FIXTURE_SESSION_ACQUIRE_MS } from "../../helpers/phase1f-executor-harness.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -35,7 +38,7 @@ import { FrontendBootstrapWireSchema } from "../../../../src/models/dashboard/bo
 import { DashboardStreamEnvelopeSchema } from "../../../../src/models/dashboard/subscription.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { testRunLifecycle, testRunService, testWorkerPorts } from "../run-lifecycle-fixtures.js";
-import { openAuthorityHarness, sessionManagerFor, ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../helpers/phase1f-executor-harness.js";
+import { openAuthorityHarness, ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../helpers/phase1f-executor-harness.js";
 import { plan1Parent, plan1Workflows, Plan1Input, Plan1CanonicalInput } from "../plan1-operation-workflows.js";
 import { fixtureBuildManifest } from "../workflow-definition-fixtures.js";
 import { PARITY_DIST_DIR } from "../../helpers/dashboard/served-fixtures/bundle.js";
@@ -66,7 +69,12 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
   const active = database.authority.runtimeConfig.get();
   if (active === undefined) throw new Error("fixture active settings missing");
   const configSnapshotId = active.configSnapshotId, fingerprint = active.configFingerprint;
-  const sessions = sessionManagerFor(sessionFactoryHarness({ ucpath: () => separation ? separationDrivers.ucpath : fictionalFormDriver(), kuali: () => separationDrivers.kuali }), clock);
+  const scheduler = new ManualScheduler(clock);
+  const sessions = new WorkerSessionManager({ workerId: EXECUTOR_WORKER_ID, workflowId: EXECUTOR_WORKFLOW_ID,
+    stores, factory: sessionFactoryHarness({ ucpath: () => separation ? separationDrivers.ucpath : fictionalFormDriver(),
+      kuali: () => separationDrivers.kuali }).factory, clock, scheduler, acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+    duoCeremony: duoCeremonyGatesOver(database, clock, scheduler) });
+  sessions.bindRunConfigFingerprint(active.configFingerprint);
   const deps: RunExecutorDependencies = { lifecycle: testRunLifecycle(database, clock), descriptor: plan1Parent.descriptor,
     stores, authority: database, sessions, emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
     clock, ids: sequentialIdFactory("b"), scheduler: new ManualScheduler(clock), taskDeadlineMs: 60_000,
@@ -142,5 +150,15 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
   app.get("*", async (c) => { const response = await fetch(new URL(`${c.req.path}${new URL(c.req.url).search}`, shell.baseUrl)); return new Response(await response.arrayBuffer(), { status: response.status, headers: response.headers }); });
   const http = await startDashboardHttpServer({ app, port: 0 });
   return { baseUrl: `http://127.0.0.1:${http.port}`, day, runId: root.envelope.runId, database, stateRoot, projection,
-    async close() { try { await http.close(); } finally { try { await shell.close(); } finally { harness.dispose(); } } } };
+    async close() {
+      const failures: unknown[] = [];
+      try { await http.close(); } catch (error) { failures.push(error); }
+      try { await shell.close(); } catch (error) { failures.push(error); }
+      let sessionsClosed = false;
+      try { await sessions.closeAll("worker-stop"); sessionsClosed = true; } catch (error) { failures.push(error); }
+      if (sessionsClosed) {
+        try { harness.dispose(); } catch (error) { failures.push(error); }
+      }
+      if (failures.length > 0) throw new AggregateError(failures, "operation fixture cleanup failed", { cause: failures[0] });
+    } };
 }

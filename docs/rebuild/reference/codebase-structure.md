@@ -60,7 +60,7 @@ Paths in this table are relative to `src/backend/`.
 | `app/registries/` | Workflow, task, step-proof, and test-target registration. `task-registry.ts` composes system, processing, and workflow task stores. |
 | `logs/` | Spans, observed data, artifacts, confirmed actions, declared step results, and diagnostics. `run-log-stream.ts` reads confirmed events through native timeline cursors. `emergency-faults.ts` owns the capped database-unavailable spool and its import. |
 | `logs/diagnostics/` | Diagnostic capture and retention. |
-| `processing/` | Extraction, normalization, OCR, provider calls, roster processing, and spreadsheets. Task families register beside their implementations. |
+| `processing/` | Extraction, normalization, OCR, provider calls, roster processing, and spreadsheets. Task families register beside their implementations. `providers/chatgpt-ocr-adapter.ts` owns the fixed OCR model and scoped page reader shared by the canonical provider adapter and the fixed Settings diagnostic. |
 | `profiles/` | Control-authenticated profile registry, synthetic verifier, credential inventory, and session authority. The profile session validates durable selection and generation around account reads and file preparation; production composition does not mount it. Browser-safe profile schemas live in `models/profiles/`. |
 | `runs/` | Commands, start plans, lifecycle, recovery, queries, projections, exports, provenance, notifications, settings, explanation, and trust readers. |
 | `runs/trust/` | Canonical run readers and receipt services. |

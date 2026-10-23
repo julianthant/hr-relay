@@ -23,6 +23,9 @@ import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtu
 import { failure,foundationFixture,HASH,id,NOW,terminalizeFixtureFailure,update } from "../../../support/helpers/database-foundation/fixtures.js";
 import { resolutionCommand,resolutionKernel } from "../../../support/helpers/failure-resolution/fixtures.js";
 
+import { chatGptFixture } from "../../../support/helpers/chatgpt-account-fixtures.js";
+import { CHATGPT_OCR_MODEL,createChatGptOcrAdapter } from "../../../../src/backend/processing/providers/chatgpt-ocr-adapter.js";
+
 type Fixture=ReturnType<typeof foundationFixture>;
 const scheduler={schedule:()=>({cancel:()=>undefined})};
 const artifacts=(f:Fixture)=>createContentAddressedArtifactWriter({admission: boundProfileAdmission(f.path)});
@@ -59,9 +62,12 @@ const flows={
   const token=selectRunRuntime(f.db.authority);assert.ok(runRuntimeMatches(f.db.authority,token));assert.equal(runRuntimeMatches(f.db.authority,{...token,generation:PositiveIntSchema.parse(token.generation+1)}),false);
   assert.deepEqual(selectNewRunIdentity(f.db.authority,f.run.envelope),f.run.envelope);
   const writer=artifacts(f);await writer.ready;
-  const factory=createRunResourcesFactory({assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},processLockRoot:join(f.root,"locks"),authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("b"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("synthetic proof must not open a browser");}}});
+  const account=chatGptFixture(admission);try{
+  const ocr=createChatGptOcrAdapter({account:account.service,artifacts:writer,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
+  const factory=createRunResourcesFactory({ocr,assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},processLockRoot:join(f.root,"locks"),authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("b"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("synthetic proof must not open a browser");}}});
   const resources=factory.forRun(f.run);assert.equal(resources.taskDeadlineMs,f.snapshot.config.timeouts.taskMs);assert.equal(resources.sessionAcquireMs,f.snapshot.config.timeouts.sessionAcquireMs);assert.equal(resources.defaultBrowserMode,f.snapshot.config.browser.headless?"headless":"headed");assert.ok(resources.providers?.adapters["geocode.nominatim"]);
   assert.equal(factory.forRun(f.run),resources);
+  }finally{await account.cleanup();}
  },
 };
 describe("F actual four-way baseline independence",()=>{

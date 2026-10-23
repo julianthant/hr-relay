@@ -708,12 +708,15 @@ async function restoreCommand(
       exitCode: 2,
     };
   }
+  const context = admission.readInstallationContext();
+  if (context === undefined) throw new Error("profile-restore-context-required");
   if (credentials === undefined) throw new Error("profile-restore-credential-owner-required");
   assertCredentialStoreOwner(credentials, admission);
   const json = rest.includes("--json");
   const stateRoot = admission.stateRoot;
   const authorityPath = join(stateRoot, "state.db");
-  const processLockRoot = join(repoRoot, isolation.processLockRoot);
+  const processLockRoot = join(context.workspace, isolation.processLockRoot);
+  admission.assertFixedProcessLockRoot(context.workspace, processLockRoot);
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
   ).version;

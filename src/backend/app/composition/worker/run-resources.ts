@@ -26,6 +26,7 @@ import { selectRunSettings } from "../../../runs/settings/run-settings.js";
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
  processLockRoot:string;
+ ocr:NonNullable<NonNullable<WorkerRunResources["providers"]>["adapters"]["ocr.extract"]>;
  authority:AuthorityRepositories;artifacts:ContentAddressedArtifactWriter;clock:Clock;ids:IdFactory;
  isolation:RuntimeIsolation;protectedSecrets:Pick<CredentialStore,"read">;scheduler:MonotonicDeadlineScheduler;
  environment:Readonly<Record<string,string|undefined>>;sessionFactory?:WorkerBrowserSessionFactory;duoCeremony?:DuoCeremonyGateFactory;
@@ -46,7 +47,7 @@ export function createRunResourcesFactory(input:Readonly<{
     ...(input.onDebug===undefined?{}:{onDebug:(workerId,event)=>input.onDebug?.("duo",workerId,event)})}),
    taskDeadlineMs:config.timeouts.taskMs,sessionAcquireMs:config.timeouts.sessionAcquireMs,
    defaultBrowserMode:config.browser.headless?"headless":"headed",
-   providers:{adapters:Object.freeze({"geocode.census":createCensusGeocodeAdapter({clock:input.clock}),"geocode.nominatim":nominatim}),
+   providers:{adapters:Object.freeze({"ocr.extract":input.ocr,"geocode.census":createCensusGeocodeAdapter({clock:input.clock}),"geocode.nominatim":nominatim}),
     configSnapshots:input.authority.configSnapshots,idFactory:{next:()=>input.ids.uuid()}},
   });
  };

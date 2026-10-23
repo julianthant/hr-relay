@@ -1,14 +1,15 @@
 import { generateKeyPairSync, sign } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createChatGptAccountService, type ChatGptAuthorization } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
+import { createBoundProfileFixture } from "./admission-fixture.js";
+
 export function chatGptFixture(ownedAdmission?: RuntimeAdmission) {
-  const root = ownedAdmission?.stateRoot ?? realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-service-")));
-  const admission = ownedAdmission ?? RuntimeAdmission.syntheticRoots(root, root);
+  const profile = ownedAdmission === undefined ? createBoundProfileFixture() : undefined;
+  const admission = ownedAdmission ?? profile?.admission;
+  if (admission === undefined) throw new Error("actual profile fixture admission required");
+  const root = admission.stateRoot;
   const clock = manualClock(new Date("2026-10-12T12:00:00.000Z"));
   const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const jwk = { ...keys.publicKey.export({ format: "jwk" }), kid: "fixture-key", alg: "RS256", use: "sig" };
@@ -55,7 +56,7 @@ export function chatGptFixture(ownedAdmission?: RuntimeAdmission) {
   async function connected(usePlan = true) { const attempt = await service.signIn({ usePlan }); await callback(attempt); return attempt.completion; }
   async function cleanup() {
     await service.close();
-    if (ownedAdmission === undefined) { admission.release(); rmSync(root, { recursive: true, force: true }); }
+    profile?.close();
   }
   return { root, admission, clock, service, transport, calls, callback, connected, cleanup,
     setClaims(patch: { [key: string]: unknown }) { claimsPatch = patch; },

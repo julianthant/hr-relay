@@ -292,10 +292,13 @@ list-visible slugs and display names. Assistant requests use that catalog, expli
 policy, and current account/profile authority; catalog presence grants no execution permission. The
 requested default is `gpt-6.1-sol` with medium reasoning. Missing availability refuses without a model
 fallback. Per-profile choice persistence and served selector wiring are separate; no Settings leaf or
-credential field stores that choice here. OCR keeps its own requested model.
+credential field stores that choice here. OCR uses the fixed backend `CHATGPT_OCR_MODEL` (`gpt-6.1-sol`) independently of assistant preference, with no substitute model.
 
 OCR and assistant inference share the existing bounded Responses transport, cancellation and usage
-owner. Assistant functions are strict and namespaced. One trusted per-request server binding captures
+owner. Account closure fences new work, aborts requests and awaits issued inference/page operations and
+accesses; sign-out also drains those operations before revocation or credential mutation. Failed native
+artifact, PDF or response-reader closure retains explicit resource uncertainty and refuses sign-out
+without clearing credentials. Assistant functions are strict and namespaced. One trusted per-request server binding captures
 request-specific private state before catalog or inference awaits and returns its closure-bound
 validators and handlers; captured state is not automatically sent to the model. The absent binding
 returns an empty set without subject reads. Continuation retains every returned item and exact call
@@ -368,6 +371,10 @@ than an empty store. This local display does not widen command journals, logs, o
 schema-1 record with registration metadata and the current session, without token history.
 `createChatGptCredentialRepository` exposes `read()` and asynchronous `withLock()` transactions
 through `credential-store.ts`. Replacement checks the expected revision and advances it by one.
+Account authority observation is read-only: concurrent live service instances do not advance the
+credential revision. Unexpired access and unchanged usage revalidate the issued authority without a
+writer lock; refresh and changed usage retain lock/CAS publication. Closing the issuing service,
+actual credential mutation, profile epoch change or lost physical admission revokes its captures.
 The record has a 64,000-byte limit and uses `.chatgpt-account.lock`; stale-lock cleanup requires
 exclusive `RuntimeAdmission`. With the dashboard stopped, `npm run cli -- storage recover-chatgpt-lock`
 clears a lock whose recorded owner process is gone and refuses one whose owner still runs. Unconfirmed completion after replacement reports
@@ -575,7 +582,7 @@ instead of reading the map directly.
 ## Not built yet
 
 - The Settings dashboard connection to these saved settings, credentials, relocation, and readiness authorities is pending in the wiring base.
-- ChatGPT OAuth, account, and Responses OCR services exist; their runtime and dashboard wiring is pending. Provider keys and an executable OCR connection are not current support.
+- ChatGPT OAuth and Responses OCR are wired to the selected dashboard diagnostic and worker provider registry. Actual subscription/model support and workflow cutover still require their live checks and operator sign-off; provider keys are not supported.
 - The packaged desktop application's OS credential backend is pending; the current credential backend is the independent private local file.
 
 ### Profile storage admission

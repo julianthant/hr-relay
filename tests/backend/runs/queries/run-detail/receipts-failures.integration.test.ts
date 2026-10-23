@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import { createOperatorRunDetail } from "../../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { buildRunDetail, buildRunSection } from "../../../../../src/backend/runs/queries/run-detail.js";
@@ -7,7 +6,6 @@ import { projectRunLogs } from "../../../../../src/dashboard/state/run-wiring-ad
 import { ERROR_CATALOG, resolveErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { DiagnosticBundleCorruptError } from "../../../../../src/backend/runs/commands/refusals.js";
 import { buildReceiptFailureSection } from "../../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
-import { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { createServerVerifiedArtifactReader } from "../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { deriveDiagnosticContentDigest } from "../../../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../../../src/models/trust/diagnostic.js";
@@ -19,18 +17,15 @@ import { trustWorld } from "../../../../support/helpers/backend/trust-authority-
 const worlds: ReturnType<typeof trustWorld>[] = [];
 afterEach(() => { for (const world of worlds.splice(0).reverse()) world.dispose(); });
 
-function fixture() {
+async function fixture() {
   const f = trustWorld();
   worlds.push(f);
   const run = f.fail(f.create(301), 302);
   const failure = f.database.authority.failures.listByRun(run.envelope.runId).at(-1);
   assert.ok(failure);
-  const captures = {
-    authority: f.database.authority.diagnosticBundles,
-    artifactReader: createServerVerifiedArtifactReader({
-      admission: RuntimeAdmission.syntheticRoots(join(f.world.stateRoot, ".tracker"), join(f.world.stateRoot, ".tracker/data/artifacts")),
-    }),
-  };
+  const artifactReader = createServerVerifiedArtifactReader({ admission: f.profile.admission });
+  await artifactReader.ready;
+  const captures = { authority: f.database.authority.diagnosticBundles, artifactReader };
   const bundle = (seed: number, origin: DiagnosticBundle["origin"], runId = run.envelope.runId) => {
     const content = {
       runId,
@@ -83,8 +78,8 @@ function availableFailure(response: ReturnType<typeof buildReceiptFailureSection
 }
 
 describe("run-detail failure diagnostic-bundle linkage", () => {
-  it("retains an early terminal failure in Logs when the empty evidence fold skips timeline reads", () => {
-    const h = fixture();
+  it("retains an early terminal failure in Logs when the empty evidence fold skips timeline reads", async () => {
+    const h = await fixture();
     const runId = h.run.envelope.runId;
     const record = h.f.database.authority.timelineEvents.append({ schemaVersion: 1,
       eventId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", workflow: h.run.envelope.workflow,
@@ -155,8 +150,8 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     assert.equal(decision.decision.message, "This failure code is not in the current catalog. Review the recorded local evidence.");
   });
 
-  it("keeps an unlinked failure's capture absent", () => {
-    const h = fixture();
+  it("keeps an unlinked failure's capture absent", async () => {
+    const h = await fixture();
     const value = availableFailure(buildReceiptFailureSection(h.f.deps, h.run.envelope.runId, "failure"));
     assert.equal(value.diagnosticBundle.state, "absent");
     assert.ok(value.display?.title);
@@ -172,8 +167,8 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     { kind: "subject-mismatch" as const },
     { kind: "recovery-park" as const },
     { kind: "unexpected-state" as const },
-  ])("serves a bundle linked to this run and failure origin: $kind", ({ kind }) => {
-    const h = fixture();
+  ])("serves a bundle linked to this run and failure origin: $kind", async ({ kind }) => {
+    const h = await fixture();
     const row = h.bundle(303, { kind, failureId: h.failure.failureId });
     h.f.database.authority.diagnosticBundles.insert(row);
     const before = canonicalJsonStringify(h.failure);
@@ -182,20 +177,20 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     assert.equal(canonicalJsonStringify(h.f.database.authority.failures.get(h.failure.failureId)), before);
   });
 
-  it("fails loudly when a failure names a bundle but capture authority is absent", () => {
-    const h = fixture();
+  it("fails loudly when a failure names a bundle but capture authority is absent", async () => {
+    const h = await fixture();
     const row = h.bundle(304, { kind: "failure", failureId: h.failure.failureId });
     assert.throws(() => h.readWithoutCaptures(row.bundleId), DiagnosticBundleCorruptError);
   });
 
-  it("fails loudly when the exact bundle record is missing", () => {
-    const h = fixture();
+  it("fails loudly when the exact bundle record is missing", async () => {
+    const h = await fixture();
     const row = h.bundle(305, { kind: "failure", failureId: h.failure.failureId });
     assert.throws(() => h.read(row.bundleId), DiagnosticBundleCorruptError);
   });
 
-  it("fails loudly when a named bundle belongs to another run", () => {
-    const h = fixture();
+  it("fails loudly when a named bundle belongs to another run", async () => {
+    const h = await fixture();
     const foreignRun = h.f.create(306).envelope.runId;
     const row = h.bundle(307, { kind: "failure", failureId: h.failure.failureId }, foreignRun);
     const authority = {
@@ -205,8 +200,8 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     assert.throws(() => h.read(row.bundleId, authority), DiagnosticBundleCorruptError);
   });
 
-  it("fails loudly when the origin belongs to a different failure or an operator request", () => {
-    const h = fixture();
+  it("fails loudly when the origin belongs to a different failure or an operator request", async () => {
+    const h = await fixture();
     const wrongFailure = h.bundle(308, {
       kind: "failure",
       failureId: FailureIdSchema.parse("00000000-0000-4000-8000-000000000309"),
@@ -228,8 +223,8 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     assert.throws(() => h.read(operatorBundle.bundleId, operatorAuthority), DiagnosticBundleCorruptError);
   });
 
-  it("requires exact membership and matching contents between lookup and run index", () => {
-    const h = fixture();
+  it("requires exact membership and matching contents between lookup and run index", async () => {
+    const h = await fixture();
     const row = h.bundle(311, { kind: "failure", failureId: h.failure.failureId });
     const indexedElsewhere = {
       ...h.captures.authority,

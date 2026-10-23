@@ -13,7 +13,6 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { type ArtifactWriteFaultStep } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
-import { syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
 
 {
 
@@ -22,7 +21,7 @@ describe("diagnostic byte retention", () => {
     const w = trustWorld();
     try {
       const run = w.create(820); w.cancel(run, 821);
-      const artifacts = createContentAddressedArtifactWriter({ admission: syntheticStateRoot(w.world.stateRoot) }); await artifacts.ready;
+      const artifacts = createContentAddressedArtifactWriter({ admission: w.profile.admission }); await artifacts.ready;
       const service = createDiagnosticCaptureService({ authority: w.database.authority, artifacts, clock: w.world.clock, ids: { uuid: randomUUID }, retentionDays: 1 });
       const capture = (text: string, pinned = false) => operatorRequestedCapture({ service, runId: run.envelope.runId,
         configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64), fields: [],
@@ -32,8 +31,8 @@ describe("diagnostic byte retention", () => {
       assert.equal(shared.attachments[0]?.digest, pinned.attachments[0]?.digest);
       const result = w.database.sweepOrdinaryDiagnostics(new Date(w.world.clock.nowMs() + 2 * 86_400_000).toISOString());
       assert.deepEqual([...result.purged].sort(), [shared.bundleId, alone.bundleId].sort());
-      assert.equal(existsSync(join(w.world.stateRoot, "artifacts", `${shared.attachments[0]?.digest}.artifact`)), true);
-      assert.equal(existsSync(join(w.world.stateRoot, "artifacts", `${alone.attachments[0]?.digest}.artifact`)), false);
+      assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${shared.attachments[0]?.digest}.artifact`)), true);
+      assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${alone.attachments[0]?.digest}.artifact`)), false);
       assert.equal(w.database.authority.diagnosticBundles.get(pinned.bundleId)?.availability, undefined);
     } finally { w.dispose(); }
   });

@@ -1,4 +1,4 @@
-import { openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
+import { closePersonLookupReceiptDatabase, openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
@@ -24,7 +24,7 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
 afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
+  for (const database of databases.splice(0)) closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

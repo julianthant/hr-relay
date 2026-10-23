@@ -9,14 +9,18 @@ import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/r
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCredentialStore, createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { fixtureAdmission, initializeAdmissionFixture, releaseAdmissionFixture } from "../../../support/helpers/admission-fixture.js";
+import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createBoundProfileFixture, createBoundProfileCredentialStore, fixtureAdmission, initializeAdmissionFixture, releaseAdmissionFixture } from "../../../support/helpers/admission-fixture.js";
 
-function fixture(afterRename?: () => void) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-credential-"))), admission = RuntimeAdmission.syntheticRoots(root, root);
+function fixture(afterRename?: () => void, profile?: ReturnType<typeof createBoundProfileFixture>) {
+  const root = profile?.stateRoot ?? realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-credential-")));
+  const admission = profile?.admission ?? RuntimeAdmission.syntheticRoots(root, root);
   const repository = createChatGptCredentialRepository({ admission, stateRoot: root, afterRename }), directory = join(root, "credentials"), path = join(directory, "chatgpt-account.json");
   const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
-  return { root, admission, repository, directory, path, record, cleanup() { admission.release(); rmSync(root, { recursive: true, force: true }); } };
+  return { root, admission, repository, directory, path, record, cleanup() {
+    if (profile !== undefined) profile.close();
+    else { admission.release(); rmSync(root, { recursive: true, force: true }); }
+  } };
 }
 it("absence has no write and credential persistence uses owner-only permissions", async () => {
   const f = fixture(); try { assert.equal(f.repository.read(), undefined); assert.equal(existsSync(f.directory), false);
@@ -128,36 +132,37 @@ it("refuses directory replacement and unadmitted roots", async () => {
   } finally { f.cleanup(); }
 });
 
-function protectedRequest() {
-  return ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision: 1,
+function protectedRequest(expectedRevision: number) {
+  return ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision,
     protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-12T12:00:00.000Z", entries: { ucpathPassword: { set: "synthetic-protected" } } });
 }
 
 it("both records retain independent revisions while their writers and authenticated stages coexist", async () => {
-  const f = fixture();
+  const f = fixture(undefined, createBoundProfileFixture());
   try {
     await f.repository.withLock(async tx => { tx.replace(f.record, null); });
     let protectedStageObserved = false;
-    const store = createCredentialStore({ admission: f.admission, stateRoot: f.root, hooks: { beforeRename() {
+    const store = createBoundProfileCredentialStore(f.admission, { stateRoot: f.root, hooks: { beforeRename() {
       assert.ok(readdirSync(f.directory).some(name => /^\.protected\..+\.tmp$/u.test(name)));
       assert.deepEqual(f.repository.read(), f.record);
       protectedStageObserved = true;
     } } });
+    const protectedRevision = store.read().revision;
     await f.repository.withLock(async tx => {
       const lock = JSON.parse(readFileSync(join(f.directory, ".chatgpt-account.lock"), "utf8")) as { id: string };
       const stage = join(f.directory, `.chatgpt-account.${lock.id}.tmp`);
       writeFileSync(stage, JSON.stringify({ ...f.record, revision: 2 }), { mode: 0o600 });
       try {
-        assert.equal(store.read().revision, 1);
-        const outcome = store.apply(protectedRequest());
+        assert.equal(store.read().revision, protectedRevision);
+        const outcome = store.apply(protectedRequest(protectedRevision));
         assert.equal(outcome.state, "applied");
-        assert.equal(store.read().revision, 2);
+        assert.equal(store.read().revision, protectedRevision + 1);
         assert.equal(protectedStageObserved, true);
         assert.deepEqual(tx.read(), f.record);
       } finally { rmSync(stage); }
       tx.replace({ ...f.record, revision: 2 }, 1);
     });
-    assert.equal(store.read().revision, 2);
+    assert.equal(store.read().revision, protectedRevision + 1);
     assert.deepEqual(f.repository.read(), { ...f.record, revision: 2 });
     assert.deepEqual(readdirSync(f.directory).sort(), ["chatgpt-account.json", "protected.json"]);
     verifyChatGptCredentialStore({ admission: f.admission, stateRoot: f.root });
@@ -165,14 +170,15 @@ it("both records retain independent revisions while their writers and authentica
 });
 
 it("a private Duo key shares the credential folder with both records", async () => {
-  const f = fixture();
+  const f = fixture(undefined, createBoundProfileFixture());
   try {
     await f.repository.withLock(async tx => { tx.replace(f.record, null); });
-    const store = createCredentialStore({ admission: f.admission, stateRoot: f.root });
+    const store = createBoundProfileCredentialStore(f.admission, { stateRoot: f.root });
+    const protectedRevision = store.read().revision;
     const duo = join(f.directory, "duo-webauthn.json");
     writeFileSync(duo, '{"synthetic":"duo-key"}', { mode: 0o600 });
-    assert.equal(store.apply(protectedRequest()).state, "applied");
-    assert.equal(store.read().revision, 2);
+    assert.equal(store.apply(protectedRequest(protectedRevision)).state, "applied");
+    assert.equal(store.read().revision, protectedRevision + 1);
     assert.deepEqual(f.repository.read(), f.record);
     verifyChatGptCredentialStore({ admission: f.admission, stateRoot: f.root });
     chmodSync(duo, 0o644);
@@ -182,10 +188,10 @@ it("a private Duo key shares the credential folder with both records", async () 
 });
 
 it("companion stages require exact writer custody and cannot hide unknown entries", async () => {
-  const f = fixture();
+  const f = fixture(undefined, createBoundProfileFixture());
   try {
     await f.repository.withLock(async tx => { tx.replace(f.record, null); });
-    const store = createCredentialStore({ admission: f.admission, stateRoot: f.root });
+    const store = createBoundProfileCredentialStore(f.admission, { stateRoot: f.root });
     await f.repository.withLock(async () => {
       const stage = join(f.directory, `.chatgpt-account.${randomUUID()}.tmp`);
       writeFileSync(stage, "synthetic-stage", { mode: 0o600 });

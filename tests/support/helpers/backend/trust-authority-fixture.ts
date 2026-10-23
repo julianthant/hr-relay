@@ -1,10 +1,10 @@
-import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerPorts, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { join } from "node:path";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../../src/models/config/runtime-generation.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
-import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
 import { type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
@@ -16,9 +16,12 @@ import { makeWorld, uuidOf } from "./dashboard-harness.js";
 /** Trust acceptance uses actual SQLite service reads; the empty projector supplies evidence only. */
 export function trustWorld() {
   const world = makeWorld();
-  const database = AuthorityDatabase.open({ path: join(world.stateRoot, "trust.sqlite"),
-    busyTimeoutMs: 250, migrationOwner: "trust-linkage-test" }, world.clock);
-  testWorkerPorts(database, world.clock, { path: join(world.stateRoot, "trust.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+  const profile = createBoundProfileFixture();
+  const database = AuthorityDatabase.open(profile.admission, { path: profile.path,
+    busyTimeoutMs: 250, migrationOwner: "trust-linkage-test" }, world.clock, undefined, undefined, undefined,
+    boundProfileCredentials(profile.admission));
+  assert.notEqual(world.database.getSourceDatabaseIdentity(), database.getSourceDatabaseIdentity());
+  testWorkerPorts(database, world.clock, { path: profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
   const active = database.authority.runtimeConfig.get();
   assert.ok(active);
   const slots = database.authority.workerSlots.list(personLookupDescriptor.id).filter(slot => slot.retiredAt === null && slot.poolIndex === 1);
@@ -32,7 +35,7 @@ export function trustWorld() {
     ids: { uuid: () => uuidOf(next++) }, publishQueued: () => {} });
   const reader = createTrustRunReader(database, world.clock);
   const receipts = createReceiptService({ database, runReader: reader, descriptors: [personLookupDescriptor] });
-  const deps: RunDetailQueryDeps = { timeline: database.authority.timelineEvents, stateRoot: world.stateRoot, projection: world.projection, runReader: reader,
+  const deps: RunDetailQueryDeps = { timeline: database.authority.timelineEvents, stateRoot: profile.stateRoot, projection: world.projection, runReader: reader,
     authority: { getRun: () => { throw new Error("RAW_RUN_READ_FORBIDDEN"); },
       listCheckpoints: (workflow, item) => database.authority.runCheckpoints.listByItem(workflow, item),
       latestCheckpoint: (workflow, item, node) => database.authority.runCheckpoints.latest(workflow, item, node),
@@ -60,13 +63,14 @@ export function trustWorld() {
   };
   const fail = (run: RunRecord, seed: number) => {
     const now = world.clock.now().toISOString();
-    const claimed = database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId, now });
+    const workerLifetime = testWorkerLifetime(database, run.envelope.workflow, 1).workerLifetime;
+    const claimed = database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId, workerLifetime, now });
     assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("fixture claim failed");
     assert.equal(claimed.run.envelope.runId, run.envelope.runId);
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
     const validating = database.authority.runs.transition({ runId: run.envelope.runId,
       expectedVersion: claimed.run.version, claim, now,
-      lifecycle: { state: "validating", workerId, claimedAt: now, heartbeatAt: now } });
+      lifecycle: { state: "validating", workerId, workerLifetime, claimedAt: now, heartbeatAt: now } });
     assert.equal(validating.state, "applied"); if (validating.state !== "applied") throw new Error("fixture validation failed");
     database.terminalizeFailure(personLookupDescriptor, {
       failure: { failureId: uuidOf(seed), fingerprint: HASH_A, runId: run.envelope.runId,
@@ -84,8 +88,17 @@ export function trustWorld() {
     assert.equal(result.state, "present"); if (result.state !== "present") throw new Error("failed fixture run missing");
     return result.run;
   };
-  return { world, database, workerId, service, reader, receipts, deps, runtimeConfig, create, cancel, fail,
-    dispose() { database.close(); world.dispose(); } };
+  return { world, profile, database, workerId, service, reader, receipts, deps, runtimeConfig, create, cancel, fail,
+    dispose() {
+      const failures: unknown[] = [];
+      let databaseClosed = false;
+      try { database.close(); databaseClosed = true; } catch (error) { failures.push(error); }
+      if (databaseClosed) {
+        try { profile.close(); } catch (error) { failures.push(error); }
+      }
+      try { world.dispose(); } catch (error) { failures.push(error); }
+      if (failures.length > 0) throw new AggregateError(failures, "trust fixture closure failed");
+    } };
 }
 
 /** Real folded evidence deliberately contradicts the separate SQLite lifecycle oracle. */

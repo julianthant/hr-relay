@@ -6,12 +6,13 @@ import { z } from "zod";
 import { ArtifactRefSchema } from "../../../models/artifacts/artifacts.js";
 import { TimelineAppendSchema } from "../../../models/events/timeline.js";
 import { BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import type { RuntimeRelocationOperation } from "../admission/admission.js";
 import type { RuntimePair } from "../admission/installation.js";
 import { verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
-import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { createCredentialStore, verifyChatGptCredentialBytes, verifyChatGptCredentialStore } from "../configuration/credential-store.js";
+import { AuthorityDatabase, CredentialContextRequiredError } from "../sqlite/authority-database.js";
+import { assertCredentialStoreOwner, verifyChatGptCredentialBytes, verifyChatGptCredentialStore } from "../configuration/credential-store.js";
 
 const ARTIFACT = /^([0-9a-f]{64})\.artifact$/u;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
@@ -91,10 +92,15 @@ function verifyArtifactReference(root: string, reference: z.infer<typeof Artifac
 }
 
 /** All durable physical references must resolve before a root can be copied. */
-export function verifyRelocationLiveReferences(input: Readonly<{ admission: RuntimeAdmission; source: RuntimePair }>): void {
+export function verifyRelocationLiveReferences(input: Readonly<{ admission: RuntimeAdmission; source: RuntimePair; credentials?: CredentialStore }>): void {
   input.admission.assertExclusive();
   if (input.admission.stateRoot !== input.source.stateRoot || input.admission.artifactRoot !== input.source.artifactRoot) {
     throw new Error("relocation-inventory: live reference admission pair mismatch");
+  }
+  if (input.credentials !== undefined) assertCredentialStoreOwner(input.credentials, input.admission);
+  const credentialPath = join(input.source.stateRoot, "credentials", "protected.json");
+  if (lstatSync(credentialPath, { throwIfNoEntry: false }) !== undefined && input.credentials === undefined) {
+    throw new CredentialContextRequiredError();
   }
   const authorityPath = join(input.source.stateRoot, "state.db");
   const authority = AuthorityDatabase.open(input.admission, { path: authorityPath, busyTimeoutMs: 5000,
@@ -122,9 +128,10 @@ export function verifyRelocationLiveReferences(input: Readonly<{ admission: Runt
       }
     }
   } finally { authority.close(); }
-  const credentialPath = join(input.source.stateRoot, "credentials", "protected.json");
   if (lstatSync(credentialPath, { throwIfNoEntry: false }) !== undefined) {
-    createCredentialStore({ admission: input.admission, stateRoot: input.source.stateRoot }).read();
+    if (input.credentials === undefined) throw new CredentialContextRequiredError();
+    assertCredentialStoreOwner(input.credentials, input.admission);
+    input.credentials.read();
   }
   verifyChatGptCredentialStore({ admission: input.admission, stateRoot: input.source.stateRoot });
 

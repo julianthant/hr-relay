@@ -13,7 +13,7 @@ export interface ChatGptAccountRouteDeps { readonly chatGptAccount?: Pick<ChatGp
 function failure(error: unknown, dispatched = false) {
   const known = error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError;
   const code: ErrorCatalogCode = known ? error.code : "CHATGPT_AUTH_UNAVAILABLE";
-  return { state: code === "CHATGPT_CREDENTIAL_UNCERTAIN" || !known && dispatched ? "uncertain" as const : "refused" as const, code, message: ERROR_CATALOG[code].text };
+  return { state: code === "CHATGPT_CREDENTIAL_UNCERTAIN" || code === "CHATGPT_RESOURCE_CLOSURE_UNPROVED" || !known && dispatched ? "uncertain" as const : "refused" as const, code, message: ERROR_CATALOG[code].text };
 }
 
 export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAccountRouteDeps): void {

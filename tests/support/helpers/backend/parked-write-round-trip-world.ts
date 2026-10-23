@@ -2,9 +2,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import { createCommandKernel, type CommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { runWorkerLoop, type WorkerLoopReport } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
@@ -15,7 +13,7 @@ import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflo
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_KEY, WRITE_FIXTURE_NOW, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions, type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
-import { fixtureDuoCeremonyGates } from "../duo-ceremony-fixtures.js";
+import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 
@@ -31,19 +29,27 @@ interface RoundTrip {
 
 export function createParkedWriteRoundTripTestWorld() {
   const roots: string[] = [];
+  const profiles = new Map<AuthorityDatabase, ReturnType<typeof createBoundProfileFixture>>();
 
   const openDatabases: AuthorityDatabase[] = [];
 
   function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, resolutionHooks?: WriteSequencerHooks): RoundTrip {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-parked-write-"));
-    roots.push(root);
+    const profile = createBoundProfileFixture();
+    roots.push(profile.workspace);
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const database = AuthorityDatabase.open(
-      { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-      clock,
-    );
-    const active = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    let database: AuthorityDatabase;
+    try {
+      database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
+        clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+    } catch (error) {
+      const failures: unknown[] = [error];
+      try { profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+      if (failures.length > 1) throw new AggregateError(failures, "parked fixture opening cleanup failed", { cause: error });
+      throw error;
+    }
+    profiles.set(database, profile);
     openDatabases.push(database);
+    const active = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
 
     const world = createWriteFixtureWorld();
     const stores = buildWriteFixtureRegistry(world);
@@ -87,7 +93,7 @@ export function createParkedWriteRoundTripTestWorld() {
       world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
       if (failCommit) world.commitThrows = new Error("browser crashed mid-click");
       return runWorkerLoop({
-        ...testWorkerPorts(database, clock, { path: join(root, "state.db"), descriptor: writeFixtureDescriptor, poolIndex: 1 }),
+        ...testWorkerPorts(database, clock, { path: profile.path, descriptor: writeFixtureDescriptor, poolIndex: 1 }),
         workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
         workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
         descriptor: writeFixtureDescriptor,
@@ -100,7 +106,7 @@ export function createParkedWriteRoundTripTestWorld() {
         scheduler,
         taskDeadlineMs: 60_000,
         sessionAcquireMs: 20_000,
-        duoCeremony: fixtureDuoCeremonyGates(clock),
+        duoCeremony: duoCeremonyGatesOver(database, clock, scheduler),
         heartbeatIntervalMs: 600_000,
         idleRepollMs: 1_000,
         log,
@@ -165,8 +171,13 @@ export function createParkedWriteRoundTripTestWorld() {
     };
   }
   function cleanup(): void {
-    for (const database of openDatabases.splice(0)) database.close();
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+    const failures: unknown[] = [];
+    for (const database of openDatabases.splice(0)) {
+      try { database.close(); profiles.get(database)?.close(); profiles.delete(database); }
+      catch (error) { failures.push(error); }
+    }
+    roots.splice(0);
+    if (failures.length > 0) throw new AggregateError(failures, "parked write fixture cleanup failed");
   }
   return { roots, openDatabases, cleanup, roundTrip, parkedIntent, resolutionCommand, nextCommandId };
 }

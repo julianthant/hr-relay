@@ -473,6 +473,12 @@ export class RuntimeAdmission {
   }
   assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void {
     this.assertLive();
+    if (this.#scope === "profile") {
+      this.assertProfileRuntime();
+      if (this.#profileParent === undefined) throw new Error("profile-parent-context-unavailable");
+      this.#profileParent.assertFixedProcessLockRoot(workspaceRoot, processLockRoot);
+      return;
+    }
     if (this.#scope !== "installation") throw new Error("runtime-admission: installation lock authority required");
     const lease = this.#authority as InstallationLease;
     assertInstallationLease(lease);
