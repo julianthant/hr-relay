@@ -8,7 +8,7 @@ it("uses the existing authenticated transport for exact opaque action decisions 
     calls.push({ url, init });
     return Response.json({ state: "applied", actionId: "00000000-0000-4000-8000-000000000002" });
   } });
-  const decide = client.assistantDecide; assert.ok(decide);
+  const decide = client.assistantDecide?.bind(client); assert.ok(decide);
   const identity = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, decision: "confirm" as const };
   assert.equal((await decide(identity)).state, "applied");
   assert.equal(calls.length, 1); assert.equal(calls[0].url, "http://127.0.0.1:3938/api/v1/assistant/action");
@@ -21,7 +21,7 @@ it("uses the existing authenticated transport for exact opaque action decisions 
 it("retains a lost confirmation response as an error and never retries the action", async () => {
   let calls = 0;
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => { calls++; throw new Error("synthetic lost response"); } });
-  const decide = client.assistantDecide; assert.ok(decide);
+  const decide = client.assistantDecide?.bind(client); assert.ok(decide);
   await assert.rejects(() => decide({ chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, decision: "confirm" }));
   assert.equal(calls, 1);
 });
@@ -29,7 +29,7 @@ it("retains a lost confirmation response as an error and never retries the actio
 it("refuses a successful-looking decision for a different action without retry", async () => {
   let calls = 0;
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => { calls++; return Response.json({ state: "applied", actionId: "00000000-0000-4000-8000-000000000003" }); } });
-  const decide = client.assistantDecide; assert.ok(decide);
+  const decide = client.assistantDecide?.bind(client); assert.ok(decide);
   await assert.rejects(() => decide({ chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, decision: "confirm" }), /assistant-action-response-mismatch/u);
   assert.equal(calls, 1);
 });

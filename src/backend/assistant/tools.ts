@@ -145,7 +145,7 @@ export function createProductionAssistantTools(input: Readonly<{
             revision: proposal.revision, expiresAt: record.expiresAt, label: collectionLabel(action, target.matchingCount),
             targetLabel: `${target.matchingCount} current notifications`, subject: "none", effect: "local-write" });
           if (proposal.state === "prepared") {
-            const retained = invocationContext.assertRetainedCurrent;
+            const retained = invocationContext.assertRetainedCurrent?.bind(invocationContext);
             if (retained === undefined) throw new AssistantLocalIntentError("assistant-confirmation-owner-required");
             pending.set(proposal.id, { chat, revision: proposal.revision, command, expiresAt: record.expiresAt, record, assertCurrent: retained });
             return { kind: "complete", result: { state: "action-proposal", proposal: actionView } };
