@@ -1,3 +1,6 @@
+import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { lifecycleCommandId, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { runClaim } from "../../../../src/models/run/record.js";
 import { directUcpathSearchFixtureTask, registryWithUcpathSearch, createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
@@ -179,12 +182,19 @@ describe("failure, retry, and resume", () => {
       releaseDriver = resolve;
     });
     const controller = new AbortController();
+    let rejectDriver: (reason: unknown) => void = () => { throw new Error("driver gate not entered"); };
+    const driverOperation = new Promise<never>((_resolve, reject) => { rejectDriver = reject; });
+    let driverSettled = false;
+    const driverSettlement = driverOperation.then(() => { throw new Error("driver gate unexpectedly resolved"); }, reason => {
+      assert.equal(reason, controller.signal.reason); driverSettled = true;
+    });
+    const retained: Promise<unknown>[] = [];
     const sessions = sessionFactoryHarness({
       ucpath: () => Object.freeze({
         system: "ucpath" as const,
         searchPersonOrg: (): Promise<never> => {
           releaseDriver?.();
-          return new Promise<never>(() => undefined);
+          return driverOperation;
         },
       }),
       crm: () => healthyCrmDriver(),
@@ -192,8 +202,14 @@ describe("failure, retry, and resume", () => {
     const harness = executorHarness({ sessions });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
-    const executing = executeClaimedRun(harness.deps, { ...claimed, signal: controller.signal });
+    const executing = executeClaimedRun({ ...harness.deps, retainCallback(identity, operation) {
+      assert.equal(identity.runId, claimed.run.envelope.runId);
+      assert.equal(identity.claimGeneration, claimed.claim.claimGeneration);
+      assert.equal(identity.attempt, claimed.run.envelope.attempt);
+      retained.push(operation);
+    } }, { ...claimed, signal: controller.signal });
     await started;
+    const retainedBeforeAbort = retained.length; assert.ok(retainedBeforeAbort > 0);
     controller.abort(new Error("operator cancelled the run"));
     const outcome = await executing;
     assert.equal(outcome.state, "abandoned");
@@ -205,5 +221,26 @@ describe("failure, retry, and resume", () => {
     assert.equal(run.lifecycle.state, "running");
     assert.deepEqual(harness.sessions.closeReasons(), ["poisoned"]);
     assert.equal(database.authority.runResults.get(RUN_ID), undefined);
+    assert.equal(driverSettled, false);
+    assert.equal(retained.length, retainedBeforeAbort);
+    rejectDriver(controller.signal.reason);
+    await driverSettlement;
+    const settled = await Promise.allSettled(retained);
+    assert.equal(driverSettled, true);
+    for (const result of settled) {
+      assert.equal(result.status, "rejected");
+      if (result.status === "rejected") assert.equal(result.reason, controller.signal.reason);
+    }
+    const lifecycle = testRunService(database, clock);
+    const claim = runClaim(run); assert.ok(claim);
+    const now = clock.now().toISOString();
+    const requested = requireLifecycleApplied(lifecycle.transition({ commandId: lifecycleCommandId("fixture-cancel-request", RUN_ID),
+      runId: RUN_ID, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: now } }));
+    assert.equal(requested.cancelRequested, true);
+    const terminal = requireLifecycleApplied(lifecycle.terminalize({ kind: "cancelled", commandId: lifecycleCommandId("fixture-cancel-terminal", RUN_ID),
+      runId: RUN_ID, expectedVersion: requested.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, endedAt: now }, harness.deps.descriptor));
+    assert.deepEqual(terminal.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: now });
+    assert.equal(database.authority.runs.listByWorker(claim.workerId).some(owned => runClaim(owned) !== undefined), false);
+    assert.doesNotThrow(() => database.assertWorkerLifecycleRelease(claim.workerId));
   });
 });
