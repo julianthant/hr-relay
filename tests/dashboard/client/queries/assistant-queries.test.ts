@@ -12,7 +12,8 @@ it("uses the existing authenticated transport for exact opaque action decisions 
   const identity = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, decision: "confirm" as const };
   assert.equal((await decide(identity)).state, "applied");
   assert.equal(calls.length, 1); assert.equal(calls[0].url, "http://127.0.0.1:3938/api/v1/assistant/action");
-  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), identity);
+  const body = calls[0].init?.body; assert.equal(typeof body, "string"); if (typeof body !== "string") throw new Error("JSON request body required");
+  assert.deepEqual(JSON.parse(body), identity);
   assert.equal(new Headers(calls[0].init?.headers).get("origin"), "http://127.0.0.1:3938");
   await assert.rejects(() => decide({ ...identity, revision: 0 }));
   assert.equal(calls.length, 1);

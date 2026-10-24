@@ -736,7 +736,7 @@ async function composeDashboardRuntimeStartup(
   const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
 
   const workflowSources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredWorkflowSources);
-  let assistantSurface: ReturnType<typeof assistantSurfaceCoverage> | undefined;
+
   const kernel = createCommandKernel({
     preflight: runtimePreflight.admission,
     assistantSurface: () => { if (assistantSurface === undefined) throw new Error("assistant-surface-unavailable"); return assistantSurface; },
@@ -877,7 +877,7 @@ async function composeDashboardRuntimeStartup(
     activity,
     activityPopulation,
   });
-  assistantSurface = assistantSurfaceCoverage(app.routes);
+  const assistantSurface = assistantSurfaceCoverage(app.routes);
 
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
   const server: DashboardHttpServer = input.applicationTransport === undefined ? await startHttpServer({

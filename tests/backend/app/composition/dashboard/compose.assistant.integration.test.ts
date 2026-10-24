@@ -51,9 +51,9 @@ it.each([
       ...(installed ? { assistantModelPolicy: { policy: { model: "gpt-6.1-sol", effort: "medium" as const, eligible: true as const, consented: true as const,
         billing: "chatgpt-plan" as const, verifiedUntil: new Date(clock.nowMs() + 60_000).toISOString() }, isCurrent: () => { runtime.assertCurrent(active.token); return true; } } } : {}) });
     const origin = `http://127.0.0.1:${String(dashboard.port)}`;
-    const post = async (path: string, value: unknown) => {
+    const post = async (path: string, value: unknown): Promise<unknown> => {
       const response = await originalFetch(`${origin}/api/v1/${path}`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(value) });
-      return response.json();
+      const body: unknown = await response.json(); return body;
     };
     const before = transport.calls.length;
     const privateResult = AssistantResultSchema.parse(await post("assistant/respond", { message: "unrecognized private local request" }));
@@ -78,7 +78,8 @@ it.each([
       }));
       const noCallDurable = durableRows();
       transport.setResponse(init => {
-        const request = AssistantInferenceRequestSchema.parse(JSON.parse(String(init.body)));
+        if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
+        const request = AssistantInferenceRequestSchema.parse(JSON.parse(init.body));
         return new Response(`data: ${JSON.stringify({ type: "response.completed", response: { id: "text_without_effect", model: request.model, status: "completed",
           output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Completed. All notifications marked read." }] }] } })}\n\n`, { headers: { "content-type": "text/event-stream" } });
       });
@@ -93,7 +94,8 @@ it.each([
       }
       let turns = 0;
       transport.setResponse(init => {
-        const request = AssistantInferenceRequestSchema.parse(JSON.parse(String(init.body)));
+        if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
+        const request = AssistantInferenceRequestSchema.parse(JSON.parse(init.body));
         const outbound = JSON.stringify(request);
         for (const local of [...ids, "Local title", "Local summary", "unrecognized private local request"]) assert.equal(outbound.includes(local), false);
         turns++;
@@ -101,7 +103,7 @@ it.each([
         assert.ok(user && "content" in user && typeof user.content === "string");
         const projection: unknown = JSON.parse(user.content);
         assert.equal(Reflect.get(Object(projection), "count"), 25);
-        const reference = Reflect.get(Object(projection), "references"); assert.ok(Array.isArray(reference)); assert.equal(reference.length, 1);
+        const reference = z.object({ references: z.array(z.string()) }).parse(projection).references; assert.equal(reference.length, 1);
         const output = turns === 1 ? [{ type: "function_call", namespace: "relay", name: "notification_read_all", call_id: "call_local", arguments: JSON.stringify({ reference: reference[0] }), status: "completed" }]
           : [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Notification updated." }] }];
         return new Response(`data: ${JSON.stringify({ type: "response.completed", response: { id: `resp_${turns}`, model: request.model, status: "completed", output } })}\n\n`, { headers: { "Content-Type": "text/event-stream" } });

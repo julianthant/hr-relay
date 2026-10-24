@@ -69,14 +69,15 @@ export function createProductionAssistantTools(input: Readonly<{
       if (stored === undefined || canonicalJsonStringify(stored) !== canonicalJsonStringify(issued.record)) throw new AssistantLocalIntentError("assistant-action-record-stale");
       if (issued.command.family !== "notification") throw new AssistantLocalIntentError("assistant-action-not-issued");
       if (!("members" in issued.command.target)) throw new AssistantLocalIntentError("assistant-collection-required");
+      if (decision.decision === "cancel") {
+        input.authorization.cancel(issued.chat, decision.actionId, decision.revision);
+        pending.delete(decision.actionId);
+        return { state: "cancelled", actionId: decision.actionId };
+      }
       const target = issued.command.target;
       const observed = input.database.withAuthorityReadSnapshot(() => input.database.authority.notifications.collection(input.actorId, operationOf(issued.command.type)));
       if (canonicalJsonStringify(observed) !== canonicalJsonStringify(target)) throw new AssistantLocalIntentError("assistant-collection-stale");
       pending.delete(decision.actionId);
-      if (decision.decision === "cancel") {
-        input.authorization.cancel(issued.chat, decision.actionId, decision.revision);
-        return { state: "cancelled", actionId: decision.actionId };
-      }
       input.authorization.approve(issued.chat, decision.actionId, decision.revision);
       try {
         const result = input.authorization.consume(issued.chat, decision.actionId);

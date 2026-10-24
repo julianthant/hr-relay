@@ -347,7 +347,8 @@ it.each(["handler-cancel", "service-cancel", "service-account", "pre-effect", "d
   const tools = createProductionAssistantTools({ knowledge, database: f.database, kernel: f.kernel, authorization, actorId: "local-operator", clock: f.clock,
     assertCurrent: () => f.runtime.assertCurrent(f.active.token) });
   account.setResponse(init => {
-    const body = z.object({ model: z.string(), input: z.array(z.unknown()) }).parse(JSON.parse(String(init.body)));
+    if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
+    const body = z.object({ model: z.string(), input: z.array(z.unknown()) }).parse(JSON.parse(init.body));
     const user = body.input.find(item => typeof item === "object" && item !== null && "role" in item && item.role === "user");
     const text = z.object({ content: z.string() }).parse(user).content;
     const projection = z.object({ references: z.array(z.string()) }).parse(JSON.parse(text));
@@ -397,4 +398,34 @@ it.each(["handler-cancel", "service-cancel", "service-account", "pre-effect", "d
     assert.equal(audit.request.source, "assistant"); assert.equal(audit.versionChanges.length, 1);
     assert.equal(f.database.authority.assistantAuthorization.action(actionId)?.state, "settled");
   }
+});
+
+it.each(["confirm", "cancel"] as const)("keeps stale collection confirmation refused but permits exact inert %s", decision => {
+  const f = fixture(); assert.equal(f.grant("every-action").state, "applied");
+  const notification = NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "a".repeat(64),
+    trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary",
+    links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1,
+    lastSeenAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), updatedAt: f.clock.now().toISOString() });
+  f.database.withAuthorityTransaction(({ notifications }) => notifications.create(notification));
+  const tools = createProductionAssistantTools({ knowledge: assistantKnowledgeArtifact(), database: f.database, kernel: f.kernel, authorization: f.authorization, actorId: "local-operator", clock: f.clock,
+    assertCurrent: () => f.runtime.assertCurrent(f.active.token) });
+  const request = AssistantRequestSchema.parse({ message: "mark notifications read" });
+  const reference = z.object({ references: z.array(z.string()) }).parse(tools.projectInput(request).input).references[0]; assert.ok(reference);
+  const knowledge = assistantKnowledgeArtifact(), context: AssistantFunctionContext = { request, context: createAssistantContext(Buffer.from(knowledge.bytes), knowledge.policy),
+    assertCurrent: () => f.runtime.assertCurrent(f.active.token), assertRetainedCurrent: () => f.runtime.assertCurrent(f.active.token) };
+  return tools.bindFunctions(context, new AbortController().signal).then(async sets => {
+    const fn = sets[0]?.functions[0]; assert.ok(fn);
+    const result = await fn.invoke({ reference }, new AbortController().signal, context);
+    assert.equal(result.kind, "complete"); if (result.kind !== "complete" || result.result.state !== "action-proposal") throw new Error("prepared action required");
+    const proposal = result.result.proposal, action = f.database.authority.assistantAuthorization.action(proposal.actionId); assert.ok(action);
+    f.database.withAuthorityTransaction(({ notifications }) => notifications.create({ ...notification, notificationId: randomUUID(), dedupeFingerprint: "c".repeat(64) }));
+    const rows = f.database.authority.notifications.listByActor("local-operator");
+    const input = { chatId: proposal.chatId, actionId: proposal.actionId, revision: proposal.revision, decision };
+    if (decision === "confirm") assert.throws(() => tools.decideAction(input, new AbortController().signal));
+    else assert.equal(tools.decideAction(input, new AbortController().signal).state, "cancelled");
+    assert.equal(f.database.authority.assistantAuthorization.action(proposal.actionId)?.state, decision === "cancel" ? "cancelled" : "prepared");
+    assert.equal(f.database.authority.commands.get(action.command.commandId), undefined);
+    assert.equal(f.database.authority.commandAudits.findByCommand(action.command.commandId), undefined);
+    assert.deepEqual(f.database.authority.notifications.listByActor("local-operator"), rows);
+  });
 });

@@ -1,4 +1,4 @@
-import { AssistantActionDecisionSchema } from "../../../../../src/models/dashboard/assistant.js";
+import { AssistantActionDecisionSchema, AssistantActionResultSchema } from "../../../../../src/models/dashboard/assistant.js";
 import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { it } from "vitest";
@@ -48,7 +48,7 @@ it("keeps operator confirmation behind the same bounded loopback/media door and 
   assert.equal(calls, 0);
   const response = await app.request(url, { method: "POST", headers, body: JSON.stringify(identity) });
   assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.equal(calls, 1); assert.equal((await response.json()).state, "cancelled");
+  assert.equal(calls, 1); assert.equal(AssistantActionResultSchema.parse(await response.json()).state, "cancelled");
 });
 
 it("returns an issued automatic unknown action unchanged without converting it to a generic refusal", async () => {
