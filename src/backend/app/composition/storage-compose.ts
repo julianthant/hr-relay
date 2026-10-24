@@ -470,7 +470,7 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage backup [--json]",
-  "       storage upgrade [--plan] [--timeline-from <verified-copy-directory>] [--json]",
+  "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
   "       storage restore --from <manifest.json> [--json]",
   "       storage recover-restore --operation <id> --from <manifest.json> --outcome <unchanged|replaced> [--json]",
   "       storage relocate --plan <command-id> | --resume <operation-id> | --status [--json]",
@@ -964,10 +964,20 @@ export async function composeStorageCommand(
   if (subcommand === "upgrade") {
     for (let index = 0; index < rest.length; index += 1) {
       const argument = rest[index];
-      if (argument === "--plan" || argument === "--json") continue;
+      if (argument === "--plan" || argument === "--json" || argument === "--machine-control") continue;
       return { output: `unsupported storage upgrade argument: ${argument ?? "missing"}\n${STORAGE_USAGE}`, exitCode: 2 };
     }
     try {
+      if (rest.includes("--machine-control")) {
+        const allowed = new Set(["--machine-control", "--plan", "--json"]);
+        if (rest.some((argument) => !allowed.has(argument)) || new Set(rest).size !== rest.length) {
+          return { output: `unsupported storage upgrade argument: ${rest.find((argument) => !allowed.has(argument)) ?? "duplicate"}\n${STORAGE_USAGE}`, exitCode: 2 };
+        }
+        const { upgradeStoppedMachineControl } = await import("../../storage/maintenance/upgrade.js");
+        const { hostConfigFacts } = await import("../../../models/config/host-display.js");
+        const report = await upgradeStoppedMachineControl(admission, { plan: rest.includes("--plan"), hostFacts: hostConfigFacts(process.env) }, clock);
+        return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: machine-control ${report.state} (${String(report.profileCount)} profiles)`, exitCode: 0 };
+      }
       const { upgradeStorage } = await import("../../storage/maintenance/upgrade.js");
       const report = await upgradeStorage(admission,{ stateRoot: admission.stateRoot,
         processLockRoot: join(repoRoot, isolation.processLockRoot), plan: rest.includes("--plan") }, clock);

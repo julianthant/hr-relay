@@ -293,6 +293,10 @@ configured credential's public `rpId` and `credentialId` pairs. Missing identity
 the key is not logged. With the feature disabled, the key derives from `config.actor.id` for
 hands-on approval. Neither mode is a fallback for the other.
 
+The new-purpose Duo document keeps its own reserved counter. That counter is not the ceremony-lease
+generation. Reservation publishes the next count before signing, and an UNKNOWN or crashed attempt
+is not retried or reset.
+
 `AuthorityDatabase.#buildDuoCeremonyLeaseRepository` stores one row per key in `auth_leases`.
 Acquisition and release advance its version under CAS. The row stays retained across generations.
 

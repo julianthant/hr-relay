@@ -9,7 +9,7 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpat
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
-import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvidence, type InstallationLease,
+import { acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, requireStoppedControlProfileInventory, type ExistingAuthorityEvidence, type InstallationLease,
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
   type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
   type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
@@ -25,6 +25,8 @@ import type { ProfileRegistryDocument, ProfileDatabaseBinding } from "../../../m
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
+import { type IssuedDuoTransaction } from "../configuration/duo-credential-store.js";
+import { type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
 
 export class ProfileStorageRelocationUnsupportedError extends Error {
   readonly code = "PROFILE_STORAGE_RELOCATION_UNSUPPORTED";
@@ -134,7 +136,7 @@ export type RuntimeRelocationOperation = Readonly<{
 
 type AdmissionScope = "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "stopped-projection" | "synthetic-stopped-staged"
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
-  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-repair-inventory" | "profile-pending-logout-inventory";
+  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-repair-inventory" | "profile-pending-logout-inventory" | "stopped-control-inventory";
 
 type ReadyProfileUpgrade = Readonly<{ sourcePath: string; processLockRoot: string; sourceSchemaVersion: 7 | 8; copyPath?: string;
   qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
@@ -395,6 +397,16 @@ export class RuntimeAdmission {
     if (this.#profileBinding === undefined) throw new Error("profile-bound-authority-required");
     return this.#profileBinding;
   }
+  commitProfileDuo(transaction: IssuedDuoTransaction): void {
+    this.assertWritable();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    (this.#authority as InstallationLease).commitProfileDuo(transaction);
+  }
+  commitProfileDuoIntent(transaction: IssuedDuoTransaction): void {
+    this.assertWritable();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    (this.#authority as InstallationLease).commitProfileDuoIntent(transaction);
+  }
   readProfileRegistry(): ProfileRegistryDocument {
     this.assertLive();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
@@ -638,6 +650,7 @@ export class RuntimeAdmission {
   }
   assertCredentialRead(): void {
     this.assertLive();
+    if (this.#scope === "stopped-control-inventory") throw new Error("profile-control-upgrade-credential-read-refused");
     if (this.#readyUpgrade !== undefined) throw new Error("profile-stopped-upgrade-credential-read-refused");
     if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") throw new Error("profile-settlement-credential-read-refused");
     if (this.#scope === "profile") this.assertProfileRuntime();
@@ -751,7 +764,7 @@ export class RuntimeAdmission {
     receipts: readonly RelocationCompletionReceipt[] }> | undefined {
     this.assertLive();
     if (this.#scope === "synthetic") return undefined;
-    if (this.#scope === "profile-restore" || this.#scope === "stopped-staged" || this.#scope === "stopped-projection" || this.#scope === "synthetic-stopped-staged") {
+    if (this.#scope === "stopped-control-inventory" || this.#scope === "profile-restore" || this.#scope === "stopped-staged" || this.#scope === "stopped-projection" || this.#scope === "synthetic-stopped-staged") {
       if (this.#authority.readInstallationContext === undefined) throw new Error("runtime-admission: staged installation context unavailable");
       return this.#authority.readInstallationContext();
     }
@@ -803,12 +816,14 @@ export class RuntimeAdmission {
   }
   assertExclusive(): void {
     this.assertLive();
+    if (this.#scope === "stopped-control-inventory") throw new Error("profile-control-upgrade-write-refused");
     if (this.#readyUpgrade !== undefined) throw new Error("profile-stopped-upgrade-exclusive-refused");
     if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     if (this.#mode !== "exclusive" && this.#mode !== "synthetic") throw new Error("runtime-admission: exclusive offline admission required");
   }
   assertWritable(): void {
     this.assertLive();
+    if (this.#scope === "stopped-control-inventory") throw new Error("profile-control-upgrade-write-refused");
     if (this.#readyUpgrade !== undefined) throw new Error("profile-stopped-upgrade-runtime-refused");
     if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") throw new Error("profile-settlement-runtime-refused");
     if (this.#scope === "profile") this.assertProfileRuntime();
@@ -829,6 +844,7 @@ export class RuntimeAdmission {
   }
   assertReadOnlyAuthorityDatabase(path: string): void {
     this.assertLive();
+    if (this.#scope === "stopped-control-inventory" && path === ":memory:") throw new Error("profile-control-upgrade-inspection-path-refused");
     if (this.#readyUpgrade !== undefined) {
       if (path === ":memory:" || this.#readyUpgrade.copyPath !== undefined && path !== this.#readyUpgrade.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
       if (this.#readyUpgrade.copyPath === undefined && path !== this.#readyUpgrade.sourcePath
@@ -927,6 +943,7 @@ export class RuntimeAdmission {
   }
   assertArtifactRoot(path: string): void {
     this.assertLive();
+    if (this.#scope === "stopped-control-inventory") throw new Error("profile-control-upgrade-artifact-refused");
     if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot write artifacts");
     this.assertStorageRootsSafe();
@@ -1089,6 +1106,7 @@ export class RuntimeAdmission {
     }
     if (!/^[0-9a-f]{64}$/u.test(expectedSha256)) throw new Error("runtime-admission: invalid copy digest");
     const checked = resolve(path);
+    if (this.#scope === "stopped-control-inventory" && !within(this.#stateRoot, checked)) throw new Error("profile-control-upgrade-copy-path-refused");
     if (!within(this.#stateRoot, checked)) this.assertExclusive();
     const canonical = realpathSync(checked);
     const temp = resolve(tmpdir());
@@ -1133,6 +1151,9 @@ export class RuntimeAdmission {
       if (primary !== undefined) throw primary.error;
     };
     verifyBytes();
+    if (this.#scope === "stopped-control-inventory") return new RuntimeAdmission(issuanceToken,
+      { assertHeld: verifyBytes, readInstallationContext: () => this.readInstallationContext(), release() {} },
+      this.#stateRoot, this.#artifactRoot, [checked], "stopped-control-inventory", this.#mode, this.#locator, this.profileBinding);
     return new RuntimeAdmission(issuanceToken, { assertHeld: verifyBytes, release() {} },
       this.#stateRoot, this.#artifactRoot, [checked],
       this.#readyUpgrade !== undefined ? "profile-ready-upgrade" : this.#scope === "profile-pending-logout-inventory" ? "profile-pending-logout-inventory"
@@ -1163,6 +1184,35 @@ export class RuntimeAdmission {
       }, release: () => this.release() }, root, join(root, "artifacts"), [join(root, "state.db")], "profile-restore", "exclusive", this.#locator, input.profile.binding);
   }
 
+  captureDuoCredentialCustody(profile: RuntimeAdmission): Readonly<{ binding: ProfileDatabaseBinding; generation: number; assertHeld(): void }> {
+    this.assertWritable();
+    profile.assertProfileRuntime();
+    const binding = profile.profileBinding;
+    this.assertProfileCredentialKey(profile, join(this.#stateRoot, "machine", "credential-keys", `${binding.profileId}.json`));
+    const generation = this.readProfileRegistry().sessionGeneration;
+    profile.assertProfileRuntime();
+    const ancestry = new Map<string, DirectoryIdentity>();
+    if (!noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-profile-root-required");
+    return Object.freeze({ binding, generation, assertHeld: () => {
+      this.assertLive();
+      if (profile.#released || profile.#profileParent !== this || profile.#scope !== "profile") throw new Error("duo-profile-custody-expired");
+      if (!noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-profile-root-required");
+      assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
+    } });
+  }
+  static forStoppedControlInventory(value: StoppedControlProfileInventory): RuntimeAdmission {
+    const issued = requireStoppedControlProfileInventory(value);
+    return new RuntimeAdmission(issuanceToken, { assertHeld: issued.assertHeld, readInstallationContext: issued.readInstallationContext, release() {} },
+      issued.stateRoot, issued.artifactRoot, [join(issued.stateRoot, "state.db")], "stopped-control-inventory", "exclusive", issued.locator, issued.binding);
+  }
+  beginStoppedMachineControlUpgrade(restore: RestoreAdmissionHandle): StoppedProfileControlUpgradeAdmission {
+    this.assertLive();
+    this.assertExclusive();
+    if (this.#scope !== "installation") throw new Error("profile-control-upgrade-machine-membership-unknown");
+    const context = this.readInstallationContext();
+    if (context === undefined) throw new Error("profile-control-upgrade-machine-membership-unknown");
+    return acquireStoppedProfileControlUpgrade(context.workspace, restore, this.#authority as InstallationLease);
+  }
   static fromInstallationLease(lease: InstallationLease): RuntimeAdmission {
     assertInstallationLease(lease);
     const { stateRoot, artifactRoot } = lease.locator;

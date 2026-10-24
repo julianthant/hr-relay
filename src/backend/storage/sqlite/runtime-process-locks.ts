@@ -1,6 +1,6 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   closeSync,
@@ -25,7 +25,7 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { systemClock } from "../../../rules/time/clock.js";
+import { systemClock, Clock } from "../../../rules/time/clock.js";
 import {
   FingerprintSchema,
   IsoInstantSchema,
@@ -34,7 +34,9 @@ import {
   type WorkerId,
 } from "../../../rules/identity/ids.js";
 import type { RecoveryRuntimeLockSnapshot } from "./recovery-contracts.js";
-import { RecoveryRuntimeLockSnapshotSchema } from "./recovery-contracts.js";
+import { RecoveryRuntimeLockSnapshotSchema, RecoveryRuntimeLockSnapshot } from "./recovery-contracts.js";
+import { AUTHORITY_APPLICATION_ID } from "./migrations.js";
+
 
 
 export const RuntimeProcessLockNameSchema = z.enum(["server", "workers", "live-smoke", "geocode"]);
@@ -781,6 +783,10 @@ export function acquireRuntimeProcessLock(
 }
 
 
+
+export function authoritySourceDatabaseIdentity(path: string): string {
+  return createHash("sha256").update(`${String(AUTHORITY_APPLICATION_ID)}:${resolve(z.string().min(1).parse(path))}`).digest("hex");
+}
 
 export function observeRuntimeLockSnapshot(
   input: unknown,

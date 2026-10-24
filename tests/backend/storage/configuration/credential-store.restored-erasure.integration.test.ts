@@ -16,7 +16,7 @@ import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.j
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-mutation", "never-initialized", "missing-with-history"] as const) it(`guards restored partial-history repair with ${copy} and preserves exact original erasure identity`, async () => {
+for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-mutation", "never-initialized", "missing-with-history", "retained-active-engine"] as const) it(`guards restored partial-history repair with ${copy} and preserves exact original erasure identity`, async () => {
   const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
   assert.equal(AuthorityDatabase.readProfileMaintenanceInventory(f.admission).settingsAuthority.state, "never-initialized");
   if (copy !== "never-initialized") {
@@ -64,6 +64,9 @@ for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-muta
     assert.throws(() => store.read());
     const stage = join(f.stateRoot, "credentials", `.protected.${randomUUID()}.${randomUUID()}.tmp`);
     if (copy === "encrypted-stage") copyFileSync(path, stage);
+    const activeEnginePath = join(f.stateRoot, "credentials", "duo-webauthn.json");
+    if (copy === "retained-active-engine") writeFileSync(activeEnginePath, JSON.stringify({ rpId: "duosecurity.com", credentialId: "synthetic-retained-id",
+      privateKey: "synthetic-retained-key", signCount: 42, transport: "internal" }), { mode: 0o600 });
     if (copy === "missing-with-history") {
       const database = new DatabaseSync(f.path);
       try { database.prepare("DELETE FROM settings WHERE id='current'").run(); } finally { database.close(); }
@@ -73,7 +76,11 @@ for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-muta
     }
     if (copy !== "none" && copy !== "never-initialized") {
       const before = readFileSync(path), head = readFileSync(journalPath), anchor = readFileSync(`${journalPath}.authority`);
-      assert.throws(() => retained.erase(erase));
+      if (copy === "retained-active-engine") {
+        const activeEngineBytes = readFileSync(activeEnginePath);
+        assert.throws(() => retained.erase(erase), /credential-maintenance-copy-capture-incomplete/u);
+        assert.equal(readFileSync(activeEnginePath).equals(activeEngineBytes), true);
+      } else assert.throws(() => retained.erase(erase));
       assert.equal(readFileSync(path).equals(before), true); assert.equal(readFileSync(journalPath).equals(head), true);
       assert.equal(readFileSync(`${journalPath}.authority`).equals(anchor), true);
       if (copy === "encrypted-stage") unlinkSync(stage);

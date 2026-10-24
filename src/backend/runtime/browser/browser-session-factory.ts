@@ -1,3 +1,4 @@
+import { DuoCredentialSchema, DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
@@ -536,14 +537,6 @@ export function deleteOwnedBrowserProfile(profileRoot: string, profileDirectory:
   rmSync(directory, { recursive: true, force: true });
   if (lstatSync(directory, { throwIfNoEntry: false }) !== undefined) throw new ProfileCustodyUnavailableError();
 }
-
-const DuoCredentialSchema = z.strictObject({
-  rpId: z.literal("duosecurity.com"), credentialId: z.string().min(1), privateKey: z.string().min(1),
-  signCount: z.number().int().nonnegative().max(4294967295), transport: z.enum(["internal", "usb"]),
-  userHandle: z.string().nullable().optional(), isResidentCredential: z.boolean().optional(),
-  deviceName: z.string().optional(), enrolledAt: z.string().optional(),
-});
-const DuoCredentialFileSchema = z.union([DuoCredentialSchema, z.array(DuoCredentialSchema).min(1), z.strictObject({ credentials: z.array(DuoCredentialSchema).min(1) })]);
 
 export class DuoProvisioningError extends Error {
   readonly code = "duo-extension-provisioning-unavailable";

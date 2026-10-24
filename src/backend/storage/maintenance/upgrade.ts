@@ -18,6 +18,7 @@ import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { readStoppedProfileUpgradeInventory } from "./profile-inventory.js";
+import { composeStoppedControlCredentialInventory } from "../../app/composition/profile-credential-inventory.js";
 import type { VerifiedBackup } from "../sqlite/backup-service.js";
 import { deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
 
@@ -241,4 +242,45 @@ async function runReadyProfileUpgrade(machine: RuntimeAdmission, owner: RuntimeA
   assertReadyUpgradeInventory(inventory, inspectInventory(), path,
     { kind: "upgraded", sourceFingerprint: initial.authorityContentFingerprint }, verified);
   return report("upgraded");
+}
+
+export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock) {
+  requireRuntimeAdmission(machine).assertExclusive();
+  const context = machine.readInstallationContext();
+  if (context === undefined) throw new Error("profile-control-upgrade-machine-membership-unknown");
+  const processLockRoot = resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot);
+  machine.assertFixedProcessLockRoot(context.workspace, processLockRoot);
+  const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
+  let control: ReturnType<RuntimeAdmission["beginStoppedMachineControlUpgrade"]> | undefined;
+  const inventories: Array<{ dispose(): void }> = [];
+  let result: { state: "planned" | "current" | "upgraded"; profileCount: number; receiptId?: string } | undefined;
+  let primary: { error: unknown } | undefined;
+  try {
+    control = machine.beginStoppedMachineControlUpgrade(restore);
+    if (!control.machineControlCurrent()) {
+      for (const profileId of control.registeredProfileIds()) {
+        const claim = control.profileInventory(profileId);
+        const inventory = composeStoppedControlCredentialInventory({ claim, hostFacts: input.hostFacts, clock });
+        inventories.push(inventory);
+        control.recordProfileInventory(claim, inventory.proof);
+      }
+    }
+    const report = control.run(input.plan);
+    if (!input.plan && report.state === "upgraded") {
+      const readback = control.run(false);
+      if (readback.state !== "current" || readback.profileCount !== report.profileCount) throw new Error("profile-control-upgrade-readback-failed");
+    }
+    result = report;
+  } catch (error) { primary = { error }; }
+  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([primary.error], { restore, ...(control === undefined ? {} : { admission: machine }) });
+  const failures: unknown[] = [];
+  for (const inventory of inventories) {
+    try { inventory.dispose(); } catch (error) { failures.push(error); }
+  }
+  try { control?.release(); } catch (error) { failures.push(error); }
+  try { restore.release(); } catch (error) { failures.push(error); }
+  if (failures.length !== 0) throw retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], { restore });
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error("profile-control-upgrade-readback-failed");
+  return result;
 }

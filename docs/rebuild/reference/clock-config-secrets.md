@@ -279,13 +279,24 @@ retain issued-admission liveness and pinned credential ancestry, including trust
 external machine/profile journals and credential writes retain strict storage admission. Missing
 established erasure authority refuses rather than becoming an empty journal.
 
-`<stateRoot>/credentials/` is the one home for credentials: protected settings, the ChatGPT account
-and the Duo key (`duo-webauthn.json`, read through `paths.duoCredential`).
-`src/backend/storage/configuration/` owns the two private records there.
+`<stateRoot>/credentials/` is the home for protected settings, the ChatGPT account, and the retained
+active-engine Duo key (`duo-webauthn.json`, read through `paths.duoCredential`).
+`src/backend/storage/configuration/` owns those private records.
 `credential-store.ts` exposes the protected-settings store and the ChatGPT account repository.
 Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 directories,
 0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
 Each record retains its own transaction and recovery contract.
+
+The new-purpose Duo document is separate. `duo-credential-store.ts` stores one encrypted document per
+profile at `<machineRoot>/machine/duo-credentials/<profileId>.json`. Installation control owns its
+continuity row, physical witness, and publication. The profile credential key seals it. A count is
+reserved in that document before any later signature use; failed, crashed, and UNKNOWN attempts stay
+burned. Ordinary registry reads do not finish an interrupted publication. Only the issued claim that
+started it can resume that exact profile, purpose, revision, and physical file. Erase refuses a
+same-digest copy and does not delete `duo-webauthn.json`. `storage upgrade --machine-control` is the
+stopped conversion from continuity schema 1 plus registry marker 2 into continuity schema 2 plus
+marker 3. It backs up those two control files before mutation and reads them back. That backup is not
+a profile SQLite backup. Marker or continuity versions outside that pair fail as an unsupported hold.
 
 The selected ChatGPT account owner fetches its current model catalog in server order and returns only
 list-visible slugs and display names. Assistant requests use that catalog, explicit trusted model
