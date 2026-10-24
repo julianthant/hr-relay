@@ -1,3 +1,4 @@
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -264,11 +265,10 @@ describe("worker lifecycle service capability", () => {
     const absentRunId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
     const bindingProof = { ...WRITE_INTENT_ATTEMPTING.bindingProof, runId: absentRunId };
     const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
-    seedCorruptWriteFenceFixture(database, {
-      intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
-        runId: absentRunId, bindingProof, bindingProofDigest },
-      attempt: { ...WRITE_ATTEMPT, runId: absentRunId, bindingProof, bindingProofDigest },
-    }, DatabaseSync);
+    const injectedIntent = { ...WRITE_INTENT_ATTEMPTING, workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
+      runId: absentRunId, bindingProof, bindingProofDigest };
+    const injectedAttempt = { ...WRITE_ATTEMPT, runId: absentRunId, bindingProof, bindingProofDigest };
+    seedCorruptWriteFenceFixture(database, { intent: injectedIntent, attempt: injectedAttempt }, DatabaseSync);
     assert.equal(database.authority.writeIntents.listByRun(run.envelope.runId).length, 0);
     const generation = database.getMeta().authorityGeneration;
     assert.equal(database.authority.writeIntents.listAttemptingByItem({
@@ -284,6 +284,38 @@ describe("worker lifecycle service capability", () => {
     assert.equal(result.parked, false);
     assert.deepEqual(result.run, requested);
     assert.equal(database.getMeta().authorityGeneration, generation);
+
+    const raw = new DatabaseSync(syntheticDatabasePath(database));
+    try {
+      raw.exec("BEGIN IMMEDIATE");
+      try {
+        assert.deepEqual({ ...raw.prepare("SELECT * FROM write_intents WHERE id=?").get(injectedIntent.writeIntentId) }, {
+          id: injectedIntent.writeIntentId, system: injectedIntent.system, idempotency_key: injectedIntent.idempotencyKey,
+          idempotency_key_digest: injectedIntent.idempotencyKeyDigest, status: injectedIntent.status,
+          generation: injectedIntent.generation, run_id: injectedIntent.runId, payload_json: canonicalJsonStringify(injectedIntent),
+          publication_json: null, created_at: injectedIntent.createdAt, updated_at: injectedIntent.updatedAt,
+        });
+        assert.deepEqual({ ...raw.prepare("SELECT * FROM write_attempts WHERE id=?").get(injectedAttempt.writeAttemptId) }, {
+          id: injectedAttempt.writeAttemptId, intent_id: injectedAttempt.writeIntentId, generation: injectedAttempt.generation,
+          run_id: injectedAttempt.runId, payload_json: canonicalJsonStringify(injectedAttempt), created_at: injectedAttempt.recordedAt,
+        });
+        assert.equal(raw.prepare("DELETE FROM write_attempts WHERE id=?").run(injectedAttempt.writeAttemptId).changes, 1);
+        assert.equal(raw.prepare("DELETE FROM write_intents WHERE id=?").run(injectedIntent.writeIntentId).changes, 1);
+        raw.exec("COMMIT");
+      } catch (error) {
+        try { raw.exec("ROLLBACK"); }
+        catch (rollbackError) { throw new AggregateError([error, rollbackError], "write-fence-fixture-restoration-unproved", { cause: error }); }
+        throw error;
+      }
+    } finally { raw.close(); }
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    const claim = runClaim(requested); assert.ok(claim);
+    const terminal = requireLifecycleApplied(service.terminalize({ kind: "cancelled", commandId: lifecycleCommandId("cancel", run.envelope.runId),
+      runId: run.envelope.runId, expectedVersion: requested.version,
+      claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, endedAt: NOW }, personLookupDescriptor));
+    assert.deepEqual(terminal.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: NOW });
+    assert.equal(database.authority.runs.listByWorker(WORKER_ID).some(owned => runClaim(owned) !== undefined), false);
+    assert.doesNotThrow(() => database.assertWorkerLifecycleRelease(WORKER_ID));
   });
 });
 
