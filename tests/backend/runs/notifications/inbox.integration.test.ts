@@ -5,8 +5,6 @@ import { createNotificationInboxTestWorld } from "../../../support/helpers/backe
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -16,7 +14,8 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 
 import { NOW, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 {
 
@@ -101,9 +100,22 @@ describe("notification collection commands", () => {
     assert.deepEqual(database.authority.notifications.get(foreign.notificationId), foreign);
   });
   it("honestly applies an empty current collection with no affected rows", () => {
-    const { database, kernel } = harness(); const result = kernel.execute(collectionCommand(database));
+    const { database, kernel } = harness(), request = collectionCommand(database), result = kernel.execute(request);
     assert.equal(result.state, "applied"); if (result.state !== "applied") throw new Error("applied required");
     assert.deepEqual(result.affectedTargets, []);
+    assert.equal(result.noChange, "no-matching-notifications");
+    const audit = database.authority.commandAudits.findByCommand(request.commandId); assert.ok(audit);
+    assert.deepEqual(audit.result, result); assert.deepEqual(audit.versionChanges, []);
+    const replay = kernel.execute(request); assert.deepEqual(replay, { ...result, state: "already-applied" });
+    assert.deepEqual(database.authority.commandAudits.findByCommand(request.commandId), audit);
+    const generation = database.getMeta().authorityGeneration;
+    for (const candidate of [
+      { ...request, type: "notification-read", target: { actorId: "local-operator", notificationId: randomUUID(), expectedVersion: 1 } },
+      { ...request, target: { actorId: "local-operator", members: [{ notificationId: randomUUID(), expectedVersion: 1 }], matchingCount: 1 } },
+      { ...request, family: "workflow-batch", type: "set-batch-grouping", target: { batchId: randomUUID(), expectedVersion: 1 }, payload: { groupInQueue: false } },
+    ]) assert.throws(() => database.withAuthorityTransaction(repositories => repositories.commandAudits.insert({ ...audit, auditId: randomUUID(), request: candidate })), { name: "ZodError" });
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(database.authority.commandAudits.findByCommand(request.commandId), audit);
   });
 });
 
@@ -211,16 +223,21 @@ afterEach(_afterEachFixture0);
 
 {
 
-const roots: string[] = [];
-const _afterEachFixture0 = () => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true }));
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const _afterEachFixture0 = () => {
+  const failures: unknown[] = [];
+  for (const profile of profiles.splice(0)) { try { profile.close(); } catch (error) { failures.push(error); } }
+  if (failures.length > 0) throw new AggregateError(failures, "notification publication fixture cleanup failed");
+};
 const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
 function harness() {
-  const root = mkdtempSync(join(tmpdir(), "notification-publication-")); roots.push(root);
+  const profile = createBoundProfileFixture({ sharedMachine: true }); profiles.push(profile);
   const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
-  const path = join(root, "state.db");
-  const open = () => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "notification-test" }, clock);
+  const path = profile.path;
+  const open = () => AuthorityDatabase.open(profile.admission, { path, busyTimeoutMs: 250, migrationOwner: "notification-test" }, clock,
+    undefined, undefined, undefined, boundProfileCredentials(profile.admission));
   const inbox = (db: AuthorityDatabase) => createNotificationInbox({ authority: db, clock, ids: sequentialIdFactory("a"), actorId: "local-operator" });
-  return { open, inbox, clock, path };
+  return { open, inbox, clock, path, workspace: profile.workspace, profileId: profile.admission.profileBinding.profileId };
 }
 describe("durable notification publication", () => {
 afterEach(_afterEachFixture0);
@@ -228,17 +245,25 @@ afterEach(_afterEachFixture0);
   it.each(["before", "after"])("survives process death %s publication commit", boundary => {
     const f = harness(); const initial = f.open(); initial.close();
     const script = `
-      import { AuthorityDatabase } from ${JSON.stringify(join(process.cwd(), "tests/support/helpers/synthetic-storage-admission.ts"))};
+      import { AuthorityDatabase } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/sqlite/authority-database.ts"))};
+      import { acquireEntrypointAdmission } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/admission/bootstrap-admission.ts"))};
+      import { createProfileRegistry } from ${JSON.stringify(join(process.cwd(), "src/backend/profiles/registry.ts"))};
+      import { registerBoundProfile, boundProfileCredentials } from ${JSON.stringify(join(process.cwd(), "tests/support/helpers/synthetic-database-admission.ts"))};
+      import { join } from "node:path";
       import { manualClock } from ${JSON.stringify(join(process.cwd(), "src/rules/time/clock.ts"))};
       import { createNotificationInbox } from ${JSON.stringify(join(process.cwd(), "src/backend/runs/notifications/inbox.ts"))};
       const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
-      const db = AuthorityDatabase.open({path:process.argv[1],busyTimeoutMs:250,migrationOwner:"crash-proof"},clock);
+      const machine = acquireEntrypointAdmission(process.argv[1], "shared");
+      const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(process.argv[2]));
+      registerBoundProfile(admission, machine);
+      const db = AuthorityDatabase.open(admission,{path:join(admission.stateRoot,"state.db"),busyTimeoutMs:250,migrationOwner:"crash-proof"},clock,
+        undefined,undefined,undefined,boundProfileCredentials(admission));
       const inbox = createNotificationInbox({authority:db,clock,ids:{uuid:()=>"00000000-0000-4000-8000-000000000991"},actorId:"local-operator"});
       const event = ${JSON.stringify(event)};
-      if(process.argv[2]==="before") db.withAuthorityTransaction(()=>{void inbox.publish(event);process.exit(71);});
+      if(process.argv[3]==="before") db.withAuthorityTransaction(()=>{void inbox.publish(event);process.exit(71);});
       else {await inbox.publish(event);process.exit(72);}
     `;
-    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, f.path, boundary], { cwd: process.cwd(), encoding: "utf8" });
+    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, f.workspace, f.profileId, boundary], { cwd: process.cwd(), encoding: "utf8" });
     expect(child.status, child.stderr).toBe(boundary === "before" ? 71 : 72);
     const db = f.open();
     try {

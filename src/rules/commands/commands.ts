@@ -423,13 +423,17 @@ export const CommandRejectionCodeSchema = z.enum([
 const CommandLandingResultSchema = z.strictObject({
   state: z.enum(["applied", "already-applied"]),
   commandId: CommandIdSchema,
-  affectedTargets: z.array(CommandTargetReferenceSchema).min(1),
+  affectedTargets: z.array(CommandTargetReferenceSchema),
+  noChange: z.literal("no-matching-notifications").optional(),
   restartRequired: z.boolean().optional(),
   settingsRevision: PositiveIntSchema.optional(),
   settingsFingerprint: FingerprintSchema.optional(),
   revision: PositiveIntSchema.optional(),
   entries: ProtectedSettingsReadbackSchema.shape.entries.optional(),
 }).superRefine((result, context) => {
+  if ((result.affectedTargets.length === 0) !== (result.noChange !== undefined)) {
+    context.addIssue({ code: "custom", path: ["affectedTargets"], message: "only an explicit no-matching-notifications result may have no affected targets" });
+  }
   const settingsTargets = result.affectedTargets.filter((target) => target.family === "settings");
   const protectedTargets = result.affectedTargets.filter((target) => target.family === "protected-settings");
   const hasOrdinaryResult = result.restartRequired !== undefined
@@ -501,6 +505,11 @@ export const CommandResultSchema = z.discriminatedUnion("state", [
   }
 });
 
+export function commandNoChangeResultMatches(request: CommandRequest, result: CommandResult): boolean {
+  if (result.state !== "applied" && result.state !== "already-applied" || result.noChange === undefined) return true;
+  return request.family === "notification" && "members" in request.target && request.target.matchingCount === 0;
+}
+
 export const CommandAuditRecordSchema = z.strictObject({
   auditId: CommandAuditIdSchema,
   request: CommandRequestSchema,
@@ -513,6 +522,11 @@ export const CommandAuditRecordSchema = z.strictObject({
 }).superRefine((audit, context) => {
   if (audit.result.state === "pending") context.addIssue({ code: "custom", path: ["result"], message: "pending-command-cannot-have-terminal-audit" });
   const request = audit.request;
+  if (!commandNoChangeResultMatches(request, audit.result)) context.addIssue({ code: "custom", path: ["result", "noChange"], message: "no-change result requires the exact empty notification collection request" });
+  if ((audit.result.state === "applied" || audit.result.state === "already-applied") && audit.result.noChange !== undefined
+    && (audit.versionChanges.length !== 0 || audit.affectedDependencyIds.length !== 0 || audit.writeResolution !== undefined)) {
+    context.addIssue({ code: "custom", path: ["versionChanges"], message: "a no-change notification audit cannot record effects" });
+  }
   const resolved = request.family === "run" && (request.type === "resolve-write-present" || request.type === "resolve-write-absent") && audit.result.state === "applied";
   if (!resolved) {
     if (audit.writeResolution !== undefined) context.addIssue({code:"custom",path:["writeResolution"],message:"resolution acknowledgement requires an applied resolution command"});

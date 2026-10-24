@@ -197,3 +197,31 @@ describe("authority classification and command families", () => {
     assert.equal(BulkRunCommandRequestSchema.safeParse({ ...bulk, type: "plan-version-bump", targetVersion: HASH_A }).success, false);
   });
 });
+
+
+describe("explicit notification no-change results", () => {
+  const result = { state: "applied", commandId: UUID_1, affectedTargets: [], noChange: "no-matching-notifications" };
+  const request = { commandId: UUID_1, requestedAt: NOW, requestedBy: "local-operator", source: "notification-bell",
+    family: "notification", type: "notification-read-all", target: { actorId: "local-operator", members: [], matchingCount: 0 } };
+  const audit = { auditId: UUID_2, request, result, completedAt: NOW, versionChanges: [], affectedDependencyIds: [] };
+  it("admits only tagged empty results and preserves replay shape", () => {
+    assert.equal(CommandResultSchema.safeParse(result).success, true);
+    assert.equal(CommandResultSchema.safeParse({ ...result, state: "already-applied" }).success, true);
+    const unmarked = { state: "applied", commandId: UUID_1, affectedTargets: [] };
+    assert.equal(CommandResultSchema.safeParse(unmarked).success, false);
+    assert.equal(CommandResultSchema.safeParse({ ...result, affectedTargets: [{ family: "notification", notificationId: UUID_3 }] }).success, false);
+    for (const field of [{ restartRequired: false }, { settingsRevision: 1 }, { settingsFingerprint: HASH_A }, { revision: 1 }, { entries: [] }]) {
+      assert.equal(CommandResultSchema.safeParse({ ...result, ...field }).success, false);
+    }
+  });
+  it("binds the terminal audit to an actual zero-match collection request", () => {
+    assert.equal(CommandAuditRecordSchema.safeParse(audit).success, true);
+    assert.equal(CommandAuditRecordSchema.safeParse({ ...audit, versionChanges: [{ target: { family: "notification", notificationId: UUID_3 }, before: 1, after: 2 }] }).success, false);
+    assert.equal(CommandAuditRecordSchema.safeParse({ ...audit, affectedDependencyIds: ["notification-inbox"] }).success, false);
+    for (const target of [{ actorId: "local-operator", notificationId: UUID_3, expectedVersion: 1 },
+      { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 }]) {
+      assert.equal(CommandAuditRecordSchema.safeParse({ ...audit, request: { ...request, type: "members" in target ? "notification-read-all" : "notification-read", target } }).success, false);
+    }
+    assert.equal(CommandAuditRecordSchema.safeParse({ ...audit, request: CURRENT_COMMAND_FIXTURES.find(value => CommandRequestSchema.parse(value).family !== "notification") }).success, false);
+  });
+});

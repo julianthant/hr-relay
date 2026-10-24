@@ -160,6 +160,13 @@ the original reservation; it never dispatches or replays the command.
 | `conflict` | `kind: refused` | Show `currentVersion`; reload authority before a new decision |
 | `rejected` | `kind: refused` | Show the closed `code` and mapped message; retain the relevant draft |
 
+Applied results require nonempty `affectedTargets`, except a canonical notification collection with
+`matchingCount: 0`: it returns `affectedTargets: []` and `noChange: 'no-matching-notifications'`.
+The audit and client readback bind this marker to that exact collection request. Its audit records no
+version changes, affected dependencies, or write resolution, and its result carries no settings fields.
+Replay preserves the marker in `already-applied`. Unmarked empty results, tagged nonempty results,
+and marker claims for other requests refuse validation.
+
 A pre-dispatch validation failure can say Nothing was sent. A failure after dispatch is unknown:
 the backend may have recorded the command. Retain the original request/command identity and check
 that attempt before another submission. Unknown external writes remain parked and offer

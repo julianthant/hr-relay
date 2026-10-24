@@ -346,6 +346,8 @@ function applied(
       state: "applied",
       commandId: request.commandId,
       affectedTargets,
+      ...(request.family === "notification" && "members" in request.target && request.target.matchingCount === 0 && affectedTargets.length === 0
+        ? { noChange: "no-matching-notifications" } : {}),
       ...(settingsResult?.kind === "ordinary" ? {
         restartRequired: settingsResult.restartRequired,
         settingsRevision: settingsResult.revision,
@@ -2485,6 +2487,7 @@ function replay(
     state: "already-applied",
     commandId: request.commandId,
     affectedTargets: audit.result.affectedTargets,
+    ...(audit.result.noChange === undefined ? {} : { noChange: audit.result.noChange }),
     ...(settingsVerification?.kind === "ordinary" ? {
       restartRequired: audit.result.restartRequired,
       settingsRevision: settingsVerification.value.revision,

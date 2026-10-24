@@ -1,10 +1,7 @@
-import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
+import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import assert from "node:assert/strict";
-
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { createCommandKernel, type CommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 
@@ -14,12 +11,14 @@ import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/int
 import { HASH_A, LATER, NOW, UUID_2, UUID_7 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 export function createNotificationInboxTestWorld() {
   const disposers: (() => void)[] = [];
   const _afterEachFixture0 = () => {
-    for (const dispose of disposers.splice(0)) dispose();
+    const failures: unknown[] = [];
+    for (const dispose of disposers.splice(0)) { try { dispose(); } catch (error) { failures.push(error); } }
+    if (failures.length > 0) throw new AggregateError(failures, "notification fixture cleanup failed");
   };
 
   const ACTOR = "local-operator";
@@ -47,13 +46,13 @@ export function createNotificationInboxTestWorld() {
 
   function harness(mapRepositories: (repositories: AuthorityRepositories) => AuthorityRepositories = repositories => repositories): { database: AuthorityDatabase; kernel: CommandKernel } {
     const clock = manualClock(new Date(LATER));
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-inbox-"));
-    disposers.push(() => rmSync(root, { recursive: true, force: true }));
-    const database = AuthorityDatabase.open(
-      { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "inbox-test" },
-      clock,
-    );
-    disposers.push(() => database.close());
+    const profile = createBoundProfileFixture();
+    const opened: { database?: AuthorityDatabase } = {};
+    disposers.push(() => { opened.database?.close(); profile.close(); });
+    const database = AuthorityDatabase.open(profile.admission,
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "inbox-test" }, clock,
+      undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+    opened.database = database;
     seedSyntheticRuntimeConfig(database);
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
     const kernel = createCommandKernel({

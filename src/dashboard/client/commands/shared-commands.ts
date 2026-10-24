@@ -3,6 +3,7 @@ BulkRunCommandRequestSchema,
 BulkRunCommandResponseSchema,
 CommandRequestSchema,
 CommandResultSchema,
+commandNoChangeResultMatches,
 type BulkRunCommandResponse,
 type BulkRunCommandRequest,
 type CommandRequest,
@@ -24,6 +25,7 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
   const result = parseOrThrow(CommandResultSchema, "POST /api/v1/commands", response);
   if (result.commandId !== command.commandId || result.state === "pending" && command.family !== "worker-browser") identityMismatch(response);
   if (result.state !== "applied" && result.state !== "already-applied") return result;
+  if (!commandNoChangeResultMatches(command, result)) identityMismatch(response);
   const targets = result.affectedTargets;
   const matches = (target: typeof targets[number]): boolean => {
     switch (command.family) {
