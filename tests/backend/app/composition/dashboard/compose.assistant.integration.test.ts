@@ -19,6 +19,11 @@ import { createBoundProfileFixture } from "../../../../support/helpers/admission
 import { chatGptFixture } from "../../../../support/helpers/chatgpt-account-fixtures.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 
+const AssistantTransportRequestSchema = AssistantInferenceRequestSchema.safeExtend({
+  store: z.literal(false), stream: z.literal(true), parallel_tool_calls: z.literal(false),
+  include: z.tuple([z.literal("reasoning.encrypted_content")]),
+});
+
 it.each([
   { mode: undefined, staleAccount: false }, { mode: "without-asking", staleAccount: false },
   { mode: "every-action", staleAccount: false }, { mode: "every-action", staleAccount: true },
@@ -79,7 +84,7 @@ it.each([
       const noCallDurable = durableRows();
       transport.setResponse(init => {
         if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
-        const request = AssistantInferenceRequestSchema.parse(JSON.parse(init.body));
+        const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
         return new Response(`data: ${JSON.stringify({ type: "response.completed", response: { id: "text_without_effect", model: request.model, status: "completed",
           output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Completed. All notifications marked read." }] }] } })}\n\n`, { headers: { "content-type": "text/event-stream" } });
       });
@@ -95,7 +100,7 @@ it.each([
       let turns = 0;
       transport.setResponse(init => {
         if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
-        const request = AssistantInferenceRequestSchema.parse(JSON.parse(init.body));
+        const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
         const outbound = JSON.stringify(request);
         for (const local of [...ids, "Local title", "Local summary", "unrecognized private local request"]) assert.equal(outbound.includes(local), false);
         turns++;
