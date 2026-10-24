@@ -132,7 +132,7 @@ describe("canonical run-record service", () => {
       scope: { input, outputs: {} }, signal: new AbortController().signal,
     }, plan), (error: unknown) => {
       assert.ok(error instanceof RunLifecycleRefusedError);
-      assert.deepEqual(error.outcome, { state: "refused", reason: "lost" });
+      assert.deepEqual(error.outcome, { state: "refused", refusal: { reason: "lost" } });
       return true;
     }));
     const renewed = measure("renewClaim", 1, () => service.renewClaim({
