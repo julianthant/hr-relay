@@ -1,3 +1,4 @@
+import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
@@ -309,8 +310,80 @@ it("parks a real attempting child after its owned OS process dies without retry 
         `).get(message.writeIntentId));
         const uncertain = () => assert.throws(() => database.assertWorkerLifecycleRelease(message.workerId),
           error => error instanceof Error && error.message === "worker-lifecycle-write-ownership-unavailable");
-        raw.prepare("UPDATE timeline_events SET kind='span.started' WHERE id=?").run(eventRow.id);
-        try { uncertain(); } finally { raw.prepare("UPDATE timeline_events SET kind=? WHERE id=?").run(eventRow.kind, eventRow.id); }
+        const corruptProtectedRow = (
+          table: "timeline_events" | "write_attempts", id: string,
+          mutate: () => { changes: number | bigint }, restore: () => { changes: number | bigint },
+        ): void => {
+          const triggerName = table === "timeline_events" ? "timeline_events_immutable" : "write_attempts_immutable";
+          const refusal = table === "timeline_events" ? "timeline-history-immutable" : "write-attempt-proof-immutable";
+          const select = table === "timeline_events" ? "SELECT * FROM timeline_events WHERE id=?" : "SELECT * FROM write_attempts WHERE id=?";
+          const definitions = SQLITE_MIGRATIONS.flatMap(migration => migration.statements.flatMap(statement =>
+            [...statement.matchAll(new RegExp(`CREATE TRIGGER ${triggerName} BEFORE UPDATE ON ${table}\\n[\\s\\S]*? END;`, "gu"))].map(match => match[0].slice(0, -1))));
+          assert.equal(definitions.length, 1);
+          const sql = definitions[0]; assert.ok(sql);
+          const trigger = { type: "trigger", name: triggerName, tbl_name: table, sql };
+          const assertTrigger = () => assert.deepEqual({ ...raw.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name=?").get(triggerName) }, trigger);
+          const before = raw.prepare(select).get(id); assert.ok(before);
+          assertTrigger();
+          assert.throws(mutate, { code: "ERR_SQLITE_ERROR", message: refusal });
+          assert.deepEqual(raw.prepare(select).get(id), before);
+          const sealedUpdate = (expected: typeof before, update: typeof mutate) => {
+            raw.exec("BEGIN IMMEDIATE");
+            try {
+              assertTrigger();
+              assert.deepEqual(raw.prepare(select).get(id), expected);
+              raw.exec(table === "timeline_events" ? "DROP TRIGGER timeline_events_immutable" : "DROP TRIGGER write_attempts_immutable");
+              assert.equal(update().changes, 1);
+              raw.exec(sql);
+              assertTrigger();
+              const after = raw.prepare(select).get(id); assert.ok(after);
+              raw.exec("COMMIT");
+              return after;
+            } catch (error) {
+              const rollbackFailures: unknown[] = [];
+              try { raw.exec("ROLLBACK"); } catch (rollbackError) { rollbackFailures.push(rollbackError); }
+              if (rollbackFailures.length !== 0) throw new AggregateError([error, ...rollbackFailures], "child-corruption-rollback-unproved", { cause: error });
+              throw error;
+            }
+          };
+          const changed = sealedUpdate(before, mutate);
+          let guardFailure: { error: unknown } | undefined;
+          try { assertTrigger(); uncertain(); } catch (error) { guardFailure = { error }; }
+          const restoreFailures: unknown[] = [];
+          try {
+            sealedUpdate(changed, restore);
+            assert.deepEqual(raw.prepare(select).get(id), before);
+            assertTrigger();
+            assert.throws(mutate, { code: "ERR_SQLITE_ERROR", message: refusal });
+            assert.deepEqual(raw.prepare(select).get(id), before);
+          } catch (error) { restoreFailures.push(error); }
+          if (guardFailure !== undefined && restoreFailures.length !== 0) throw new AggregateError([
+            guardFailure.error, ...restoreFailures,
+          ], "child-corruption-restoration-unproved", { cause: guardFailure.error });
+          if (guardFailure !== undefined) throw guardFailure.error;
+          if (restoreFailures.length !== 0) throw restoreFailures[0];
+        };
+        const corruptCommand = (mutate: () => { changes: number | bigint }, restore: () => { changes: number | bigint }): void => {
+          const before = raw.prepare("SELECT * FROM commands WHERE id=?").get(claimRow.id); assert.ok(before);
+          assert.equal(mutate().changes, 1);
+          const changed = raw.prepare("SELECT * FROM commands WHERE id=?").get(claimRow.id); assert.ok(changed);
+          let guardFailure: { error: unknown } | undefined;
+          try { uncertain(); } catch (error) { guardFailure = { error }; }
+          const restoreFailures: unknown[] = [];
+          try {
+            assert.deepEqual(raw.prepare("SELECT * FROM commands WHERE id=?").get(claimRow.id), changed);
+            assert.equal(restore().changes, 1);
+            assert.deepEqual(raw.prepare("SELECT * FROM commands WHERE id=?").get(claimRow.id), before);
+          } catch (error) { restoreFailures.push(error); }
+          if (guardFailure !== undefined && restoreFailures.length !== 0) throw new AggregateError([
+            guardFailure.error, ...restoreFailures,
+          ], "child-command-restoration-unproved", { cause: guardFailure.error });
+          if (guardFailure !== undefined) throw guardFailure.error;
+          if (restoreFailures.length !== 0) throw restoreFailures[0];
+        };
+        corruptProtectedRow("timeline_events", eventRow.id,
+          () => raw.prepare("UPDATE timeline_events SET kind='span.started' WHERE id=?").run(eventRow.id),
+          () => raw.prepare("UPDATE timeline_events SET kind=? WHERE id=?").run(eventRow.kind, eventRow.id));
         const duplicate = z.strictObject({ cursor: z.number().int(), id: z.string(), workflow: z.string().nullable(),
           run_id: z.string().nullable(), worker_id: z.string().nullable(), kind: z.string(), occurred_at: z.string(),
           recorded_at: z.string(), retention_date: z.string(), retention_class: z.string(), operation_id: z.string().nullable(),
@@ -318,33 +391,37 @@ it("parks a real attempting child after its owned OS process dies without retry 
         }).parse(raw.prepare("SELECT * FROM timeline_events WHERE run_id=? AND id<>? LIMIT 1").get(message.runId, eventRow.id));
         const claimedEvent = TimelineEventRecordSchema.parse(JSON.parse(eventRow.payload_json));
         const duplicateEvent = { ...claimedEvent, eventId: duplicate.id, cursor: duplicate.cursor };
-        raw.prepare(`UPDATE timeline_events SET workflow=?,run_id=?,worker_id=NULL,kind='run.claimed',occurred_at=?,
+        corruptProtectedRow("timeline_events", duplicate.id,
+          () => raw.prepare(`UPDATE timeline_events SET workflow=?,run_id=?,worker_id=NULL,kind='run.claimed',occurred_at=?,
           recorded_at=?,retention_date=?,retention_class='ordinary',operation_id=NULL,operation_generation=NULL,
           confirmed_at=NULL,system=NULL,payload_json=? WHERE id=?`).run(claimedEvent.workflow ?? null, message.runId,
-          claimedEvent.occurredAt, claimedEvent.recordedAt, claimedEvent.retentionDate, canonicalJsonStringify(duplicateEvent), duplicate.id);
-        try { uncertain(); } finally {
-          raw.prepare(`UPDATE timeline_events SET workflow=?,run_id=?,worker_id=?,kind=?,occurred_at=?,recorded_at=?,
+          claimedEvent.occurredAt, claimedEvent.recordedAt, claimedEvent.retentionDate, canonicalJsonStringify(duplicateEvent), duplicate.id),
+          () => raw.prepare(`UPDATE timeline_events SET workflow=?,run_id=?,worker_id=?,kind=?,occurred_at=?,recorded_at=?,
             retention_date=?,retention_class=?,operation_id=?,operation_generation=?,confirmed_at=?,system=?,payload_json=? WHERE id=?`)
             .run(duplicate.workflow, duplicate.run_id, duplicate.worker_id, duplicate.kind, duplicate.occurred_at, duplicate.recorded_at,
               duplicate.retention_date, duplicate.retention_class, duplicate.operation_id, duplicate.operation_generation,
-              duplicate.confirmed_at, duplicate.system, duplicate.payload_json, duplicate.id);
-        }
+              duplicate.confirmed_at, duplicate.system, duplicate.payload_json, duplicate.id));
         assert.deepEqual(raw.prepare("SELECT * FROM timeline_events WHERE id=?").get(duplicate.id), Object.assign(Object.create(null), duplicate));
-        raw.prepare("UPDATE commands SET outcome_json=NULL WHERE id=?").run(claimRow.id);
-        try { uncertain(); } finally { raw.prepare("UPDATE commands SET outcome_json=? WHERE id=?").run(claimRow.outcome_json, claimRow.id); }
-        raw.prepare("UPDATE commands SET request_json=json_set(request_json,'$.requestFingerprint',?) WHERE id=?")
-          .run("0".repeat(64), claimRow.id);
-        try { uncertain(); } finally { raw.prepare("UPDATE commands SET request_json=? WHERE id=?").run(claimRow.request_json, claimRow.id); }
-        raw.prepare("UPDATE commands SET request_json=json_set(request_json,'$.request.workerLifetime.leaseGeneration',?) WHERE id=?")
+        corruptCommand(
+          () => raw.prepare("UPDATE commands SET outcome_json=NULL WHERE id=?").run(claimRow.id),
+          () => raw.prepare("UPDATE commands SET outcome_json=? WHERE id=?").run(claimRow.outcome_json, claimRow.id));
+        corruptCommand(
+          () => raw.prepare("UPDATE commands SET request_json=json_set(request_json,'$.requestFingerprint',?) WHERE id=?")
+          .run("0".repeat(64), claimRow.id),
+          () => raw.prepare("UPDATE commands SET request_json=? WHERE id=?").run(claimRow.request_json, claimRow.id));
+        corruptCommand(
+          () => raw.prepare("UPDATE commands SET request_json=json_set(request_json,'$.request.workerLifetime.leaseGeneration',?) WHERE id=?")
           .run(1 + z.object({ request: z.object({ workerLifetime: z.object({ leaseGeneration: z.number() }) }) })
-            .parse(JSON.parse(claimRow.request_json)).request.workerLifetime.leaseGeneration, claimRow.id);
-        try { uncertain(); } finally { raw.prepare("UPDATE commands SET request_json=? WHERE id=?").run(claimRow.request_json, claimRow.id); }
-        raw.prepare("UPDATE timeline_events SET payload_json=json_set(payload_json,'$.payload.event.attempt',?) WHERE id=?")
-          .run(parked.envelope.attempt + 1, eventRow.id);
-        try { uncertain(); } finally { raw.prepare("UPDATE timeline_events SET payload_json=? WHERE id=?").run(eventRow.payload_json, eventRow.id); }
-        raw.prepare("UPDATE write_attempts SET payload_json=json_set(payload_json,'$.runAttempt',?) WHERE id=?")
-          .run(parked.envelope.attempt + 1, attemptRow.id);
-        try { uncertain(); } finally { raw.prepare("UPDATE write_attempts SET payload_json=? WHERE id=?").run(attemptRow.payload_json, attemptRow.id); }
+            .parse(JSON.parse(claimRow.request_json)).request.workerLifetime.leaseGeneration, claimRow.id),
+          () => raw.prepare("UPDATE commands SET request_json=? WHERE id=?").run(claimRow.request_json, claimRow.id));
+        corruptProtectedRow("timeline_events", eventRow.id,
+          () => raw.prepare("UPDATE timeline_events SET payload_json=json_set(payload_json,'$.payload.event.attempt',?) WHERE id=?")
+          .run(parked.envelope.attempt + 1, eventRow.id),
+          () => raw.prepare("UPDATE timeline_events SET payload_json=? WHERE id=?").run(eventRow.payload_json, eventRow.id));
+        corruptProtectedRow("write_attempts", attemptRow.id,
+          () => raw.prepare("UPDATE write_attempts SET payload_json=json_set(payload_json,'$.runAttempt',?) WHERE id=?")
+          .run(parked.envelope.attempt + 1, attemptRow.id),
+          () => raw.prepare("UPDATE write_attempts SET payload_json=? WHERE id=?").run(attemptRow.payload_json, attemptRow.id));
         assert.deepEqual(raw.prepare("SELECT id,request_json,outcome_json FROM commands WHERE id=?").get(claimRow.id),
           Object.assign(Object.create(null), claimRow));
         assert.deepEqual(raw.prepare("SELECT id,payload_json,kind FROM timeline_events WHERE id=?").get(eventRow.id),
