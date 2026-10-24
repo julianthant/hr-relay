@@ -17,12 +17,14 @@ import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
+import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { readSettings, readBootSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createProfileVerifiers } from "../../../../src/backend/profiles/verifier-store.js";
+import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js";
 import { RunRecordService, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectActiveRunSettings, selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
@@ -37,16 +39,26 @@ function readyBoundSeven(work: "idle" | "queued" = "idle") {
   const profile = createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
-  const database = AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250 }, systemClock,
+  const database = AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
     undefined, undefined, undefined, credentials);
   const patch = { "actor.label": { set: "ready-upgrade-proof" } };
-  const command = { commandId: randomUUID(), family: "settings", type: "apply-settings", requestedAt: systemClock.now().toISOString(),
-    requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "settings-surface", target: { expectedRevision: readSettings(database.authority).revision },
-    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } };
+  let command: ReturnType<typeof SettingsCommandRequestSchema.parse>;
   let saved: ReturnType<typeof executeSettingsCommand>;
   try {
-    const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, hostFacts, systemClock,
-      { stateRoot: profile.stateRoot, artifactRoot: join(profile.stateRoot, "artifacts") }), credentials);
+    const resolveSettings = (value: unknown) => resolveConfigWithProvenance(value, hostFacts, systemClock,
+      { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot });
+    database.withAuthorityTransaction(repositories => {
+      const initial = readBootSettings(repositories);
+      assert.equal(repositories.runtimeConfig.get(), undefined);
+      const resolved = resolveSettings(initial.settings);
+      repositories.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: initial.revision,
+        fingerprint: resolved.fingerprint, capturedAt: systemClock.now().toISOString(), capturedBy: LOCAL_OPERATOR_ACTOR_ID,
+        config: resolved.config, provenance: resolved.provenance });
+    });
+    command = SettingsCommandRequestSchema.parse({ commandId: randomUUID(), family: "settings", type: "apply-settings", requestedAt: systemClock.now().toISOString(),
+    requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "settings-surface", target: { expectedRevision: readSettings(database.authority).revision },
+    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
+    const settings = createSettingsApplicationExecutor(resolveSettings, credentials);
     saved = executeSettingsCommand({ authority: database, clock: systemClock, ids: { uuid: randomUUID }, settings }, command);
     assert.equal(saved.state, "applied");
     const nextPatch = { "actor.label": { set: "ready-upgrade-proof-next" } };
@@ -58,7 +70,7 @@ function readyBoundSeven(work: "idle" | "queued" = "idle") {
       const service = new RunRecordService({ database, clock: systemClock, ids: { uuid: randomUUID },
         publishQueued: run => { emitter.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Upgrade custody proof" })); } });
       const snapshot = selectActiveRunSettings(database.authority);
-      const resolvedInstance = QUEUED_RUN.envelope.resolvedInstance;
+      const resolvedInstance = InstanceSelectionSchema.parse(QUEUED_RUN.envelope.resolvedInstance);
       assert.ok(resolvedInstance);
       const run = requireLifecycleApplied(service.create({ commandId: randomUUID(), code: "pl", matchKey: "ready-upgrade-custody",
         workflow: "person-lookup", descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
@@ -113,7 +125,7 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
     assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 7, toSchemaVersion: 8, credentials: "unchanged" });
     const after = rawSeven(f.path);
     for (const [table, rows] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table], rows.map(row => ({ ...row, schema_version: 8 })));
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 8 })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
@@ -124,7 +136,7 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
     try {
       const credentials = createCredentialStore({ admission: fresh, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
         erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${f.binding.profileId}.json`) });
-      const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250 }, systemClock, undefined, undefined, undefined, credentials);
+      const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock, undefined, undefined, undefined, credentials);
       try {
         for (const table of ["assistant_grants", "assistant_chats", "assistant_actions"]) {
           const raw = new DatabaseSync(f.path, { readOnly: true });
@@ -132,7 +144,7 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
         }
         const replay = executeSettingsCommand({ authority: database, clock: systemClock, ids: { uuid: randomUUID },
           settings: createSettingsApplicationExecutor(() => { throw new Error("ready-upgrade-replay-reapplied"); }, credentials) }, f.command);
-        assert.deepEqual(replay, f.saved);
+        assert.deepEqual(replay, { ...f.saved, state: "already-applied" });
       } finally { database.close(); }
     } finally { fresh.release(); }
     const currentBefore = storageTree(f.stateRoot);
@@ -157,7 +169,7 @@ it("confines the issued READY purpose and its verified backup copy to their exac
     assert.throws(() => issued.assertAuthorityBackupWrite(f.path), { message: "profile-stopped-upgrade-backup-refused" });
     assert.throws(() => issued.admitProfile(f.claim), { message: "profile-stopped-upgrade-runtime-refused" });
     assert.throws(() => issued.forStoppedProfileUpgrade(), { message: "profile-stopped-upgrade-exclusive-refused" });
-    assert.throws(() => AuthorityDatabase.open(issued, { path: f.path }), { message: "profile-bound-authority-required" });
+    assert.throws(() => AuthorityDatabase.open(issued, { path: f.path, migrationOwner: "selected-profile-runtime" }), { message: "profile-bound-authority-required" });
     assert.throws(() => AuthorityDatabase.initializeProfile(issued), { message: "profile-initialization-authority-required" });
     assert.throws(() => issued.verifiedReadOnlyCopy(f.path, digest(f.path)), { message: "profile-stopped-upgrade-copy-refused" });
     assert.throws(() => issued.stoppedStagedAuthority(join(f.stateRoot, `.restore-${randomUUID()}.sqlite.tmp`)), { message: "profile-stopped-upgrade-exclusive-refused" });
@@ -204,7 +216,7 @@ it("refuses a genuine live server role and leaves every profile byte unchanged",
 it("refuses a genuine canonical queued run despite stopped global process roles", async () => {
   const f = readyBoundSeven("queued");
   try {
-    const before = storageTree(f.stateRoot), rows = rawSeven(f.path);
+    const rows = rawSeven(f.path), before = storageTree(f.stateRoot);
     assert.ok((rows.runs?.length ?? 0) > 0);
     await assert.rejects(upgradeReadyProfileStorage(f.machine, f.claim, { plan: false, hostFacts }, systemClock),
       { message: "credential-maintenance-custody-unproved" });
@@ -335,7 +347,7 @@ it("revokes READY custody on an actual new machine operation with no native effe
     const emailKey = createProfileVerifiers(f.machine.stateRoot).emailKeyFor(`${randomUUID()}@example.invalid`);
     f.machine.beginProfileSignUp({ firstName: "Upgrade", lastName: "Pending", createdAt: IsoInstantSchema.parse(systemClock.now().toISOString()),
       emailKey, commandFingerprint: "a".repeat(64) });
-    assert.throws(() => owner.assertLive(), { message: "runtime-control: profile-stopped-upgrade-authority-changed" });
+    assert.throws(() => owner.assertLive(), { message: "profile-storage-claim-unavailable" });
     assert.deepEqual(storageTree(f.stateRoot), before);
   } finally { owner.release(); restore.release(); f.close(); }
 });
@@ -344,7 +356,7 @@ it("cannot recreate a ready source removed after real stopped inspection and bef
   const f = readyBoundSeven(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   const saved = join(f.workspace, "owned-source-preimage");
-  const inspect = AuthorityDatabase.inspectStoppedUpgrade;
+  const inspect = AuthorityDatabase.inspectStoppedUpgrade.bind(AuthorityDatabase);
   let crossed = false;
   const spy = vi.spyOn(AuthorityDatabase, "inspectStoppedUpgrade").mockImplementation((actual, path, root, clock) => {
     assert.equal(actual, owner); assert.equal(path, f.path); assert.equal(root, f.processLockRoot);

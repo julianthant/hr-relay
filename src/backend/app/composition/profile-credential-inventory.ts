@@ -12,7 +12,7 @@ import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
 import { inspectCredentialKeyCopy, inspectCredentialCopy, assertCredentialStoreOwner, readForErasure } from "../../storage/configuration/credential-store.js";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { assessCredentialInventory, countProfileCredentialLoginRows, type CredentialInventory } from "../../profiles/credential-inventory.js";
 import { verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
