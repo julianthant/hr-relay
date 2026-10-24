@@ -9,7 +9,7 @@ import { CommandExecutor, type CommandExecutionScope } from "../../../src/dashbo
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import { NotificationWireSchema, type NotificationWire } from "../../../src/models/dashboard/projection.js";
 import { NotificationPublicationWireSchema, type NotificationPublicationWire } from "../../../src/models/dashboard/subscription.js";
-import { NotificationCommandRequestSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
+import { NotificationCommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
 import type { DsToast } from "../../../src/dashboard/ds/ui.js";
@@ -124,7 +124,7 @@ it("keeps successful Ping values and refuses a stale target without marking it r
 it("refuses foreign actor and wrong revision in shared notification readback", async () => {
   const h = await harness();
   const request = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: id, actorId: "local-operator", expectedVersion: 1 } });
-  const reply = { state: "applied" as const, commandId: request.commandId, affectedTargets: [{ family: "notification" as const, notificationId: id }] };
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "notification", notificationId: id }] });
   for (const next of [row("storage-degraded", { readState: "read", state: "read", revision: 3 }), row("storage-degraded", { actorId: "other-operator", readState: "read", state: "read", revision: 2 })]) {
     h.setRows([next]); assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "mismatch");
   }
@@ -242,7 +242,7 @@ it("requires exact collection readback membership and one version advance for ev
   const h = await harness();
   const request = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read-all",
     target: { actorId: "local-operator", members: [{ notificationId: id, expectedVersion: 1 }], matchingCount: 1 } });
-  const reply = { state: "applied" as const, commandId: request.commandId, affectedTargets: [{ family: "notification" as const, notificationId: id }] };
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "notification", notificationId: id }] });
   for (const rows of [[], [row()], [row("storage-degraded", { revision: 3, readState: "read", state: "read" })],
     [row("storage-degraded", { revision: 2, readState: "read", state: "read" }), row("storage-degraded", { notificationId: runId })]]) {
     h.setRows(rows); assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "mismatch");

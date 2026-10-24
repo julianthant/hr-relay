@@ -4,7 +4,7 @@ import type { DashboardClient } from "../client/index.js";
 import type { DsToast } from "../ds/ui.js";
 import { NotificationWireSchema, type NotificationWire } from "../../models/dashboard/projection.js";
 import type { NotificationPublicationWire } from "../../models/dashboard/subscription.js";
-import type { NotificationTarget } from "../../models/notifications/notifications.js";
+import type { NotificationTarget, NotificationCollectionTarget } from "../../models/notifications/notifications.js";
 import type { NotificationTriggerEvent } from "../../rules/notifications/notification-triggers.js";
 import { NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";

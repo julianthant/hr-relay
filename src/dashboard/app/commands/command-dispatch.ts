@@ -232,7 +232,7 @@ export async function verifyShellCommandEffect(
       const row = rows.find(row => row.notificationId === member.notificationId);
       if (row === undefined || row.actorId !== request.target.actorId) return mismatch(rows);
       const affected = reply.affectedTargets.some(target => target.family === "notification" && target.notificationId === member.notificationId);
-      if (!affected && row.kind === "notification" && row.revision !== member.expectedVersion) return mismatch(row);
+      if (!affected && row.kind === "notification" && Number(row.revision) !== Number(member.expectedVersion)) return mismatch(row);
     }
     const evidence = [];
     for (const target of reply.affectedTargets) {
@@ -251,7 +251,8 @@ export async function verifyShellCommandEffect(
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "notification"
       || reply.affectedTargets[0].notificationId !== request.target.notificationId) return mismatch(reply);
     const rows = await client.notificationSnapshot();
-    const row = rows.find(row => row.notificationId === request.target.notificationId);
+    const target = request.target;
+    const row = rows.find(row => row.notificationId === target.notificationId);
     if (request.target.actorId !== request.requestedBy || row?.actorId !== request.target.actorId || row.kind !== "notification"
       || row.revision !== request.target.expectedVersion + 1) return mismatch(rows);
     const matches = request.type === "notification-read" ? row.readState === "read"
