@@ -246,12 +246,13 @@ function credentialCopyProcessCustody(input: Readonly<{ machine: RuntimeAdmissio
   machine.assertLive(); admission.assertLive();
   const installation = machine.readInstallationContext();
   if (installation === undefined) throw new Error("credential-maintenance-installation-required");
-  if (admission.profileBinding.installationId !== installation.locator.installationId
-    || admission.stateRoot !== join(machine.stateRoot, "profiles", admission.profileBinding.profileId)) throw new Error("profile-inventory-owner-mismatch");
+  const binding = admission.profileBinding, profileRoot = admission.stateRoot;
+  if (binding.installationId !== installation.locator.installationId
+    || profileRoot !== join(machine.stateRoot, "profiles", binding.profileId)) throw new Error("profile-inventory-owner-mismatch");
   const processLockRoot = join(installation.workspace, rebuildRuntimeIsolation.processLockRoot);
   machine.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
   const locks = observeRuntimeLockSnapshot({ processLockRoot,
-    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db")) }, input.clock);
+    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(profileRoot, "state.db")) }, input.clock);
   const orphans = inspectRuntimeProcessOrphans(processLockRoot);
   if (Object.entries(locks.processLocks).some(([name, state]) => name !== "server" && state.state !== "stopped")
     || orphans.staleWorkerRecords > 0) throw new Error("credential-maintenance-process-custody-unproved");
@@ -297,23 +298,25 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
     const enumerate = () => {
       admission.assertLive();
       machine.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
+      const profileRoot = admission.stateRoot;
       const processCustody = credentialCopyProcessCustody(input);
       const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
       assertCredentialCopyResourcesClosed(facts);
       const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
         : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
       const savedBrowserRoot = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
-        { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.paths.browserProfileRoot;
+        { stateRoot: profileRoot, artifactRoot: admission.artifactRoot }).config.paths.browserProfileRoot;
       const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, writer);
       const backups = membership.manifests.map(manifest => verifyStoppedBackupManifestAtPath(admission, manifest,
-        AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db"))));
+        AuthorityDatabase.sourceDatabaseIdentity(join(profileRoot, "state.db"))));
       if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("credential-maintenance-backup-membership-unproved");
       const assessment = assessProfileCredentialCopies(admission, membership, backups, copies);
       if (assessment.backupPlaintext.length > 0 || assessment.unknownFormats.length > 0) throw new Error("credential-maintenance-copy-capture-incomplete");
       const login = countProfileCredentialLoginRows(membership.loginDataPaths);
       if (login === "unreadable" || typeof login === "number" && login > 0) throw new Error("credential-maintenance-login-copy-present");
-      const stable = { ...membership, ...processCustody, identities: membership.identities.filter(entry => entry.path !== join(admission.stateRoot, "credentials")
-        && entry.path !== join(admission.stateRoot, "credentials", "protected.json") && entry.path !== join(admission.stateRoot, "credentials", ".protected.lock")) };
+      const credentialsRoot = join(profileRoot, "credentials");
+      const stable = { ...membership, ...processCustody, identities: membership.identities.filter(entry => entry.path !== credentialsRoot
+        && entry.path !== join(credentialsRoot, "protected.json") && entry.path !== join(credentialsRoot, ".protected.lock")) };
       return canonicalJsonStringify(stable);
     };
     const before = enumerate();

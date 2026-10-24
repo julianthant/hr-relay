@@ -40,20 +40,41 @@ function isUcsdIdentity(value: string | undefined): boolean {
 
 export function readProfileDatabaseBinding(path: string):
   { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7 | 8; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
+  const snapshot = captureProfileDatabaseBinding(path);
+  try { return snapshot.binding; }
+  finally { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } }
+}
+
+function captureProfileDatabaseBinding(path: string) {
   requireDatabaseSourcePath(path);
   const before = lstatSync(path, { throwIfNoEntry: false });
   if (before === undefined) throw new Error("profile-database-binding-required");
   if (!before.isFile() || before.nlink !== 1 || (process.getuid !== undefined && before.uid !== process.getuid())
     || (before.mode & 0o022) !== 0) throw new Error("profile-database-identity-invalid");
   const snapshot = createReadonlyAuthoritySnapshot(path);
+  let retained = false;
   try {
     const binding = readProfileDatabaseBindingCopy(snapshot.path);
-    snapshot.assertUnchanged();
-    const after = lstatSync(path);
-    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
-      || before.ctimeMs !== after.ctimeMs || after.nlink !== 1) throw new Error("profile-database-identity-changed");
-    return binding;
-  } finally { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } }
+    const assertUnchanged = () => {
+      snapshot.assertUnchanged();
+      const after = lstatSync(path);
+      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
+        || before.ctimeMs !== after.ctimeMs || after.nlink !== 1) throw new Error("profile-database-identity-changed");
+    };
+    assertUnchanged();
+    retained = true;
+    return Object.freeze({ binding, assertUnchanged, dispose: snapshot.dispose });
+  } finally { if (!retained) { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } } }
+}
+
+export function captureCanonicalProfileBinding(path: string, expected: ProfileDatabaseBinding) {
+  const snapshot = captureProfileDatabaseBinding(path);
+  let retained = false;
+  try {
+    assertProfileBindingMatches(snapshot.binding, expected);
+    retained = true;
+    return Object.freeze({ assertUnchanged: snapshot.assertUnchanged, dispose: snapshot.dispose });
+  } finally { if (!retained) { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } } }
 }
 
 function readProfileDatabaseBindingCopy(path: string):
@@ -83,7 +104,10 @@ function readProfileDatabaseBindingCopy(path: string):
 }
 
 export function assertCanonicalProfileBinding(path: string, expected: ProfileDatabaseBinding): void {
-  const actual = readProfileDatabaseBinding(path);
+  assertProfileBindingMatches(readProfileDatabaseBinding(path), expected);
+}
+
+function assertProfileBindingMatches(actual: ReturnType<typeof readProfileDatabaseBinding>, expected: ProfileDatabaseBinding): void {
   if (actual.state !== "bound") throw new Error("profile-database-binding-required");
   if (actual.binding.installationId !== expected.installationId || actual.binding.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");
 }

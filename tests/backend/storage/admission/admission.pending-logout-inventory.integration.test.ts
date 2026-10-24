@@ -1,16 +1,21 @@
 import assert from "node:assert/strict";
-import { appendFileSync, copyFileSync, readFileSync, renameSync, unlinkSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, lstatSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { it } from "vitest";
+import { it, vi } from "vitest";
+import { DatabaseSync } from "node:sqlite";
+import { spawnSync } from "node:child_process";
 import { z } from "zod";
 import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
+import * as readonlySnapshots from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createCredentialStore, createChatGptCredentialRepository, CredentialErasureHeadSchema, erasureRequestIdentity, readForErasure } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
@@ -62,7 +67,7 @@ it("issues exact early pending-logout inspection without runtime, credential, da
   } finally { purpose.release(); f.close(); }
 });
 
-for (const mutation of ["operation-inode", "operation-phase", "database-inode", "selection", "released-child", "released-parent"] as const) {
+for (const mutation of ["operation-inode", "operation-phase", "operation-at", "database-inode", "selection", "released-child", "released-parent"] as const) {
   it(`revokes pending inspection after actual ${mutation} changes`, () => {
     const f = pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
     let restore: (() => void) | undefined;
@@ -71,12 +76,22 @@ for (const mutation of ["operation-inode", "operation-phase", "database-inode", 
         const path = mutation === "operation-inode" ? f.path : f.f.path, original = `${path}.retained`;
         renameSync(path, original); copyFileSync(original, path);
         restore = () => { unlinkSync(path); renameSync(original, path); };
+      } else if (mutation === "operation-at") {
+        const before = readFileSync(f.path);
+        writeFileSync(f.path, JSON.stringify({ ...f.operation, at: new Date(Date.parse(f.operation.at) + 1).toISOString() }));
+        restore = () => writeFileSync(f.path, before);
       } else if (mutation === "operation-phase") f.f.machine.publishProfileOperation({ ...f.operation, phase: "incomplete" });
       else if (mutation === "selection") createProfileRegistry(f.f.machine).advanceSession(null);
       else if (mutation === "released-child") f.owner.release();
       else f.f.machine.release();
       assert.throws(() => purpose.assertPendingLogoutInventory(f.owner, f.operation));
       assert.throws(() => AuthorityDatabase.readProfileMaintenanceInventory(purpose));
+      if (mutation === "operation-at") {
+        assert.ok(restore); restore(); restore = undefined;
+        assert.throws(() => purpose.assertLive());
+        assert.throws(() => f.owner.assertCredentialErasureObservation(randomUUID()));
+        f.owner.assertCredentialErasureObservation(f.operation.operationId);
+      }
     } finally { restore?.(); purpose.release(); f.close(); }
   });
 }
@@ -179,4 +194,179 @@ for (const mutation of ["operation", "child", "parent", "copy-bytes", "copy-rele
     else copy.release();
     assert.throws(() => copy.assertReadOnlyAuthorityDatabase(path));
   } finally { copy.release(); purpose.release(); unlinkSync(path); f.close(); }
+});
+
+
+it("retains one strict binding snapshot per pending purpose while native facts stay fresh and disposes it on release", () => {
+  const f = pending(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot;
+  const copies: string[] = [];
+  const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
+    const snapshot = capture(path); copies.push(snapshot.path); return snapshot;
+  });
+  const reads = vi.spyOn(DatabaseSync.prototype, "prepare");
+  let purpose: ReturnType<typeof f.owner.forPendingLogoutInventory> | undefined;
+  const source = () => ["", "-wal", "-shm", "-journal"].map(suffix => {
+    const info = lstatSync(f.f.path + suffix, { bigint: true, throwIfNoEntry: false });
+    return info === undefined ? null : [info.dev, info.ino, info.mode, info.size, info.mtimeNs, info.ctimeNs];
+  });
+  const before = source();
+  try {
+    purpose = f.owner.forPendingLogoutInventory(f.operation);
+    assert.equal(copies.length, 1);
+    const held = copies[0]; assert.ok(held);
+    for (let count = 0; count < 5; count++) purpose.assertPendingLogoutInventory(f.owner, f.operation);
+    assert.equal(copies.length, 1);
+    assert.equal(existsSync(held), true);
+    const bindingReaders = new Set(reads.mock.contexts);
+    assert.equal(bindingReaders.size, 1);
+    const first = AuthorityDatabase.readProfileMaintenanceInventory(purpose);
+    const firstReaders = new Set(reads.mock.contexts.filter(reader => !bindingReaders.has(reader)));
+    assert.equal(firstReaders.size, 1);
+    const observed = new Set(reads.mock.contexts);
+    const second = AuthorityDatabase.readProfileMaintenanceInventory(purpose);
+    const secondReaders = new Set(reads.mock.contexts.filter(reader => !observed.has(reader)));
+    assert.equal(secondReaders.size, 1);
+    assert.equal(first.authorityGeneration, second.authorityGeneration);
+    assert.equal(copies.length, 1);
+    reads.mockRestore();
+    for (const reader of [...bindingReaders, ...firstReaders, ...secondReaders]) {
+      assert.ok(reader instanceof DatabaseSync);
+      assert.throws(() => reader.prepare("SELECT 1"));
+    }
+    assert.deepEqual(source(), before);
+    purpose.release();
+    assert.equal(existsSync(held), false);
+    assert.throws(() => purpose?.assertLive());
+    purpose.release();
+  } finally { purpose?.release(); reads.mockRestore(); observer.mockRestore(); f.close(); }
+});
+
+for (const suffix of ["", "-wal", "-shm", "-journal"] as const) it(`permanently revokes a pending snapshot after a changed ${suffix === "" ? "main" : suffix.slice(1)} source`, () => {
+  const f = pending(), path = f.f.path + suffix;
+  if (!existsSync(path)) writeFileSync(path, Buffer.alloc(0), { flag: "wx", mode: 0o600 });
+  const purpose = f.owner.forPendingLogoutInventory(f.operation), before = readFileSync(path);
+  try {
+    purpose.assertLive();
+    appendFileSync(path, Buffer.from([1]));
+    let refusal: unknown;
+    assert.throws(() => purpose.assertLive(), error => {
+      refusal = error; return error instanceof Error && error.message === "authority-readonly-source-changed";
+    });
+    writeFileSync(path, before);
+    assert.throws(() => purpose.assertLive(), error => error === refusal);
+    assert.throws(() => AuthorityDatabase.readProfileMaintenanceInventory(purpose), error => error === refusal);
+  } finally { purpose.release(); f.close(); }
+});
+
+for (const suffix of ["-wal", "-shm", "-journal"] as const) it(`remembers a pending ${suffix.slice(1)} absence and cannot re-admit a restored absence`, () => {
+  const f = pending(), path = f.f.path + suffix;
+  let purpose: ReturnType<typeof f.owner.forPendingLogoutInventory> | undefined;
+  const rows = () => withAuthorityDatabaseReadOnly(f.owner, f.f.path, database => ({
+    inspection: inspectNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION),
+    tables: Object.fromEntries(migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION)
+      .map(table => [table, database.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all()])),
+  }));
+  const credentialFiles = () => [join(f.f.stateRoot, "credentials", "protected.json"),
+    join(f.f.machine.stateRoot, "machine", "credential-keys", `${f.operation.profileId}.json`),
+    ...["", ".authority"].map(tail => join(f.f.machine.stateRoot, "machine", "erasures", `${f.operation.profileId}.json${tail}`)),
+    join(f.f.workspace, ".tracker", "control", "profile-registry.json")].map(file => {
+    const info = lstatSync(file, { bigint: true, throwIfNoEntry: false });
+    return info === undefined ? null : { bytes: readFileSync(file), identity: [info.dev, info.ino, info.mode, info.size, info.mtimeNs, info.ctimeNs] };
+  });
+  const before = rows(), beforeCredentials = credentialFiles();
+  try {
+    const database = new DatabaseSync(f.f.path);
+    try { assert.equal(database.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get()?.busy, 0); }
+    finally { database.close(); }
+    assert.deepEqual(rows(), before);
+    assert.deepEqual(credentialFiles(), beforeCredentials);
+    assert.equal(existsSync(path), false);
+    purpose = f.owner.forPendingLogoutInventory(f.operation);
+    const issued = purpose;
+    writeFileSync(path, Buffer.alloc(0), { flag: "wx", mode: 0o600 });
+    let refusal: unknown;
+    assert.throws(() => issued.assertLive(), error => {
+      refusal = error; return error instanceof Error && error.message === "authority-readonly-source-changed";
+    });
+    unlinkSync(path);
+    assert.throws(() => issued.assertLive(), error => error === refusal);
+  } finally { purpose?.release(); f.close(); }
+});
+
+for (const mutation of ["schema", "binding"] as const) it(`rejects an actual ${mutation} mismatch at issuance and disposes the failed copy`, () => {
+  const f = pending(), database = new DatabaseSync(f.f.path);
+  try {
+    if (mutation === "schema") database.exec("PRAGMA user_version=0");
+    else {
+      database.exec("DROP TRIGGER database_states_binding_immutable");
+      database.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(randomUUID());
+    }
+  } finally { database.close(); }
+  const capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
+  const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
+    const snapshot = capture(path); copies.push(snapshot.path); return snapshot;
+  });
+  try {
+    assert.throws(() => f.owner.forPendingLogoutInventory(f.operation), { message: `profile-database-${mutation}-mismatch` });
+    assert.equal(copies.length, 1);
+    assert.equal(copies.every(path => !existsSync(path)), true);
+    const forged: unknown = Object.create(f.owner);
+    assert.ok(forged instanceof RuntimeAdmission);
+    assert.throws(() => forged.forPendingLogoutInventory(f.operation));
+  } finally { observer.mockRestore(); f.close(); }
+});
+
+it("keeps the real original writer lock held across pending binding issuance and repeated native inspection", () => {
+  const f = pending(), database = new DatabaseSync(f.f.path);
+  let purpose: ReturnType<typeof f.owner.forPendingLogoutInventory> | undefined;
+  try {
+    database.exec("PRAGMA wal_autocheckpoint=0; BEGIN IMMEDIATE");
+    purpose = f.owner.forPendingLogoutInventory(f.operation);
+    for (let count = 0; count < 3; count++) purpose.assertLive();
+    AuthorityDatabase.readProfileMaintenanceInventory(purpose);
+    const peer = spawnSync(process.execPath, ["--input-type=commonjs", "-e", `
+      const { DatabaseSync } = require("node:sqlite");
+      const database = new DatabaseSync(process.argv[1], { timeout: 100 });
+      try { database.exec("BEGIN IMMEDIATE; ROLLBACK"); process.stdout.write("acquired"); }
+      catch (error) { if (error.errcode !== 5) throw error; process.stdout.write("busy"); }
+      finally { database.close(); }
+    `, f.f.path], { encoding: "utf8" });
+    assert.equal(peer.error, undefined); assert.equal(peer.signal, null); assert.equal(peer.status, 0);
+    assert.equal(peer.stdout === "busy", true);
+  } finally { purpose?.release(); database.exec("ROLLBACK"); database.close(); f.close(); }
+});
+
+it("retains the exact cleanup failure and refuses all future use when its owned snapshot cannot be disposed", () => {
+  const f = pending(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, failure = new Error("synthetic retained snapshot cleanup failure");
+  let owned: ReturnType<typeof capture> | undefined;
+  const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
+    owned = capture(path); return { ...owned, dispose: () => { throw failure; } };
+  });
+  const purpose = f.owner.forPendingLogoutInventory(f.operation);
+  try {
+    assert.ok(owned); assert.equal(existsSync(owned.path), true);
+    assert.throws(() => purpose.release(), error => error === failure);
+    assert.throws(() => purpose.assertLive(), error => error === failure);
+    assert.throws(() => purpose.release(), error => error === failure);
+    assert.equal(existsSync(owned.path), true);
+  } finally {
+    observer.mockRestore(); owned?.dispose();
+    assert.equal(owned === undefined || !existsSync(owned.path), true);
+    f.close();
+  }
+});
+
+
+it("disposes the issued copy if actual operation custody changes before pending admission returns", () => {
+  const f = pending(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
+  const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
+    const snapshot = capture(path); copies.push(snapshot.path);
+    f.f.machine.publishProfileOperation({ ...f.operation, phase: "incomplete" });
+    return snapshot;
+  });
+  try {
+    assert.throws(() => f.owner.forPendingLogoutInventory(f.operation), /profile-pending-logout-operation-changed/u);
+    assert.equal(copies.length, 1);
+    assert.equal(copies.every(path => !existsSync(path)), true);
+  } finally { observer.mockRestore(); f.close(); }
 });

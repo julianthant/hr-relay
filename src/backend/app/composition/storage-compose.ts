@@ -294,6 +294,7 @@ export function composeProfileRuntime(input: Readonly<{
       if (entry?.ordinary !== undefined || settlement === undefined || settlement.admission !== admission || settlement.credentials !== credentials) {
         throw new Error("profile-pending-logout-resource-owner-mismatch");
       }
+      settlement.stopped?.dispose();
       settlement.stopped = preparePendingLogoutInventory(credentials, operation);
     },
     activity: {
@@ -317,17 +318,22 @@ export function composeProfileRuntime(input: Readonly<{
         const settlement = resource?.settlement;
         if (settlement?.stopped === undefined || settlement.admission !== fields.admission
           || settlement.credentials !== fields.credentials) throw new Error("profile-pending-logout-resource-owner-mismatch");
+        settlement.stopped.dispose();
         const stopped = preparePendingLogoutInventory(fields.credentials, fields.operation);
         settlement.stopped = stopped;
         stopped.revalidate();
-        if (stopped.assessment.logoutComplete) delete settlement.stopped;
+        if (stopped.assessment.logoutComplete) { stopped.dispose(); delete settlement.stopped; }
         return stopped.assessment;
       }
       if (entry.inventory === undefined || entry.preparation?.state !== "ready") throw new Error("profile-inventory-unprepared");
       return entry.inventory.assess(fields);
     },
     closeStorage: (profileId, admission) => {
-      const entry = resources.get(profileId)?.ordinary;
+      const resource = resources.get(profileId), settlement = resource?.settlement;
+      if (settlement?.admission === admission) {
+        settlement.stopped?.dispose(); delete settlement.stopped; return;
+      }
+      const entry = resource?.ordinary;
       if (entry === undefined || entry.admission !== admission) {
         if (entry?.context !== undefined && entry.state !== "closed") throw new RuntimeCustodyUncertainError([new Error("profile-resource-owner-mismatch")]);
         return;
@@ -399,8 +405,10 @@ export function composeProfileRuntime(input: Readonly<{
         try { ordinary.context.database.close(); ordinary.state = "closed"; }
         catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       }
-      try { session.close(); }
-      catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try {
+        for (const entry of resources.values()) { entry.settlement?.stopped?.dispose(); if (entry.settlement !== undefined) delete entry.settlement.stopped; }
+        session.close();
+      } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
     },
   });
 }

@@ -1801,7 +1801,8 @@ export class AuthorityDatabase implements Disposable {
     owner.assertLive();
     return withAuthorityDatabaseReadOnly(owner, path, database => {
       const inspection = inspectNormalAuthority(database);
-      if (inspection.installationId !== owner.profileBinding.installationId || inspection.profileId !== owner.profileBinding.profileId) throw new Error("profile-maintenance-binding-mismatch");
+      const binding = owner.profileBinding;
+      if (inspection.installationId !== binding.installationId || inspection.profileId !== binding.profileId) throw new Error("profile-maintenance-binding-mismatch");
       const settings = readAppSettings(database);
       const settingsAuthority = settings === undefined
         ? Object.freeze({ state: "never-initialized" as const })

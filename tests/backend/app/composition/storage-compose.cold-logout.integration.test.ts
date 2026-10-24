@@ -1,3 +1,4 @@
+import * as readonlySnapshots from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -17,6 +18,7 @@ import { createProfileRegistry } from "../../../../src/backend/profiles/registry
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createCredentialStore, preparePendingLogoutInventory, readForErasure } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { ensureChildDirectory } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
@@ -135,6 +137,10 @@ it("refuses incomplete late captured values with a surviving clean canonical log
 
 for (const mutation of ["copy", "process-root", "key", "head"] as const) it(`revalidates actual ${mutation} membership around constructor-owned private inspection`, () => {
   const f = fixture(), operation = f.readOperation();
+  if (mutation === "head") {
+    const machineRoot = join(f.f.machine.stateRoot, "machine");
+    ensureChildDirectory(machineRoot, join(machineRoot, "erasures"), "erasure journal", 0o700, 0o700);
+  }
   const actual = composeProfilePendingLogoutInventory({ machine: f.f.machine, admission: f.owner, clock: f.clock, hostFacts: { primaryDisplay: null } });
   let restore: (() => void) | undefined, mutated = false;
   const store = createCredentialStore({ admission: f.owner, stateRoot: f.f.stateRoot, erasureJournalAdmission: f.f.machine,
@@ -238,4 +244,23 @@ it("requires the genuine verifier and revokes one-use cold continuations on oper
     assert.equal(f.readOperation().commandId, undefined);
     assert.throws(() => stopped.runtime.selectedContext("unissued"));
   } finally { await stopped.close(); }
+});
+
+
+it("disposes the exact retained pending inventory copy and fences its returned revalidation before releasing profile custody", () => {
+  const f = fixture(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
+  const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
+    const snapshot = capture(path); copies.push(snapshot.path); return snapshot;
+  });
+  let inventory: ReturnType<typeof preparePendingLogoutInventory> | undefined;
+  try {
+    inventory = preparePendingLogoutInventory(f.store, f.readOperation());
+    assert.equal(copies.filter(path => existsSync(path)).length, 1);
+    inventory.revalidate();
+    assert.equal(copies.filter(path => existsSync(path)).length, 1);
+    inventory.dispose();
+    assert.equal(copies.every(path => !existsSync(path)), true);
+    assert.throws(() => inventory?.revalidate(), /missing or released admission/u);
+    f.owner.assertLive(); f.f.machine.assertLive();
+  } finally { inventory?.dispose(); observer.mockRestore(); f.close(); }
 });

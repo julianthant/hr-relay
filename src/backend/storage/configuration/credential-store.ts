@@ -663,7 +663,7 @@ function assertInitializationInventoryProof(proof: CredentialInitializationInven
 }
 
 export interface CommittedCredentialWitness { readonly revision: number; }
-const committedStores = new WeakMap<CredentialStore, { readonly pendingLogoutInventory: (operation: LogoutOperation) => Readonly<{ assessment: CredentialInventory; revalidate(): void }>; readonly admission: RuntimeAdmission; readonly stateRoot: string;
+const committedStores = new WeakMap<CredentialStore, { readonly pendingLogoutInventory: (operation: LogoutOperation) => Readonly<{ assessment: CredentialInventory; revalidate(): void; dispose(): void }>; readonly admission: RuntimeAdmission; readonly stateRoot: string;
   readonly presence: () => readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[]; readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly keyPath: string; readonly containsKey: (value: unknown) => boolean; readonly inspectCopy: (path: string, capturedSecrets: readonly string[]) => Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> ; readonly migrationSource: () => CredentialMigrationSource; readonly readForErasure: (operationId: string) => ProtectedStoreRecord; readonly captureErasureHead: () => VerifiedCredentialErasureHead }>();
 
 export function observeCredentialPresence(store: CredentialStore, admission: RuntimeAdmission): readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[] {
@@ -674,7 +674,7 @@ export function observeCredentialPresence(store: CredentialStore, admission: Run
 }
 
 type CredentialMigrationSource = { state: "current" } | { state: "absent" } | { state: "legacy"; schemaVersion: 2 | 3; revision: number; device: number; inode: number; digest: string };
-export function preparePendingLogoutInventory(store: CredentialStore, operation: LogoutOperation): Readonly<{ assessment: CredentialInventory; revalidate(): void }> {
+export function preparePendingLogoutInventory(store: CredentialStore, operation: LogoutOperation): Readonly<{ assessment: CredentialInventory; revalidate(): void; dispose(): void }> {
   const owner = committedStores.get(store);
   if (owner === undefined) throw new Error("credential-store-owner-required");
   owner.admission.assertCredentialErasureObservation(operation.operationId);
@@ -2046,8 +2046,14 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       if (inventory.assessment.logoutComplete) pendingCapture = undefined;
       return Object.freeze({ assessment: inventory.assessment, revalidate: () => {
         assertCurrentInventory(); inventory.revalidate(); assertCurrentInventory();
-      } });
-    } catch (error) { purpose.release(); throw error; }
+      }, dispose: () => purpose.release() });
+    } catch (error) {
+      let cleanupFailure: { error: unknown } | undefined;
+      try { purpose.release(); }
+      catch (cleanup) { cleanupFailure = { error: cleanup }; }
+      if (cleanupFailure !== undefined) throw new AggregateError([error, cleanupFailure.error], "credential-pending-logout-inventory-release-failed", { cause: error });
+      throw error;
+    }
   }, presence: () => {
     admission.assertCredentialRead();
     const current = observeCurrent(), journal = loadJournal(current.document);

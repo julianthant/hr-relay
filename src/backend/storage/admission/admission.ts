@@ -19,7 +19,7 @@ import { assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../s
 
 import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../../models/profiles/profile.js";
 import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
-import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
+import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, captureCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import type { ProfileRegistryDocument, ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
@@ -100,6 +100,7 @@ type AdmissionAuthority = Readonly<{
   settleCredentialErasure?(request: ErasureRequestIdentity, witness: VerifiedCredentialErasureHead): void;
   assertProfileRuntime?(): void;
   assertCredentialErasureObservation?(operationId: string): void;
+  assertPendingLogoutCustody?(operationId: string): void;
   assertCredentialErasure?(request: Readonly<{ commandId: string; writeId: string; expectedRevision: number; updatedAt: string; commandFingerprint: string }>): void;
   readRelocationReceipts?(): readonly RelocationCompletionReceipt[];
   readInstallationContext?(): Readonly<{ workspace: string; locator: RuntimeLocator; receipts: readonly RelocationCompletionReceipt[] }> | undefined;
@@ -359,23 +360,43 @@ export class RuntimeAdmission {
     const lease = parent.#authority as InstallationLease;
     assertInstallationLease(lease);
     const witness = lease.capturePendingProfileLogout(operation);
-    const path = join(this.#stateRoot, "state.db"), original = lstatSync(path);
+    const path = join(this.#stateRoot, "state.db"), original = lstatSync(path), binding = this.profileBinding;
+    const snapshot = captureCanonicalProfileBinding(path, binding);
+    let invalidated: { error: unknown } | undefined;
+    let releaseFailure: { error: unknown } | undefined;
     const assertHeld = () => {
-      this.assertCredentialErasureObservation(operation.operationId);
-      parent.assertWritable();
-      witness.assertHeld();
-      assertCanonicalProfileBinding(path, this.profileBinding);
-      const current = lstatSync(path);
-      if (current.dev !== original.dev || current.ino !== original.ino) throw new Error("profile-pending-logout-database-changed");
+      if (invalidated !== undefined) throw invalidated.error;
+      try {
+        if (!(#released in this) || this.#released) throw new Error("runtime-admission: missing or released admission");
+        if (this.#scope !== "profile-settlement" || this.#authority.assertPendingLogoutCustody === undefined) throw new Error("profile-settlement-operation-unavailable");
+        this.#authority.assertPendingLogoutCustody(operation.operationId);
+        parent.assertWritable();
+        witness.assertHeld();
+        snapshot.assertUnchanged();
+        const current = lstatSync(path);
+        if (current.dev !== original.dev || current.ino !== original.ino) throw new Error("profile-pending-logout-database-changed");
+      } catch (error) { invalidated = { error }; throw error; }
     };
-    assertHeld();
-    return new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => parent.readInstallationContext(), release() {} },
-      this.#stateRoot, this.#artifactRoot, [path], "profile-pending-logout-inventory", this.#mode, this.#locator, this.profileBinding, parent,
-      { owner: this, operation: canonicalJsonStringify(operation) });
+    const release = () => {
+      if (releaseFailure !== undefined) throw releaseFailure.error;
+      try { snapshot.dispose(); }
+      catch (error) { invalidated = releaseFailure = { error }; throw error; }
+    };
+    try {
+      assertHeld();
+      return new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => parent.readInstallationContext(), release },
+        this.#stateRoot, this.#artifactRoot, [path], "profile-pending-logout-inventory", this.#mode, this.#locator, binding, parent,
+        { owner: this, operation: canonicalJsonStringify(operation) });
+    } catch (error) {
+      let cleanupFailure: { error: unknown } | undefined;
+      try { release(); }
+      catch (cleanup) { cleanupFailure = { error: cleanup }; }
+      if (cleanupFailure !== undefined) throw new AggregateError([error, cleanupFailure.error], "profile-pending-logout-inventory-release-failed", { cause: error });
+      throw error;
+    }
   }
   assertPendingLogoutInventory(owner: RuntimeAdmission, operation: LogoutOperation): void {
     this.assertLive();
-    owner.assertCredentialErasureObservation(operation.operationId);
     if (this.#scope !== "profile-pending-logout-inventory" || this.#pendingLogout?.copyPath !== undefined || this.#pendingLogout?.owner !== owner
       || this.#pendingLogout.operation !== canonicalJsonStringify(operation) || this.#profileParent !== owner.#profileParent
       || this.#profileBinding?.profileId !== operation.profileId || owner.#profileBinding?.profileId !== operation.profileId) {
@@ -494,6 +515,16 @@ export class RuntimeAdmission {
       assertCredentialErasureObservation: operationId => {
         if (claim.phase !== "settlement" || storageClaims.get(claim)?.operationId !== operationId) throw new Error("profile-settlement-operation-unavailable");
         requireRegisteredProfileStorageClaim(claim, this, "custody");
+      },
+      assertPendingLogoutCustody: operationId => {
+        this.assertLive();
+        if (restoreSettled) throw new Error("profile-restore-context-expired");
+        if (restoreCustody !== undefined) {
+          this.#exclusiveInstallationLease().assertProfileRestoreHeld(restoreCustody.input, restoreCustody.restore);
+        } else if (!noSymlinkAncestry(root, ancestry)) throw new Error("profile-storage-root-disappeared");
+        const issued = storageClaims.get(claim);
+        if (issued === undefined || issued.admission !== this) throw new Error("profile-storage-claim-unissued");
+        if (claim.phase !== "settlement" || issued.operationId !== operationId) throw new Error("profile-settlement-operation-unavailable");
       },
       assertCredentialErasure: request => {
         this.readProfileRegistry();

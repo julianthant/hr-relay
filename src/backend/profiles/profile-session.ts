@@ -208,6 +208,15 @@ export function createProfileSession(input: {
     if (entry.settlement === undefined) storageAdmissions.delete(profileId);
   }
 
+  function releaseSettlement(profileId: string): void {
+    const entry = storageAdmissions.get(profileId), capability = entry?.settlement;
+    if (entry === undefined || capability === undefined) return;
+    input.closeStorage?.(profileId, capability);
+    capability.release();
+    delete entry.settlement;
+    if (entry.ordinary === undefined) storageAdmissions.delete(profileId);
+  }
+
   function admittedProfile(profileId: string): RuntimeAdmission {
     admission.assertLive();
     admission.assertStateRoot(machineRoot);
@@ -406,7 +415,7 @@ export function createProfileSession(input: {
 
   function logoutStorage(operation: LogoutOperation) {
     const entry = storageAdmissions.get(operation.profileId) ?? {};
-    entry.settlement?.release();
+    releaseSettlement(operation.profileId);
     const settlement = admission.admitProfile(registry.settlementClaim(operation.operationId));
     entry.settlement = settlement;
     storageAdmissions.set(operation.profileId, entry);
@@ -508,7 +517,7 @@ export function createProfileSession(input: {
       return { ...refusal("PROFILE_LOGOUT_INVENTORY_BLOCKED", command.operationId), inventory };
     }
     releaseOrdinary(profileId);
-    settlement.release();
+    releaseSettlement(profileId);
     storageAdmissions.delete(profileId);
     registry.update(profileId, { credentialState: "wiped", lifecycle: "ready" });
     deleteOperation(command.operationId);
@@ -519,9 +528,9 @@ export function createProfileSession(input: {
     close(): void {
       logoutContinuationGeneration++;
       sessions.clear();
-      for (const [profileId, entry] of storageAdmissions) {
+      for (const profileId of storageAdmissions.keys()) {
         releaseOrdinary(profileId);
-        entry.settlement?.release();
+        releaseSettlement(profileId);
         storageAdmissions.delete(profileId);
       }
     },

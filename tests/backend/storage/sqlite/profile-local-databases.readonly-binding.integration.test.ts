@@ -286,3 +286,23 @@ it("accepts an empty WAL while preserving authoritative main bytes", () => {
     assert.equal(readFileSync(`${f.path}-wal`).length, 0);
   } finally { f.close(); }
 });
+
+
+it("takes and disposes a fresh strict snapshot for every ordinary binding read", () => {
+  const f = createBoundProfileFixture(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
+  const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
+    const snapshot = capture(path); copies.push(snapshot.path); return snapshot;
+  });
+  try {
+    for (let count = 0; count < 2; count++) {
+      const binding = readProfileDatabaseBinding(f.path);
+      assert.equal(binding.state, "bound");
+      if (binding.state !== "bound") throw new Error("fixture binding required");
+      assert.equal(binding.binding.profileId, f.admission.profileBinding.profileId);
+      assert.equal(binding.binding.installationId, f.admission.profileBinding.installationId);
+      assert.equal(copies.length, count + 1);
+      assert.equal(copies.every(path => !existsSync(path)), true);
+    }
+    assert.notEqual(copies[0], copies[1]);
+  } finally { observer.mockRestore(); f.close(); }
+});
