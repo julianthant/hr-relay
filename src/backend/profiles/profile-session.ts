@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
@@ -6,6 +7,7 @@ import { z } from "zod";
 import {
   createCredentialStore,
   credentialMigrationSource,
+  captureReadyUpgradeCredentialSource,
   inspectCredentialCopy,
   assertCredentialStoreOwner,
   readForErasure,
@@ -14,7 +16,7 @@ import {
   RESTORE_ADMISSION_REQUEST,
   type CredentialInitializationCopyInspection, type CredentialStoreOptions, type CredentialStoreHooks,
 } from "../storage/configuration/credential-store.js";
-import { type RuntimeAdmission } from "../storage/admission/admission.js";
+import { type RuntimeAdmission, type RegisteredProfileStorageClaim } from "../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
@@ -39,6 +41,32 @@ import type { ChatGptAccountService } from "../accounts/chatgpt-account-service.
 import type { CredentialStore } from "../../models/config/credential-store.js";
 import type { SettingsRuntimeSnapshot } from "../runtime/settings/settings-runtime.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+
+export class ProfileUpgradeUnavailableError extends Error {
+  readonly code = "PROFILE_UPGRADE_UNAVAILABLE";
+  constructor(cause: unknown) { super(operatorFailureSentence("PROFILE_UPGRADE_UNAVAILABLE"), { cause }); this.name = "ProfileUpgradeUnavailableError"; }
+}
+
+export interface AuthenticatedProfileUpgrade { readonly profileId: string; }
+const authenticatedUpgrades = new WeakMap<AuthenticatedProfileUpgrade, (machine: RuntimeAdmission) => RegisteredProfileStorageClaim>();
+export function consumeAuthenticatedProfileUpgrade(authorization: AuthenticatedProfileUpgrade, machine: RuntimeAdmission): RegisteredProfileStorageClaim {
+  const consume = authenticatedUpgrades.get(authorization);
+  if (consume === undefined) throw new ProfileSessionRefusedError("PROFILE_UPGRADE_UNAVAILABLE");
+  authenticatedUpgrades.delete(authorization);
+  return consume(requireRuntimeAdmission(machine));
+}
+function issueAuthenticatedProfileUpgrade(profileId: string,
+  capture: NonNullable<ReturnType<RuntimeAdmission["captureProfileUpgradeHandoff"]>>,
+  credentials: ReturnType<typeof captureReadyUpgradeCredentialSource>): AuthenticatedProfileUpgrade {
+  const authorization = Object.freeze({ profileId });
+  authenticatedUpgrades.set(authorization, machine => {
+    const claim = capture.consume(machine);
+    credentials.revalidate(machine, claim);
+    return claim;
+  });
+  return authorization;
+}
+export interface ProfileUpgradeRequired extends ProfileRefusal { readonly upgrade: AuthenticatedProfileUpgrade; }
 
 export interface ProfileActivity {
   hasUnquiescedWork(profileId: string): boolean;
@@ -146,6 +174,7 @@ export function createProfileSession(input: {
   const storageAdmissions = new Map<string, { ordinary?: RuntimeAdmission; settlement?: RuntimeAdmission }>();
   const authoritySnapshots = new WeakSet<ProfileAuthoritySnapshot>();
   let logoutContinuationGeneration = 0;
+  let upgradeRequested = false;
 
   function writeOperation(operation: ProfileOperation): void {
     admission.publishProfileOperation(operation);
@@ -553,7 +582,7 @@ export function createProfileSession(input: {
       return withProfileLock(machineRoot, () => signUpLocked(fields, names));
     },
     signIn(fields: { readonly email: string; readonly password: string; readonly at: string;
-      readonly credentialMigration?: { readonly kind: "prove-v2" } | { readonly kind: "replace-v3"; readonly entries: CompleteProtectedSettingsPatch } }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
+      readonly credentialMigration?: { readonly kind: "prove-v2" } | { readonly kind: "replace-v3"; readonly entries: CompleteProtectedSettingsPatch } }): ActiveProfileSession | ProfileRefusal | ProfileCancelling | ProfileUpgradeRequired {
       const at = IsoInstantSchema.parse(fields.at);
       admission.assertWritable();
       return withProfileLock(machineRoot, () => {
@@ -579,6 +608,21 @@ export function createProfileSession(input: {
         }
         if (readOperations().some((entry) => entry.kind === "logout" && entry.profileId !== row.profileId && entry.phase !== "complete")) {
           return refusal("PROFILE_TRANSITION_BLOCKED");
+        }
+        if (upgradeRequested) return refusal("PROFILE_TRANSITION_BLOCKED");
+        if (row.lifecycle === "ready" && row.credentialState === "saved") {
+          const claim = registry.storageClaim(row.profileId);
+          const capture = admission.captureProfileUpgradeHandoff(claim);
+          if (capture !== undefined) {
+            let credentials: ReturnType<typeof captureReadyUpgradeCredentialSource>;
+            try { credentials = captureReadyUpgradeCredentialSource(admission, claim); }
+            catch (error) {
+              if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
+              throw new ProfileUpgradeUnavailableError(error);
+            }
+            upgradeRequested = true;
+            return { ...refusal("PROFILE_UPGRADE_STARTING"), upgrade: issueAuthenticatedProfileUpgrade(row.profileId, capture, credentials) };
+          }
         }
         const names = deriveProfileNames(row.firstName, row.lastName);
         let operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId && entry.phase === "applying");

@@ -1,3 +1,5 @@
+import { spawn, execFileSync } from "node:child_process";
+import { once } from "node:events";
 import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { createProfileRegistry } from "../../../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
@@ -524,7 +526,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
   afterEach(cleanup);
 
   it("does not reserve recovery or launch a stopped standing worker at dashboard boot", async () => {
-    const profile = createBoundProfileFixture(), repoRoot = profile.workspace;
+    const profile = createBoundProfileFixture({ sharedMachine: true }), repoRoot = profile.workspace;
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), name), join(repoRoot, name));
     cleanups.push(() => profile.close());
     const clock = manualClock(new Date(NOW));
@@ -539,19 +541,59 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
         fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
         capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
       assert.equal(active.configFingerprint, resolved.fingerprint);
-      database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
-      const reservation = { commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
-        family: "worker-browser", type: "plan-worker-count", target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { desiredWorkers: 1 } };
-      database.authority.commands.insert(reservation);
-      database.authority.workerSlots.allocate({ workflow: WORKFLOW, poolIndex: 1, commandId: reservation.commandId, now: NOW });
-      const started = database.authority.workerLeases.start({ workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
-        processId: 7001, requestedBy: "local-operator", now: NOW });
-      assert.equal(started.state, "started");
-      database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
-        lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW }, now: NOW });
-      database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
-        lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: NOW, reason: "crashed" }, now: NOW });
     } finally { database.close(); }
+    const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
+    for (const poolIndex of [1, 2, 3]) {
+      const seed = spawn(process.execPath, ['--import', 'tsx', join(process.cwd(), 'tests/support/processes/worker-stub-cli.ts'),
+        profile.path, processLockRoot, 'installed', 'run', WORKFLOW, '--pool-index', String(poolIndex)],
+        { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+      const seedClosed = new Promise<void>(resolve => { seed.once('close', () => resolve()); });
+      const seedExit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+        seed.once('exit', (code, signal) => resolve({ code, signal })); seed.once('error', reject);
+      });
+      const seedGroup = () => execFileSync('ps', ['-axo', 'pid=,pgid='], { encoding: 'utf8' }).split('\n').flatMap(line => {
+        const [pid, pgid] = line.trim().split(/\s+/u).map(Number);
+        return pgid === seed.pid && pid !== undefined ? [pid] : [];
+      });
+      cleanups.push(async () => {
+        if (seed.exitCode === null && seed.signalCode === null) seed.kill('SIGTERM');
+        const exited = await seedExit; await seedClosed;
+        assert.equal(exited.code, 0); assert.equal(exited.signal, null); assert.deepEqual(seedGroup(), []);
+      });
+      assert.ok(seed.stdout); seed.stderr?.resume();
+      await Promise.race([once(seed.stdout, 'data'), seedExit.then(() => { throw new Error('capacity-seed-worker-exited-before-ready'); })]);
+      assert.ok(seed.pid);
+      const liveGroup = seedGroup(); assert.ok(liveGroup.includes(seed.pid));
+      let seededWorkerId: ReturnType<typeof WorkerIdSchema.parse> | undefined;
+      const started = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: 'test-capacity-seed' },
+        clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+      try {
+        const slot = started.authority.workerSlots.list(WORKFLOW).find(value => value.poolIndex === poolIndex && value.retiredAt === null);
+        assert.ok(slot); seededWorkerId = slot.workerId;
+        if (poolIndex === 1) assert.equal(seededWorkerId, WORKER_1);
+        const lease = started.authority.workerLeases.get(seededWorkerId); assert.ok(lease);
+        assert.equal(lease.lifecycle.state, 'starting');
+        assert.equal(started.workerLifetimeCustody(seededWorkerId).state, 'alive');
+        const readyAt = new Date().toISOString();
+        assert.equal(started.authority.workerLeases.reportLifecycle({ workerId: seededWorkerId, leaseGeneration: lease.leaseGeneration,
+          lifecycle: { state: 'idle', startedAt: lease.lifecycle.startedAt, heartbeatAt: readyAt }, now: readyAt }).state, 'applied');
+      } finally { started.close(); }
+      assert.ok(seededWorkerId);
+      seed.kill('SIGTERM');
+      const exited = await seedExit; await seedClosed;
+      assert.equal(exited.code, 0); assert.equal(exited.signal, null);
+      assert.deepEqual(seedGroup(), []);
+      for (const pid of liveGroup) assert.throws(() => process.kill(pid, 0), error => error instanceof Error && Reflect.get(error, 'code') === 'ESRCH');
+      const stopped = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: 'test-capacity-seed' },
+        clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+      try {
+        assert.equal(stopped.authority.workerLeases.get(seededWorkerId)?.lifecycle.state, 'stopped');
+        assert.equal(stopped.workerLifetimeCustody(seededWorkerId).state, 'released');
+        stopped.assertWorkerLifecycleRelease(seededWorkerId);
+        assert.equal(stopped.authority.workerPools.get(WORKFLOW)?.desiredWorkers, poolIndex);
+        assert.equal(stopped.authority.workerSlots.list(WORKFLOW).filter(slot => slot.retiredAt === null).length, poolIndex);
+      } finally { stopped.close(); }
+    }
     const admission = profile.machine;
     const recovery = vi.spyOn(AdmittedAuthorityDatabase.prototype, "reserveStandingWorkerRecovery").mockImplementation(() => {
       throw new Error("worker-boot-recovery-must-not-be-requested");

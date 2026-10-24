@@ -1,3 +1,5 @@
+import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import assert from "node:assert/strict";
 import * as accounts from "../../../../src/backend/accounts/chatgpt-account-service.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -5,13 +7,13 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { randomUUID } from "node:crypto";
-import { copyFileSync, readFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, readFileSync, readdirSync, statSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
-import { composeProfileRuntime, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, composeProfileActivity, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeRestoreAdmission, bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -19,6 +21,11 @@ import { ChatGptCredentialRecordSchema, createChatGptCredentialRepository, creat
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+
+function credentialSnapshot(path: string) {
+  const { dev, ino, size, mtimeNs, ctimeNs } = statSync(path, { bigint: true });
+  return { bytes: readFileSync(path), dev, ino, size, mtimeNs, ctimeNs, entries: readdirSync(dirname(path)).sort() };
+}
 
 it("composes actual selected resources without transport and revokes retained ordinary producers while preserving database custody", async () => {
   const f = createBoundProfileFixture();
@@ -39,9 +46,11 @@ it("composes actual selected resources without transport and revokes retained or
     assert.equal(context.credentials, credentials);
     assert.equal(context.database.getMeta().profileId, f.admission.profileBinding.profileId);
     assert.equal(context.settings.read().runtimeStatus.state, "current");
+    const credentialBytes = credentialSnapshot(join(f.stateRoot, "credentials", "chatgpt-account.json"));
     const account = await context.accountAuthority.readAuthority();
+    assert.deepEqual(credentialSnapshot(join(f.stateRoot, "credentials", "chatgpt-account.json")), credentialBytes);
     assert.equal(account.availability, "available");
-    assert.equal(account.revision, 2);
+    assert.equal(account.revision, 1);
     assert.equal(context.accountAuthority.revalidateAuthority(account), true);
     assert.equal(context.accountAuthority.revalidateAuthority({ ...account }), false);
     assert.throws(() => composeSelectedProfileStorage({ ...input, credentials: { ...credentials } }));
@@ -72,6 +81,7 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
     const active = runtime.session.signUp(fields); assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("synthetic signup refused");
     const seed = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+    const credentialPath = join(seed.stateRoot, "credentials", "chatgpt-account.json");
     try {
       await createChatGptCredentialRepository({ admission: seed, stateRoot: seed.stateRoot }).withLock(async transaction => transaction.replace(ChatGptCredentialRecordSchema.parse({
         schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: "oaiapp_synthetic",
@@ -80,9 +90,11 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
           earliestRefreshAt: null, scopes: ["offline_access", "resource.invoke", "chatgpt.tokens.use.direct"], usePlan: true, usage: "available" },
       }), null));
     } finally { seed.release(); }
-    const captured = await runtime.session.readCurrentAuthority(active.token); assert.equal(captured.state, "available");
+    const credentialBytes = credentialSnapshot(credentialPath);
+    const captured = await runtime.session.readCurrentAuthority(active.token);
+    assert.deepEqual(credentialSnapshot(credentialPath), credentialBytes); assert.equal(captured.state, "available");
     if (captured.state !== "available") throw new Error("composed authority unavailable");
-    assert.equal(captured.snapshot.accountRevision, 2);
+    assert.equal(captured.snapshot.accountRevision, 1);
     const context = runtime.selectedContext(active.token);
     runtime.beginSupervisorConstruction(active.token);
     runtime.bindSupervisor(active.token, { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined });
@@ -261,4 +273,43 @@ it("admits only the exact held stopped projection capability before opening stag
     restore.release();
     assert.throws(() => AuthorityDatabase.openStoppedRestoreProjection(capability!, options, clock));
   } finally { capability?.release(); restore.release(); f.close(); }
+});
+
+
+for (const state of ['held', 'released-running', 'missing-birth'] as const) it(`missing supervisor evidence refuses a stopped ${state} lifetime`, async () => {
+  const f = createBoundProfileFixture(), clock = manualClock(new Date('2025-01-01T00:00:00.000Z'));
+  const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
+    credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
+  const processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
+  const lifecycle = new RunRecordService({ database: context.database, clock, ids: { uuid: randomUUID },
+    publishQueued: () => { throw new Error('unexpected-queued-run'); } });
+  let owned: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
+  try {
+    const now = clock.now().toISOString();
+    owned = bindWorkerProcessAdmission({ processLockRoot, authorityPath: f.path, pid: process.pid, clock,
+      open: () => context.database, close: database => database.close(),
+      admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories,
+        { commandId: randomUUID(), workflow: 'person-lookup', poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
+          processAcquisitionId: acquisitionId, authorityPath: f.path, processLockRoot, now }, randomUUID()).workerId),
+    });
+    const request = { workerId: owned.workerId, workflow: 'person-lookup', browserSystems: [], processId: process.pid,
+      requestedBy: 'local-operator', now };
+    const started = state === 'missing-birth' ? context.database.authority.workerLeases.start(request)
+      : context.database.startOwnedWorker(request, owned.processLock);
+    assert.equal(started.state, 'started');
+    assert.equal(context.database.authority.workerLeases.reportLifecycle({ workerId: owned.workerId, leaseGeneration: 1,
+      lifecycle: { state: 'stopped', startedAt: now, stoppedAt: now, reason: 'shutdown' }, now }).state, 'applied');
+    if (state !== 'held') owned.processLock.release();
+    if (state === 'held') assert.equal(context.database.workerLifetimeCustody(owned.workerId).state, 'alive');
+    if (state === 'released-running') assert.equal(context.database.workerLifetimeCustody(owned.workerId).state, 'released-alive');
+    const before = context.database.readProfileResourceCustody();
+    const activity = composeProfileActivity({ admission: f.admission, database: context.database, processLockRoot, clock, lifecycle,
+      supervisor: { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined } });
+    assert.throws(() => activity.hasUnquiescedWork(f.admission.profileBinding.profileId), error => error instanceof Error
+      && error.message === (state === 'missing-birth' ? 'worker-birth-authority-unavailable' : 'profile-worker-supervisor-custody-unavailable'));
+    assert.deepEqual(context.database.readProfileResourceCustody(), before);
+    f.machine.assertLive(); f.admission.assertLive();
+  } finally {
+    await context.account.close(); context.database.close(); owned?.processLock.release(); f.close();
+  }
 });

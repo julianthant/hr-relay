@@ -1,10 +1,9 @@
 import { createDashboardChildTestWorld, type RealChildRecord } from "../../../../support/helpers/backend/dashboard-child-world.js";
 import { workerPoolMember } from "../../../../../src/models/run/worker-slot.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
-import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import {copyFileSync, mkdtempSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
@@ -13,9 +12,10 @@ import { type WorkerPoolMember } from "../../../../../src/backend/runtime/worker
 import { readRuntimeProcessLock } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
-import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
+import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 
-const {stubLaunch, PL, plMember, required, roots, cleanups, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, cleanup } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
+const {stubLaunch, PL, plMember, required, cleanups, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, cleanup } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
 
 const SEP = WorkflowIdSchema.parse("separations");
 const _PL_1 = plMember(1);
@@ -27,11 +27,10 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
     "two real children over the real ingress; internal child shutdown, dashboard shutdown with one live child, then PID-proved teardown",
     async () => {
       reportW5Phase("runtime-shutdown", "startup", "begin");
-      const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-runtime-"));
-      roots.push(repoRoot);
+      const profile = createBoundProfileFixture({ sharedMachine: true }), repoRoot = profile.workspace;
       copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
       copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
-      const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+      const stateRoot = profile.stateRoot;
       const dbPath = join(stateRoot, "state.db");
       const lockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
       const serverLockRecord = () => required(readRuntimeProcessLock(lockRoot, "server"), "server process custody");
@@ -40,7 +39,13 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
       const childOutput = (): string => records.map((record) =>
         `${record.member.workerId}: ${record.output.join("")}`).join("\n");
 
-      const runtime: DashboardRuntime = await composeDashboardRuntime({ admission: installationAdmission(repoRoot), preflightRunnerFactory: healthyRuntimePreflightRunners,
+      const profileRuntime = composeProfileRuntime({ admission: profile.machine, clock: systemClock, hostFacts: { primaryDisplay: null }, processLockRoot: lockRoot });
+      cleanups.push(async () => { await profileRuntime.close(); profile.close(); });
+      const active = profileRuntime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
+      assert.equal(active.state, "active");
+      if (active.state !== "active") throw new Error("fixture-profile-sign-in-refused");
+      const context = profileRuntime.selectedContext(active.token);
+      const runtime: DashboardRuntime = await composeDashboardRuntime({ admission: profile.machine, profile: { runtime: profileRuntime, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners,
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
         frontendPortOverride: 0,
@@ -78,7 +83,7 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
         assert.deepEqual(await post({ ...envelope(systemClock), type: "plan-worker-count",
           target: { workflowId, expectedVersion: 0 }, payload: { desiredWorkers: 1 } }), { status: 200, state: "applied" });
       }
-      const roster = AuthorityDatabase.open({ path: dbPath, busyTimeoutMs: 5_000, migrationOwner: "unit-test" }, systemClock);
+      const roster = AuthorityDatabase.open(context.admission, { path: dbPath, busyTimeoutMs: 5_000, migrationOwner: "unit-test" }, systemClock, undefined, undefined, undefined, context.credentials);
       let PL_1: WorkerPoolMember; let SEP_1: WorkerPoolMember;
       try {
         PL_1 = workerPoolMember(required(roster.authority.workerSlots.list(PL).find(slot => slot.retiredAt === null), "PL slot"));

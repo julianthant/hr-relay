@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError } from '../../storage/source-closure.js';
 import { assertProfileBrowserRoot, composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeProfilePendingLogoutInventory, composeProfileCredentialInventory } from "./profile-credential-inventory.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
@@ -84,7 +85,12 @@ export function composeProfileActivity(input: Readonly<{
       if (slot.retiredAt !== null) continue;
       if ("state" in input.supervisor) throw new Error("profile-worker-supervisor-custody-unavailable");
       const evidence = input.supervisor.memberEvidence(workerPoolMember(slot));
-      if (lease !== undefined && evidence === undefined) throw new Error("profile-worker-supervisor-custody-unavailable");
+      if (lease !== undefined && evidence === undefined) {
+        if (lease.lifecycle.state !== "stopped" || input.database.workerLifetimeCustody(lease.workerId).state !== "released") {
+          throw new Error("profile-worker-supervisor-custody-unavailable");
+        }
+        input.database.assertWorkerLifecycleRelease(lease.workerId);
+      }
       if (evidence !== undefined && (evidence.state !== "exited" || evidence.reportedBy !== "os")) busy = true;
     }
     if (before.leases.some(lease => !before.slots.some(slot => slot.workerId === lease.workerId))) throw new Error("profile-worker-membership-unavailable");
@@ -310,7 +316,12 @@ export function composeProfileRuntime(input: Readonly<{
         if (entry.preparation?.state === "failed") throw entry.preparation.error;
         return entry.activity.hasUnquiescedWork(profileId) || entry.preparation?.state !== "ready";
       },
-      requestCancellation: prepareClosure,
+      requestCancellation: profileId => {
+        const entry = resources.get(profileId)?.ordinary;
+        if (entry?.activity === undefined) throw new Error("profile-resource-custody-unavailable");
+        if (entry.state === "open") entry.state = "closing";
+        entry.activity.requestCancellation(profileId);
+      },
     },
     credentialInventory: fields => {
       const resource = resources.get(fields.profileId), entry = resource?.ordinary;
@@ -365,7 +376,12 @@ export function composeProfileRuntime(input: Readonly<{
     for (const entry of resources.values()) if (entry.ordinary?.state === "open") entry.ordinary.state = "closing";
     if (initializationFailure !== undefined) throw new RuntimeCustodyUncertainError([initializationFailure.error]);
     try {
-      for (const [profileId, entry] of resources) if (entry.ordinary?.context !== undefined && entry.ordinary.state !== "closed") prepareClosure(profileId);
+      for (const [profileId, entry] of resources) {
+        const ordinary = entry.ordinary;
+        if (ordinary?.context === undefined || ordinary.state === "closed") continue;
+        if (ordinary.activity === undefined) throw new Error("profile-resource-custody-unavailable");
+        ordinary.activity.requestCancellation(profileId);
+      }
     } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
   };
   return Object.freeze({ session, beginClose,
@@ -387,6 +403,7 @@ export function composeProfileRuntime(input: Readonly<{
     async awaitClosurePreparation(profileId: string): Promise<void> {
       const resource = resources.get(profileId), entry = resource?.ordinary;
       if (entry === undefined && resource?.settlement?.stopped !== undefined) { resource.settlement.stopped.revalidate(); return; }
+      if (entry?.context !== undefined && entry.state !== "closed") prepareClosure(profileId);
       if (entry?.preparation?.state === "pending") await entry.preparation.completion;
       if (entry?.preparation?.state === "failed") throw entry.preparation.error;
       if (entry?.preparation?.state !== "ready") throw new Error("profile-work-drain-unproved");
@@ -962,6 +979,7 @@ export async function composeStorageCommand(
         ]),
       ].join("\n"), exitCode: 0 };
     } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
       // Unvalidated parser/OS error text can contain input. Emit only a named outcome.
       const code = error instanceof Error ? /^([a-z]+(?:-[a-z]+)+)(?:[: {]|$)/u.exec(error.message)?.[1] : undefined;
       const candidateKey = error instanceof Error ? /\{ key: ([A-Za-z0-9.*_-]+) \}/u.exec(error.message)?.[1] : undefined;

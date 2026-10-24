@@ -44,15 +44,28 @@ it("preserves the exact stopped-backup source witness after pending profile init
 it("refuses a source sidecar change during the shared binding read", () => {
   const f = createBoundProfileFixture(), createSnapshot = readonlySnapshots.createReadonlyAuthoritySnapshot;
   let changed = false;
+  const observed: unknown[] = [];
   const snapshots = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
     const snapshot = createSnapshot(path);
     return { ...snapshot, assertUnchanged: () => {
       if (!changed && path === f.path) { changed = true; writeFileSync(`${path}-shm`, "synthetic changed sidecar", { flag: "a", mode: 0o600 }); }
-      snapshot.assertUnchanged();
+      try { snapshot.assertUnchanged(); }
+      catch (error) { observed.push(error); throw error; }
     } };
   });
   try {
-    assert.throws(() => readProfileDatabaseBinding(f.path), /authority-readonly-source-changed/u);
+    assert.throws(() => readProfileDatabaseBinding(f.path), error => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(error.message, "profile-database-binding-read-failed");
+      assert.equal(error.errors.length, 2); assert.equal(observed.length, 2);
+      assert.equal(error.errors[0], observed[0]); assert.equal(error.errors[1], observed[1]);
+      assert.equal(error.cause, observed[0]); assert.notEqual(observed[0], observed[1]);
+      for (const failure of error.errors) {
+        assert.ok(failure instanceof Error); assert.equal(failure.constructor, Error);
+        assert.equal(failure.message, "authority-readonly-source-changed");
+      }
+      return true;
+    });
     assert.equal(changed, true);
   } finally { snapshots.mockRestore(); f.close(); }
 });

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,readFileSync,readdirSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { it } from "vitest";
+import { it, onTestFailed } from "vitest";
 import { composeDashboardRuntime,type DashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
@@ -38,6 +38,7 @@ async function waitFor(test: () => boolean, message: string, output: () => strin
 }
 
 it("real ingress, two real workers and Chromium: dry-run claims, exact controls, replay, replacement and proven cleanup", async () => {
+  const diagnosticStartedAt = systemClock.monotonicMs();
   const fixture = createBoundProfileFixture();
   const root = fixture.workspace;
   fixture.admission.release(); fixture.machine.release();
@@ -45,6 +46,25 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
   let profile: ReturnType<typeof composeProfileRuntime> | undefined;
   let token: string | undefined;
   const children: ChildProcess[] = []; const output: string[] = []; const faults: string[] = [];
+  type DiagnosticPhase = 'starting' | 'boot-admission' | 'boot-runtime' | 'first-boot' | 'settings-request' | 'settings-response'
+    | 'worker-command-request' | 'worker-command-response' | 'paused-workers' | 'claimed-runs' | 'browser-session'
+    | 'run-completion' | 'idle-workers' | 'heartbeat' | 'first-stop' | 'closed-children' | 'second-boot'
+    | 'standing-recovery' | 'reset-completion' | 'removal-completion' | 'final-stop' | 'cleanup' | 'fixture-close' | 'cleanup-finished';
+  let phase: DiagnosticPhase = 'starting', failedPhase: DiagnosticPhase | undefined;
+  let elapsedAtFirstReceipt: number | null = null, elapsedBeforeFixtureClose: number | null = null, fixtureCloseElapsed: number | null = null;
+  const commandTypes = ['plan-worker-count', 'spawn-worker', 'pause-worker', 'resume-worker', 'refresh-browser', 'reopen-browser', 'stop-worker', 'remove-worker'] as const;
+  let lastCommandType: typeof commandTypes[number] | 'none' | 'other' = 'none';
+  onTestFailed(() => {
+    process.stderr.write(JSON.stringify({ event: 'worker-browser-control-phase', phase, failedPhase: failedPhase ?? 'none',
+      commandType: lastCommandType, childCount: children.length,
+      runningChildren: children.filter(child => child.exitCode === null && child.signalCode === null).length,
+      exitedChildren: children.filter(child => child.exitCode !== null).length,
+      signalledChildren: children.filter(child => child.signalCode !== null).length,
+      faultCount: faults.length, unknownFaultCount: faults.length,
+      elapsedMs: Math.max(0, Math.round(systemClock.monotonicMs() - diagnosticStartedAt)),
+      elapsedAtFirstReceiptMs: elapsedAtFirstReceipt, elapsedBeforeFixtureCloseMs: elapsedBeforeFixtureClose,
+      fixtureCloseElapsedMs: fixtureCloseElapsed }) + '\n');
+  });
   let runtime: DashboardRuntime | undefined; let database: AuthorityDatabase | undefined;
   const stateRoot = fixture.stateRoot;
   copyFileSync("package.json",join(root,"package.json")); copyFileSync("package-lock.json",join(root,"package-lock.json"));
@@ -54,6 +74,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     return { pid:child.pid, kill:signal => child.kill(signal), onExit:listener => {child.on("exit",listener);}, onError:listener => {child.on("error",listener);} };
   };
   const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: [1,2].flatMap(index => database?.authority.runs.listByWorker(worker(index)) ?? []) });
+  phase = 'boot-admission';
   const boot = async () => {
     const bootMachine = acquireEntrypointAdmission(root, "shared");
     machine = bootMachine;
@@ -65,27 +86,34 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     token = active.token;
     assert.equal(profile.selectedContext(token).admission.stateRoot, stateRoot);
     assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
+    phase = 'boot-runtime';
     const dashboard = await composeDashboardRuntime({ admission: machine, profile: { runtime: profile, token }, preflightRunnerFactory: healthyRuntimePreflightRunners,isolation:rebuildRuntimeIsolation,backendPortOverride:0,frontendPortOverride:0,env:{},repoRoot:root,
     workerProcess:{launch:{environment:{},command:process.execPath,prefixArgs:["--import","tsx",join(process.cwd(),"tests/support/processes/worker-browser-control-cli.ts"),root],cwd:process.cwd()},spawn:spawnWorker,birth:{pollMs:25,timeoutMs:20_000},faultSink:line=>faults.push(line)}});
     return { dashboard, machine: bootMachine };
   };
   const failures: unknown[]=[];
   try {
+    phase = 'first-boot';
     const firstBoot = await boot(); runtime = firstBoot.dashboard; machine = firstBoot.machine;
     const origin = `http://127.0.0.1:${String(runtime.port)}`;
     assert.ok(profile); assert.ok(token);
     let db = profile.selectedContext(token).database; database = db;
     const baseline = readSettings(db.authority).revision;
     const patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, "features.duoWebAuthn": { set: false } };
+    phase = 'settings-request';
     const response = await fetch(`${origin}/api/v1/commands`, { method:"POST", headers:{"content-type":"application/json",origin},
       body:JSON.stringify({commandId:randomUUID(),family:"settings",type:"apply-settings",target:{expectedRevision:baseline},source:"dashboard",requestedBy:"local-operator",requestedAt:systemClock.now().toISOString(),
         payload:{settingsSchemaHash:SETTINGS_SCHEMA_HASH,patchFingerprint:deriveSettingsPatchFingerprint(patch),patch}}) });
+    phase = 'settings-response';
     const settingsResult: unknown = await response.json(); assert.equal(CommandResultSchema.parse(settingsResult).state,"applied",JSON.stringify(settingsResult));
     const post = async (type: string, target: unknown, payload?: unknown, commandId = randomUUID()) => {
+      lastCommandType = commandTypes.find(value => value === type) ?? 'other';
       const request = {commandId,family:"worker-browser",type,target,...(payload===undefined?{}:{payload}),source:"dashboard",requestedBy:"local-operator",requestedAt:systemClock.now().toISOString()};
       const send = async (body = request) => {
+        phase = 'worker-command-request';
         assert.ok(runtime); const origin = `http://127.0.0.1:${String(runtime.port)}`;
         const response=await fetch(`${origin}/api/v1/commands`,{method:"POST",headers:{"content-type":"application/json",origin},body:JSON.stringify(body)});
+        phase = 'worker-command-response';
         const raw: unknown = await response.json();
         if (response.status >= 500) throw new Error(`fixture command ${type} failed: ${JSON.stringify(raw)}; ${diagnostics()}`);
         const result = CommandResultSchema.parse(raw);
@@ -102,6 +130,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
       assert.equal((await post("spawn-worker",{workflowId:"person-lookup",expectedVersion:1},{workerId:worker(index)})).result.state,"applied");
       assert.equal((await post("pause-worker",target(index))).result.state,"applied");
     }
+    phase = 'paused-workers';
     await waitFor(()=>[1,2].every(index=>db.authority.workerLeases.get(worker(index))?.lifecycle.state==="paused"),"workers did not observe pause",diagnostics);
     const runIds=[randomUUID(),randomUUID()];
     const active=db.authority.runtimeConfig.get(); assert.ok(active);
@@ -116,28 +145,34 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     }
     for (const index of [1,2]) {
       assert.equal((await post("resume-worker",target(index))).result.state,"applied");
+      phase = 'claimed-runs';
       await waitFor(()=>db.authority.workerLeases.get(worker(index))?.lifecycle.state==="busy","worker did not claim",diagnostics);
     }
     const claims=runIds.map(id=>db.authority.runs.get(id));
     assert.equal(new Set(claims.map(run=>run!==undefined && "workerId" in run.lifecycle ? run.lifecycle.workerId : undefined)).size,2);
     assert.ok(claims.every(run=>run?.envelope.dryRun===true));
     const liveSession=()=>db.authority.workerControls.browsers(worker(1)).find(value=>value.health!=="closed");
+    phase = 'browser-session';
     await waitFor(()=>liveSession()!==undefined,"browser observation missing",diagnostics);
     const busy=await post("refresh-browser",{...target(1),browserSessionId:liveSession()?.sessionId});
     assert.equal(busy.result.state,"rejected");
     if(busy.result.state==="rejected") assert.match(busy.result.message,/busy/);
     assert.equal(db.authority.workerControls.get(busy.request.commandId),undefined);
     writeFileSync(join(root,"release-drivers"),"release\n");
+    phase = 'run-completion';
     await waitFor(()=>runIds.every(id=>{const state=db.authority.runs.get(id)?.lifecycle; return state?.state==="terminal"&&state.outcome==="done";}),"dry runs did not finish",diagnostics);
+    phase = 'run-completion';
     await waitFor(()=>[1,2].every(index=>db.authority.workerLeases.get(worker(index))?.lifecycle.state==="idle"),"workers not idle",diagnostics);
     const original=liveSession(); assert.ok(original);
     // Heartbeat row-version drift cannot invalidate the displayed control basis.
     const displayed={...target(1),browserSessionId:original.sessionId};
+    phase = 'idle-workers';
     await waitFor(()=>db.authority.workerLeases.get(worker(1))?.version!==displayed.expectedVersion,"heartbeat missing",diagnostics);
     const refresh=await post("refresh-browser",displayed); assert.equal(refresh.result.state,"applied");
     assert.equal((await refresh.send()).state,"already-applied");
     const refreshed=db.authority.workerControls.browsers(worker(1)).find(value=>value.sessionId===original.sessionId);
     assert.equal(refreshed?.health,"authenticated");
+    phase = 'heartbeat';
     const reopen=await post("reopen-browser",{...target(1),browserSessionId:original.sessionId}); assert.equal(reopen.result.state,"applied");
     assert.equal((await reopen.send()).state,"already-applied");
     const replacement=db.authority.workerControls.browsers(worker(1)).find(value=>value.system===original.system&&value.health==="authenticated"); assert.ok(replacement);
@@ -151,15 +186,18 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
 
       assert.equal(raw.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE name='operation_outbox'").get()?.["n"],0);
     }finally{raw.close();}
+    elapsedAtFirstReceipt = Math.max(0, Math.round(systemClock.monotonicMs() - diagnosticStartedAt));
     process.stdout.write(`[sessions-process-proof] ${JSON.stringify({ claims: claims.map(value => ({ runId:value?.envelope.runId, dryRun:value?.envelope.dryRun, lifecycle:value?.lifecycle })), controls:[refresh,reopen].map(value=>db.authority.workerControls.get(value.request.commandId)), original, replacement })}\n`);
     const oldGeneration = target(1);
     assert.ok(machine);
     const oldMachine = machine, oldProfile = profile, oldToken = token, oldContext = profile.selectedContext(token);
+    phase = 'first-stop';
     await runtime.stop(); runtime=undefined; database=undefined;
     assert.throws(() => oldProfile.assertCurrent(oldToken), { message: "runtime-admission: missing or released admission" });
     assert.throws(() => oldContext.settings.read(), (error: unknown) => error instanceof ProfileSessionRefusedError && error.code === "PROFILE_SESSION_STALE");
     oldMachine.release(); machine=undefined;
     assert.throws(() => oldMachine.assertLive(), /runtime-admission: missing or released admission/u);
+    phase = 'first-stop';
     await waitFor(() => children.every(child => child.exitCode !== null || child.signalCode !== null),
       "dashboard shutdown did not drain owned children", diagnostics);
     for (const child of children) {
@@ -169,6 +207,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
       assert.equal(groupPids(child.pid).length, 0);
     }
     const stoppedChildren = children.length;
+    phase = 'closed-children';
     const secondBoot = await boot(); runtime=secondBoot.dashboard; machine=secondBoot.machine;
     assert.equal(children.length,stoppedChildren,"dashboard boot must not spawn standing workers");
     assert.ok(profile); assert.ok(token);
@@ -176,6 +215,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     const freshProfile = profile;
     assert.throws(() => freshProfile.assertCurrent(oldToken), (error: unknown) => error instanceof ProfileSessionRefusedError && error.code === "PROFILE_SESSION_STALE");
     db=profile.selectedContext(token).database; database=db;
+    phase = 'second-boot';
     assert.equal((await reopen.send()).state,"already-applied");
     assert.equal(children.length,stoppedChildren,"replaying a settled browser control must not spawn workers");
     for (const index of [1,2]) {
@@ -194,6 +234,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     const member = db.authority.workerSlots.get(worker(1)); assert.ok(member);
     const stop = await post("stop-worker",{...target(1),membershipRevision:member.membershipRevision});
     assert.equal(stop.result.state,"pending");
+    phase = 'standing-recovery';
     await waitFor(() => db.authority.workerControls.get(stop.request.commandId)?.phase.state === "succeeded",
       "replacement worker did not settle its exact reset", diagnostics);
     const reset = db.authority.workerControls.get(stop.request.commandId); assert.ok(reset?.phase.state === "succeeded");
@@ -209,6 +250,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     const removal = await post("remove-worker",{...target(1),workflowId:"person-lookup",membershipRevision:member.membershipRevision,
       expectedVersion:db.authority.workerPools.get("person-lookup")?.version});
     assert.equal(removal.result.state,"pending");
+    phase = 'reset-completion';
     await waitFor(() => db.authority.workerControls.get(removal.request.commandId)?.phase.state === "succeeded",
       "selected replacement did not prove retirement", diagnostics);
     assert.notEqual(db.authority.workerSlots.get(worker(1))?.retiredAt,null);
@@ -220,8 +262,11 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     const resize = (await post("plan-worker-count",{workflowId:"person-lookup",expectedVersion:db.authority.workerPools.get("person-lookup")?.version},{desiredWorkers:1})).result;
     assert.equal(resize.state,"applied");
     assert.equal(db.authority.workerPools.get("person-lookup")?.desiredWorkers, 1);
+    phase = 'removal-completion';
+    phase = 'final-stop';
     await runtime.stop(); runtime=undefined; database=undefined;
     assert.ok(machine); machine.release(); machine=undefined;
+    phase = 'final-stop';
     await waitFor(() => children.every(child => child.exitCode !== null || child.signalCode !== null),
       "final dashboard drain did not finish every owned child", diagnostics);
     for (const child of children) {
@@ -229,7 +274,8 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
       assert.deepEqual(JSON.parse(readFileSync(join(root,`cleanup-${String(child.pid)}.json`),"utf8")),{openContexts:0,failures:0});
       assert.equal(groupPids(child.pid).length,0);
     }
-  } catch(error) { failures.push(error); } finally {
+  } catch(error) { failedPhase = phase; failures.push(error); } finally {
+    phase = 'cleanup';
     writeFileSync(join(root,"release-drivers"),"cleanup release\n");
     for(const child of children) if(child.exitCode===null&&child.signalCode===null) {child.kill("SIGCONT");child.kill("SIGTERM");}
     for(const child of children) {
@@ -247,7 +293,14 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     const lockDirectory=join(root,rebuildRuntimeIsolation.processLockRoot,"workers");
     try {if(existsSync(lockDirectory))for(const name of readdirSync(lockDirectory))if(name.endsWith(".lock.json"))assert.notEqual(WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(join(lockDirectory,name),"utf8"))).releasedAt,null);}catch(error){failures.push(error);}
     try {fixture.admission.release(); fixture.machine.release();}catch(error){failures.push(error);}
-    if(failures.length===0) {process.stdout.write(`[sessions-process-cleanup] ${JSON.stringify({processGroups:children.map(child=>child.pid),survivors:0,openContexts:0,workerLocks:"released"})}\n`);fixture.close();}
+    if(failures.length===0) {process.stdout.write(`[sessions-process-cleanup] ${JSON.stringify({processGroups:children.map(child=>child.pid),survivors:0,openContexts:0,workerLocks:"released"})}\n`);
+      phase = 'fixture-close';
+      const closingAt = systemClock.monotonicMs();
+      elapsedBeforeFixtureClose = Math.max(0, Math.round(closingAt - diagnosticStartedAt));
+      fixture.close();
+      fixtureCloseElapsed = Math.max(0, Math.round(systemClock.monotonicMs() - closingAt));
+      phase = 'cleanup-finished';
+    }
   }
   if(failures.length>0)throw new AggregateError(failures,`process proof failed; retained ${root}\n${output.join("")}`);
 },90_000);

@@ -202,6 +202,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "public-virgin-root-")));
     copyRuntimePackageFixture(repoRoot);
     const machine = acquireEntrypointAdmission(repoRoot, "exclusive");
+    mkdirSync(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
     let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
     try {
       vi.mocked(readFileSync).mockClear();
@@ -384,12 +385,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       await assert.rejects(second.stop(), error => {
         assert.ok(error instanceof RuntimeCustodyUncertainError);
         assert.equal(error.code, "RUNTIME_CUSTODY_UNCERTAIN");
-        assert.equal(error.errors.length, 2);
-        const primary: unknown = error.errors[0];
+        assert.equal(error.errors.length, 1);
+        const detached: unknown = error.errors[0]; assert.ok(detached instanceof RuntimeCustodyUncertainError);
+        assert.equal(error.cause, detached);
+        const primary: unknown = detached.errors[0];
         assert.ok(primary instanceof Error); assert.equal(primary.constructor, Error);
         assert.equal(primary.message, "profile-worker-process-closure-unproved");
-        assert.equal(error.cause, primary);
-        const detached: unknown = error.errors[1]; assert.ok(detached instanceof RuntimeCustodyUncertainError);
         assert.equal(detached.code, "RUNTIME_CUSTODY_UNCERTAIN");
         assert.deepEqual(detached.errors, [primary]); assert.equal(detached.cause, primary);
         return true;

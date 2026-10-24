@@ -16,6 +16,21 @@ function failure(error: unknown, dispatched = false) {
   return { state: code === "CHATGPT_CREDENTIAL_UNCERTAIN" || code === "CHATGPT_RESOURCE_CLOSURE_UNPROVED" || !known && dispatched ? "uncertain" as const : "refused" as const, code, message: ERROR_CATALOG[code].text };
 }
 
+async function waitForCompletion(completion: Promise<ChatGptSignInCompletion>, signal: AbortSignal): Promise<ChatGptSignInCompletion> {
+  signal.throwIfAborted();
+  let abort = (): void => undefined;
+  const cancelled = new Promise<void>(resolve => { abort = () => resolve(); })
+    .then(() => { signal.throwIfAborted(); return completion; });
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    if (signal.aborted) abort();
+    const result = await Promise.race([completion, cancelled]);
+    signal.throwIfAborted();
+    return result;
+  }
+  finally { signal.removeEventListener("abort", abort); }
+}
+
 export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAccountRouteDeps): void {
   let latest: { id: string; authorization: ChatGptAuthorization; pending: boolean; completion: Promise<ChatGptSignInCompletion> } | undefined;
   const service = () => {
@@ -59,7 +74,7 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
   app.get("/api/v1/settings/chatgpt-account/sign-in/:attemptId", async c => {
     c.header("Cache-Control", "no-store");
     const id = c.req.param("attemptId");
-    try { return c.json(await attempt(id).completion); }
+    try { return c.json(await waitForCompletion(attempt(id).completion, c.req.raw.signal)); }
     catch (error) {
       return c.json(failure(error), 400);
     }

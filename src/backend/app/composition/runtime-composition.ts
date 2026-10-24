@@ -6,6 +6,7 @@ import type { WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 
 export interface RunningDashboard {
   readonly port: number;
+  readonly failure?: Promise<never>;
   stop(): Promise<void>;
 }
 
@@ -180,19 +181,20 @@ async function ownDashboardUntilShutdown(
   const shutdownRequested = new Promise<void>((resolve) => {
     requestShutdown = resolve;
   });
-  const dispose = signals.subscribe(() => {
-    if (requestShutdown === undefined) {
-      throw new Error("a shutdown signal arrived before the dashboard registered its handler");
-    }
-    // Resolving twice is a no-op, so the second signal cannot start a second stop.
-    requestShutdown();
-  });
+  let dispose: (() => void) | undefined;
+  const failures: unknown[] = [];
   try {
+    dispose = signals.subscribe(() => {
+      if (requestShutdown === undefined) throw new Error("a shutdown signal arrived before the dashboard registered its handler");
+      requestShutdown();
+    });
     ready?.();
-    await shutdownRequested;
-  } finally {
-    try { await running.stop(); } finally { dispose(); }
-  }
+    await (running.failure === undefined ? shutdownRequested : Promise.race([shutdownRequested, running.failure]));
+  } catch (error) { failures.push(error); }
+  try { await running.stop(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
+  try { dispose?.(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "dashboard lifetime and closure failed", { cause: failures[0] });
 }
 
 export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<void> {

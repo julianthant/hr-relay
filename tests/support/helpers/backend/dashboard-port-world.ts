@@ -1,4 +1,11 @@
-import { installationAdmission, AuthorityDatabase } from "../admission-fixture.js";
+import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { AuthorityDatabase as CanonicalAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { Clock } from "../../../../src/rules/time/clock.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { installationAdmission, createBoundProfileFixture } from "../admission-fixture.js";
 import assert from "node:assert/strict";
 import { copyFileSync } from "node:fs";
 import { join } from "node:path";
@@ -6,9 +13,6 @@ import { composeDashboardRuntime as composeProductionDashboardRuntime, type Dash
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-
-
-
 
 
 export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmissionFixtures: () => void) {
@@ -23,23 +27,71 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
     });
   }
 
-  function readRuntimeSettingsRevision(repoRoot: string) {
-    const database = AuthorityDatabase.open({
-      path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
-      busyTimeoutMs: 250,
-      migrationOwner: "unit-test",
+  function createProfileFixture(clock: Clock) {
+    const fixture = createBoundProfileFixture({ sharedMachine: true });
+    const profileClosures: (() => Promise<void>)[] = [];
+    cleanups.push(async () => {
+      for (const close of profileClosures.toReversed()) await close();
+      fixture.close();
+    });
+    copyRuntimePackageFixture(fixture.workspace);
+    function selectProfile() {
+      const machine = acquireEntrypointAdmission(fixture.workspace, "shared");
+      const storage: { admission?: RuntimeAdmission } = {};
+      let runtime: ReturnType<typeof composeProfileRuntime> | undefined = undefined;
+      let closed = false;
+      const close = async () => {
+        if (closed) return;
+        await runtime?.close();
+        storage.admission?.release();
+        machine.release();
+        closed = true;
+      };
+      profileClosures.push(close);
+      runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
+        processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot) });
+      const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+      assert.equal(active.state, "active");
+      if (active.state !== "active") throw new Error("fixture-profile-sign-in-required");
+      const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+      storage.admission = admission;
+      const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
+        erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${active.profileId}.json`) });
+      return { machine, runtime, token: active.token, admission, credentials, close };
+    }
+    let selected = selectProfile();
+    return {
+      workspace: fixture.workspace,
+      stateRoot: fixture.stateRoot,
+      get artifactRoot() { return selected.admission.artifactRoot; },
+      get dashboardInput() {
+        return { clock, admission: selected.machine, profile: { runtime: selected.runtime, token: selected.token } };
+      },
+      openDatabase(input: unknown, readClock: Clock = clock) {
+        const options = AuthorityDatabaseOptionsSchema.parse(input);
+        assert.equal(options.path, join(fixture.stateRoot, "state.db"));
+        return CanonicalAuthorityDatabase.open(selected.admission, options, readClock, undefined, undefined, undefined, selected.credentials);
+      },
+      async restart() {
+        await selected.close();
+        selected = selectProfile();
+      },
+    };
+  }
+
+  function readRuntimeSettingsRevision(fixture: ReturnType<typeof createProfileFixture>) {
+    const database = fixture.openDatabase({
+      path: join(fixture.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test",
     });
     try {
       const active = database.authority.runtimeConfig.get();
       assert.ok(active, "the composed dashboard must have an active runtime config");
       return active.settingsRevision;
-    } finally {
-      database.close();
-    }
+    } finally { database.close(); }
   }
 
-  function readPersistedSettings(repoRoot: string, clock: ReturnType<typeof manualClock>) {
-    const database = AuthorityDatabase.open({ path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+  function readPersistedSettings(fixture: ReturnType<typeof createProfileFixture>, clock: ReturnType<typeof manualClock>) {
+    const database = fixture.openDatabase({ path: join(fixture.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
     try { return readSettings(database.authority); } finally { database.close(); }
   }
 
@@ -53,5 +105,5 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
     for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
     releaseAdmissionFixtures();
   };
-  return { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, copyRuntimePackageFixture, cleanup };
+  return { cleanups, createProfileFixture, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, copyRuntimePackageFixture, cleanup };
 }

@@ -1,8 +1,9 @@
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
-import { AuthorityDatabase, AuthoritySourceClosureUnprovedError } from "../sqlite/authority-database.js";
+import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { AuthorityBackupService, verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { openAuthorityBackupSourceReadOnly, inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
@@ -48,8 +49,10 @@ export async function backupStoppedAuthority(admission:RuntimeAdmission,stateRoo
     if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||(stat.mode&0o777)!==0o600)throw new Error("restore-admission-invalid");
     const record=RestoreAdmissionFileSchema.parse(JSON.parse(readFileSync(path,"utf8"))),identity=observeProcessIdentity(process.pid);
     if(record.schemaVersion!==2||record.admissionId!==restore.admissionId||record.pid!==process.pid||identity.state!=="alive"||record.processIdentity.platform!==identity.identity.platform||record.processIdentity.startToken!==identity.identity.startToken)throw new Error("restore-admission-identity-mismatch");};
-  verifyHeld();
+  let operationFailure: { error: unknown } | undefined;
+  let result: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
   try {
+    verifyHeld();
     requireStopped(admission,input,clock);
     const schemaVersion=AuthorityDatabase.inspectStoppedUpgrade(admission,join(stateRoot,"state.db"),processLockRoot,clock).schemaVersion;
     const source=openAuthorityBackupSourceReadOnly(admission,join(stateRoot,"state.db"),250,schemaVersion);
@@ -60,12 +63,26 @@ export async function backupStoppedAuthority(admission:RuntimeAdmission,stateRoo
     }catch(error){primary={error};}
     const failures: unknown[] = [];
     try{source.close();}catch(error){failures.push(error);}
-    if(failures.length!==0)throw new AuthoritySourceClosureUnprovedError(primary===undefined?failures:[primary.error,...failures]);
+    if(failures.length!==0){
+      const errors=primary===undefined?failures:[primary.error,...failures];
+      if(errors.some(error=>error instanceof AuthoritySourceClosureUnprovedError))throw retainAuthoritySourceClosure(errors,{backupSource:source,admission,restore});
+      if(errors.length===1)throw errors[0];
+      throw new AggregateError(errors,"authority-backup-source-close-failed",{cause:errors[0]});
+    }
     if(primary!==undefined)throw primary.error;
     if(report===undefined)throw new Error("upgrade-backup-result-unavailable");
-    return report;
-  }finally{if(heldRestore===undefined)restore.release();}
+    result=report;
+  }catch(error){operationFailure={error};}
+  if(operationFailure?.error instanceof AuthoritySourceClosureUnprovedError)throw retainAuthoritySourceClosure([operationFailure.error],{restore,admission});
+  if(heldRestore===undefined){
+    try{restore.release();}
+    catch(error){throw retainAuthoritySourceClosure(operationFailure===undefined?[error]:[operationFailure.error,error],{restore,admission});}
+  }
+  if(operationFailure!==undefined)throw operationFailure.error;
+  if(result===undefined)throw new Error("authority-backup-result-missing");
+  return result;
 }
+
 export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpgradeInput,clock:Clock,
   acquireAdmission=acquireRuntimeRestoreAdmission):Promise<StorageUpgradeReport> {
   const sourceAdmission = admission;
@@ -74,12 +91,15 @@ export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpg
   requireStopped(admission,input,clock);
   const inspection=existsSync(path)?AuthorityDatabase.inspectStoppedUpgrade(admission,path,input.processLockRoot,clock):undefined;
   if (inspection !== undefined && admission.isProfileInitialization() && readProfileDatabaseBinding(path).state === "unbound") admission = sourceAdmission.forStoppedProfileUpgrade();
+  let restore: RestoreAdmissionHandle | undefined;
+  let result: StorageUpgradeReport | undefined;
+  let primary: { error: unknown } | undefined;
   try {
+  result = await (async () => {
   const report=(state:StorageUpgradeReport["state"])=>StorageUpgradeReportSchema.parse({state,
     fromSchemaVersion:inspection?.schemaVersion??0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   if(input.plan)return report("planned");
-  const restore=acquireAdmission({processLockRoot:input.processLockRoot,pid:process.pid},clock);
-  try {
+  restore=acquireAdmission({processLockRoot:input.processLockRoot,pid:process.pid},clock);
     requireStopped(admission,input,clock);
     if(inspection!==undefined){const again=AuthorityDatabase.inspectStoppedUpgrade(admission,path,input.processLockRoot,clock);
       if(again.authorityGeneration!==inspection.authorityGeneration||again.authorityContentFingerprint!==inspection.authorityContentFingerprint)throw new Error("source-changed: re-plan upgrade");
@@ -108,8 +128,20 @@ export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpg
     if(existsSync(path))throw new Error("source-changed: re-plan upgrade");
     AuthorityDatabase.initializeProfile(admission, clock);
     return report("initialized");
-  }finally{restore.release();}
-  } finally { if (admission !== sourceAdmission) admission.release(); }
+  })();
+  } catch (error) { primary = { error }; }
+  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([primary.error], {
+    admission, ...(restore === undefined ? {} : { restore }),
+  });
+  const failures: unknown[] = [];
+  try { restore?.release(); } catch (error) { failures.push(error); }
+  try { if (admission !== sourceAdmission) admission.release(); } catch (error) { failures.push(error); }
+  if (failures.length !== 0) throw retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], {
+    admission, ...(restore === undefined ? {} : { restore }),
+  });
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error('storage-upgrade-result-unavailable');
+  return result;
 }
 
 type ReadyUpgradeInventory = ReturnType<typeof readStoppedProfileUpgradeInventory>;
@@ -161,11 +193,11 @@ export async function upgradeReadyProfileStorage(machine: RuntimeAdmission, clai
     admission = await machine.forStoppedProfileUpgrade(claim, restore, clock, input.hostFacts);
     result = await runReadyProfileUpgrade(machine, admission, processLockRoot, restore, input, clock);
   } catch (error) { primary = { error }; }
-  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;
+  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([primary.error], { ...(admission === undefined ? {} : { admission }), restore });
   const failures: unknown[] = [];
   try { admission?.release(); } catch (error) { failures.push(error); }
   try { restore.release(); } catch (error) { failures.push(error); }
-  if (failures.length !== 0) throw new AuthoritySourceClosureUnprovedError(primary === undefined ? failures : [primary.error, ...failures]);
+  if (failures.length !== 0) throw retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], { ...(admission === undefined ? {} : { admission }), restore });
   if (primary !== undefined) throw primary.error;
   if (result === undefined) throw new Error("profile-stopped-upgrade-result-unavailable");
   return result;

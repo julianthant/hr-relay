@@ -1,3 +1,4 @@
+import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
 import { join, parse, resolve } from "node:path";
 import { z } from "zod";
@@ -20,11 +21,14 @@ export function errorCode(error: unknown): string | undefined {
 
 export function fsyncPath(path: string): void {
   const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
-  }
+  let primary: { error: unknown } | undefined;
+  let descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
+  try { descriptorIdentity = fstatSync(descriptor); fsyncSync(descriptor); }
+  catch (error) { primary = { error }; }
+  try { closeSync(descriptor); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+    { descriptor: { descriptor, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
+  if (primary !== undefined) throw primary.error;
 }
 
 /** Verify each component before descendants; retain identities across every operation. */
@@ -146,8 +150,11 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
   let descriptor;
   try { descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
   catch (error) { throw new Error(unavailable, { cause: error }); }
+  let descriptorIdentity = pathStatus;
+  let result: ReturnType<typeof readPrivateFile>;
+  let primary: { error: unknown } | undefined;
   try {
-    const before = fstatSync(descriptor);
+    const before = fstatSync(descriptor); descriptorIdentity = before;
     if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || (before.mode & 0o7777) !== CREDENTIAL_FILE_MODE
       || (expectedUid !== undefined && before.uid !== expectedUid)
       || (lock && before.size > maxBytes)
@@ -161,8 +168,13 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
       || (record && (before.mode !== live.mode || before.uid !== live.uid || before.nlink !== live.nlink))) {
       throw new Error(lock ? "directory-integrity: credential lock moved while it was read" : `directory-integrity: ${label} moved while it was read`);
     }
-    return { bytes, stat: after, identity: { device: before.dev, inode: before.ino } };
-  } finally { closeSync(descriptor); }
+    result = { bytes, stat: after, identity: { device: before.dev, inode: before.ino } };
+  } catch (error) { primary = { error }; }
+  try { closeSync(descriptor); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+    { descriptor: { descriptor, identity: descriptorIdentity } }); }
+  if (primary !== undefined) throw primary.error;
+  return result;
 }
 
 export function writePrivateStage(path: string, bytes: Uint8Array): void {
@@ -184,7 +196,13 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
     if (errorCode(error) !== "EEXIST") throw new Error("credential store lock could not be created", { cause: error });
   }
   if (descriptor === undefined) return false;
-  const createdStatus = fstatSync(descriptor);
+  let createdStatus: Stats;
+  try { createdStatus = fstatSync(descriptor); }
+  catch (error) {
+    try { closeSync(descriptor); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { descriptor: { descriptor } }); }
+    throw error;
+  }
   const createdIdentity = { device: createdStatus.dev, inode: createdStatus.ino };
   let preparationError: Error | undefined;
   try {
@@ -199,9 +217,10 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
     preparationError = error instanceof Error
       ? new Error("credential store lock could not be made durable", { cause: error })
       : new Error("credential store lock could not be made durable");
-  } finally {
-    closeSync(descriptor);
   }
+  try { closeSync(descriptor); }
+  catch (error) { throw retainAuthoritySourceClosure(preparationError === undefined ? [error] : [preparationError, error],
+    { descriptor: { descriptor, identity: createdStatus } }); }
 
   const failWithCleanup = (error: Error): never => {
     try {
