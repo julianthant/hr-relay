@@ -22,7 +22,7 @@ import { EditableSettingsWireSchema } from "../../../../src/models/dashboard/set
 import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { createBoundProfileFixture, AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, AuthorityDatabase } from "../../../support/helpers/admission-fixture.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
