@@ -1,3 +1,4 @@
+import { notificationCollectionTarget, type NotificationCollectionOperation, type NotificationCollectionTarget } from "../../../models/notifications/notifications.js";
 import { AssistantActionRecordSchema, AssistantChatRecordSchema, AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createWorkbookLibraryRepository, validateWorkbookLibrary } from "./workbook-library-repository.js";
@@ -407,6 +408,7 @@ type NotificationRepository = Readonly<{
   get(notificationId: string): NotificationRecord | undefined;
   findByDedupe(actorId: string, dedupeFingerprint: string): NotificationRecord | undefined;
   listByActor(actorId: string, status?: unknown): readonly NotificationRecord[];
+  collection(actorId: string, operation: NotificationCollectionOperation): NotificationCollectionTarget;
 }>;
 
 
@@ -3449,6 +3451,7 @@ export class AuthorityDatabase implements Disposable {
           return { result: updated, changes: 1 };
         });
       },
+      collection: (actorId: string, operation: NotificationCollectionOperation) => notificationCollectionTarget(this.authority.notifications.listByActor(actorId), actorId, operation),
       get: (notificationId: string) => this.#readRecord("notifications", notificationId, NotificationRecordSchema),
       findByDedupe,
       listByActor: (actorId: string, status?: unknown) => {

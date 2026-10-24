@@ -9,7 +9,7 @@ export const ASSISTANT_CONFIRM_HOLD = 'Confirmation is unavailable until the ser
 type Binding = Readonly<{ authority: unknown; subjectRef?: AssistantSubject['subjectRef'] }>;
 const emptyState = (): AssistantState => ({ draft: '', messages: [], sequence: 0, turn: { state: 'idle' } });
 
-function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantMockProposal } {
+function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantMockProposal; disposition?: "unknown" } {
   const id = `assistant-${requestId}`;
   switch (result.state) {
     case 'answered': return { message: { id, role: 'assistant', text: result.text, sources: result.citations.map((citation, index) => ({
@@ -17,6 +17,16 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
     })) } };
     case 'refused': return { message: { id, role: 'assistant', text: ASSISTANT_FAILURES[result.code] } };
     case 'resolution-required': return { message: { id, role: 'assistant', text: ASSISTANT_FAILURES.ASSISTANT_SUBJECT_REQUIRED } };
+    case 'unknown':
+    case 'action-proposal': {
+      const unknown = result.state === 'unknown', p = result.state === 'unknown' ? result.action : result.proposal;
+      return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? 'Action outcome is unknown. Do not retry this action.' : 'Review this local action. No change has been applied.' }, proposal: {
+        id: p.actionId, revision: String(p.revision), prompt, action: { chatId: p.chatId, actionId: p.actionId, revision: p.revision }, expiresAt: p.expiresAt,
+        workflow: { id: 'notification', label: p.label, version: String(p.revision) }, subjects: [], mode: 'local-change',
+        values: [{ label: 'Notification', value: p.targetLabel }, { label: 'Expires', value: p.expiresAt }],
+        effects: ['Changes only the bound current local notifications. No HR transaction is submitted.'], stopBefore: [],
+      } };
+    }
     case 'proposal': {
       const p = result.proposal;
       return { message: { id, role: 'assistant', text: 'Review this dry-run proposal. No workflow has executed and no transaction has been committed.' }, proposal: {
@@ -35,7 +45,10 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   let outstanding: { requestId: number; abort: AbortController; binding: Binding } | undefined;
   const listeners = new Set<() => void>();
   function publish(next: AssistantState) { state = next; for (const listener of listeners) listener(); }
-  function abort() { outstanding?.abort.abort(); outstanding = undefined; }
+  function abort() {
+    if (outstanding !== undefined) publish(assistantReducer(state, { type: 'uncertain', requestId: outstanding.requestId }));
+    outstanding?.abort.abort(); outstanding = undefined;
+  }
   async function respond(requestId: number, prompt: string) {
     const request = { requestId, abort: new AbortController(), binding };
     outstanding = request;
@@ -45,8 +58,26 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       const presented = presentResult(result, requestId, prompt);
       publish(assistantReducer(state, { type: 'settle', requestId, ...presented }));
     } catch {
-      if (outstanding === request && !request.abort.signal.aborted && binding === request.binding) publish(assistantReducer(state, { type: 'fail', requestId }));
+      if (outstanding === request && !request.abort.signal.aborted && binding === request.binding) publish(assistantReducer(state, { type: 'uncertain', requestId }));
     } finally { if (outstanding === request) outstanding = undefined; }
+  }
+  async function decide(decision: 'confirm' | 'cancel') {
+    const turn = state.turn;
+    if (turn.state !== 'proposal' || turn.proposal.action === undefined || turn.disposition !== 'review'
+      || state.draft !== turn.proposal.prompt || client.assistantDecide === undefined) return;
+    const proposal = turn.proposal, identity = turn.proposal.action, capturedBinding = binding, abort = new AbortController();
+    if (identity === undefined) return;
+    publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'confirming' }));
+    try {
+      const result = await client.assistantDecide({ ...identity, decision }, abort.signal);
+      if (binding !== capturedBinding) return;
+      const disposition = result.state === 'applied' ? 'confirmed' : result.state === 'cancelled' ? 'cancelled' : result.state === 'unknown' ? 'unknown' : 'stale';
+      publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition,
+        message: { id: `action-${proposal.id}`, role: 'assistant', text: result.state === 'applied' ? 'Local action completed.'
+          : result.state === 'cancelled' ? 'Action cancelled.' : result.state === 'unknown' ? 'Action outcome is unknown. Do not retry this action.' : ASSISTANT_FAILURES[result.code] } }));
+    } catch {
+      if (binding === capturedBinding) publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'unknown' }));
+    }
   }
   return Object.freeze({
     snapshot: () => state,
@@ -55,11 +86,19 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     bind(next: Binding) {
       if (next.authority === binding.authority && next.subjectRef === binding.subjectRef) return;
       binding = next; abort();
-      if (state.turn.state === 'proposal') publish({ ...state, turn: { ...state.turn, disposition: 'stale' } });
+      if (state.turn.state === 'proposal') publish({ ...state, turn: { ...state.turn, disposition: state.turn.disposition === 'confirming' || state.turn.disposition === 'unknown' ? 'unknown' : 'stale' } });
       else publish(assistantReducer(state, { type: 'cancel' }));
     },
     action(action: AssistantAction) {
-      if (action.type === 'confirm' || action.type === 'reply' || action.type === 'settle' || action.type === 'fail') return;
+      if ((action.type === 'edit' || action.type === 'new-chat') && state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && state.turn.disposition === 'review') {
+        void decide('cancel');
+        publish(assistantReducer(state, action));
+        return;
+      }
+      if (action.type === 'confirm') { void decide('confirm'); return; }
+      if (action.type === 'cancel' && state.turn.state === 'proposal' && state.turn.proposal.action !== undefined) { void decide('cancel'); return; }
+      if (state.turn.state === 'proposal' && (state.turn.disposition === 'confirming' || state.turn.disposition === 'unknown') && action.type !== 'new-chat') return;
+      if (action.type === 'action-state' || action.type === 'reply' || action.type === 'settle' || action.type === 'fail' || action.type === 'uncertain') return;
       if (action.type === 'edit' || action.type === 'new-chat' || action.type === 'cancel') abort();
       const previous = state;
       publish(assistantReducer(state, action));
@@ -102,6 +141,6 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   return { state, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.abort(); controllers.delete(id); }, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable: accountPort.mode === 'live' && account.state === 'connected' && account.planUsage === 'enabled',
     accountHeading: account.state === 'connected' ? 'ChatGPT plan usage unavailable' : 'ChatGPT connection unavailable',
-    accountNotice: account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED, confirmRefusal: ASSISTANT_CONFIRM_HOLD,
-    statusText: 'Read and propose', footnote: 'Proposals require review. Confirmation is unavailable. No runs start.' };
+    accountNotice: account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED, confirmRefusal: state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && client.assistantDecide !== undefined ? undefined : ASSISTANT_CONFIRM_HOLD,
+    statusText: 'Read and propose', footnote: 'Review the exact action before confirming. Workflow execution requires dashboard Run.' };
 }

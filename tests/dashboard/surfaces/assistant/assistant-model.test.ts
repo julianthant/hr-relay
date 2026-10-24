@@ -32,6 +32,7 @@ describe('assistant mock proposal', () => {
     const reply = { type: 'reply' as const, requestId: 1, proposal: assistantMockProposal(), message: { id: 'late', role: 'assistant' as const, text: 'Late reply' } };
     for (const action of [{ type: 'cancel' as const }, { type: 'edit' as const, value: 'Changed' }]) {
       const cancelled = assistantReducer(waiting, action);
+      assert.equal(cancelled.turn.state, 'cancelled');
       assert.equal(assistantReducer(cancelled, reply), cancelled);
       assert.equal(cancelled.messages, waiting.messages);
     }
@@ -47,6 +48,15 @@ describe('assistant mock proposal', () => {
     assert.equal(assistantReducer(retry, { type: 'fail', requestId: 1 }), retry);
     const edited = assistantReducer(failed, { type: 'edit', value: 'Changed' });
     assert.equal(assistantReducer(edited, { type: 'retry' }), edited);
+  });
+  it('does not turn a possibly effectful lost response into retry or resend authority', () => {
+    const waiting = assistantMockState('waiting');
+    const unknown = assistantReducer(waiting, { type: 'uncertain', requestId: waiting.sequence });
+    assert.equal(unknown.turn.state, 'unknown');
+    for (const type of ['retry', 'send', 'cancel', 'confirm'] as const) assert.equal(assistantReducer(unknown, { type }), unknown);
+    assert.equal(assistantReducer(unknown, { type: 'uncertain', requestId: 99 }), unknown);
+    const edited = assistantReducer(unknown, { type: 'edit', value: 'Changed' });
+    assert.equal(assistantReducer(edited, { type: 'send' }), edited);
   });
   it('starts a new chat without reusing a pending request identity', () => {
     const waiting = assistantMockState('waiting');

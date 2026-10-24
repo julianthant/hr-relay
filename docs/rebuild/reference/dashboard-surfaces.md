@@ -516,3 +516,47 @@ Backend policy owners are [workflow model](workflow-model.md), [task contract](t
 [execution and sessions](execution-and-sessions.md), [operator trust](operator-trust.md), and
 [clock, configuration, and secrets](clock-config-secrets.md). Their schemas and services own durable
 state; the dashboard renders the admitted projection and exact command result.
+
+### Assistant production input boundary
+
+The selected dashboard composition owns the assistant service and the same profile account and
+canonical command authorization. The local intent projection accepts only named help topics and
+notification actions. It sends fixed application text and request-local opaque notification references;
+operator messages, notification text, subject identifiers and source-file bodies stay local. Unknown
+or ambiguous input refuses before inference. The trusted local projection also binds whether a
+request permits a help answer or requires canonical action completion. A notification action with
+only model text and no canonical call refuses; it cannot report an execution from model prose. Notification commands resolve the reference back to the
+same actor and complete sorted current inbox membership and versions, then use the existing permission and once-consumable command door.
+Plural actions use one opaque collection reference and exact matching count. Inbox Read all uses the
+same canonical collection command. The kernel checks the whole membership in its transaction before
+any row update; pinned history warnings remain unchanged. Counts describe current native notices,
+not complete external HR history. Notification actions never resolve or retry an underlying UNKNOWN write.
+A confirmation-required action returns its server-issued chat/action identity, exact revision,
+expiry and local target display directly to the operator card, never back through the model.
+The existing Confirm/Cancel controls submit only those opaque identities and the decision through
+the authenticated assistant route. The constructor-owned issued chat is required; a client UUID
+cannot reconstruct it. Confirmation revalidates the original collection membership, versions, account/profile
+currentness, grant and manifest, then approves and consumes the same canonical command once.
+Generated commands and their canonical audits carry `source: assistant`. Lost confirmation responses
+remain unknown without automatic retry. Automatic execution retains its actual issued action identity
+before entering consumption; any authority/cancellation loss after effect entry, including the service
+continuation after its handler await, returns that action as unknown. An ambiguously lost respond
+transport has no fabricated action identity and disables retry; the operator checks the current inbox
+before a new request. A confirmation-required proposal does not execute or imply
+operator approval.
+
+`context.ts` projects the finite plain help artifact. Run
+`tsx scripts/build/generate-assistant-knowledge.ts` and its `--check` mode to generate and verify
+`src/backend/assistant/generated-knowledge.json`. Its revision identifies the projected content,
+not a Git commit. Runtime checks exact artifact bytes and line quotations. Command manifest identity
+also binds the canonical input schema, effects, summaries, argument projection, owner availability,
+static served workflow policy, selected-app registered route handoffs and knowledge digest.
+Route registration is accounting only; it does not establish tool capability. The outer profile
+authentication interface remains operator-only.
+
+Model entitlement is separate from command permission and the OCR model. Trusted composition may
+supply the existing model policy with synchronous currentness; without it the service returns
+`ASSISTANT_MODEL_UNVERIFIED` without inference. Real per-profile preferences and a completed
+transaction-free capability canary remain required before the assistant is usable. Subject actions,
+freeform or protected changes, unsupported owners and remaining served actions require their current
+operator interface until their canonical assistant binding is implemented.

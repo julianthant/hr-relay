@@ -1,3 +1,7 @@
+import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json";
+import { createAssistantService, type AssistantModelPolicy } from "../../../assistant/service.js";
+import { assistantSurfaceCoverage, createProductionAssistantTools } from "../../../assistant/tools.js";
+import { assistantKnowledgeArtifact, loadProductionAssistantContext } from "../../../assistant/context.js";
 import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
 import { createChatGptOcrPageReader, CHATGPT_OCR_MODEL } from "../../../processing/providers/chatgpt-ocr-adapter.js";
 import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
@@ -113,6 +117,7 @@ export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
   readonly admission?: RuntimeAdmission;
+  readonly assistantModelPolicy?: Readonly<{ policy: AssistantModelPolicy; isCurrent(): boolean }>;
   readonly profile?: Readonly<{ runtime: ReturnType<typeof composeProfileRuntime>; token: string }>;
   readonly isolation: RuntimeIsolation;
   readonly env?: NodeJS.ProcessEnv;
@@ -730,8 +735,12 @@ async function composeDashboardRuntimeStartup(
 
   const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
 
+  const workflowSources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredWorkflowSources);
+  let assistantSurface: ReturnType<typeof assistantSurfaceCoverage> | undefined;
   const kernel = createCommandKernel({
     preflight: runtimePreflight.admission,
+    assistantSurface: () => { if (assistantSurface === undefined) throw new Error("assistant-surface-unavailable"); return assistantSurface; },
+    workflowSources,
     failureResolution: composeFailureResolution(database.authority).commands,
     lifecycle,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },
@@ -757,6 +766,18 @@ async function composeDashboardRuntimeStartup(
   });
 
   const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
+  const assistantPolicy = input.assistantModelPolicy;
+  const knowledge = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
+  const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
+    actorId: resolved.config.actor.id, clock, assertCurrent });
+  const assistant = createAssistantService({ account: { ...chatGptAccount, ...context.accountAuthority },
+    context: () => loadProductionAssistantContext(repoRoot, knowledge),
+    runtime: () => { assertCurrent(); return knowledge.policy; },
+    modelPolicy: assistantPolicy?.policy,
+    isModelPolicyCurrent: () => { assertCurrent(); return assistantPolicy !== undefined && assistantPolicy.isCurrent(); },
+    clock, ...assistantTools,
+  });
+
 
   const commands = createDashboardCommandService({
     kernel,
@@ -819,13 +840,14 @@ async function composeDashboardRuntimeStartup(
     return result.extraction;
   } });
   const app = createDashboardApp({
+    assistant,
     chatGptOcrTest,
     chatGptAccount: {
       readAccount: () => { assertCurrent(); const result = chatGptAccount.readAccount(); assertCurrent(); return result; },
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
       signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },
     },
-    notifications: { snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs(), notificationDisplayContext(record, {
+    notifications: { collection: (actor, operation) => { assertCurrent(); const value = database.withAuthorityReadSnapshot(() => database.authority.notifications.collection(actor, operation)); assertCurrent(); return value; }, snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs(), notificationDisplayContext(record, {
       presentation: runDetailDeps,
       read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
@@ -855,6 +877,7 @@ async function composeDashboardRuntimeStartup(
     activity,
     activityPopulation,
   });
+  assistantSurface = assistantSurfaceCoverage(app.routes);
 
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
   const server: DashboardHttpServer = input.applicationTransport === undefined ? await startHttpServer({

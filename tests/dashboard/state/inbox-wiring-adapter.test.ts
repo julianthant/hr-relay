@@ -40,18 +40,23 @@ async function harness(enabled = true, initiallyFailed = false) {
       if (refuseTarget || linked?.kind !== "notification" || linked.link === undefined) return Response.json({ kind: "refused", reason: "run-unavailable" });
       return Response.json(linked.link.kind === "storage" ? { kind: "storage" } : { ...linked.link, day: "2026-08-03" });
     }
+    if (path.endsWith("/collection")) return Response.json({ actorId: "local-operator",
+      members: [...rows].sort((a, b) => a.notificationId < b.notificationId ? -1 : 1).map(row => ({ notificationId: row.notificationId, expectedVersion: row.kind === "notification" ? row.revision : 1 })),
+      matchingCount: rows.filter(row => row.kind === "notification" && row.readState === "unread").length });
     if (path.endsWith("/status")) return Response.json({ state: "ready", pending: 0 });
     if (path.endsWith("/notifications")) { await snapshotWait; if (failReads) throw new Error("inbox read failed"); return Response.json(rows); }
     if (path.endsWith("/commands")) {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command);
       await postWait;
-      rows = rows.map(item => item.kind !== "notification" || item.notificationId !== command.target.notificationId ? item : NotificationWireSchema.parse({ ...item, revision: item.revision + 1,
-        readState: command.type === "notification-read" ? "read" : command.type === "notification-unread" ? "unread" : item.readState,
-        state: command.type === "notification-snooze" ? "snoozed" : command.type === "notification-unsnooze" ? item.readState : command.type === "notification-read" ? "read" : command.type === "notification-unread" ? "unread" : item.state,
+      const target = command.target;
+      const affected = rows.filter(item => item.kind === "notification" && ("members" in target ? target.members.some(member => member.notificationId === item.notificationId) && item.readState === "unread" : item.notificationId === target.notificationId));
+      rows = rows.map(item => item.kind !== "notification" || !affected.some(row => row.notificationId === item.notificationId) ? item : NotificationWireSchema.parse({ ...item, revision: item.revision + 1,
+        readState: command.type === "notification-read" || command.type === "notification-read-all" ? "read" : command.type === "notification-unread" ? "unread" : item.readState,
+        state: command.type === "notification-snooze" ? "snoozed" : command.type === "notification-unsnooze" ? item.readState : command.type === "notification-read" || command.type === "notification-read-all" ? "read" : command.type === "notification-unread" ? "unread" : item.state,
         snoozedUntil: command.type === "notification-snooze" ? "2026-08-03T18:00:00.000Z" : undefined }));
       if (lose) { lose = false; throw new Error("response lost after commit"); }
-      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId: command.target.notificationId }] });
+      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: affected.map(row => ({ family: "notification", notificationId: row.notificationId })) });
     }
     throw new Error(`unexpected ${path}`);
   } });
@@ -119,7 +124,7 @@ it("keeps successful Ping values and refuses a stale target without marking it r
 it("refuses foreign actor and wrong revision in shared notification readback", async () => {
   const h = await harness();
   const request = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: id, actorId: "local-operator", expectedVersion: 1 } });
-  const reply = { state: "applied" as const, commandId: request.commandId, affectedTargets: [{ family: "notification" as const, notificationId: request.target.notificationId }] };
+  const reply = { state: "applied" as const, commandId: request.commandId, affectedTargets: [{ family: "notification" as const, notificationId: id }] };
   for (const next of [row("storage-degraded", { readState: "read", state: "read", revision: 3 }), row("storage-degraded", { actorId: "other-operator", readState: "read", state: "read", revision: 2 })]) {
     h.setRows([next]); assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "mismatch");
   }
@@ -159,13 +164,20 @@ it("delivers the closed danger and warning source policies using exact current t
   assert.deepEqual(h.toasts.map(toast => toast.tone), ["danger", "danger", "warning", "warning", "danger", "warning"]);
 });
 
-it("read-all uses each exact notification/version and skips the pinned backfill notice", async () => {
+it("read-all binds the complete inbox in one command and preserves the pinned backfill notice", async () => {
   const h = await harness();
   const second = "00000000-0000-4000-8000-000000000112";
-  h.setRows([row(), row("storage-degraded", { notificationId: second }), row("backfill-gap", { notificationId: "00000000-0000-4000-8000-000000000113" })]);
+  const extra = Array.from({ length: 23 }, (_, index) => row("storage-degraded", { notificationId: `00000000-0000-4000-8000-${String(200 + index).padStart(12, "0")}` }));
+  h.setRows([row(), row("storage-degraded", { notificationId: second }), ...extra, row("backfill-gap", { notificationId: "00000000-0000-4000-8000-000000000113" })]);
   await act(async () => { h.listeners[0](publication(row(), 1)); await new Promise(resolve => setTimeout(resolve, 0)); });
   await act(async () => h.value.readAll());
-  assert.deepEqual(h.commands.map(command => command.family === "notification" ? [command.target.notificationId, command.target.expectedVersion] : null), [[id, 1], [second, 1]]);
+  assert.equal(h.commands.length, 1);
+  const command = h.commands[0]; assert.equal(command.family, "notification");
+  if (command.family !== "notification" || !("members" in command.target)) throw new Error("collection command required");
+  assert.equal(command.type, "notification-read-all"); assert.equal(command.target.matchingCount, 25);
+  assert.deepEqual(command.target.members.map(row => [row.notificationId, row.expectedVersion]), [[id, 1], [second, 1], ["00000000-0000-4000-8000-000000000113", 1], ...extra.map(row => [row.notificationId, 1])]);
+  assert.equal(h.value.state.state, "ready"); if (h.value.state.state === "ready") assert(h.value.state.items.every(item => item.read));
+  assert.match(h.value.notice, /history is incomplete/);
 });
 
 it("retains loaded rows when a refresh fails and isolates actions while pending or failed", async () => {
@@ -209,4 +221,33 @@ for (const replacement of ["actor", "client", "authority"] as const) it(`does no
   await act(async () => { release(); await result; await new Promise(resolve => setTimeout(resolve, 0)); });
   assert.equal(h.requests.filter(path => path.endsWith("/notifications")).length, readCount + 1, "only the executor's original readback runs; replacement authority must not refresh");
   assert.equal(h.commands.length, 1); assert.equal(h.toasts.length, 0);
+});
+
+it("retains a lost collection response and blocks overlapping single-row or collection retries", async () => {
+  const h = await harness(); h.lose();
+  await act(async () => h.value.readAll());
+  const retained = h.binding.executor.retainedAttempts()[0]; assert.equal(retained.outcome?.kind, "uncertain");
+  await act(async () => { await h.value.readAll(); assert.equal(await h.value.control(id, "read"), false); });
+  assert.equal(h.commands.length, 1);
+  assert.equal(h.binding.executor.retainedAttempts()[0].request.commandId, retained.request.commandId);
+});
+it("does not start read-all while an overlapping single-row response is unknown", async () => {
+  const h = await harness(); h.lose();
+  await act(async () => h.value.control(id, "read"));
+  await act(async () => h.value.readAll());
+  assert.equal(h.commands.length, 1); assert.equal(h.commands[0].type, "notification-read");
+});
+
+it("requires exact collection readback membership and one version advance for every reported effect", async () => {
+  const h = await harness();
+  const request = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read-all",
+    target: { actorId: "local-operator", members: [{ notificationId: id, expectedVersion: 1 }], matchingCount: 1 } });
+  const reply = { state: "applied" as const, commandId: request.commandId, affectedTargets: [{ family: "notification" as const, notificationId: id }] };
+  for (const rows of [[], [row()], [row("storage-degraded", { revision: 3, readState: "read", state: "read" })],
+    [row("storage-degraded", { revision: 2, readState: "read", state: "read" }), row("storage-degraded", { notificationId: runId })]]) {
+    h.setRows(rows); assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "mismatch");
+  }
+  h.setRows([row("storage-degraded", { revision: 2, readState: "read", state: "read" })]);
+  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "matched");
+  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, { ...reply, affectedTargets: [] })).state, "mismatch");
 });

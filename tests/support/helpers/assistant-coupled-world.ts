@@ -1,4 +1,4 @@
-import { bindSyntheticAssistantFunctions, completedAssistantStream, type SyntheticAssistantTurn } from "./assistant-function-fixtures.js";
+import { projectSyntheticAssistantInput, bindSyntheticAssistantFunctions, completedAssistantStream, type SyntheticAssistantTurn } from "./assistant-function-fixtures.js";
 import { createSettingsApplicationExecutor } from '../../../src/backend/runs/commands/settings-service.js';
 import { executeSettingsCommand } from '../../../src/backend/runs/commands/command-kernel.js';
 import { resolveConfigWithProvenance } from '../../../src/backend/app/config/resolve.js';
@@ -68,7 +68,7 @@ export async function assistantCoupledWorld() {
       : completedAssistantStream(reply), { headers: { 'content-type': 'text/event-stream' } });
   });
   let runtime = { ...SYNTHETIC_ASSISTANT_SOURCE }, requests = 0, identities = 0;
-  const service = createAssistantService({ bindFunctions: bindSyntheticAssistantFunctions, ...adapters, account: account.service, context, clock: account.clock, runtime: () => runtime,
+  const service = createAssistantService({ projectInput: projectSyntheticAssistantInput, bindFunctions: bindSyntheticAssistantFunctions, ...adapters, account: account.service, context, clock: account.clock, runtime: () => runtime,
     modelPolicy: { model: 'gpt-6.1-sol', eligible: true, consented: true, billing: 'chatgpt-plan', verifiedUntil: '2026-10-19T00:00:00Z' }, isModelPolicyCurrent: () => currentPolicy });
   const app: DashboardApp = new Hono();
   const identity = createSoloRequestIdentityCheckpoint({ id: 'local-operator', label: 'Local operator' });

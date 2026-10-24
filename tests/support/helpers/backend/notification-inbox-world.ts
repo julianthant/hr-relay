@@ -13,6 +13,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { HASH_A, LATER, NOW, UUID_2, UUID_7 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 
 export function createNotificationInboxTestWorld() {
@@ -44,7 +45,7 @@ export function createNotificationInboxTestWorld() {
     });
   }
 
-  function harness(): { database: AuthorityDatabase; kernel: CommandKernel } {
+  function harness(mapRepositories: (repositories: AuthorityRepositories) => AuthorityRepositories = repositories => repositories): { database: AuthorityDatabase; kernel: CommandKernel } {
     const clock = manualClock(new Date(LATER));
     const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-inbox-"));
     disposers.push(() => rmSync(root, { recursive: true, force: true }));
@@ -63,7 +64,7 @@ export function createNotificationInboxTestWorld() {
       intakeProjections: NO_INTAKE_PROJECTIONS,
       authority: {
         withAuthorityTransaction: (work) => database.withAuthorityTransaction(
-          (repositories) => work(repositories),
+          (repositories) => work(mapRepositories(repositories)),
         ),
       },
       clock,

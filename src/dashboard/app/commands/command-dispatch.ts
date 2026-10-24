@@ -223,7 +223,31 @@ export async function verifyShellCommandEffect(
   reply: CommandResult | BulkRunCommandOutcome,
 ): Promise<CommandReadbackVerification> {
   const mismatch = (evidence: unknown) => ({ state: "mismatch" as const, evidence });
-  if (request.family === "notification") {
+  if (request.family === "notification" && "members" in request.target) {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== request.target.matchingCount) return mismatch(reply);
+    const rows = await client.notificationSnapshot();
+    if (rows.length !== request.target.members.length || new Set(rows.map(row => row.notificationId)).size !== rows.length) return mismatch(rows);
+    if (new Set(reply.affectedTargets.map(target => target.family === "notification" ? target.notificationId : "")).size !== reply.affectedTargets.length) return mismatch(reply);
+    for (const member of request.target.members) {
+      const row = rows.find(row => row.notificationId === member.notificationId);
+      if (row === undefined || row.actorId !== request.target.actorId) return mismatch(rows);
+      const affected = reply.affectedTargets.some(target => target.family === "notification" && target.notificationId === member.notificationId);
+      if (!affected && row.kind === "notification" && row.revision !== member.expectedVersion) return mismatch(row);
+    }
+    const evidence = [];
+    for (const target of reply.affectedTargets) {
+      if (target.family !== "notification") return mismatch(reply);
+      const before = request.target.members.find(member => member.notificationId === target.notificationId);
+      const row = rows.find(member => member.notificationId === target.notificationId);
+      if (before === undefined || row?.kind !== "notification" || row.actorId !== request.target.actorId || row.revision !== before.expectedVersion + 1) return mismatch(rows);
+      const matches = request.type === "notification-read-all" ? row.readState === "read" : request.type === "notification-unread-all" ? row.readState === "unread"
+        : request.type === "notification-unsnooze-all" ? row.state !== "snoozed" : row.state === "snoozed" && row.snoozedUntil !== undefined && Date.parse(row.snoozedUntil) > Date.parse(request.requestedAt);
+      if (!matches) return mismatch(row);
+      evidence.push(row);
+    }
+    return { state: "matched", evidence };
+  }
+  if (request.family === "notification" && "notificationId" in request.target) {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "notification"
       || reply.affectedTargets[0].notificationId !== request.target.notificationId) return mismatch(reply);
     const rows = await client.notificationSnapshot();

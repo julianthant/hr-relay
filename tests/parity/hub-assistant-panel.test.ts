@@ -32,12 +32,20 @@ import './fixture.css';
 import {AssistantPanel} from '${resolve('src/dashboard/surfaces/shell/assistant-panel.tsx')}';
 import {createAssistantMockProducer} from '${resolve('src/dashboard/surfaces/shell/assistant-panel-model.ts')}';
 import {createDashboardClient} from '${resolve('src/dashboard/client/index.ts')}';
+import {useAssistantController} from '${resolve('src/dashboard/surfaces/assistant/assistant-controller-model.ts')}';
+import {ChatGptAccountContext,createPreviewChatGptAccountPort} from '${resolve('src/dashboard/surfaces/settings/general/chatgpt-account-model.ts')}';
 const params=new URLSearchParams(location.search);
 document.documentElement.dataset.demoTheme=params.get('theme')||'dark';
 document.documentElement.dataset.motion=params.get('motion')||'on';
 const client=createDashboardClient({baseUrl:'http://127.0.0.1:${address.port}'});
 const noop=()=>{};
-createRoot(document.getElementById('fixture')).render(<AssistantPanel producer={createAssistantMockProducer(params.get('scene')||'ask-write')} accountClient={client} onClose={noop} onRename={noop} onChats={noop} onOpenChatFile={async()=>null} initialText={params.get('text')||''} onRegisterSpreadsheet={async file=>{document.body.dataset.registered=file.name;}} onRunWorkflow={async request=>{if(request.dryRun!==true)throw Error('fixture-refuses-live');document.body.dataset.run=JSON.stringify(request);return {state:'complete',source:'mock',files:[{...request.file,id:'updated',name:'Updated.csv',status:'Updated'},{...request.file,id:'generated',name:'Results.csv',status:'Generated'}]};}}/>);
+const identity={chatId:'00000000-0000-4000-8000-000000000001',actionId:'00000000-0000-4000-8000-000000000002',revision:1};
+const servedClient={async assistantRespond(){if(params.get('respondLost')==='1')throw Error('synthetic lost automatic response');if(params.get('autoUnknown')==='1')return {state:'unknown',actionId:identity.actionId,action:{...identity,expiresAt:'2099-01-01T00:00:00Z',label:'Mark 25 current notifications read',targetLabel:'25 current notifications',subject:'none',effect:'local-write'}};return {state:'action-proposal',proposal:{...identity,expiresAt:'2099-01-01T00:00:00Z',label:'Mark a notification read',targetLabel:'Local notification',subject:'none',effect:'local-write'}};},async assistantDecide(input){document.body.dataset.decisions=String(Number(document.body.dataset.decisions||0)+1);if(params.get('lost')==='1')throw Error('synthetic lost response');return {state:'applied',actionId:input.actionId};}};
+function Served(){const served=useAssistantController(servedClient,1,undefined,false);return <AssistantPanel producer={createAssistantMockProducer('new')} accountClient={client} served={served} title="Action proof"/>;}
+
+const mount=createRoot(document.getElementById('fixture'));
+if(params.get('served')==='1'){const preview=createPreviewChatGptAccountPort();preview.signIn({usePlan:true}).then(()=>mount.render(<ChatGptAccountContext.Provider value={{...preview,mode:'live'}}><Served/></ChatGptAccountContext.Provider>));}
+else mount.render(<AssistantPanel producer={createAssistantMockProducer(params.get('scene')||'ask-write')} accountClient={client} onClose={noop} onRename={noop} onChats={noop} onOpenChatFile={async()=>null} initialText={params.get('text')||''} onRegisterSpreadsheet={async file=>{document.body.dataset.registered=file.name;}} onRunWorkflow={async request=>{if(request.dryRun!==true)throw Error('fixture-refuses-live');document.body.dataset.run=JSON.stringify(request);return {state:'complete',source:'mock',files:[{...request.file,id:'updated',name:'Updated.csv',status:'Updated'},{...request.file,id:'generated',name:'Results.csv',status:'Generated'}]};}}/>);
 `);
   await build({ configFile: false, root, plugins: [react(), tailwindcss()], logLevel: 'warn', build: { outDir: resolve(root, 'dist'), emptyOutDir: true } });
   server = await preview({ configFile: false, root, logLevel: 'warn', build: { outDir: resolve(root, 'dist') }, preview: { host: '127.0.0.1', port: 0, strictPort: true } });
@@ -147,3 +155,40 @@ for (const scene of ['new', 'ask-read', 'ask-write', 'permission-changed', 'auto
     await captureParityPair(page, resolve('tests/parity/references'), { stateId: `hub-assistant-${scene}`, theme: 'graphite-warm', viewport: '1280x720', adapter: 'component-fixture', fixtureId: `hub-assistant-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
   });
 }
+
+test('served local action uses the existing card and keeps lost confirmation non-retryable', async ({ page }, info) => {
+  for (const lost of [false, true]) {
+    await page.goto(`${baseUrl}?served=1&lost=${lost ? '1' : '0'}`);
+    const input = page.getByRole('textbox', { name: 'Message Relay' });
+    await expect(input).toBeEnabled(); await input.fill('mark notifications read');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    const card = page.getByRole('article', { name: 'Proposed action details' });
+    await expect(card).toContainText('Proposed action · Local change');
+    await expect(card).toContainText('Local notification'); await expect(card).toContainText('None');
+    await expect(card).not.toContainText('Dry run'); await expect(card).not.toContainText('Alex Rivera');
+    const confirm = card.getByRole('button', { name: 'Confirm', exact: true }); await expect(confirm).toBeEnabled();
+    await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'lost' : 'ready'}.png`) });
+    await confirm.click();
+    await expect(card).toContainText(lost ? 'Action outcome is unknown. Do not retry' : 'Action completed.');
+    await expect(confirm).toBeDisabled();
+    await expect(page.locator('body')).toHaveAttribute('data-decisions', '1');
+    await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'unknown' : 'complete'}.png`) });
+  }
+});
+
+test('served automatic unknown and lost respond have no Retry or new Send', async ({ page }, info) => {
+  for (const mode of ['autoUnknown', 'respondLost']) {
+    await page.goto(`${baseUrl}?served=1&${mode}=1`);
+    const input = page.getByRole('textbox', { name: 'Message Relay' }); await expect(input).toBeEnabled();
+    await input.fill('mark notifications read'); await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(page.getByText(/Action outcome is unknown/).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry reply' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
+    if (mode === 'autoUnknown') {
+      const card = page.getByRole('article', { name: 'Proposed action details' });
+      await expect(card).toContainText('25 current notifications'); await expect(card.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
+    } else await expect(page.getByRole('article', { name: 'Proposed action details' })).toHaveCount(0);
+    await expect(page.locator('body')).not.toHaveAttribute('data-decisions');
+    await page.screenshot({ path: info.outputPath(`automatic-${mode}.png`) });
+  }
+});

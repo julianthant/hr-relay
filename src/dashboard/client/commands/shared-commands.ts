@@ -43,7 +43,7 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
         return target.family === "worker-browser" && target.workerId === (command.type === "spawn-worker" ? command.payload.workerId : command.target.workerId);
       case "settings": return target.family === (command.type === "apply-settings" ? "settings" : "protected-settings");
       case "storage-relocation": return target.family === "storage-relocation";
-      case "notification": return target.family === "notification" && target.notificationId === command.target.notificationId;
+      case "notification": return target.family === "notification" && ("members" in command.target ? command.target.members.some(member => member.notificationId === target.notificationId) : target.notificationId === command.target.notificationId);
       case "explorer": return target.family === "explorer" && target.workflowId === command.target.workflowId;
       case "workflow-batch": return target.family === "workflow-batch" && target.batchId === command.target.batchId;
       case "failure-resolution": return target.family === "failure-resolution" && target.runId === command.target.runId && target.failureId === command.target.failureId;
@@ -58,7 +58,8 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
     if (command.family === "worker-browser" && command.type === "plan-worker-count") return target.family === "worker-pool";
     return true;
   });
-  if (!anchor || new Set(targets.map(target => JSON.stringify(target))).size !== targets.length) identityMismatch(response);
+  if (command.family === "notification" && "members" in command.target && targets.length !== command.target.matchingCount) identityMismatch(response);
+  if ((!anchor && !(command.family === "notification" && "members" in command.target && command.target.matchingCount === 0)) || new Set(targets.map(target => JSON.stringify(target))).size !== targets.length) identityMismatch(response);
   return result;
 }
 

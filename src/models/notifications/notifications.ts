@@ -138,3 +138,28 @@ export const NotificationObservationStatusSchema = z.strictObject({
   code: z.enum(["NOTIFICATION_OBSERVATION_FAILED", "NOTIFICATION_RECEIPT_MISSING"]).optional(),
   pending: z.number().int().nonnegative(),
 });
+
+export const NotificationCollectionOperationSchema = z.enum(["read", "unread", "snooze", "unsnooze"]);
+export type NotificationCollectionOperation = z.infer<typeof NotificationCollectionOperationSchema>;
+export const NotificationCollectionTargetSchema = z.strictObject({
+  actorId: ActorIdSchema,
+  members: z.array(z.strictObject({ notificationId: NotificationIdSchema, expectedVersion: PositiveIntSchema })),
+  matchingCount: z.number().int().nonnegative(),
+}).superRefine((target, context) => {
+  if (target.matchingCount > target.members.length || target.members.some((row, index) => index > 0 && row.notificationId <= target.members[index - 1].notificationId)) {
+    context.addIssue({ code: "custom", message: "notification-collection-membership-invalid" });
+  }
+});
+export type NotificationCollectionTarget = z.infer<typeof NotificationCollectionTargetSchema>;
+export function notificationMatchesCollection(row: NotificationRecord, operation: NotificationCollectionOperation): boolean {
+  if (row.trigger === "backfill-gap") return false;
+  return operation === "read" ? row.status === "unread" : operation === "unread" ? row.status === "read"
+    : operation === "unsnooze" ? row.snooze.state === "snoozed" : true;
+}
+export function notificationCollectionTarget(records: readonly NotificationRecord[], actorId: string, operation: NotificationCollectionOperation): NotificationCollectionTarget {
+  const rows = records.map(row => NotificationRecordSchema.parse(row));
+  if (rows.some(row => row.actorId !== actorId)) throw new Error("notification-collection-actor-mismatch");
+  return NotificationCollectionTargetSchema.parse({ actorId,
+    members: rows.map(row => ({ notificationId: row.notificationId, expectedVersion: row.version })).sort((a, b) => a.notificationId < b.notificationId ? -1 : a.notificationId > b.notificationId ? 1 : 0),
+    matchingCount: rows.filter(row => notificationMatchesCollection(row, operation)).length });
+}

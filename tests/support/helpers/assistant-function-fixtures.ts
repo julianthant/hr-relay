@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { AssistantCitationSchema, AssistantSubjectSchema, AssistantFunctionNamespaceSchema, ASSISTANT_FAILURES, type AssistantInferenceResult, type AssistantResult, type AssistantSubject } from "../../../src/models/dashboard/assistant.js";
-import type { AssistantFunctionSet, AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
+import type { AssistantServiceOptions, AssistantFunctionSet, AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
 import { prepareAssistantProposal } from "../../../src/backend/assistant/proposal.js";
 
 const Answer = z.strictObject({ text: z.string().min(1).max(8000), citations: z.array(AssistantCitationSchema).max(8) });
@@ -19,6 +19,7 @@ function syntheticAssistantFunctions(selected?: AssistantSubject): readonly Assi
     async invoke(input) { return complete({ state: "answered", ...Answer.parse(input) }); } },
   { name: "read_subjects", description: "Search only the explicitly supplied synthetic subject fixture.", parameters: Search,
     async invoke(input, signal, context) {
+      if (context.subjects === undefined) return refusal("ASSISTANT_SUBJECT_REQUIRED");
       const raw = await context.subjects.search(Search.parse(input).query, signal); context.assertCurrent();
       if (raw.length > 20) return refusal("ASSISTANT_LIMIT");
       const candidates = raw.map(value => subject.parse(value));
@@ -28,7 +29,7 @@ function syntheticAssistantFunctions(selected?: AssistantSubject): readonly Assi
     } },
   { name: "propose", description: "Exercise the actual pure planner on an explicitly selected synthetic subject; never execute.", parameters: Proposal,
     async invoke(input, signal, context) {
-      if (selected === undefined) return refusal("ASSISTANT_SUBJECT_REQUIRED");
+      if (selected === undefined || context.subjects === undefined || context.planner === undefined) return refusal("ASSISTANT_SUBJECT_REQUIRED");
       const current = subject.parse(await context.subjects.resolve(selected.subjectRef, signal)); context.assertCurrent();
       if (JSON.stringify(current) !== JSON.stringify(selected)) return refusal("ASSISTANT_SUBJECT_REQUIRED");
       let proposal;
@@ -41,6 +42,7 @@ function syntheticAssistantFunctions(selected?: AssistantSubject): readonly Assi
 
 export async function bindSyntheticAssistantFunctions(context: AssistantFunctionContext, signal: AbortSignal): Promise<readonly AssistantFunctionSet[]> {
   context.assertCurrent();
+  if (context.subjects === undefined) throw new Error("synthetic-subject-owner-required");
   const selected = context.request.subjectRef === undefined ? undefined : subject.parse(await context.subjects.resolve(context.request.subjectRef, signal));
   context.assertCurrent();
   if (selected !== undefined && selected.subjectRef !== context.request.subjectRef) throw new Error("synthetic-selection-mismatch");
@@ -58,3 +60,7 @@ export function completedAssistantStream(turn: unknown, model = "gpt-6.1-sol"): 
   const response = syntheticAssistantResponse(turn, model);
   return `data: ${JSON.stringify({ type: "response.completed", response: { id: response.responseId, model, status: "completed", output: response.output } })}\n\n`;
 }
+
+export const projectSyntheticAssistantInput: NonNullable<AssistantServiceOptions["projectInput"]> = () => ({
+  input: { intent: "synthetic-protocol-verification" }, citations: [],
+});
