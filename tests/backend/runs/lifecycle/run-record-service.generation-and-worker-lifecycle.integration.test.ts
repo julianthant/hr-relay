@@ -1,3 +1,4 @@
+import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
@@ -299,8 +300,30 @@ describe("worker lifecycle service capability", () => {
           id: injectedAttempt.writeAttemptId, intent_id: injectedAttempt.writeIntentId, generation: injectedAttempt.generation,
           run_id: injectedAttempt.runId, payload_json: canonicalJsonStringify(injectedAttempt), created_at: injectedAttempt.recordedAt,
         });
+        assert.throws(() => raw.prepare("DELETE FROM write_attempts WHERE id=?").run(injectedAttempt.writeAttemptId),
+          { message: "retained-evidence-required", code: "ERR_SQLITE_ERROR" });
+        assert.throws(() => raw.prepare("DELETE FROM write_intents WHERE id=?").run(injectedIntent.writeIntentId),
+          { message: "write-identity-retained", code: "ERR_SQLITE_ERROR" });
+        const triggers = [
+          { name: "write_attempts_retained", table: "write_attempts" },
+          { name: "write_intents_retained", table: "write_intents" },
+        ].map(({ name, table }) => {
+          const definitions = SQLITE_MIGRATIONS.flatMap(migration => migration.statements.flatMap(statement =>
+            [...statement.matchAll(new RegExp(`CREATE TRIGGER ${name} BEFORE DELETE ON ${table}\\n[\\s\\S]*? END;`, "gu"))].map(match => match[0].slice(0, -1))));
+          assert.equal(definitions.length, 1);
+          const sql = definitions[0]; assert.ok(sql);
+          const expected = { type: "trigger", name, tbl_name: table, sql };
+          assert.deepEqual({ ...raw.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name=?").get(name) }, expected);
+          return expected;
+        });
+        raw.exec("DROP TRIGGER write_attempts_retained");
+        raw.exec("DROP TRIGGER write_intents_retained");
         assert.equal(raw.prepare("DELETE FROM write_attempts WHERE id=?").run(injectedAttempt.writeAttemptId).changes, 1);
         assert.equal(raw.prepare("DELETE FROM write_intents WHERE id=?").run(injectedIntent.writeIntentId).changes, 1);
+        for (const trigger of triggers) {
+          raw.exec(trigger.sql);
+          assert.deepEqual({ ...raw.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name=?").get(trigger.name) }, trigger);
+        }
         raw.exec("COMMIT");
       } catch (error) {
         const rollbackFailures: unknown[] = [];
