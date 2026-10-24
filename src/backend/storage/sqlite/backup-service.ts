@@ -195,7 +195,7 @@ export class AuthorityBackupService {
   }
 
   request(input: unknown): Promise<AuthorityBackupRunReport> {
-    this.#admission.assertWritable();
+    this.#admission.assertAuthorityBackupWrite(this.#directory);
     const request = AuthorityBackupRequestSchema.parse(input);
     this.#requiredGeneration = Math.max(this.#requiredGeneration, request.requiredGeneration);
     this.#coalescedRequests += 1;
@@ -251,7 +251,7 @@ export class AuthorityBackupService {
   }
 
   async #createOne(): Promise<AuthorityBackupManifest> {
-    this.#admission.assertWritable();
+    this.#admission.assertAuthorityBackupWrite(this.#directory);
     mkdirSync(this.#directory, { recursive: true, mode: 0o700 });
     const token = randomUUID();
     const temporaryBackupPath = join(this.#directory, `.authority-${token}.sqlite.tmp`);
@@ -261,7 +261,7 @@ export class AuthorityBackupService {
     let finalManifestPath: string | undefined;
     try {
       await this.#source.onlineBackupTo(temporaryBackupPath);
-      this.#admission.assertWritable();
+      this.#admission.assertAuthorityBackupWrite(this.#directory);
       const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, await sha256File(temporaryBackupPath));
       let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
       try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, this.#source.getMeta().schemaVersion); }
@@ -278,7 +278,7 @@ export class AuthorityBackupService {
       finalPaths.push(finalBackupPath);
       const stats = statSync(finalBackupPath);
       const digest = await sha256File(finalBackupPath);
-      this.#admission.assertWritable();
+      this.#admission.assertAuthorityBackupWrite(this.#directory);
       fsyncPath(this.#directory);
       const verification = {
         state: "verified",

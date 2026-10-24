@@ -498,6 +498,20 @@ The record's `backup_digest` matches the backup SHA-256. A failed migration roll
 changes. For pending diagnostic stages it reclaims through `diagnostic-maintenance` and verifies
 unchanged authority generation and content fingerprint. Only the explicit stopped upgrade converts a
 prior schema.
+`upgradeReadyProfileStorage` separately handles an already READY, saved, bound schema7 profile.
+It acquires the actual machine workspace's restore admission before privately issuing a stopped
+purpose from that same exclusive machine and registered runtime claim. Issuance verifies native
+source binding, anchored key/erasure-head evidence, fixed control and physical ancestry, and the
+shared all-stopped process/resource/copy inventory. The READY-only issuer defers its two exact
+storage readers and revalidates custody after each await; the setup issuer remains synchronous.
+This purpose admits original-source inspection, its own verified authority backups, and the finite
+7→8 migration only. It cannot initialize a profile, read credentials, open ordinary runtime storage,
+grant generic writes/exclusive authority, delegate nested copies, or admit an in-memory database.
+Its source fingerprint is privately bound before issuance and checked again inside the migration
+transaction with the actual verified backup. Readback preserves prior business rows, Settings and
+their digests; only schema metadata and the appended upgrade record change. Already-current READY
+inspection never reclaims diagnostics. Unproved source closure or rollback retains restore custody
+and the original failures. This service adds no public login, CLI, or automatic startup upgrade path.
 A changed source fails with `source-changed: re-plan upgrade`. Recovery, backups, and restores remain
 explicit operations in their storage owners; ordinary shutdown does not create a backup.
 

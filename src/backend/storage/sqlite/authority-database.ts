@@ -23,6 +23,7 @@ import { readAppSettings } from "./settings-storage.js";
 import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
 import { requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody } from "./worker-slots.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
+import { verifyStoppedBackupManifestAtPath } from "./backup-service.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
@@ -123,6 +124,13 @@ import type { VerifiedBackup } from "./backup-service.js";
 import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
 import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceRecordsSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, ResolvedParkedWriteCommitInputSchema, ResolvedParkedWriteAbsenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
+
+export class AuthoritySourceClosureUnprovedError extends AggregateError {
+  constructor(errors: readonly unknown[]) {
+    super(errors, "authority-source-closure-unproved", { cause: errors[0] });
+    this.name = "AuthoritySourceClosureUnprovedError";
+  }
+}
 
 export class AuthoritySchemaVersionError extends Error {
   readonly code = "authority-schema-mismatch";
@@ -1341,22 +1349,29 @@ function readAuthorityUpgradeRecords(database: DatabaseSync) {
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
 }
 
-function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, expectedFingerprint?: string, backup?: VerifiedBackup) {
-  requireRuntimeAdmission(admission).assertExclusive();
+function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, path: string, expectedFingerprint?: string, backup?: VerifiedBackup) {
+  requireRuntimeAdmission(admission);
   const version = readIntPragma(database, "user_version");
   if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) return inspectNormalAuthority(database);
-  admission.assertProfileInitialization();
+  const purpose = admission.assertProfileMigration(path, version);
   const binding = admission.profileBinding;
   if (!isSupportedStoppedAuthoritySchemaVersion(version)) throw new AuthoritySchemaVersionError(version);
   database.exec("BEGIN EXCLUSIVE");
   try {
+    admission.assertProfileMigration(path, version);
     if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority-application-mismatch");
     inspectNativeAuthority(database, version);
     const meta = readMetaRow(database);
     if (meta.schema_version !== version) throw new Error("authority-schema-metadata-mismatch");
     const fingerprint = authorityContentFingerprint(database);
+    admission.assertProfileMigration(path, version, fingerprint);
     if (expectedFingerprint !== undefined && fingerprint !== expectedFingerprint) throw new Error("source-changed: re-plan upgrade");
     if (backup === undefined || expectedFingerprint === undefined) throw new Error("upgrade-verified-backup-required");
+    if (purpose === "ready") {
+      const verified = verifyStoppedBackupManifestAtPath(admission, backup.manifestPath, AuthorityDatabase.sourceDatabaseIdentity(path));
+      if (canonicalJsonStringify(verified) !== canonicalJsonStringify(backup)
+        || verified.manifest.installationId !== binding.installationId || verified.manifest.profileId !== binding.profileId) throw new Error("profile-stopped-upgrade-backup-changed");
+    }
     if (backup.manifest.schemaVersion !== version || backup.manifest.authorityContentFingerprint !== fingerprint
       || backup.manifest.authorityGeneration !== meta.authority_generation) throw new Error("source-changed: upgrade backup differs from source");
     const planDigest = deriveAuthorityUpgradePlanDigest(version, fingerprint);
@@ -1380,12 +1395,16 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     const inspection = inspectNormalAuthority(database);
     database.exec("COMMIT");
     return { ...inspection, schemaVersion: version, authorityContentFingerprint: fingerprint };
-  } catch (error) { database.exec("ROLLBACK"); throw error; }
+  } catch (error) {
+    const failures: unknown[] = [];
+    try { database.exec("ROLLBACK"); } catch (rollbackError) { failures.push(rollbackError); }
+    if (failures.length !== 0) throw new AuthoritySourceClosureUnprovedError([error, ...failures]);
+    throw error;
+  }
 }
 
 function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock): void {
-  requireRuntimeAdmission(admission).assertExclusive();
-  admission.assertAuthorityDatabase(path);
+  requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(path, processLockRoot);
   requireDatabaseSourcePath(path);
   const locks = observeRuntimeLockSnapshot({ processLockRoot,
     sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) }, clock);
@@ -1800,7 +1819,7 @@ export class AuthorityDatabase implements Disposable {
     const owner = requireRuntimeAdmission(admission), path = join(owner.stateRoot, "state.db");
     owner.assertLive();
     return withAuthorityDatabaseReadOnly(owner, path, database => {
-      const inspection = inspectNormalAuthority(database);
+      const inspection = inspectNativeAuthority(database, owner.profileMaintenanceSchemaVersion());
       if (inspection.installationId !== owner.profileBinding.installationId || inspection.profileId !== owner.profileBinding.profileId) throw new Error("profile-maintenance-binding-mismatch");
       const settings = readAppSettings(database);
       const settingsAuthority = settings === undefined
@@ -1857,18 +1876,38 @@ export class AuthorityDatabase implements Disposable {
   static inspectStoppedUpgrade(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock) {
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
     const snapshot = createReadonlyAuthoritySnapshot(path);
-    let database: DatabaseSync;
-    try { database = new DatabaseSync(snapshot.path, { enableForeignKeyConstraints: true }); }
-    catch (error) { snapshot.dispose(); throw error; }
-    try { return inspectNativeAuthority(database, readIntPragma(database, "user_version")); }
-    finally { try { database.close(); } finally { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } } }
+    let database: DatabaseSync | undefined;
+    let result: ReturnType<typeof inspectNativeAuthority> | undefined;
+    let primary: { error: unknown } | undefined;
+    try {
+      database = new DatabaseSync(snapshot.path, { enableForeignKeyConstraints: true });
+      result = inspectNativeAuthority(database, readIntPragma(database, "user_version"));
+    } catch (error) { primary = { error }; }
+    const failures: unknown[] = [];
+    try { database?.close(); } catch (error) { failures.push(error); }
+    try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
+    try { snapshot.dispose(); } catch (error) { failures.push(error); }
+    if (failures.length !== 0) throw new AuthoritySourceClosureUnprovedError(primary === undefined ? failures : [primary.error, ...failures]);
+    if (primary !== undefined) throw primary.error;
+    if (result === undefined) throw new Error("profile-stopped-upgrade-inspection-unavailable");
+    return result;
   }
 
   static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup) {
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
+    if (before.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return before;
     const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
-    try { return migrateStoppedAuthority(database, clock, admission, expectedFingerprint, backup); }
-    finally { database.close(); }
+    let result: ReturnType<typeof migrateStoppedAuthority> | undefined;
+    let primary: { error: unknown } | undefined;
+    try { result = migrateStoppedAuthority(database, clock, admission, path, expectedFingerprint, backup); }
+    catch (error) { primary = { error }; }
+    const failures: unknown[] = [];
+    try { database.close(); } catch (error) { failures.push(error); }
+    if (failures.length !== 0) throw new AuthoritySourceClosureUnprovedError(primary === undefined ? failures : [primary.error, ...failures]);
+    if (primary !== undefined) throw primary.error;
+    if (result === undefined) throw new Error("profile-stopped-upgrade-result-unavailable");
+    return result;
   }
 
 

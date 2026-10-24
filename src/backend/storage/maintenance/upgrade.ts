@@ -1,9 +1,9 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
-import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { AuthorityBackupService, verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
+import { AuthorityDatabase, AuthoritySourceClosureUnprovedError } from "../sqlite/authority-database.js";
+import { AuthorityBackupService, verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { openAuthorityBackupSourceReadOnly, inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
 import { pendingDiagnosticArtifacts } from "../artifacts/content-addressed-artifact-writer.js";
@@ -12,6 +12,13 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot, observeProcessIdentity, RestoreAdmissionFileSchema, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import type { RegisteredProfileStorageClaim } from "../admission/admission.js";
+import type { HostConfigFacts } from "../../../models/config/host-display.js";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { readStoppedProfileUpgradeInventory } from "./profile-inventory.js";
+import type { VerifiedBackup } from "../sqlite/backup-service.js";
+import { deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
 
 export const StorageUpgradeReportSchema = z.strictObject({
   state: z.enum(["planned", "initialized", "upgraded", "already-upgraded"]),
@@ -27,13 +34,13 @@ export interface StorageUpgradeInput {
   readonly plan: boolean;
 }
 function requireStopped(admission:RuntimeAdmission,input:StorageUpgradeInput,clock:Clock):void {
-  admission.assertExclusive();
+  admission.assertStoppedProfileUpgrade(join(input.stateRoot,"state.db"),input.processLockRoot);
   const snapshot=observeRuntimeLockSnapshot({processLockRoot:input.processLockRoot,
     sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(join(input.stateRoot,"state.db"))},clock);
   if(Object.values(snapshot.processLocks).some(lock=>lock.state==="active"))throw new Error("runtime-active: stop server, workers and geocode before storage upgrade");
 }
 export async function backupStoppedAuthority(admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,heldRestore?:RestoreAdmissionHandle) {
-  requireRuntimeAdmission(admission).assertExclusive();admission.assertStateRoot(stateRoot);
+  requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(join(stateRoot,"state.db"),processLockRoot);admission.assertStateRoot(stateRoot);
   const input={stateRoot,processLockRoot,plan:false};
   requireStopped(admission,input,clock);
   const restore=heldRestore??acquireRuntimeRestoreAdmission({processLockRoot:input.processLockRoot,pid:process.pid},clock);
@@ -46,9 +53,17 @@ export async function backupStoppedAuthority(admission:RuntimeAdmission,stateRoo
     requireStopped(admission,input,clock);
     const schemaVersion=AuthorityDatabase.inspectStoppedUpgrade(admission,join(stateRoot,"state.db"),processLockRoot,clock).schemaVersion;
     const source=openAuthorityBackupSourceReadOnly(admission,join(stateRoot,"state.db"),250,schemaVersion);
-    try {const report=await new AuthorityBackupService(admission,source,{directory:join(stateRoot,"backups","authority")},clock)
-      .request({trigger:"operator",requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(admission,input,clock);return report;
-    }finally{source.close();}
+    let report: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
+    let primary: { error: unknown } | undefined;
+    try {report=await new AuthorityBackupService(admission,source,{directory:join(stateRoot,"backups","authority")},clock)
+      .request({trigger:"operator",requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(admission,input,clock);
+    }catch(error){primary={error};}
+    const failures: unknown[] = [];
+    try{source.close();}catch(error){failures.push(error);}
+    if(failures.length!==0)throw new AuthoritySourceClosureUnprovedError(primary===undefined?failures:[primary.error,...failures]);
+    if(primary!==undefined)throw primary.error;
+    if(report===undefined)throw new Error("upgrade-backup-result-unavailable");
+    return report;
   }finally{if(heldRestore===undefined)restore.release();}
 }
 export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpgradeInput,clock:Clock,
@@ -95,4 +110,103 @@ export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpg
     return report("initialized");
   }finally{restore.release();}
   } finally { if (admission !== sourceAdmission) admission.release(); }
+}
+
+type ReadyUpgradeInventory = ReturnType<typeof readStoppedProfileUpgradeInventory>;
+
+function assertReadyUpgradeInventory(before: ReadyUpgradeInventory, after: ReadyUpgradeInventory, path: string,
+  publication: Readonly<{ kind: "unchanged" }> | Readonly<{ kind: "upgraded"; sourceFingerprint: string }>, backup?: VerifiedBackup): void {
+  if (canonicalJsonStringify({ locks: before.processLocks, orphans: before.orphans, generation: before.runtimeGeneration })
+    !== canonicalJsonStringify({ locks: after.processLocks, orphans: after.orphans, generation: after.runtimeGeneration })) throw new Error("profile-stopped-upgrade-process-changed");
+  const { upgrades: priorUpgrades, ...priorFacts } = before.facts;
+  const { upgrades: nextUpgrades, ...nextFacts } = after.facts;
+  if (canonicalJsonStringify(priorFacts) !== canonicalJsonStringify(nextFacts)) throw new Error("profile-stopped-upgrade-resources-changed");
+  if (publication.kind === "unchanged") {
+    if (canonicalJsonStringify(priorUpgrades) !== canonicalJsonStringify(nextUpgrades)) throw new Error("profile-stopped-upgrade-journal-changed");
+  } else {
+    const added = nextUpgrades.at(-1);
+    if (backup === undefined || nextUpgrades.length !== priorUpgrades.length + 1
+      || canonicalJsonStringify(nextUpgrades.slice(0, -1)) !== canonicalJsonStringify(priorUpgrades)
+      || added?.phase !== "settled" || added.fromSchemaVersion !== 7 || added.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+      || added.upgradeId !== publication.sourceFingerprint || added.planDigest !== deriveAuthorityUpgradePlanDigest(7, publication.sourceFingerprint)
+      || added.backup.manifestPath !== backup.manifestPath || added.backup.sha256 !== backup.manifest.sha256
+      || added.backup.authorityGeneration !== backup.manifest.authorityGeneration) throw new Error("profile-stopped-upgrade-publication-unproved");
+  }
+  const sourcePaths = new Set([path, `${path}-wal`, `${path}-shm`]);
+  const allowed = new Set(backup === undefined ? [] : [backup.backupPath, backup.manifestPath, join(dirname(path), "backups"), join(dirname(path), "backups", "authority")]);
+  const publishedDirectories = new Set([dirname(path), join(dirname(path), "backups"), join(dirname(path), "backups", "authority")]);
+  const directoryIdentity = (entry: ReadyUpgradeInventory["membership"]["identities"][number]) => ({ path: entry.path, device: entry.device, inode: entry.inode, mode: entry.mode });
+  for (const entry of before.membership.identities) {
+    if (publication.kind === "upgraded" && sourcePaths.has(entry.path)) continue;
+    const current = after.membership.identities.find(value => value.path === entry.path);
+    if (current === undefined || canonicalJsonStringify(entry.directory && publishedDirectories.has(entry.path) ? directoryIdentity(entry) : entry)
+      !== canonicalJsonStringify(current.directory && publishedDirectories.has(current.path) ? directoryIdentity(current) : current)) throw new Error("profile-stopped-upgrade-copy-changed");
+  }
+  if (after.membership.identities.some(entry => !before.membership.identities.some(prior => prior.path === entry.path)
+    && !allowed.has(entry.path) && !(publication.kind === "upgraded" && sourcePaths.has(entry.path)))) throw new Error("profile-stopped-upgrade-copy-membership-changed");
+}
+
+export async function upgradeReadyProfileStorage(machine: RuntimeAdmission, claim: RegisteredProfileStorageClaim,
+  input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock): Promise<StorageUpgradeReport> {
+  requireRuntimeAdmission(machine).assertExclusive();
+  const context = machine.readInstallationContext();
+  if (context === undefined) throw new Error("profile-stopped-upgrade-installation-required");
+  const processLockRoot = resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot);
+  machine.assertFixedProcessLockRoot(context.workspace, processLockRoot);
+  const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
+  let admission: RuntimeAdmission | undefined;
+  let result: StorageUpgradeReport | undefined;
+  let primary: { error: unknown } | undefined;
+  try {
+    admission = await machine.forStoppedProfileUpgrade(claim, restore, clock, input.hostFacts);
+    result = await runReadyProfileUpgrade(machine, admission, processLockRoot, restore, input, clock);
+  } catch (error) { primary = { error }; }
+  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;
+  const failures: unknown[] = [];
+  try { admission?.release(); } catch (error) { failures.push(error); }
+  try { restore.release(); } catch (error) { failures.push(error); }
+  if (failures.length !== 0) throw new AuthoritySourceClosureUnprovedError(primary === undefined ? failures : [primary.error, ...failures]);
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error("profile-stopped-upgrade-result-unavailable");
+  return result;
+}
+
+async function runReadyProfileUpgrade(machine: RuntimeAdmission, owner: RuntimeAdmission, processLockRoot: string,
+  restore: RestoreAdmissionHandle, input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock): Promise<StorageUpgradeReport> {
+  const path = join(owner.stateRoot, "state.db");
+  const inspect = () => AuthorityDatabase.inspectStoppedUpgrade(owner, path, processLockRoot, clock);
+  const inspectInventory = () => readStoppedProfileUpgradeInventory({ machine, admission: owner, hostFacts: input.hostFacts, clock });
+  const initial = inspect();
+  let inventory = inspectInventory();
+  const revalidate = (backup?: VerifiedBackup) => {
+    owner.assertReadyStoppedProfileUpgradeOwner(machine);
+    const current = inspect();
+    if (current.schemaVersion !== initial.schemaVersion || current.authorityGeneration !== initial.authorityGeneration
+      || current.authorityContentFingerprint !== initial.authorityContentFingerprint) throw new Error("source-changed: re-plan upgrade");
+    const currentInventory = inspectInventory();
+    assertReadyUpgradeInventory(inventory, currentInventory, path, { kind: "unchanged" }, backup);
+    return currentInventory;
+  };
+  revalidate();
+  const report = (state: StorageUpgradeReport["state"]) => StorageUpgradeReportSchema.parse({ state,
+    fromSchemaVersion: initial.schemaVersion, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
+  if (input.plan) return report("planned");
+  if (initial.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return report("already-upgraded");
+  if (initial.schemaVersion !== 7) throw new Error("profile-stopped-upgrade-version-refused");
+  const backed = await backupStoppedAuthority(owner, owner.stateRoot, clock, processLockRoot, restore);
+  if (backed.manifests.length !== 1) throw new Error("profile-stopped-upgrade-single-backup-required");
+  const manifest = backed.manifests[0];
+  if (manifest === undefined) throw new Error("upgrade-verified-backup-required");
+  const manifestPath = join(owner.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`);
+  const produced = verifyStoppedBackupManifestAtPath(owner, manifestPath, AuthorityDatabase.sourceDatabaseIdentity(path));
+  inventory = revalidate(produced);
+  const verified = await verifyBackupManifestAtPath(owner, manifestPath, AuthorityDatabase.sourceDatabaseIdentity(path));
+  revalidate(verified);
+  AuthorityDatabase.upgradeStopped(owner, path, processLockRoot, clock, initial.authorityContentFingerprint, verified);
+  const current = inspect();
+  if (current.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || current.authorityGeneration !== initial.authorityGeneration
+    || current.installationId !== owner.profileBinding.installationId || current.profileId !== owner.profileBinding.profileId) throw new Error("profile-stopped-upgrade-readback-unproved");
+  assertReadyUpgradeInventory(inventory, inspectInventory(), path,
+    { kind: "upgraded", sourceFingerprint: initial.authorityContentFingerprint }, verified);
+  return report("upgraded");
 }

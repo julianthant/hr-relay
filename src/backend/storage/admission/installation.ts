@@ -169,6 +169,7 @@ export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator
   readRelocationReceipts(): readonly RelocationCompletionReceipt[];
   readProfileRegistry(): ProfileRegistryDocument;
   capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(): void }>;
+  captureStoppedProfileUpgrade(profileId: string): Readonly<{ assertHeld(): void }>;
   assertProfileErasureHead(profileId: string, head: CredentialErasureHead): void;
   resumeProfileErasure(profileId: string, request: ErasureRequestIdentity, head: CredentialErasureHead): void;
   beginProfileErasure(profileId: string, witness: VerifiedCredentialErasureIntent): void;
@@ -1755,6 +1756,47 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (before !== after || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
       return document;
+    },
+    captureStoppedProfileUpgrade(profileId: string) {
+      if (mode !== "exclusive") fail("profile-stopped-upgrade-exclusive-required");
+      const id = z.uuid().parse(profileId);
+      const read = () => {
+        assertHeld();
+        if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-stopped-upgrade-locator-changed");
+        assertLiveObservationMutex(control);
+        const before = profileObservation(control, locator);
+        const document = readMachineRegistry(control, locator, false);
+        const row = document.profiles.find(entry => entry.profileId === id);
+        if (row?.lifecycle !== "ready" || row.credentialState !== "saved") fail("profile-stopped-upgrade-ready-required");
+        const continuity = readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
+        const head = continuity.erasures.find(entry => entry.profileId === id);
+        if (head?.credentialKey === undefined) fail("profile-stopped-upgrade-key-required");
+        const journal = erasurePath(locator, id), key = join(locator.stateRoot, "machine", "credential-keys", `${id}.json`);
+        const files = [journal, `${journal}.authority`, key].map(path => {
+          const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
+          if (file === undefined) {
+            if (path === key || head.head.state !== "never-erased") fail("profile-stopped-upgrade-evidence-required");
+            return { path, absent: true };
+          }
+          return { path, identity: file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
+        });
+        if (profileObservation(control, locator) !== before || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-stopped-upgrade-observation-changed");
+        assertHeld();
+        assertLiveObservationMutex(control);
+        const directories = [control, join(locator.stateRoot, "machine"), join(locator.stateRoot, "machine", "credential-keys"),
+          join(locator.stateRoot, "machine", "erasures"), join(locator.stateRoot, "machine", "operations")].map(path => {
+          if (lstatSync(path, { throwIfNoEntry: false }) === undefined && path === join(locator.stateRoot, "machine", "erasures")
+            && head.head.state === "never-erased") return { path, absent: true };
+          privateDirectory(path);
+          const info = lstatSync(path);
+          return { path, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid };
+        });
+        return canonicalJsonStringify({ document, observation: before, files, directories });
+      };
+      const original = read();
+      return Object.freeze({ assertHeld() {
+        if (read() !== original) fail("profile-stopped-upgrade-authority-changed");
+      } });
     },
     capturePendingProfileLogout(input: z.infer<typeof LogoutOperationSchema>) {
       const operation = LogoutOperationSchema.parse(input);
