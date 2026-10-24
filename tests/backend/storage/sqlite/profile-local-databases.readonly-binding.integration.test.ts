@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, lstatSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { spawn, spawnSync } from "node:child_process";
-import * as childProcesses from "node:child_process";
+import childProcesses, { spawn, spawnSync } from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { it, vi } from "vitest";
@@ -15,8 +15,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-vi.mock("node:child_process", { spy: true });
-const actualSpawn = (await vi.importActual<typeof import("node:child_process")>("node:child_process")).spawnSync;
+const actualSpawn = childProcesses.spawnSync;
 
 it("preserves the exact stopped-backup source witness after pending profile initialization", async () => {
   const f = createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
@@ -75,6 +74,7 @@ it("admits the same genuine profile across a real peer's committed WAL change", 
     }
     return actualSpawn(command, args, options);
   });
+  syncBuiltinESMExports();
   const writer = spawn(process.execPath, ["--input-type=commonjs", "-e", `
     const { DatabaseSync } = require("node:sqlite");
     const { existsSync, writeFileSync } = require("node:fs");
@@ -116,7 +116,7 @@ it("admits the same genuine profile across a real peer's committed WAL change", 
     try { assert.equal(db.prepare("SELECT authority_generation AS generation FROM database_states WHERE id=1").get()?.generation, baseline + 1); }
     finally { db.close(); }
   } finally {
-    observer.mockRestore(); writeFileSync(finish, "finish");
+    observer.mockRestore(); syncBuiltinESMExports(); writeFileSync(finish, "finish");
     try { assert.equal(await exited, 0, output); }
     finally { f.close(); }
   }
@@ -156,12 +156,18 @@ it("refuses foreign binding and a noncurrent schema at the live boundary", () =>
 it("refuses a replaced main inode even when its copied binding matches", () => {
   const f = createBoundProfileFixture(), replacement = join(f.stateRoot, "replacement.db");
   copyFileSync(f.path, replacement);
+  let replaced = false;
   const observer = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
-    renameSync(replacement, f.path);
+    if (Array.isArray(args) && typeof args[2] === "string" && args[2].includes("const [path, expected, schema, application]") && args[3] === f.path) {
+      renameSync(replacement, f.path); replaced = true;
+    }
     return actualSpawn(command, args, options);
   });
-  try { assert.throws(() => assertLiveProfileDatabaseBinding(f.path, f.admission.profileBinding), /profile-database-identity-changed/u); }
-  finally { observer.mockRestore(); f.close(); }
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => assertLiveProfileDatabaseBinding(f.path, f.admission.profileBinding), /profile-database-identity-changed/u);
+    assert.equal(replaced, true);
+  } finally { observer.mockRestore(); syncBuiltinESMExports(); f.close(); }
 });
 
 it.each(["symlink", "hardlink", "public", "journal"] as const)("refuses unsafe live source companions: %s", kind => {

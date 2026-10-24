@@ -22,6 +22,8 @@ import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type Director
 import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, captureCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import type { ProfileRegistryDocument, ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { HostConfigFacts } from "../../../models/config/host-display.js";
 
 export class ProfileStorageRelocationUnsupportedError extends Error {
   readonly code = "PROFILE_STORAGE_RELOCATION_UNSUPPORTED";
@@ -126,7 +128,10 @@ export type RuntimeRelocationOperation = Readonly<{
 
 type AdmissionScope = "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "stopped-projection" | "synthetic-stopped-staged"
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
-  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile" | "profile-settlement" | "profile-repair-inventory" | "profile-pending-logout-inventory";
+  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-repair-inventory" | "profile-pending-logout-inventory";
+
+type ReadyProfileUpgrade = Readonly<{ sourcePath: string; processLockRoot: string; sourceSchemaVersion: 7 | 8; copyPath?: string;
+  qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
 export class RuntimeAdmission {
@@ -141,12 +146,13 @@ export class RuntimeAdmission {
   readonly #profileBinding: ProfileDatabaseBinding | undefined;
   readonly #profileParent: RuntimeAdmission | undefined;
   readonly #pendingLogout: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }> | undefined;
+  readonly #readyUpgrade: ReadyProfileUpgrade | undefined;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
     authorityDatabasePaths: readonly string[],
     scope: AdmissionScope,
     mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator, binding?: ProfileDatabaseBinding, profileParent?: RuntimeAdmission,
-    pendingLogout?: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }>) {
+    pendingLogout?: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }>, readyUpgrade?: ReadyProfileUpgrade) {
     if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
     this.#authority = authority;
     this.#stateRoot = stateRoot;
@@ -156,6 +162,7 @@ export class RuntimeAdmission {
     this.#mode = mode;
     this.#profileParent = profileParent;
     this.#pendingLogout = pendingLogout;
+    this.#readyUpgrade = readyUpgrade;
     this.#profileBinding = binding === undefined ? undefined : Object.freeze({ ...binding });
     this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
     registerRuntimeAdmission(this);
@@ -175,13 +182,135 @@ export class RuntimeAdmission {
     this.assertLive();
     if (this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade") throw new Error("profile-initialization-authority-required");
   }
-  forStoppedProfileUpgrade(): RuntimeAdmission {
+  forStoppedProfileUpgrade(): RuntimeAdmission;
+  forStoppedProfileUpgrade(claim: RegisteredProfileStorageClaim, restore: RestoreAdmissionHandle, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission>;
+  forStoppedProfileUpgrade(claim?: RegisteredProfileStorageClaim, restore?: RestoreAdmissionHandle, clock?: Clock, hostFacts?: HostConfigFacts): RuntimeAdmission | Promise<RuntimeAdmission> {
+    if (claim !== undefined || restore !== undefined) return this.#readyStoppedProfileUpgrade(claim, restore, clock, hostFacts);
     this.assertExclusive();
     this.assertProfileInitialization();
     const database = join(this.#stateRoot, "state.db");
     if (readProfileDatabaseBinding(database).state !== "unbound") throw new Error("profile-stopped-conversion-not-required");
     return new RuntimeAdmission(issuanceToken, { assertHeld: () => this.assertLive(), release() {} }, this.#stateRoot, this.#artifactRoot,
       [database], "profile-upgrade", this.#mode, this.#locator, this.profileBinding);
+  }
+  async #readyStoppedProfileUpgrade(claim: RegisteredProfileStorageClaim | undefined, restore: RestoreAdmissionHandle | undefined,
+    clock: Clock | undefined, hostFacts: HostConfigFacts | undefined): Promise<RuntimeAdmission> {
+    const lease = this.#exclusiveInstallationLease();
+    if (claim === undefined || restore === undefined || clock === undefined || hostFacts === undefined || claim.phase !== "runtime") throw new Error("profile-stopped-upgrade-runtime-claim-required");
+    requireRegisteredProfileStorageClaim(claim, this, "issue");
+    const context = lease.readInstallationContext();
+    const processLockRoot = resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot);
+    lease.assertFixedProcessLockRoot(context.workspace, processLockRoot);
+    assertRuntimeRestoreAdmission(restore, processLockRoot);
+    const root = join(this.#stateRoot, "profiles", claim.profileId), artifacts = join(root, "artifacts");
+    const path = join(root, "state.db");
+    const binding = { installationId: this.locator.installationId, profileId: claim.profileId };
+    const observed = readProfileDatabaseBinding(path);
+    if (observed.state !== "bound") throw new Error("profile-stopped-upgrade-bound-required");
+    assertCanonicalProfileBinding(path, binding);
+    const ancestry = new Map<string, DirectoryIdentity>();
+    noSymlinkAncestry(root, ancestry);
+    noSymlinkAncestry(artifacts, ancestry);
+    const physical = lstatSync(path);
+    const capture = lease.captureStoppedProfileUpgrade(claim.profileId);
+    const qualification: ReadyProfileUpgrade["qualification"] = { current: { kind: "inspection" } };
+    const assertHeld = () => {
+      if (qualification.current.kind === "revoked") throw new Error("profile-stopped-upgrade-source-changed");
+      try {
+        this.assertLive();
+        lease.assertFixedProcessLockRoot(context.workspace, processLockRoot);
+        assertRuntimeRestoreAdmission(restore, processLockRoot);
+        requireRegisteredProfileStorageClaim(claim, this, "issue");
+        capture.assertHeld();
+        if (!noSymlinkAncestry(root, ancestry) || !noSymlinkAncestry(artifacts, ancestry)) throw new Error("profile-stopped-upgrade-root-changed");
+        const current = lstatSync(path, { throwIfNoEntry: false });
+        if (current === undefined || !current.isFile() || current.isSymbolicLink() || current.nlink !== 1
+          || current.dev !== physical.dev || current.ino !== physical.ino || current.uid !== physical.uid || current.mode !== physical.mode) throw new Error("profile-stopped-upgrade-source-changed");
+      } catch (error) { qualification.current = { kind: "revoked" }; throw error; }
+    };
+    assertHeld();
+    const admission = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release() {} },
+      root, artifacts, [path], "profile-ready-upgrade", "exclusive", this.#locator, binding, this, undefined,
+      { sourcePath: path, processLockRoot, sourceSchemaVersion: observed.schemaVersion, qualification });
+    const assertUnpublishedSource = () => {
+      assertHeld();
+      const current = lstatSync(path);
+      if (current.size !== physical.size || current.mtimeMs !== physical.mtimeMs || current.ctimeMs !== physical.ctimeMs) throw new Error("profile-stopped-upgrade-source-changed");
+    };
+    try {
+      const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+      assertUnpublishedSource();
+      const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
+      const { readStoppedProfileUpgradeInventory } = await import("../maintenance/profile-inventory.js");
+      assertUnpublishedSource();
+      readStoppedProfileUpgradeInventory({ machine: this, admission, clock, hostFacts });
+      const after = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
+      if (before.schemaVersion !== observed.schemaVersion || before.authorityGeneration !== after.authorityGeneration
+        || before.authorityContentFingerprint !== after.authorityContentFingerprint) throw new Error("profile-stopped-upgrade-source-changed");
+      qualification.current = { kind: "qualified", sourceFingerprint: before.authorityContentFingerprint };
+      assertHeld();
+      return admission;
+    } catch (error) { admission.release(); throw error; }
+  }
+  assertStoppedProfileUpgrade(path: string, processLockRoot: string): void {
+    if (this.#readyUpgrade !== undefined) {
+      this.assertLive();
+      if (this.#readyUpgrade.copyPath !== undefined || path !== this.#readyUpgrade.sourcePath
+        || processLockRoot !== this.#readyUpgrade.processLockRoot) throw new Error("profile-stopped-upgrade-source-refused");
+      return;
+    }
+    this.assertExclusive();
+    this.assertAuthorityDatabase(path);
+  }
+  assertReadyStoppedProfileUpgradeOwner(machine: RuntimeAdmission): void {
+    this.assertLive();
+    if (this.#readyUpgrade === undefined || this.#readyUpgrade.copyPath !== undefined || this.#profileParent !== machine) throw new Error("profile-stopped-upgrade-owner-required");
+    this.assertStoppedProfileUpgrade(this.#readyUpgrade.sourcePath, this.#readyUpgrade.processLockRoot);
+  }
+  assertProfileMigration(path: string, sourceVersion: number, sourceFingerprint?: string): "ready" | "setup" {
+    if (this.#readyUpgrade !== undefined) {
+      this.assertStoppedProfileUpgrade(path, this.#readyUpgrade.processLockRoot);
+      if (this.#readyUpgrade.sourceSchemaVersion !== 7 || sourceVersion !== 7) throw new Error("profile-stopped-upgrade-version-refused");
+      const proof = this.#readyUpgrade.qualification.current;
+      if (proof.kind !== "qualified" || sourceFingerprint !== undefined && sourceFingerprint !== proof.sourceFingerprint) {
+        this.#readyUpgrade.qualification.current = { kind: "revoked" };
+        throw new Error("profile-stopped-upgrade-source-changed");
+      }
+      return "ready";
+    }
+    this.assertProfileInitialization();
+    return "setup";
+  }
+  assertAuthorityBackupWrite(path: string): void {
+    if (this.#readyUpgrade !== undefined) {
+      this.assertLive();
+      const directory = join(this.#stateRoot, "backups", "authority");
+      if (this.#readyUpgrade.copyPath !== undefined || this.#readyUpgrade.qualification.current.kind !== "qualified"
+        || !isAbsolute(path) || resolve(path) !== path || path !== directory && (dirname(path) !== directory
+          || !/^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite(?:\.manifest\.json)?)$/u.test(path.slice(directory.length + 1)))) throw new Error("profile-stopped-upgrade-backup-refused");
+      this.assertStateRoot(path);
+      return;
+    }
+    this.assertWritable();
+  }
+  assertAuthorityBackupSource(path: string, sourceFingerprint: string): void {
+    this.assertReadOnlyAuthorityDatabase(path);
+    if (this.#readyUpgrade !== undefined) {
+      const proof = this.#readyUpgrade.qualification.current;
+      if (this.#readyUpgrade.copyPath !== undefined || path !== this.#readyUpgrade.sourcePath || proof.kind !== "qualified"
+        || proof.sourceFingerprint !== sourceFingerprint) {
+        this.#readyUpgrade.qualification.current = { kind: "revoked" };
+        throw new Error("profile-stopped-upgrade-source-changed");
+      }
+    }
+  }
+  profileMaintenanceSchemaVersion(): 7 | 8 {
+    this.assertLive();
+    if (this.#readyUpgrade === undefined) return 8;
+    const observed = readProfileDatabaseBinding(this.#readyUpgrade.copyPath ?? this.#readyUpgrade.sourcePath);
+    if (observed.state !== "bound" || observed.binding.installationId !== this.profileBinding.installationId
+      || observed.binding.profileId !== this.profileBinding.profileId) throw new Error("profile-stopped-upgrade-binding-changed");
+    return observed.schemaVersion;
   }
   assertProfileRuntime(): void {
     this.assertLive();
@@ -438,6 +567,7 @@ export class RuntimeAdmission {
   }
   assertCredentialRead(): void {
     this.assertLive();
+    if (this.#readyUpgrade !== undefined) throw new Error("profile-stopped-upgrade-credential-read-refused");
     if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") throw new Error("profile-settlement-credential-read-refused");
     if (this.#scope === "profile") this.assertProfileRuntime();
   }
@@ -599,11 +729,13 @@ export class RuntimeAdmission {
   }
   assertExclusive(): void {
     this.assertLive();
+    if (this.#readyUpgrade !== undefined) throw new Error("profile-stopped-upgrade-exclusive-refused");
     if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     if (this.#mode !== "exclusive" && this.#mode !== "synthetic") throw new Error("runtime-admission: exclusive offline admission required");
   }
   assertWritable(): void {
     this.assertLive();
+    if (this.#readyUpgrade !== undefined) throw new Error("profile-stopped-upgrade-runtime-refused");
     if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") throw new Error("profile-settlement-runtime-refused");
     if (this.#scope === "profile") this.assertProfileRuntime();
     if (this.#scope === "profile-initialization") assertCanonicalProfileBinding(join(this.#stateRoot, "state.db"), this.profileBinding);
@@ -623,6 +755,12 @@ export class RuntimeAdmission {
   }
   assertReadOnlyAuthorityDatabase(path: string): void {
     this.assertLive();
+    if (this.#readyUpgrade !== undefined) {
+      if (path === ":memory:" || this.#readyUpgrade.copyPath !== undefined && path !== this.#readyUpgrade.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
+      if (this.#readyUpgrade.copyPath === undefined && path !== this.#readyUpgrade.sourcePath
+        && (dirname(path) !== join(this.#stateRoot, "backups", "authority")
+          || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite)$/u.test(path.slice(dirname(path).length + 1)))) throw new Error("profile-stopped-upgrade-path-refused");
+    }
     if (this.#scope === "profile-pending-logout-inventory") {
       if (path === ":memory:" || this.#pendingLogout?.copyPath !== undefined && path !== this.#pendingLogout.copyPath) throw new Error("profile-pending-logout-path-refused");
     }
@@ -646,6 +784,9 @@ export class RuntimeAdmission {
   }
   assertStateRoot(path: string): void {
     this.assertLive();
+    if (this.#readyUpgrade !== undefined) {
+      if (this.#readyUpgrade.copyPath !== undefined && path !== this.#readyUpgrade.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
+    }
     if (this.#pendingLogout?.copyPath !== undefined && path !== this.#pendingLogout.copyPath) throw new Error("profile-pending-logout-path-refused");
     if (this.#scope === "profile-settlement" && resolve(path) !== this.#stateRoot && !within(join(this.#stateRoot, "credentials"), resolve(path))) throw new Error("profile-settlement-path-refused");
     if (this.#scope === "profile-upgrade" && resolve(path) !== this.#stateRoot && resolve(path) !== join(this.#stateRoot, "state.db")
@@ -853,6 +994,10 @@ export class RuntimeAdmission {
 
   verifiedReadOnlyCopy(path: string, expectedSha256: string): RuntimeAdmission {
     this.assertLive();
+    if (this.#readyUpgrade !== undefined && (this.#readyUpgrade.copyPath !== undefined
+      || !isAbsolute(path) || resolve(path) !== path
+      || dirname(resolve(path)) !== join(this.#stateRoot, "backups", "authority")
+      || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite)$/u.test(resolve(path).slice(dirname(resolve(path)).length + 1)))) throw new Error("profile-stopped-upgrade-copy-refused");
     if (this.#pendingLogout?.copyPath !== undefined) throw new Error("profile-pending-logout-copy-delegation-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot delegate copy authority");
     if (this.#scope === "relocation-source-verification") {
@@ -900,10 +1045,13 @@ export class RuntimeAdmission {
     verifyBytes();
     return new RuntimeAdmission(issuanceToken, { assertHeld: verifyBytes, release() {} },
       this.#stateRoot, this.#artifactRoot, [checked],
-      this.#scope === "profile-pending-logout-inventory" ? "profile-pending-logout-inventory"
+      this.#readyUpgrade !== undefined ? "profile-ready-upgrade" : this.#scope === "profile-pending-logout-inventory" ? "profile-pending-logout-inventory"
         : this.#scope === "synthetic" || this.#scope === "synthetic-verified-copy" ? "synthetic-verified-copy" : "verified-copy", this.#mode,
-      this.#pendingLogout === undefined ? undefined : this.#locator, this.#pendingLogout === undefined ? undefined : this.#profileBinding,
-      this.#pendingLogout === undefined ? undefined : this.#profileParent, this.#pendingLogout === undefined ? undefined : { ...this.#pendingLogout, copyPath: checked });
+      this.#pendingLogout === undefined && this.#readyUpgrade === undefined ? undefined : this.#locator,
+      this.#pendingLogout === undefined && this.#readyUpgrade === undefined ? undefined : this.#profileBinding,
+      this.#pendingLogout === undefined && this.#readyUpgrade === undefined ? undefined : this.#profileParent,
+      this.#pendingLogout === undefined ? undefined : { ...this.#pendingLogout, copyPath: checked },
+      this.#readyUpgrade === undefined ? undefined : { ...this.#readyUpgrade, copyPath: checked });
   }
 
   resumeProfileAuthorityRestore(operationId: string, restore: RestoreAdmissionHandle): RuntimeAdmission {
