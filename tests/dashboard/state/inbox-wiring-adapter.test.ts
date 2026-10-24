@@ -249,5 +249,5 @@ it("requires exact collection readback membership and one version advance for ev
   }
   h.setRows([row("storage-degraded", { revision: 2, readState: "read", state: "read" })]);
   assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "matched");
-  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, { ...reply, affectedTargets: [] })).state, "mismatch");
+  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, CommandResultSchema.parse({ ...reply, affectedTargets: [] }))).state, "mismatch");
 });
