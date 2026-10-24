@@ -251,3 +251,11 @@ or coverage floor changes merely to make wiring pass.
 [Data intake and Edit Data](data-intake-and-edit-data.md), [write safety](write-safety.md),
 [execution and sessions](execution-and-sessions.md), and [clock, configuration, and secrets](clock-config-secrets.md)
 own their backend policies.
+
+## Authenticated local storage upgrade handoff
+
+The existing profile sign-in endpoint reports `PROFILE_UPGRADE_STARTING` through its ordinary refused/code presentation for an authenticated READY native7 profile. It issues no session cookie. The HTTP owner proves both request-body completion and actual response finish/transfer settlement before the whole-app owner fences and drains its own public/selected transport and profile resources. The handoff never closes a listener from inside its still-admitted initiating transfer.
+
+After proved old profile/server/shared-admission closure, the same whole-app owner reacquires exclusive installation custody, once-consumes and revalidates the authenticated identity witness, then invokes the existing backed-up READY upgrade service with a fresh registered claim. Strict readback and exclusive release precede a new shared public shell on the same loopback port. The operator signs in afresh afterward. No second endpoint, UI component, executor, startup migration or server-lock exemption exists.
+
+The long-lived CLI awaits the actual replacement owner's failure/stop lifetime; bootstrap does not release its stale original admission after application ownership has transferred. Ordinary stop fences synchronously and retains its cached outcome. Transfer, closure, exclusive acquisition, revalidation, upgrade or restart failure remains terminal and visible, retaining every owner whose closure is unproved; no automatic retry follows uncertain mutation.

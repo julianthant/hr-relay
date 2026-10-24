@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json";
 import { createAssistantService, type AssistantModelPolicy } from "../../../assistant/service.js";
 import { assistantSurfaceCoverage, createProductionAssistantTools } from "../../../assistant/tools.js";
@@ -9,9 +10,11 @@ import { buildExtractionInstruction } from "../../../../models/ocr/instruction.j
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
 import { failureStatus } from "../../../transports/http/routes/failure-status.js";
 import { randomUUID } from "node:crypto";
+import { acquireSharedRuntimeAdmission, acquireExclusiveRuntimeAdmission, ProfileUpgradeSourceRefusalError } from "../../../storage/admission/admission.js";
+import { upgradeReadyProfileStorage } from "../../../storage/maintenance/upgrade.js";
 import { Hono } from "hono";
 import { ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema } from "../../../../models/profiles/public-profile.js";
-import { ProfileSessionRefusedError } from "../../../profiles/profile-session.js";
+import { ProfileSessionRefusedError, consumeAuthenticatedProfileUpgrade, type AuthenticatedProfileUpgrade } from "../../../profiles/profile-session.js";
 import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
 import { staticBundleHandler } from "../../../transports/http/static-bundle.js";
 import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
@@ -123,7 +126,7 @@ export interface DashboardComposeInput {
   readonly env?: NodeJS.ProcessEnv;
   readonly clock?: Clock;
   readonly ids?: IdFactory;
-  /** Where package.json and the state root resolve from. */
+  /** Package and frontend source root; storage roots come from installation admission. */
   readonly repoRoot?: string;
   // `vite-dev` delegates frontend bytes to Vite; `built-bundle` serves the validated local bundle.
   readonly frontend?: DashboardFrontendMode;
@@ -436,6 +439,10 @@ async function composeDashboardRuntimeStartup(
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
   const machineAdmission = requireRuntimeAdmission(input.admission);
+  const installation = machineAdmission.readInstallationContext();
+  if (installation === undefined) throw new Error("profile-application-installation-required");
+  const processLockRoot = join(installation.workspace, input.isolation.processLockRoot);
+  machineAdmission.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
   const profile = input.profile;
   if (profile === undefined) throw new Error("PROFILE_AUTHORITY_UNAVAILABLE");
   profile.runtime.assertMachineOwner(machineAdmission);
@@ -459,7 +466,7 @@ async function composeDashboardRuntimeStartup(
   const hostFacts = hostConfigFacts(env);
   // Take the server role lock before opening authority; it fences competing dashboard handles.
   const processLock = input.applicationTransport === undefined ? acquireRuntimeProcessLock(
-    { processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "server", pid: process.pid },
+    { processLockRoot, name: "server", pid: process.pid },
     clock,
   ) : undefined;
   let databaseClosed = true, transportClosed = true;
@@ -592,7 +599,7 @@ async function composeDashboardRuntimeStartup(
       ? {}
       : { frontendOwnerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] }),
     clock,
-    processLockRoot: join(repoRoot, input.isolation.processLockRoot),
+    processLockRoot,
     authorityHealth: new AuthorityHealthPreflightRunner(admission, {
       stateRootTrustAnchor: resolve(stateRoot, ".."),
       stateRoot,
@@ -685,7 +692,7 @@ async function composeDashboardRuntimeStartup(
   profile.runtime.beginSupervisorConstruction(profile.token);
   const workerControl = composeWorkerProcessControl({
     profileRoot: resolved.config.paths.browserProfileRoot,
-    processLockRoot: join(repoRoot, input.isolation.processLockRoot),
+    processLockRoot,
     database,
     clock,
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
@@ -940,18 +947,104 @@ async function composeDashboardRuntimeStartup(
 }
 
 
-export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; stop(): Promise<void> }>> {
+export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; failure: Promise<never>; stop(): Promise<void> }>> {
+  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
+  assertNoMigratedEnvironmentKeys(env);
+  const initial = requireRuntimeAdmission(input.admission);
+  const context = initial.readInstallationContext();
+  if (context === undefined) throw new ProfileSessionRefusedError("PROFILE_UPGRADE_UNAVAILABLE");
+  const clock = input.clock ?? systemClock;
+  let current: Awaited<ReturnType<typeof composeDashboardApplicationInstance>> | undefined;
+  let handoff: Promise<void> | undefined;
+  let exclusiveOwner: RuntimeAdmission | undefined;
+  let stopping: Promise<void> | undefined;
+  let shutdownRequested = false;
+  let terminalFailure: RuntimeCustodyUncertainError | undefined;
+  let fail: (error: RuntimeCustodyUncertainError) => void = () => { throw new Error("profile-upgrade-failure-owner-unavailable"); };
+  const failure = new Promise<never>((_resolve, reject) => { fail = reject; });
+  void failure.catch(() => undefined);
+  const schedule = (authorization: AuthenticatedProfileUpgrade, committed: Promise<void>): void => {
+    if (handoff !== undefined || shutdownRequested) throw new ProfileSessionRefusedError("PROFILE_UPGRADE_UNAVAILABLE");
+    handoff = (async () => {
+      await committed;
+      if (current === undefined) throw new Error("profile-upgrade-application-owner-unavailable");
+      const port = current.port, facts = current.hostFacts;
+      await current.stop();
+      if (shutdownRequested) return;
+      const exclusive = acquireExclusiveRuntimeAdmission(context.workspace);
+      exclusiveOwner = exclusive;
+      try {
+        const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
+        const report = await upgradeReadyProfileStorage(exclusive, claim, { plan: false, hostFacts: facts }, clock);
+        if (report.state !== "upgraded" || report.fromSchemaVersion !== 7 || report.toSchemaVersion !== 8) throw new Error("profile-upgrade-readback-unproved");
+      } catch (error) {
+        if (!(error instanceof AuthoritySourceClosureUnprovedError)) {
+          try { exclusive.release(); exclusiveOwner = undefined; }
+          catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
+        }
+        throw error;
+      }
+      exclusive.release();
+      exclusiveOwner = undefined;
+      if (shutdownRequested) return;
+      const shared = acquireSharedRuntimeAdmission(context.workspace);
+      try { current = await composeDashboardApplicationInstance({ ...input, admission: shared, env }, schedule, port); }
+      catch (error) {
+        if (error instanceof RuntimeCustodyUncertainError) throw error;
+        try { shared.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
+        throw error;
+      }
+    })().catch((error: unknown) => {
+      terminalFailure = new RuntimeCustodyUncertainError([error]);
+      fail(terminalFailure);
+    });
+    const operation = handoff;
+    void operation.then(() => { if (terminalFailure === undefined && handoff === operation) handoff = undefined; });
+  };
+  current = await composeDashboardApplicationInstance({ ...input, env }, schedule);
+  const port = current.port;
+  return Object.freeze({ port, failure, stop(): Promise<void> {
+    if (stopping !== undefined) return stopping;
+    shutdownRequested = true;
+    const owner = current;
+    const immediateClosure = owner?.stop();
+    void immediateClosure?.catch(() => undefined);
+    stopping = (async () => {
+      await handoff;
+      const failures: unknown[] = terminalFailure === undefined ? [] : [terminalFailure];
+      if (exclusiveOwner !== undefined && terminalFailure === undefined) {
+        failures.push(new RuntimeCustodyUncertainError([new Error("profile-upgrade-exclusive-custody-retained")]));
+      }
+      try { await immediateClosure; } catch (error) { if (!failures.includes(error)) failures.push(error); }
+      if (current !== owner) {
+        try { await current?.stop(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) throw new RuntimeCustodyUncertainError(failures);
+    })();
+    return stopping;
+  } });
+}
+
+async function composeDashboardApplicationInstance(input: DashboardComposeInput,
+  scheduleUpgrade: (authorization: AuthenticatedProfileUpgrade, committed: Promise<void>) => void,
+  bindPort?: number): Promise<Readonly<{ port: number; hostFacts: ReturnType<typeof hostConfigFacts>; stop(): Promise<void> }>> {
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const machine = requireRuntimeAdmission(input.admission), clock = input.clock ?? systemClock;
+  const installation = machine.readInstallationContext();
+  if (installation === undefined) throw new Error("profile-application-installation-required");
+  const processLockRoot = join(installation.workspace, input.isolation.processLockRoot);
+  machine.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
   const repoRoot = input.repoRoot ?? process.cwd();
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
   const bundle = frontend === "built-bundle" ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript) : undefined;
-  const processLock = acquireRuntimeProcessLock({ processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "server", pid: process.pid }, clock);
-  const profile = (() => {
-    try { return composeProfileRuntime({ admission: machine, clock, hostFacts: hostConfigFacts(env),
-      processLockRoot: join(repoRoot, input.isolation.processLockRoot) }); }
-    catch (error) {
+  const processLock = acquireRuntimeProcessLock({ processLockRoot, name: "server", pid: process.pid }, clock);
+  const { profile, facts } = (() => {
+    try {
+      const facts = hostConfigFacts(env);
+      return { profile: composeProfileRuntime({ admission: machine, clock, hostFacts: facts, processLockRoot }), facts };
+    } catch (error) {
       try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       throw error;
     }
@@ -961,9 +1054,10 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   let selection: Selection | undefined;
   let pending: { cookie: string; operationId: string; profileId: string; runtime: DashboardRuntime } | undefined;
   let transitioning = false;
+  let upgradePending = false;
   const retainedFailures: unknown[] = [];
   const cookieName = "relay-profile-session";
-  let registeredPort: number = input.backendPortOverride ?? input.isolation.backendPort;
+  let registeredPort: number = bindPort ?? input.backendPortOverride ?? input.isolation.backendPort;
   const cookieOf = (request: Request): string | undefined => {
     const cookies = request.headers.get("cookie")?.split(";").map(value => value.trim()).filter(value => value.startsWith(`${cookieName}=`));
     if (cookies?.length !== 1) return undefined;
@@ -988,7 +1082,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     return (path.startsWith("/api/") && !path.startsWith("/api/v1/profile/")) || path.startsWith("/events") || path.startsWith("/artifacts");
   };
   const publicFailure = (error: Error) => {
-    if (error instanceof ProfileSessionRefusedError) return { status: 409 as const,
+    if (error instanceof ProfileSessionRefusedError || error instanceof ProfileUpgradeSourceRefusalError) return { status: 409 as const,
       body: PublicProfileStateSchema.parse({ state: "refused", code: error.code }) };
     const mapped = failureStatus(error);
     if (mapped.status === 500) retainedFailures.push(error);
@@ -1025,6 +1119,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       })();
       if (result.state === "wiped") return { state: "signed-out" as const };
       if (result.state === "cancelling" && result.operationId !== undefined) return { state: "cancelling" as const, operationId: result.operationId };
+      if (result.state === "refused" && "upgrade" in result) { upgradePending = true; return result; }
       if (result.state !== "active") return { state: "refused" as const, code: result.code };
       const guarded = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
       guarded.use("*", async (c, next) => {
@@ -1043,12 +1138,15 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
       if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
       return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
-    } finally { transitioning = false; }
+    } finally { if (!upgradePending) transitioning = false; }
   };
   for (const [path, signup] of [["sign-in", false], ["sign-up", true]] as const) app.post(`/api/v1/profile/${path}`, async c => {
-    const result = PublicProfileStateSchema.parse(await activate(c.req.raw, signup));
+    const activated = await activate(c.req.raw, signup);
+    const result = PublicProfileStateSchema.parse(activated.state === "refused" ? { state: activated.state, code: activated.code } : activated);
     if (result.state === "active" && selection !== undefined) c.header("set-cookie", `${cookieName}=${selection.cookie}; HttpOnly; SameSite=Strict; Path=/`);
-    return c.json(result);
+    const response = c.json(result);
+    if ("upgrade" in activated) scheduleUpgrade(activated.upgrade, listener.committedResponse(response));
+    return response;
   });
   app.post("/api/v1/profile/logout", async c => {
     const active = selection === undefined ? undefined : current(c.req.raw);
@@ -1077,7 +1175,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   if (bundle !== undefined) app.use("*", staticBundleHandler(bundle));
   app.notFound(c => c.json(PublicProfileStateSchema.parse({ state: "refused", code: "PROFILE_SESSION_STALE" }), 401));
   const listener = await (async () => {
-    try { return await startDashboardHttpServer({ app, port: input.backendPortOverride ?? input.isolation.backendPort }); }
+    try { return await startDashboardHttpServer({ app, port: bindPort ?? input.backendPortOverride ?? input.isolation.backendPort }); }
     catch (error) {
       try { await profile.close(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
@@ -1086,7 +1184,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   })();
   registeredPort = listener.port;
   let stopping: Promise<void> | undefined;
-  return Object.freeze({ port: listener.port, stop(): Promise<void> {
+  return Object.freeze({ port: listener.port, hostFacts: facts, stop(): Promise<void> {
     if (stopping !== undefined) return stopping;
     transitioning = true;
     const failures: unknown[] = [];

@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { z } from "zod";
 import { DatabaseSync } from "node:sqlite";
 import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
@@ -8,6 +9,7 @@ import { existsSync, statSync, lstatSync, mkdtempSync, rmSync, type BigIntStats 
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+
 
 function identity(stats: BigIntStats): string {
   return [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs].join(":");
@@ -96,12 +98,16 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
   const path = join(directory, "authority.sqlite");
   const sources: Array<{ path: string; suffix: string; stats: BigIntStats | undefined }> = [];
   let disposed = false;
+  let disposalFailure: AuthoritySourceClosureUnprovedError | undefined;
   const dispose = () => {
+    if (disposalFailure !== undefined) throw disposalFailure;
     if (disposed) return;
+    try { rmSync(directory, { recursive: true }); }
+    catch (error) { disposalFailure = retainAuthoritySourceClosure([error], { snapshot }); throw disposalFailure; }
     disposed = true;
-    rmSync(directory, { recursive: true });
   };
   const assertUnchanged = () => {
+    if (disposalFailure !== undefined) throw disposalFailure;
     if (disposed) throw new Error("authority-readonly-snapshot-closed");
     for (const source of sources) {
       const current = inspect(source.path);
@@ -111,6 +117,7 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
       }
     }
   };
+  const snapshot = Object.freeze({ path, assertUnchanged, dispose });
   try {
     for (const suffix of ["", "-wal", "-shm", "-journal"]) {
       const source: typeof sources[number] = { path: `${sourcePath}${suffix}`, suffix,
@@ -138,9 +145,10 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
     }
     if (copy.stdout !== "copied") throw copyFailed();
     assertUnchanged();
-    return Object.freeze({ path, assertUnchanged, dispose });
+    return snapshot;
   } catch (error) {
-    dispose();
+    try { dispose(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { snapshot }); }
     throw error;
   }
 }
@@ -167,9 +175,29 @@ export function withAuthorityDatabaseReadOnly<Result>(admission:RuntimeAdmission
  requireDatabaseSourcePath(path);
  if(!existsSync(path)||statSync(path).size===0)throw new Error("authority-backup-source-missing");
  const snapshot=createReadonlyAuthoritySnapshot(path);
- let database:DatabaseSync;
- try {database=openReadOnlyDatabase(snapshot.path,busyTimeoutMs);} catch(error){snapshot.dispose();throw error;}
- let open=false;
- try { database.exec("PRAGMA query_only=ON; BEGIN");open=true;const result=read(database);database.exec("COMMIT");open=false;return result; }
- finally {try{if(open)database.exec("ROLLBACK");}finally{try{database.close();}finally{try{snapshot.assertUnchanged();}finally{snapshot.dispose();}}} }
+ let database: DatabaseSync | undefined;
+ let result: { value: Result } | undefined;
+ const failures: unknown[] = [];
+ let transactionOpen = false;
+ try {
+   database = openReadOnlyDatabase(snapshot.path, busyTimeoutMs);
+   database.exec("PRAGMA query_only=ON; BEGIN"); transactionOpen = true;
+   result = { value: read(database) };
+   database.exec("COMMIT"); transactionOpen = false;
+ } catch (error) { failures.push(error); }
+ if (database !== undefined) {
+   if (transactionOpen) {
+     try { database.exec("ROLLBACK"); } catch (error) { failures.push(error); }
+   }
+   try { database.close(); }
+   catch (error) { throw retainAuthoritySourceClosure([...failures, error], { snapshot, database }); }
+ }
+ try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
+ try { snapshot.dispose(); }
+ catch (error) { throw retainAuthoritySourceClosure([...failures, error], { snapshot }); }
+ if (failures.length === 1) throw failures[0];
+ if (failures.some(error => error instanceof AuthoritySourceClosureUnprovedError)) throw retainAuthoritySourceClosure(failures, {});
+ if (failures.length > 1) throw new AggregateError(failures, "authority-read-only-failed", { cause: failures[0] });
+ if (result === undefined) throw new Error("authority-read-only-result-missing");
+ return result.value;
 }

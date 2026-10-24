@@ -1,10 +1,11 @@
+import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { CredentialErasureHeadSchema, erasureRequestIdentity } from "../configuration/credential-store.js";
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import type { CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness, CommittedCredentialInitialization, CommittedCredentialKeyStage, CredentialKeyStagePublication } from "../configuration/credential-store.js";
 import { registerRuntimeAdmission } from "./admission-identity.js";
 import { z } from "zod";
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync, type BigIntStats } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
@@ -33,6 +34,11 @@ export class ProfileStorageRelocationUnsupportedError extends Error {
 export class ProfileBrowserRootRefusalError extends Error {
   readonly code = "PROFILE_BROWSER_ROOT_REFUSED";
   constructor() { super(ERROR_CATALOG.PROFILE_BROWSER_ROOT_REFUSED.text); this.name = "ProfileBrowserRootRefusalError"; }
+}
+
+export class ProfileUpgradeSourceRefusalError extends Error {
+  readonly code = "PROFILE_UPGRADE_UNAVAILABLE";
+  constructor() { super(ERROR_CATALOG.PROFILE_UPGRADE_UNAVAILABLE.text); this.name = "ProfileUpgradeSourceRefusalError"; }
 }
 
 export interface RegisteredProfileStorageClaim {
@@ -180,6 +186,72 @@ export class RuntimeAdmission {
   assertProfileInitialization(): void {
     this.assertLive();
     if (this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade") throw new Error("profile-initialization-authority-required");
+  }
+  assertProfileUpgradeCredentialSource(claim: RegisteredProfileStorageClaim): void {
+    this.assertLive();
+    if (this.#scope !== "installation" || (this.#mode !== "shared" && this.#mode !== "exclusive")) throw new Error("profile-upgrade-handoff-installation-required");
+    requireRegisteredProfileStorageClaim(claim, this, "issue");
+    if (claim.phase !== "runtime") throw new Error("profile-upgrade-handoff-runtime-claim-required");
+    const observed = readProfileDatabaseBinding(join(this.#stateRoot, "profiles", claim.profileId, "state.db"));
+    if (observed.state !== "bound" || observed.schemaVersion !== 7 || observed.binding.profileId !== claim.profileId
+      || observed.binding.installationId !== this.locator.installationId) throw new Error("profile-upgrade-handoff-binding-refused");
+    const lease = this.#authority as InstallationLease;
+    assertInstallationLease(lease);
+    if (!lease.assertProfileCredentialKeyAnchor(claim.profileId)) throw new Error("profile-upgrade-handoff-key-required");
+  }
+  captureProfileUpgradeHandoff(claim: RegisteredProfileStorageClaim): Readonly<{ consume(next: RuntimeAdmission): RegisteredProfileStorageClaim }> | undefined {
+    this.assertLive();
+    if (this.#scope !== "installation") throw new Error("profile-upgrade-handoff-installation-required");
+    requireRegisteredProfileStorageClaim(claim, this, "issue");
+    const profileId = claim.profileId;
+    const path = join(this.#stateRoot, "profiles", profileId, "state.db");
+    const ancestry = new Map<string, DirectoryIdentity>();
+    noSymlinkAncestry(dirname(path), ancestry);
+    const observed = readProfileDatabaseBinding(path);
+    if (observed.schemaVersion !== 7) return undefined;
+    if (this.#mode !== "shared") throw new Error("profile-upgrade-handoff-shared-required");
+    if (claim.phase !== "runtime") throw new ProfileUpgradeSourceRefusalError();
+    if (observed.state !== "bound" || observed.binding.installationId !== this.locator.installationId
+      || observed.binding.profileId !== claim.profileId) throw new Error("profile-upgrade-handoff-binding-refused");
+    const lease = this.#authority as InstallationLease;
+    assertInstallationLease(lease);
+    const capture = lease.captureProfileUpgradeHandoff(profileId);
+    const source = () => ["", "-wal", "-shm", "-journal"].map(suffix => {
+      const filePath = path + suffix;
+      const file = lstatSync(filePath, { bigint: true, throwIfNoEntry: false });
+      if (file === undefined) return { suffix, absent: true };
+      if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1n || (file.mode & 0o022n) !== 0n
+        || process.getuid !== undefined && file.uid !== BigInt(process.getuid())) throw new Error("profile-upgrade-handoff-source-unsafe");
+      const identity = (value: BigIntStats) => [value.dev, value.ino, value.size, value.mode, value.uid, value.nlink, value.mtimeNs, value.ctimeNs].join(":");
+      const expected = identity(file);
+      const descriptor = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+      let result: { suffix: string; identity: string; digest: string } | undefined;
+      let primary: { error: unknown } | undefined;
+      try {
+        if (identity(fstatSync(descriptor, { bigint: true })) !== expected) throw new Error("profile-upgrade-handoff-source-changed");
+        const hash = createHash("sha256"), buffer = Buffer.allocUnsafe(64 * 1024);
+        let length: number;
+        while ((length = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, length));
+        if (identity(fstatSync(descriptor, { bigint: true })) !== expected || identity(lstatSync(filePath, { bigint: true })) !== expected) throw new Error("profile-upgrade-handoff-source-changed");
+        result = { suffix, identity: expected, digest: hash.digest("hex") };
+      } catch (error) { primary = { error }; }
+      try { closeSync(descriptor); }
+      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+        { descriptor: { descriptor, identity: file } }); }
+      if (primary !== undefined) throw primary.error;
+      if (result === undefined) throw new Error("profile-upgrade-handoff-source-result-missing");
+      return result;
+    });
+    const before = canonicalJsonStringify(source());
+    return Object.freeze({ consume(next: RuntimeAdmission): RegisteredProfileStorageClaim {
+      const nextLease = next.#exclusiveInstallationLease();
+      capture.consume(nextLease);
+      if (!noSymlinkAncestry(dirname(path), ancestry)) throw new Error("profile-upgrade-handoff-source-changed");
+      if (canonicalJsonStringify(source()) !== before) throw new Error("profile-upgrade-handoff-source-changed");
+      const current = next.issueRegisteredProfileClaim(profileId);
+      if (current.phase !== "runtime") throw new Error("profile-upgrade-handoff-runtime-claim-required");
+      return current;
+    } });
   }
   forStoppedProfileUpgrade(): RuntimeAdmission;
   forStoppedProfileUpgrade(claim: RegisteredProfileStorageClaim, restore: RestoreAdmissionHandle, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission>;
@@ -995,8 +1067,10 @@ export class RuntimeAdmission {
         throw new Error("runtime-admission: inspected copy has unsafe shape");
       }
       const descriptor = openSync(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
+      let primary: { error: unknown } | undefined;
+      let descriptorIdentity = file;
       try {
-        const opened = fstatSync(descriptor);
+        const opened = fstatSync(descriptor); descriptorIdentity = opened;
         if (opened.dev !== file.dev || opened.ino !== file.ino || opened.size !== file.size) {
           throw new Error("runtime-admission: inspected copy changed during open");
         }
@@ -1009,7 +1083,11 @@ export class RuntimeAdmission {
           || final.mtimeMs !== opened.mtimeMs || hash.digest("hex") !== expectedSha256) {
           throw new Error("runtime-admission: inspected copy digest changed");
         }
-      } finally { closeSync(descriptor); }
+      } catch (error) { primary = { error }; }
+      try { closeSync(descriptor); }
+      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+        { descriptor: { descriptor, identity: descriptorIdentity } }); }
+      if (primary !== undefined) throw primary.error;
     };
     verifyBytes();
     return new RuntimeAdmission(issuanceToken, { assertHeld: verifyBytes, release() {} },

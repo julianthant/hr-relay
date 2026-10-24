@@ -13,7 +13,7 @@ export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
 export interface SecureEnvironmentBootstrapDependencies {
   readonly assertEnvironment?: () => void;
-  readonly runCli?: (admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined) => Promise<void>;
+  readonly runCli?: (admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void) => Promise<void>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
   readonly validateDashboardBundle?: (workspace: string) => void;
@@ -117,6 +117,7 @@ export async function runSecureEnvironmentBootstrap(
     : acquireEntrypointAdmission(workspace, requested)))(mode);
   let shutdown: "release" | "retain" = "release";
   let runtimeFailure: unknown;
+  let dashboardOwnsAdmission = false;
   try {
   if (entrypoint === "cli" && entrypointArgs[0] === "worker") {
     const { captureSelectedProfileStorage } = await import("../composition/storage-compose.js");
@@ -143,6 +144,9 @@ export async function runSecureEnvironmentBootstrap(
       const custody = initialWorkerCustody;
       initialWorkerCustody = undefined;
       return custody;
+    }, () => {
+      if (entrypointArgs[0] !== "dashboard" || dashboardOwnsAdmission) throw new Error("dashboard admission ownership unavailable");
+      dashboardOwnsAdmission = true;
     });
     return;
   }
@@ -161,7 +165,7 @@ export async function runSecureEnvironmentBootstrap(
     if (error instanceof RuntimeCustodyUncertainError) shutdown = "retain";
     throw error;
   } finally {
-    if (shutdown === "release") {
+    if (shutdown === "release" && !dashboardOwnsAdmission) {
     releaseUnboundWorkerCustody(initialWorkerCustody, runtimeFailure);
     if (entrypoint === "cli" && entrypointArgs[0] === "dashboard") {
       // Retain signal ownership through the next turn; a queued Ctrl+C must not interrupt admission release.

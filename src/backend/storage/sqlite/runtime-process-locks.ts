@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -309,11 +310,14 @@ function restoreAdmissionPath(root: string): string {
 
 function fsyncPath(path: string): void {
   const descriptor = openSync(path, "r");
-  try {
-    fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
-  }
+  let primary: { error: unknown } | undefined;
+  let descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
+  try { descriptorIdentity = fstatSync(descriptor); fsyncSync(descriptor); }
+  catch (error) { primary = { error }; }
+  try { closeSync(descriptor); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+    { descriptor: { descriptor, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
+  if (primary !== undefined) throw primary.error;
 }
 
 type SingletonRole = "server" | "live-smoke" | "geocode";
@@ -344,19 +348,41 @@ function custodyEquals(a: GeocodeFileCustody, b: GeocodeFileCustody): boolean { 
 /** Descriptor reads never follow custody links. */
 function readClaimRuntimeFile(root: string, role: SingletonRole, name: string): Readonly<{ text: string; custody: GeocodeFileCustody }> {
   const fd = openSync(claimFilePath(root, role, name), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  try {
-    const custody = privateClaimFile(fd, role);
+  let descriptorIdentity: object | undefined;
+  const read = () => {
+    const custody = privateClaimFile(fd, role); descriptorIdentity = custody;
     const bytes = Buffer.alloc(65_537); let length = 0;
     for (;;) { const count = readSync(fd, bytes, length, bytes.length - length, null); length += count; if (length > 65_536) throw new Error(`${role}-file-oversize`); if (count === 0) break; }
     if (!custodyEquals(custody, privateClaimFile(fd, role)) || length !== custody.size) throw new Error(`${role}-file-changed`);
     return { text: bytes.subarray(0, length).toString("utf8"), custody };
-  } finally { closeSync(fd); }
+  };
+  let result: ReturnType<typeof read> | undefined, primary: { error: unknown } | undefined;
+  try { result = read(); } catch (error) { primary = { error }; }
+  try { closeSync(fd); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+    { descriptor: { descriptor: fd, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error("runtime-claim-read-result-missing");
+  return result;
 }
 function writeClaimRuntimeFileExclusive(root: string, role: SingletonRole, name: string, text: string): GeocodeFileCustody {
   claimDirectory(root, role, true);
   const fd = openSync(claimFilePath(root, role, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-  try { writeFileSync(fd, text, "utf8"); fsyncSync(fd); return privateClaimFile(fd, role); }
-  finally { closeSync(fd); fsyncPath(claimDirectory(root, role)); }
+  let result: GeocodeFileCustody | undefined, primary: { error: unknown } | undefined;
+  try { writeFileSync(fd, text, "utf8"); fsyncSync(fd); result = privateClaimFile(fd, role); }
+  catch (error) { primary = { error }; }
+  try { closeSync(fd); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+    { descriptor: { descriptor: fd, ...(result === undefined ? {} : { identity: result }) } }); }
+  try { fsyncPath(claimDirectory(root, role)); }
+  catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], {});
+    if (primary !== undefined) throw new AggregateError([primary.error, error], "runtime-claim-write-failed", { cause: primary.error });
+    throw error;
+  }
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error("runtime-claim-write-result-missing");
+  return result;
 }
 function removeOwnedClaimRuntimeFile(root: string, role: SingletonRole, name: string, custody: GeocodeFileCustody): void {
   const current = readClaimRuntimeFile(root, role, name);
@@ -503,6 +529,7 @@ function assertRestoreAdmissionOpen(
 function createRestoreAdmissionAtomically(root: string, record: RestoreAdmissionFile): boolean {
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const temporaryPath = join(root, `.restore-admission-${record.admissionId}.tmp`);
+  let result: boolean | undefined, primary: { error: unknown } | undefined;
   try {
     writeFileSync(temporaryPath, `${canonicalJsonStringify(record)}\n`, {
       encoding: "utf8",
@@ -512,17 +539,28 @@ function createRestoreAdmissionAtomically(root: string, record: RestoreAdmission
     fsyncPath(temporaryPath);
     const linkFailure = tryLink(temporaryPath, restoreAdmissionPath(root));
     if (linkFailure !== undefined) {
-      if (errnoOf(linkFailure) === "EEXIST") return false;
-      if (linkFailure instanceof Error) throw linkFailure;
-      throw new Error("restore admission atomic link failed with a non-Error value", {
+      if (errnoOf(linkFailure) === "EEXIST") result = false;
+      else if (linkFailure instanceof Error) throw linkFailure;
+      else throw new Error("restore admission atomic link failed with a non-Error value", {
         cause: linkFailure,
       });
+    } else {
+      fsyncPath(root);
+      result = true;
     }
-    fsyncPath(root);
-    return true;
-  } finally {
-    if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+  } catch (error) { primary = { error }; }
+  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([primary.error],
+    { restoreCreation: { temporaryPath, restorePath: restoreAdmissionPath(root), record } });
+  let cleanupFailure: { error: unknown } | undefined;
+  try { if (existsSync(temporaryPath)) unlinkSync(temporaryPath); }
+  catch (error) { cleanupFailure = { error }; }
+  if (cleanupFailure !== undefined) {
+    if (primary !== undefined) throw new AggregateError([primary.error, cleanupFailure.error], "restore-admission-cleanup-failed", { cause: primary.error });
+    throw cleanupFailure.error;
   }
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error("restore-admission-result-missing");
+  return result;
 }
 
 function tryLink(source: string, destination: string): unknown {
@@ -595,6 +633,8 @@ export function acquireRuntimeRestoreAdmission(
 
 function readWorkerProcessLockRecord(directory: string, name: string): WorkerProcessLockFile {
   let descriptor: number | undefined;
+  let result: WorkerProcessLockFile | undefined, primary: { error: unknown } | undefined;
+  let descriptorIdentity: object | undefined;
   try {
     const root = resolve(directory, "..");
     if (realpathSync(directory) !== resolve(directory) || !lstatSync(directory).isDirectory()) throw new Error("worker-process-custody-directory-unsafe");
@@ -602,7 +642,7 @@ function readWorkerProcessLockRecord(directory: string, name: string): WorkerPro
     if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.size > 16_384
       || (before.mode & 0o077) !== 0 || process.getuid !== undefined && before.uid !== process.getuid()) throw new Error("worker-process-custody-file-unsafe");
     descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    const opened = fstatSync(descriptor);
+    const opened = fstatSync(descriptor); descriptorIdentity = opened;
     if (!opened.isFile() || opened.nlink !== 1 || opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("worker-process-custody-file-changed");
     const record = WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(descriptor, "utf8")));
     const after = lstatSync(path);
@@ -610,10 +650,18 @@ function readWorkerProcessLockRecord(directory: string, name: string): WorkerPro
       || name !== `${record.acquisitionId}.lock.json`) throw new Error("worker-process-custody-file-binding-mismatch");
     if ("admission" in record && (record.admission.processLockRoot !== root
       || record.admission.authorityPath !== resolve(record.admission.authorityPath))) throw new Error("worker-process-admission-root-mismatch");
-    return record;
+    result = record;
   } catch (error) {
-    throw new Error(`worker process-lock record ${name} is malformed or unsafe`, { cause: error });
-  } finally { if (descriptor !== undefined) closeSync(descriptor); }
+    primary = { error: new Error(`worker process-lock record ${name} is malformed or unsafe`, { cause: error }) };
+  }
+  if (descriptor !== undefined) {
+    try { closeSync(descriptor); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+      { descriptor: { descriptor, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
+  }
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error("worker-process-lock-result-missing");
+  return result;
 }
 
 function readWorkerProcessLocks(root: string): readonly WorkerProcessLockFile[] {
@@ -635,6 +683,11 @@ function* iterateWorkerProcessLocks(root: string): Generator<WorkerProcessLockFi
   const directoryPath = join(root, WORKER_PROCESS_LOCK_DIRECTORY);
   if (!existsSync(directoryPath)) return;
   const directory = opendirSync(directoryPath);
+  let primary: { error: unknown } | undefined;
+  const close = () => {
+    try { directory.closeSync(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { directory }); }
+  };
   try {
     for (let entry = directory.readSync(); entry !== null; entry = directory.readSync()) {
       if (entry.name.startsWith(".")) continue;
@@ -643,9 +696,8 @@ function* iterateWorkerProcessLocks(root: string): Generator<WorkerProcessLockFi
       }
       yield readWorkerProcessLockRecord(directoryPath, entry.name);
     }
-  } finally {
-    directory.closeSync();
-  }
+  } catch (error) { primary = { error }; throw error; }
+  finally { close(); }
 }
 
 

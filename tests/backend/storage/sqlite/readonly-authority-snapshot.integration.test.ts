@@ -1,0 +1,190 @@
+import { readPrivateFile, fsyncPath } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import assert from "node:assert/strict";
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
+import { it, vi } from "vitest";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { countUcsdLoginRows, readProfileDatabaseBinding } from "../../../../src/backend/storage/sqlite/profile-local-databases.js";
+
+const digest = (path: string) => createHash("sha256").update(fs.readFileSync(path)).digest("hex");
+
+it("snapshot disposal keeps the same uncertainty and never retries physical removal", () => {
+  const f = createBoundProfileFixture(), before = digest(f.path);
+  const snapshot = createReadonlyAuthoritySnapshot(f.path), directory = dirname(snapshot.path);
+  const actualRemove = fs.rmSync, injected = new Error("snapshot-removal-refused");
+  let attempts = 0, proved = false;
+  const remove = vi.spyOn(fs, "rmSync").mockImplementation(path => {
+    assert.equal(path, directory); attempts++; throw injected;
+  });
+  syncBuiltinESMExports();
+  try {
+    let failure: unknown;
+    try { snapshot.dispose(); } catch (error) { failure = error; }
+    assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
+    assert.deepEqual(failure.errors, [injected]); assert.equal(failure.cause, injected);
+    for (let index = 0; index < 2; index++) {
+      assert.throws(() => snapshot.dispose(), error => error === failure);
+      assert.throws(() => snapshot.assertUnchanged(), error => error === failure);
+      assert.equal(fs.existsSync(snapshot.path), true);
+    }
+    assert.equal(attempts, 1); assert.equal(digest(f.path), before);
+    const retained = fs.lstatSync(directory), members = fs.readdirSync(directory).sort();
+    const hashes = members.map(name => [name, digest(join(directory, name))]);
+    remove.mockRestore(); syncBuiltinESMExports();
+    const current = fs.lstatSync(directory);
+    assert.equal(current.dev, retained.dev); assert.equal(current.ino, retained.ino); assert.equal(current.mode, retained.mode);
+    assert.deepEqual(fs.readdirSync(directory).sort(), members);
+    assert.deepEqual(members.map(name => [name, digest(join(directory, name))]), hashes);
+    actualRemove(directory, { recursive: true }); assert.equal(fs.existsSync(directory), false);
+    assert.throws(() => snapshot.dispose(), error => error === failure);
+    assert.throws(() => snapshot.assertUnchanged(), error => error === failure);
+    assert.equal(attempts, 1); assert.equal(digest(f.path), before);
+    proved = true;
+  } finally { remove.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+});
+
+it("snapshot creation preserves the source failure and failed cleanup with its exact directory", () => {
+  const f = createBoundProfileFixture(), before = digest(f.path);
+  const actualCreate = fs.mkdtempSync, actualRemove = fs.rmSync;
+  const injected = new Error("snapshot-creation-cleanup-refused");
+  let directory: string | undefined, proved = false;
+  const create = vi.spyOn(fs, "mkdtempSync").mockImplementation((prefix, options) => {
+    assert.equal(options, undefined);
+    const created = actualCreate(prefix); assert.ok(typeof created === "string"); directory = created; return created;
+  });
+  syncBuiltinESMExports();
+  const remove = vi.spyOn(fs, "rmSync").mockImplementation(path => { assert.equal(path, directory); throw injected; });
+  syncBuiltinESMExports();
+  try {
+    let failure: unknown;
+    try { createReadonlyAuthoritySnapshot(join(f.stateRoot, "missing.db")); } catch (error) { failure = error; }
+    assert.ok(failure instanceof AuthoritySourceClosureUnprovedError); assert.equal(failure.errors.length, 2);
+    assert.ok(failure.errors[0] instanceof Error); assert.equal(failure.cause, failure.errors[0]);
+    const cleanup: unknown = failure.errors[1]; assert.ok(cleanup instanceof AuthoritySourceClosureUnprovedError);
+    assert.deepEqual(cleanup.errors, [injected]); assert.equal(cleanup.cause, injected);
+    assert.ok(directory); assert.equal(fs.existsSync(directory), true); assert.deepEqual(fs.readdirSync(directory), []);
+    const retained = fs.lstatSync(directory);
+    remove.mockRestore(); syncBuiltinESMExports(); create.mockRestore(); syncBuiltinESMExports();
+    const current = fs.lstatSync(directory);
+    assert.equal(current.dev, retained.dev); assert.equal(current.ino, retained.ino); assert.equal(current.mode, retained.mode);
+    actualRemove(directory, { recursive: true });
+    assert.equal(fs.existsSync(directory), false); assert.equal(digest(f.path), before);
+    proved = true;
+  } finally { create.mockRestore(); syncBuiltinESMExports(); remove.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+});
+
+for (const reader of ["read-only", "binding", "login-copy"] as const) it(`retains the actual ${reader} database on failed close without removing its snapshot`, () => {
+  const f = createBoundProfileFixture(), before = digest(f.path);
+  const actualCreate = fs.mkdtempSync, actualClose = DatabaseSync.prototype.close;
+  const primary = new Error("read-callback-refused"), cleanup = new Error("native-copy-close-refused");
+  let directory: string | undefined, retained: DatabaseSync | undefined, closes = 0, proved = false;
+  const create = vi.spyOn(fs, "mkdtempSync").mockImplementation((prefix, options) => {
+    assert.equal(options, undefined);
+    const created = actualCreate(prefix); assert.ok(typeof created === "string"); directory = created; return created;
+  });
+  syncBuiltinESMExports();
+  const close = vi.spyOn(DatabaseSync.prototype, "close").mockImplementation(function (this: DatabaseSync) {
+    retained = this; closes++; throw cleanup;
+  });
+  try {
+    let failure: unknown;
+    try {
+      if (reader === "read-only") withAuthorityDatabaseReadOnly(f.admission, f.path, () => { throw primary; });
+      else if (reader === "binding") readProfileDatabaseBinding(f.path);
+      else countUcsdLoginRows(f.path);
+    } catch (error) { failure = error; }
+    assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
+    const inner = reader === "binding" ? failure.cause : failure;
+    assert.ok(inner instanceof AuthoritySourceClosureUnprovedError);
+    assert.equal(inner.errors.at(-1), cleanup); assert.equal(inner.cause, inner.errors[0]);
+    if (reader === "read-only") { assert.equal(inner.errors.length, 2); assert.equal(inner.errors[0], primary); }
+    else if (reader === "binding") assert.deepEqual(inner.errors, [cleanup]);
+    else { assert.equal(inner.errors.length, 2); assert.ok(inner.errors[0] instanceof Error); }
+    assert.equal(closes, 1); assert.ok(retained);
+    assert.equal(retained.prepare("SELECT 1 AS live").get()?.live, 1);
+    if (reader !== "login-copy") { assert.ok(directory); assert.equal(fs.existsSync(directory), true); }
+    else assert.equal(directory, undefined);
+    assert.equal(digest(f.path), before);
+    close.mockRestore(); create.mockRestore(); syncBuiltinESMExports();
+    actualClose.call(retained);
+    if (directory !== undefined) {
+      const identity = fs.lstatSync(directory); assert.equal(identity.isDirectory(), true);
+      fs.rmSync(directory, { recursive: true }); assert.equal(fs.existsSync(directory), false);
+    }
+    assert.equal(digest(f.path), before); proved = true;
+  } finally { close.mockRestore(); create.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+});
+
+it("ordinary read refusal and unreadable login copy stay ordinary after proved cleanup", () => {
+  const f = createBoundProfileFixture(), before = digest(f.path), primary = new Error("ordinary-read-refused");
+  try {
+    assert.throws(() => withAuthorityDatabaseReadOnly(f.admission, f.path, () => { throw primary; }), error => error === primary);
+    assert.equal(countUcsdLoginRows(f.path), "unreadable");
+    assert.equal(digest(f.path), before);
+    assert.equal(readProfileDatabaseBinding(f.path).state, "bound");
+  } finally { f.close(); }
+});
+
+for (const invalid of [false, true]) it(`retains a private source descriptor and its primary failure on close refusal ${invalid}`, () => {
+  const f = createBoundProfileFixture(), path = join(f.stateRoot, "settings", "protected.json");
+  const before = digest(path), identity = fs.lstatSync(path), actualClose = fs.closeSync;
+  const injected = new Error("private-source-descriptor-close-refused");
+  let descriptor: number | undefined, attempts = 0, proved = false;
+  const close = vi.spyOn(fs, "closeSync").mockImplementation(fd => {
+    const current = fs.fstatSync(fd);
+    if (current.dev === identity.dev && current.ino === identity.ino) { descriptor = fd; attempts++; throw injected; }
+    return actualClose(fd);
+  });
+  syncBuiltinESMExports();
+  try {
+    let failure: unknown;
+    try { readPrivateFile(path, { label: "protected.json", maxBytes: invalid ? 1 : 1_048_576 }); } catch (error) { failure = error; }
+    assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
+    assert.equal(failure.errors.length, invalid ? 2 : 1); assert.equal(failure.errors.at(-1), injected);
+    assert.equal(failure.cause, failure.errors[0]);
+    if (invalid) assert.ok(failure.errors[0] instanceof Error); else assert.equal(failure.cause, injected);
+    assert.equal(attempts, 1); assert.ok(descriptor !== undefined);
+    assert.equal(fs.fstatSync(descriptor).dev, identity.dev); assert.equal(fs.fstatSync(descriptor).ino, identity.ino);
+    assert.equal(digest(path), before);
+    const heldDescriptor = descriptor;
+    close.mockRestore(); syncBuiltinESMExports(); actualClose(heldDescriptor);
+    assert.throws(() => fs.fstatSync(heldDescriptor), error => error instanceof Error && Reflect.get(error, "code") === "EBADF");
+    assert.equal(digest(path), before); proved = true;
+  } finally { close.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+});
+
+for (const failSync of [false, true]) it(`retains the real sync descriptor and primary error after close refusal ${failSync}`, () => {
+  const f = createBoundProfileFixture(), path = join(f.stateRoot, "settings", "protected.json"), before = digest(path);
+  const actualClose = fs.closeSync, actualSync = fs.fsyncSync;
+  const primary = new Error("source-sync-refused"), cleanup = new Error("source-sync-close-refused");
+  let descriptor: number | undefined, synchronizations = 0, closes = 0, proved = false;
+  const sync = vi.spyOn(fs, "fsyncSync").mockImplementation(fd => {
+    descriptor = fd; synchronizations++;
+    if (failSync) throw primary;
+    actualSync(fd);
+  });
+  syncBuiltinESMExports();
+  const close = vi.spyOn(fs, "closeSync").mockImplementation(fd => {
+    assert.equal(fd, descriptor); closes++; throw cleanup;
+  });
+  syncBuiltinESMExports();
+  try {
+    let failure: unknown;
+    try { fsyncPath(path); } catch (error) { failure = error; }
+    assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
+    assert.deepEqual(failure.errors, failSync ? [primary, cleanup] : [cleanup]);
+    assert.equal(failure.cause, failSync ? primary : cleanup);
+    assert.equal(synchronizations, 1); assert.equal(closes, 1); assert.ok(descriptor !== undefined);
+    const held = descriptor, identity = fs.lstatSync(path);
+    assert.equal(fs.fstatSync(held).dev, identity.dev); assert.equal(fs.fstatSync(held).ino, identity.ino);
+    assert.equal(digest(path), before);
+    sync.mockRestore(); syncBuiltinESMExports(); close.mockRestore(); syncBuiltinESMExports(); actualClose(held);
+    assert.throws(() => fs.fstatSync(held), error => error instanceof Error && Reflect.get(error, "code") === "EBADF");
+    assert.equal(digest(path), before); proved = true;
+  } finally { sync.mockRestore(); syncBuiltinESMExports(); close.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+});

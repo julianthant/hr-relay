@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { lstatSync, type BigIntStats } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -12,18 +13,20 @@ export function countUcsdLoginRows(path: string): number | "unreadable" | "absen
   if (info === undefined) return "absent";
   if (!info.isFile()) return "unreadable";
   let database: DatabaseSync | undefined;
+  let result: number | "unreadable";
+  let primary: { error: unknown } | undefined;
   try {
     database = new DatabaseSync(path, { readOnly: true });
     const rows = z.array(z.object({
       origin_url: z.string().optional(),
       username_value: z.string().optional(),
     })).parse(database.prepare("SELECT origin_url, username_value FROM logins").all());
-    return rows.filter((row) => isUcsdIdentity(row.origin_url) || isUcsdIdentity(row.username_value)).length;
-  } catch {
-    return "unreadable";
-  } finally {
-    database?.close();
-  }
+    result = rows.filter((row) => isUcsdIdentity(row.origin_url) || isUcsdIdentity(row.username_value)).length;
+  } catch (error) { primary = { error }; result = "unreadable"; }
+  try { database?.close(); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { ...(database === undefined ? {} : { database }) }); }
+  return result;
+
 }
 
 function isUcsdIdentity(value: string | undefined): boolean {
@@ -46,14 +49,24 @@ export function readProfileDatabaseBinding(path: string):
   if (!before.isFile() || before.nlink !== 1 || (process.getuid !== undefined && before.uid !== process.getuid())
     || (before.mode & 0o022) !== 0) throw new Error("profile-database-identity-invalid");
   const snapshot = createReadonlyAuthoritySnapshot(path);
+  let result: ReturnType<typeof readProfileDatabaseBindingCopy> | undefined;
+  const failures: unknown[] = [];
   try {
     const binding = readProfileDatabaseBindingCopy(snapshot.path);
     snapshot.assertUnchanged();
     const after = lstatSync(path);
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
       || before.ctimeMs !== after.ctimeMs || after.nlink !== 1) throw new Error("profile-database-identity-changed");
-    return binding;
-  } finally { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } }
+    result = binding;
+  } catch (error) { failures.push(error); }
+  if (failures.some(error => error instanceof AuthoritySourceClosureUnprovedError)) throw retainAuthoritySourceClosure(failures, { snapshot });
+  try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
+  try { snapshot.dispose(); }
+  catch (error) { throw retainAuthoritySourceClosure([...failures, error], { snapshot }); }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "profile-database-binding-read-failed", { cause: failures[0] });
+  if (result === undefined) throw new Error("profile-database-binding-result-missing");
+  return result;
 }
 
 function readProfileDatabaseBindingCopy(path: string):
@@ -64,7 +77,7 @@ function readProfileDatabaseBindingCopy(path: string):
   if (!before.isFile() || before.nlink !== 1 || (process.getuid !== undefined && before.uid !== process.getuid())
     || (before.mode & 0o022) !== 0) throw new Error("profile-database-identity-invalid");
   const database = new DatabaseSync(path, { readOnly: true });
-  try {
+  const read = (): ReturnType<typeof readProfileDatabaseBindingCopy> => {
     const version = database.prepare("PRAGMA user_version").get();
     const application = database.prepare("PRAGMA application_id").get();
     if ((version?.user_version !== CURRENT_AUTHORITY_SCHEMA_VERSION && (typeof version?.user_version !== "number" || !isSupportedStoppedAuthoritySchemaVersion(version.user_version)))
@@ -79,7 +92,15 @@ function readProfileDatabaseBindingCopy(path: string):
       return { schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).parse(version.user_version), state: "unbound" };
     }
     return { schemaVersion: z.union([z.literal(7), z.literal(8)]).parse(version.user_version), state: "bound", binding };
-  } finally { database.close(); }
+  };
+  let result: ReturnType<typeof readProfileDatabaseBindingCopy> | undefined;
+  let primary: { error: unknown } | undefined;
+  try { result = read(); } catch (error) { primary = { error }; }
+  try { database.close(); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database }); }
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error("profile-database-binding-result-missing");
+  return result;
 }
 
 export function assertCanonicalProfileBinding(path: string, expected: ProfileDatabaseBinding): void {

@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync, constants, fstatSync, lstatSync, readSync,
@@ -68,11 +69,14 @@ export type VerifiedBackup = Readonly<{
 
 function fsyncPath(path: string): void {
   const descriptor = openSync(path, "r");
-  try {
-    fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
-  }
+  let primary: { error: unknown } | undefined;
+  let descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
+  try { descriptorIdentity = fstatSync(descriptor); fsyncSync(descriptor); }
+  catch (error) { primary = { error }; }
+  try { closeSync(descriptor); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+    { descriptor: { descriptor, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
+  if (primary !== undefined) throw primary.error;
 }
 
 async function sha256File(path: string): Promise<string> {
@@ -147,13 +151,17 @@ export function verifyStoppedBackupManifestAtPath(admissionInput: RuntimeAdmissi
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
   admission.assertStateRoot(backupPath);
   const snapshot = createReadonlyAuthoritySnapshot(backupPath);
+  let result: VerifiedBackup | undefined;
+  const failures: unknown[] = [];
   try {
     const before = lstatSync(backupPath);
     if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || (before.mode & 0o077) !== 0
       || process.getuid !== undefined && before.uid !== process.getuid() || before.size !== manifest.byteSize) throw new Error("profile-maintenance-backup-identity-invalid");
     const descriptor = openSync(backupPath, constants.O_RDONLY | constants.O_NOFOLLOW), hash = createHash("sha256");
+    let descriptorIdentity = before;
+    let descriptorFailure: { error: unknown } | undefined;
     try {
-      const opened = fstatSync(descriptor);
+      const opened = fstatSync(descriptor); descriptorIdentity = opened;
       if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("profile-maintenance-backup-changed");
       const chunk = Buffer.alloc(64 * 1024); let count = 0;
       for (;;) {
@@ -164,7 +172,11 @@ export function verifyStoppedBackupManifestAtPath(admissionInput: RuntimeAdmissi
         hash.update(chunk.subarray(0, size));
       }
       if (count !== manifest.byteSize || hash.digest("hex") !== manifest.sha256) throw new Error("profile-maintenance-backup-digest-mismatch");
-    } finally { closeSync(descriptor); }
+    } catch (error) { descriptorFailure = { error }; }
+    try { closeSync(descriptor); }
+    catch (error) { throw retainAuthoritySourceClosure(descriptorFailure === undefined ? [error] : [descriptorFailure.error, error],
+      { snapshot, descriptor: { descriptor, identity: descriptorIdentity } }); }
+    if (descriptorFailure !== undefined) throw descriptorFailure.error;
     snapshot.assertUnchanged();
     const copy = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
     try { assertBackupInspection(manifest, inspectAuthorityBackupReadOnly(copy, backupPath, manifest.schemaVersion)); }
@@ -172,8 +184,16 @@ export function verifyStoppedBackupManifestAtPath(admissionInput: RuntimeAdmissi
     snapshot.assertUnchanged();
     const after = readPrivateFile(manifestPath, { label: "lock", maxBytes: 64_000 });
     if (after === undefined || after.identity.device !== file.identity.device || after.identity.inode !== file.identity.inode || !after.bytes.equals(file.bytes)) throw new Error("profile-maintenance-backup-manifest-changed");
-    return Object.freeze({ manifestPath, backupPath, manifest });
-  } finally { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } }
+    result = Object.freeze({ manifestPath, backupPath, manifest });
+  } catch (error) { failures.push(error); }
+  if (failures.some(error => error instanceof AuthoritySourceClosureUnprovedError)) throw retainAuthoritySourceClosure(failures, { snapshot });
+  try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
+  try { snapshot.dispose(); }
+  catch (error) { throw retainAuthoritySourceClosure([...failures, error], { snapshot }); }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "authority-backup-validation-failed", { cause: failures[0] });
+  if (result === undefined) throw new Error("authority-backup-result-missing");
+  return result;
 }
 
 export class AuthorityBackupService {
@@ -259,6 +279,8 @@ export class AuthorityBackupService {
     const temporaryPaths = [temporaryBackupPath, temporaryManifestPath];
     const finalPaths: string[] = [];
     let finalManifestPath: string | undefined;
+    let result: AuthorityBackupManifest | undefined;
+    let primary: { error: unknown } | undefined;
     try {
       await this.#source.onlineBackupTo(temporaryBackupPath);
       this.#admission.assertAuthorityBackupWrite(this.#directory);
@@ -321,21 +343,31 @@ export class AuthorityBackupService {
       finalPaths.push(finalManifestPath);
       fsyncPath(this.#directory);
       await verifyBackupManifestAtPath(this.#admission, finalManifestPath, this.#source.getSourceDatabaseIdentity());
-      return manifest;
-    } catch (error) {
-      if (finalManifestPath !== undefined && existsSync(finalManifestPath)) rmSync(finalManifestPath);
+      result = manifest;
+    } catch (error) { primary = { error }; }
+    if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;
+    const cleanupFailures: unknown[] = [];
+    if (primary !== undefined) {
+      try { if (finalManifestPath !== undefined && existsSync(finalManifestPath)) rmSync(finalManifestPath); }
+      catch (error) { cleanupFailures.push(error); }
       for (const finalPath of finalPaths) {
         for (const path of [finalPath, `${finalPath}-wal`, `${finalPath}-shm`]) {
-          if (existsSync(path)) rmSync(path);
-        }
-      }
-      throw error;
-    } finally {
-      for (const temporaryPath of temporaryPaths) {
-        for (const path of [temporaryPath, `${temporaryPath}-wal`, `${temporaryPath}-shm`]) {
-          if (existsSync(path)) rmSync(path);
+          try { if (existsSync(path)) rmSync(path); } catch (error) { cleanupFailures.push(error); }
         }
       }
     }
+    for (const temporaryPath of temporaryPaths) {
+      for (const path of [temporaryPath, `${temporaryPath}-wal`, `${temporaryPath}-shm`]) {
+        try { if (existsSync(path)) rmSync(path); } catch (error) { cleanupFailures.push(error); }
+      }
+    }
+    if (cleanupFailures.length > 0) {
+      if (primary !== undefined) throw new AggregateError([primary.error, ...cleanupFailures], "authority-backup-cleanup-failed", { cause: primary.error });
+      if (cleanupFailures.length === 1) throw cleanupFailures[0];
+      throw new AggregateError(cleanupFailures, "authority-backup-cleanup-failed", { cause: cleanupFailures[0] });
+    }
+    if (primary !== undefined) throw primary.error;
+    if (result === undefined) throw new Error("authority-backup-result-missing");
+    return result;
   }
 }

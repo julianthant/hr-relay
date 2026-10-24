@@ -43,7 +43,7 @@ import {
   observeProcessIdentity,
   type ProcessIdentityObserver,
 } from "../sqlite/runtime-process-locks.js";
-import type { RuntimeAdmission } from "../admission/admission.js";
+import type { RuntimeAdmission, RegisteredProfileStorageClaim } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 
 const MAX_PRIVATE_REQUEST_BYTES = 64_000;
@@ -508,6 +508,30 @@ function initialDocument(): CredentialDocument {
     historyBaseRevision: 1, history: [],
     retiredLegacy: { commandIds: [], writeIds: [], valueIds: [] },
   }));
+}
+
+export function captureReadyUpgradeCredentialSource(machine: RuntimeAdmission, claim: RegisteredProfileStorageClaim) {
+  const profileId = claim.profileId;
+  const observe = (owner: RuntimeAdmission, current: RegisteredProfileStorageClaim): string => {
+    requireRuntimeAdmission(owner).assertProfileUpgradeCredentialSource(current);
+    if (current.profileId !== profileId) throw new Error("profile-upgrade-handoff-credential-profile-changed");
+    const binding = { installationId: owner.locator.installationId, profileId: current.profileId };
+    const keyPath = join(owner.stateRoot, "machine", "credential-keys", `${current.profileId}.json`);
+    const path = join(owner.stateRoot, "profiles", current.profileId, "credentials", CREDENTIAL_FILE_NAME);
+    const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
+    const file = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
+    if (keyFile === undefined || file === undefined) throw new Error("profile-upgrade-handoff-credential-required");
+    const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes));
+    const envelope = CredentialEnvelopeSchema.parse(parseCredentialJson(file.bytes));
+    if (key.installationId !== binding.installationId || key.profileId !== binding.profileId || envelope.installationId !== binding.installationId
+      || envelope.profileId !== binding.profileId || envelope.keyId !== key.keyId) throw new Error("profile-upgrade-handoff-credential-binding-changed");
+    owner.assertProfileUpgradeCredentialSource(current);
+    return canonicalJsonStringify([keyFile, file].map(value => ({ identity: value.identity, digest: createHash("sha256").update(value.bytes).digest("hex") })));
+  };
+  const original = observe(machine, claim);
+  return Object.freeze({ revalidate(owner: RuntimeAdmission, current: RegisteredProfileStorageClaim): void {
+    if (observe(owner, current) !== original) throw new Error("profile-upgrade-handoff-credential-changed");
+  } });
 }
 
 function readAuthenticatedDocument(path: string, key: CredentialKeyDocument, binding: ProfileDatabaseBinding): ReadDocument | undefined {
