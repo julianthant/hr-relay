@@ -1,3 +1,4 @@
+import type { AssistantActionIdentity } from "../../../models/dashboard/assistant.js";
 export interface AssistantSource {
   readonly id: string;
   readonly title: string;
@@ -14,21 +15,23 @@ export interface AssistantMessage {
 }
 
 export interface AssistantMockProposal {
+  readonly action?: AssistantActionIdentity;
+  readonly expiresAt?: string;
   readonly id: string;
   readonly revision: string;
   readonly prompt: string;
   readonly workflow: { readonly id: string; readonly label: string; readonly version: string };
   readonly subjects: readonly { readonly id: string; readonly name: string }[];
   readonly values: readonly { readonly label: string; readonly value: string }[];
-  readonly mode: 'dry-run' | 'read-only';
+  readonly mode: 'dry-run' | 'read-only' | 'local-change';
   readonly effects: readonly string[];
   readonly stopBefore: readonly string[];
 }
 
 export type AssistantTurn =
   | { readonly state: 'idle' }
-  | { readonly state: 'waiting' | 'failed' | 'cancelled'; readonly requestId: number; readonly prompt: string }
-  | { readonly state: 'proposal'; readonly proposal: AssistantMockProposal; readonly disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' };
+  | { readonly state: 'waiting' | 'failed' | 'cancelled' | 'unknown'; readonly requestId: number; readonly prompt: string }
+  | { readonly state: 'proposal'; readonly proposal: AssistantMockProposal; readonly disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown' };
 
 export interface AssistantState {
   readonly draft: string;
@@ -41,18 +44,21 @@ export type AssistantAction =
   | { readonly type: 'edit'; readonly value: string }
   | { readonly type: 'send' | 'retry' | 'cancel' | 'confirm' | 'new-chat' }
   | { readonly type: 'reply'; readonly requestId: number; readonly proposal: AssistantMockProposal; readonly message: AssistantMessage }
-  | { readonly type: 'settle'; readonly requestId: number; readonly message: AssistantMessage; readonly proposal?: AssistantMockProposal }
-  | { readonly type: 'fail'; readonly requestId: number };
+  | { readonly type: 'settle'; readonly requestId: number; readonly message: AssistantMessage; readonly proposal?: AssistantMockProposal; readonly disposition?: 'unknown' }
+  | { readonly type: 'fail' | 'uncertain'; readonly requestId: number }
+  | { readonly type: 'action-state'; readonly id: string; readonly disposition: 'confirming' | 'confirmed' | 'cancelled' | 'stale' | 'unknown'; readonly message?: AssistantMessage };
 
 export function assistantReducer(state: AssistantState, action: AssistantAction): AssistantState {
   const turn = state.turn;
   switch (action.type) {
+    case 'action-state':
+      return turn.state !== 'proposal' || turn.proposal.id !== action.id ? state : { ...state, messages: action.message === undefined ? state.messages : [...state.messages, action.message], turn: { ...turn, disposition: action.disposition } };
     case 'new-chat':
       return { draft: '', messages: [], sequence: state.sequence, turn: { state: 'idle' } };
     case 'edit':
       return { ...state, draft: action.value, turn: turn.state === 'waiting' ? { ...turn, state: 'cancelled' } : turn.state === 'proposal' && turn.disposition === 'review' ? { ...turn, disposition: 'edited' } : turn };
     case 'send': {
-      if (!state.draft.trim() || turn.state === 'waiting') return state;
+      if (!state.draft.trim() || turn.state === 'waiting' || turn.state === 'unknown') return state;
       const requestId = state.sequence + 1;
       return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: state.draft }], turn: { state: 'waiting', requestId, prompt: state.draft } };
     }
@@ -64,7 +70,9 @@ export function assistantReducer(state: AssistantState, action: AssistantAction)
       return { ...state, messages: [...state.messages, action.message], turn: { state: 'proposal', proposal: action.proposal, disposition: state.draft === turn.prompt ? 'review' : 'edited' } };
     case 'settle':
       if (turn.state !== 'waiting' || turn.requestId !== action.requestId) return state;
-      return { ...state, messages: [...state.messages, action.message], turn: action.proposal === undefined ? { state: 'idle' } : { state: 'proposal', proposal: action.proposal, disposition: 'review' } };
+      return { ...state, messages: [...state.messages, action.message], turn: action.proposal === undefined ? { state: 'idle' } : { state: 'proposal', proposal: action.proposal, disposition: action.disposition ?? 'review' } };
+    case 'uncertain':
+      return turn.state === 'waiting' && turn.requestId === action.requestId ? { ...state, turn: { ...turn, state: 'unknown' } } : state;
     case 'fail':
       return turn.state === 'waiting' && turn.requestId === action.requestId ? { ...state, turn: { ...turn, state: 'failed' } } : state;
     case 'cancel':
@@ -84,7 +92,9 @@ export const ASSISTANT_STARTERS = [
 export function assistantConfirmRefusal(state: AssistantState, revision: string, accountAvailable: boolean): string | undefined {
   const turn = state.turn;
   if (turn.state !== 'proposal') return 'No proposal to confirm.';
-  if (turn.disposition === 'confirmed') return 'Mock confirmation recorded. No run was started.';
+  if (turn.disposition === 'confirming') return 'Confirming the action…';
+  if (turn.disposition === 'unknown') return 'Action outcome is unknown. Do not retry this action.';
+  if (turn.disposition === 'confirmed') return turn.proposal.action === undefined ? 'Mock confirmation recorded. No run was started.' : 'Action completed.';
   if (turn.disposition === 'cancelled') return 'Proposal cancelled. No run was started.';
   if (!accountAvailable) return 'ChatGPT account unavailable. Confirmation is disabled.';
   if (turn.disposition === 'stale') return 'Plan out of date. Send the request again to refresh it.';

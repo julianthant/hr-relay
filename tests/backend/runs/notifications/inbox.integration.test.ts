@@ -3,6 +3,7 @@ import { createNotificationInboxTestWorld } from "../../../support/helpers/backe
 
 
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,6 +21,91 @@ import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-ad
 {
 
 const { _afterEachFixture0, record, harness, command } = createNotificationInboxTestWorld();
+
+describe("notification collection commands", () => {
+  afterEach(_afterEachFixture0);
+  const actor = "local-operator";
+  const collectionCommand = (database: ReturnType<typeof harness>["database"], type = "notification-read-all") => ({
+    ...command(type, 1), target: database.withAuthorityReadSnapshot(() => database.authority.notifications.collection(actor, type === "notification-read-all" ? "read" : type === "notification-unread-all" ? "unread" : type === "notification-snooze-all" ? "snooze" : "unsnooze")),
+  });
+  it("changes more than twenty current notices atomically, preserves pinned and UNKNOWN evidence, and replays one aggregate audit", () => {
+    const { database, kernel } = harness();
+    const ids = Array.from({ length: 25 }, () => randomUUID());
+    for (const [index, notificationId] of ids.entries()) database.authority.notifications.create(record({ notificationId, dedupeFingerprint: index.toString(16).padStart(64, "0"), trigger: "write-parked" }));
+    const pinned = record({ notificationId: randomUUID(), dedupeFingerprint: "b".repeat(64), trigger: "backfill-gap", links: [] });
+    database.authority.notifications.create(pinned);
+    const before = database.authority.notifications.listByActor(actor);
+    const request = collectionCommand(database);
+    assert.equal(request.target.members.length, 26); assert.equal(request.target.matchingCount, 25);
+    const result = kernel.execute(request); assert.equal(result.state, "applied");
+    if (result.state !== "applied") throw new Error("bulk applied result required");
+    assert.equal(result.affectedTargets.length, 25);
+    assert.deepEqual(database.authority.notifications.get(pinned.notificationId), pinned);
+    for (const original of before.filter(row => row.trigger !== "backfill-gap")) {
+      assert.deepEqual(database.authority.notifications.get(original.notificationId), { ...original, status: "read", version: 2, updatedAt: request.requestedAt });
+    }
+    const audit = database.authority.commandAudits.findByCommand(request.commandId); assert.ok(audit);
+    assert.equal(audit.versionChanges.length, 25);
+    const generation = database.getMeta().authorityGeneration;
+    assert.deepEqual(kernel.execute(request), { ...result, state: "already-applied" });
+    assert.deepEqual(database.authority.commandAudits.findByCommand(request.commandId), audit);
+    assert.equal(database.getMeta().authorityGeneration, generation);
+  });
+  it.each(["added", "changed", "foreign", "duplicate", "omitted"])("refuses the whole collection after %s membership drift", change => {
+    const { database, kernel } = harness();
+    database.authority.notifications.create(record());
+    const request = collectionCommand(database);
+    if (change === "added") database.authority.notifications.create(record({ notificationId: randomUUID(), dedupeFingerprint: "c".repeat(64) }));
+    if (change === "changed") database.authority.notifications.updateState({ notificationId: UUID_7, expectedVersion: 1, status: "unread", snooze: { state: "not-snoozed" }, updatedAt: request.requestedAt });
+    const candidate = change === "foreign" ? { ...request, target: { ...request.target, actorId: "other-operator" } }
+      : change === "duplicate" ? { ...request, target: { ...request.target, members: [...request.target.members, ...request.target.members] } }
+      : change === "omitted" ? { ...request, target: { ...request.target, members: [], matchingCount: 0 } } : request;
+    const rows = database.authority.notifications.listByActor(actor);
+    const result = change === "duplicate" ? undefined : kernel.execute(candidate);
+    if (change === "duplicate") assert.throws(() => kernel.execute(candidate)); else assert.equal(result?.state, "rejected");
+    assert.deepEqual(database.authority.notifications.listByActor(actor), rows);
+  });
+  it.each(["late-row", "audit"])("rolls all rows and command publication back on %s failure", boundary => {
+    let writes = 0;
+    const { database, kernel } = harness(repositories => ({ ...repositories,
+      notifications: { ...repositories.notifications, updateState: input => {
+        writes++; if (boundary === "late-row" && writes === 23) throw new Error("controlled late row failure");
+        return repositories.notifications.updateState(input);
+      } },
+      commandAudits: { ...repositories.commandAudits, insert: input => {
+        if (boundary === "audit") throw new Error("controlled audit failure"); return repositories.commandAudits.insert(input);
+      } },
+    }));
+    for (let index = 0; index < 25; index++) database.authority.notifications.create(record({ notificationId: randomUUID(), dedupeFingerprint: index.toString(16).padStart(64, "0") }));
+    const request = collectionCommand(database), rows = database.authority.notifications.listByActor(actor), generation = database.getMeta().authorityGeneration;
+    assert.throws(() => kernel.execute(request)); assert(writes >= 23);
+    assert.deepEqual(database.authority.notifications.listByActor(actor), rows);
+    assert.equal(database.authority.commands.get(request.commandId), undefined);
+    assert.equal(database.authority.commandAudits.findByCommand(request.commandId), undefined);
+    assert.equal(database.getMeta().authorityGeneration, generation);
+  });
+  it.each(["read", "unread", "snooze", "unsnooze"] as const)("uses the same per-row %s rules and never includes another actor", operation => {
+    const { database, kernel } = harness();
+    const mutable = record({ status: operation === "unread" ? "read" : "unread", snooze: { state: "snoozed", until: "2026-08-01T18:00:00.000Z" } });
+    const pinned = record({ notificationId: randomUUID(), dedupeFingerprint: "b".repeat(64), trigger: "backfill-gap", links: [] });
+    const foreign = record({ notificationId: randomUUID(), actorId: "other-operator" });
+    for (const row of [mutable, pinned, foreign]) database.authority.notifications.create(row);
+    const request = collectionCommand(database, `notification-${operation}-all`);
+    assert.equal(request.target.members.length, 2); assert.equal(request.target.matchingCount, 1);
+    assert.equal(kernel.execute(request).state, "applied");
+    const changed = database.authority.notifications.get(UUID_7); assert.ok(changed);
+    assert.equal(changed.version, 2);
+    assert.equal(changed.status, operation === "read" ? "read" : operation === "unread" ? "unread" : mutable.status);
+    assert.deepEqual(changed.snooze, operation === "snooze" ? { state: "snoozed", until: "2026-07-31T18:01:00.000Z" } : operation === "unsnooze" ? { state: "not-snoozed" } : mutable.snooze);
+    assert.deepEqual(database.authority.notifications.get(pinned.notificationId), pinned);
+    assert.deepEqual(database.authority.notifications.get(foreign.notificationId), foreign);
+  });
+  it("honestly applies an empty current collection with no affected rows", () => {
+    const { database, kernel } = harness(); const result = kernel.execute(collectionCommand(database));
+    assert.equal(result.state, "applied"); if (result.state !== "applied") throw new Error("applied required");
+    assert.deepEqual(result.affectedTargets, []);
+  });
+});
 
 describe("notification lifecycle arms", () => {
 afterEach(_afterEachFixture0);

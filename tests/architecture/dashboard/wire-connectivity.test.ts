@@ -256,6 +256,11 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "notification-unread": "notification target, not a run row",
   "notification-snooze": "notification target, not a run row",
   "notification-unsnooze": "notification target, not a run row",
+  "notification-read-all": "complete actor inbox target, not a run row",
+  "notification-unread-all": "complete actor inbox target, not a run row",
+  "notification-snooze-all": "complete actor inbox target, not a run row",
+  "notification-unsnooze-all": "complete actor inbox target, not a run row",
+
   "apply-explorer-edit": "The reviewed Explorer draft targets a workflow override revision, not a run row",
 };
 

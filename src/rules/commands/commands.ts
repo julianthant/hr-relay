@@ -1,3 +1,4 @@
+import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
 import { AssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
 import { RunDisplayNameSchema } from "../../models/run/display-name.js";
 export { RunDisplayNameSchema } from "../../models/run/display-name.js";
@@ -74,6 +75,7 @@ export const CommandActionSchema = z.enum([
   "notification-unread",
   "notification-snooze",
   "notification-unsnooze",
+  "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all",
   "apply-explorer-edit",
 ]);
 
@@ -337,6 +339,7 @@ export const GateCommandRequestSchema = z.strictObject({
 
 export const NotificationCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.enum(["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"]), target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.enum(["notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"]), target: NotificationCollectionTargetSchema }),
 ]);
 
 /** The sole durable Explorer edit door; validation remains a read-only route. */
@@ -773,8 +776,52 @@ export const COMMAND_EFFECT_BY_ACTION = {
   "notification-unread": "local-write",
   "notification-snooze": "local-write",
   "notification-unsnooze": "local-write",
+  "notification-read-all": "local-write", "notification-unread-all": "local-write", "notification-snooze-all": "local-write", "notification-unsnooze-all": "local-write",
   "apply-explorer-edit": "local-write",
 } as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
+
+export const COMMAND_ASSISTANT_METADATA = {
+  "annotate-failure": "Resolve a recorded failure",
+  "set-batch-grouping": "Change queue grouping",
+  "start-run": "Start an approved workflow plan",
+  "inspect-intake": "Inspect an imported document",
+  "confirm-intake-mapping": "Confirm document mapping",
+  "correct-intake-row": "Correct an imported row",
+  "exclude-intake-row": "Exclude an imported row",
+  "validate-intake": "Validate imported data",
+  "enqueue-intake-manifest": "Queue validated imported data",
+  "plan-worker-count": "Plan worker capacity",
+  "spawn-worker": "Start an owned worker",
+  "stop-worker": "Stop an owned worker",
+  "remove-worker": "Remove a stopped worker",
+  "retry-worker": "Retry an eligible worker",
+  "pause-worker": "Pause an owned worker",
+  "resume-worker": "Resume an owned worker",
+  "refresh-browser": "Refresh an owned browser",
+  "reopen-browser": "Reopen an owned browser",
+  "apply-settings": "Save ordinary settings",
+  "apply-protected-settings": "Save protected settings through operator entry",
+  "plan-storage-relocation": "Plan storage relocation",
+  "cancel-storage-relocation": "Cancel storage relocation",
+  retry: "Resume an eligible run",
+  restart: "Restart an eligible run",
+  cancel: "Cancel an eligible run",
+  bump: "Change run priority",
+  rename: "Rename a run",
+  delete: "Delete a terminal run",
+  "resolve-write-present": "Resolve a write with verified presence",
+  "resolve-write-absent": "Resolve a write with verified absence",
+  "resolve-gate": "Resolve an operator gate",
+  "notification-read": "Mark a notification read",
+  "notification-unread": "Mark a notification unread",
+  "notification-snooze": "Snooze a notification",
+  "notification-unsnooze": "Unsnooze a notification",
+  "notification-read-all": "Mark current unread notifications read",
+  "notification-unread-all": "Mark current read notifications unread",
+  "notification-snooze-all": "Snooze current notifications",
+  "notification-unsnooze-all": "Unsnooze current notifications",
+  "apply-explorer-edit": "Apply a schema-bound Explorer edit",
+} as const satisfies Record<z.infer<typeof CommandActionSchema>, string>;
 
 export const CommandFamilySpecSchema = z.strictObject({
   family: CommandFamilySchema,
@@ -796,7 +843,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   run: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
-  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"],
+  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
   explorer: ["apply-explorer-edit"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
 
@@ -838,12 +885,28 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "storage-relocation", actions: ["plan-storage-relocation", "cancel-storage-relocation"] },
   { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
-  { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"] },
+  { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"] },
   { family: "explorer", actions: ["apply-explorer-edit"] },
 ].map((entry) => ({
   ...entry,
   effects: entry.actions.map((action) => COMMAND_EFFECT_BY_ACTION[CommandActionSchema.parse(action)]),
 }))));
+
+export function commandAssistantAvailability(isActive: (family: string, action: string) => boolean) {
+  return COMMAND_FAMILY_REGISTRY.flatMap(family => family.actions.map(action => {
+    const active = isActive(family.family, action);
+    return {
+      family: family.family, action, summary: COMMAND_ASSISTANT_METADATA[action], classification: COMMAND_EFFECT_BY_ACTION[action],
+    availability: !active ? "unavailable" as const
+      : family.family === "notification" ? "available" as const : "handoff" as const,
+    argumentProjection: family.family === "notification" ? ["reference"] : [],
+    subject: family.family === "notification" || family.family === "workflow-batch" || family.family === "settings" || family.family === "worker-browser"
+      ? "none" as const : "unbound" as const,
+    reason: !active ? "owner-unavailable" as const
+      : family.family === "notification" ? "canonical-command" as const : "operator-interface-required" as const,
+    };
+  }));
+}
 
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
 export type CommandRequest = z.infer<typeof CommandRequestSchema>;

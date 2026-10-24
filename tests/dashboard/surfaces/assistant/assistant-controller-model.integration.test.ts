@@ -29,9 +29,9 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
   await act(async () => { current.onAction({ type: 'edit', value: 'B request' }); current.onAction({ type: 'send' }); });
   await act(async () => { pending[1].settle({ state: 'refused', code: 'ASSISTANT_SUBJECT_REQUIRED', message: 'Synthetic refusal' }); });
   assert.equal(current.state.messages.at(-1)?.text, 'Select an unambiguous subject before preparing a proposal.');
-  await render('a'); assert.equal(current.state.draft, '  Exact Unicode Ω\nrequest  '); assert.equal(current.state.turn.state, 'cancelled');
+  await render('a'); assert.equal(current.state.draft, '  Exact Unicode Ω\nrequest  '); assert.equal(current.state.turn.state, 'unknown');
   assert.equal(current.state.messages.some(message => message.text === 'Late A'), false);
-  await act(async () => { current.onAction({ type: 'send' }); });
+  await act(async () => { current.onAction({ type: 'new-chat' }); current.onAction({ type: 'edit', value: 'Fresh manual request' }); current.onAction({ type: 'send' }); });
   await render('a', 2); assert.equal(pending[2].signal?.aborted, true);
   await act(async () => { pending[2].settle({ state: 'answered', text: 'Stale authority', citations: [] }); });
   assert.equal(current.state.messages.some(message => message.text === 'Stale authority'), false);
@@ -114,4 +114,37 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await act(async () => replies[6].resolve({ state: 'answered', text: 'Late authority', citations: [] })); assert.equal(composer.text, 'Old authority');
   await send('Old chat'); await render('b', 2); await act(async () => composer.setText('Other chat draft'));
   await act(async () => replies[7].resolve({ state: 'answered', text: 'Late chat', citations: [] })); assert.equal(composer.text, 'Other chat draft');
+});
+
+it('renders the existing served action card with truthful local facts and confirms only its server identity', async () => {
+  const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
+  const { createAssistantMockProducer } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel-model.js');
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const account = { ...preview, mode: 'live' as const };
+  let current!: ReturnType<typeof useAssistantController>, confirmations = 0;
+  const identity = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1 };
+  const client = { async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal: { ...identity,
+    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', subject: 'none', effect: 'local-write' } }; },
+    async assistantDecide(input: { chatId: string; actionId: string; revision: number; decision: 'confirm' | 'cancel' }) {
+      assert.deepEqual(input, { ...identity, decision: 'confirm' }); confirmations++;
+      return { state: 'applied' as const, actionId: input.actionId };
+    } };
+  const producer = createAssistantMockProducer();
+  function Harness() {
+    current = useAssistantController(client, 1, undefined, false);
+    return createElement(AssistantPanel, { producer, accountClient: { chatGptAccount: async () => ({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
+  }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
+  await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
+  const card = host.querySelector('[aria-label="Proposed action details"]'); assert.ok(card);
+  assert.match(card.textContent ?? '', /Proposed action · Local change/u);
+  assert.match(host.textContent ?? '', /Model, effort, permission-mode and voice controls are unavailable/u);
+  assert.match(host.textContent ?? '', /Review and confirm issued local actions/u);
+  assert.match(card.textContent ?? '', /SubjectNone/u); assert.match(card.textContent ?? '', /Local notification/u);
+  assert.equal(card.textContent?.includes('Dry run'), false); assert.equal(card.textContent?.includes('Alex Rivera'), false);
+  const confirm = [...card.querySelectorAll('button')].find(button => button.textContent === 'Confirm'); assert.ok(confirm); assert.equal(confirm.disabled, false);
+  await act(async () => { confirm.click(); confirm.click(); });
+  assert.equal(confirmations, 1); assert.match(host.textContent ?? '', /Action completed/u);
+  assert.equal(confirm.disabled, true);
 });

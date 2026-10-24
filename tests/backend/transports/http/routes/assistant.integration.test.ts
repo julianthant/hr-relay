@@ -29,3 +29,35 @@ it("never exposes a thrown service error through framework logs or response", as
   }, body: JSON.stringify({ message: "Explain" }) });
   assert.equal(response.status, 400); assert.equal((await response.text()).includes("CANARY_PRIVATE_SERVICE_ERROR"), false);
 });
+
+it("keeps operator confirmation behind the same bounded loopback/media door and accepts only issued identity fields", async () => {
+  const app: DashboardApp = new Hono(); let calls = 0;
+  registerAssistantRoutes(app, { async respond() { return { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "Unavailable" }; },
+    decide(input) { calls++; return { state: "cancelled", actionId: input.actionId }; } });
+  const url = "http://127.0.0.1:3938/api/v1/assistant/action";
+  const headers = { host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json" };
+  const identity = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, decision: "cancel" };
+  for (const patch of [{ origin: "https://foreign.example" }, { host: "foreign.example" }, { "content-type": "text/plain" }]) {
+    const response = await app.request(url, { method: "POST", headers: { ...headers, ...patch }, body: JSON.stringify(identity) });
+    assert.ok(response.status === 403 || response.status === 415);
+  }
+  for (const body of ["malformed", JSON.stringify({ ...identity, command: { source: "assistant" } }), "x".repeat(20_001)]) {
+    assert.equal((await app.request(url, { method: "POST", headers, body })).status, 400);
+  }
+  assert.equal(calls, 0);
+  const response = await app.request(url, { method: "POST", headers, body: JSON.stringify(identity) });
+  assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(calls, 1); assert.equal((await response.json()).state, "cancelled");
+});
+
+it("returns an issued automatic unknown action unchanged without converting it to a generic refusal", async () => {
+  const action = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1,
+    expiresAt: "2099-01-01T00:00:00Z", label: "Mark 25 current notifications read", targetLabel: "25 current notifications", subject: "none" as const, effect: "local-write" as const };
+  const result = { state: "unknown" as const, actionId: action.actionId, action };
+  const app: DashboardApp = new Hono(); let calls = 0;
+  registerAssistantRoutes(app, { async respond() { calls++; return result; } });
+  const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers: {
+    host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json",
+  }, body: JSON.stringify({ message: "mark notifications read" }) });
+  assert.equal(response.status, 200); assert.equal(calls, 1); assert.deepEqual(await response.json(), result);
+});

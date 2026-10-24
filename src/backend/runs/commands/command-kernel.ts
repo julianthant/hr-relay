@@ -1,3 +1,6 @@
+import { notificationMatchesCollection, type NotificationRecord, type NotificationCollectionOperation } from "../../../models/notifications/notifications.js";
+import { assistantKnowledgeArtifact, ASSISTANT_INPUT_PROJECTION_VERSION } from "../../assistant/context.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { AssistantActionManifestSchema } from "../../../models/profiles/assistant-permissions.js";
 import { admitWorkerLifecycle, admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
@@ -26,7 +29,7 @@ import { activeRunsForItem, fanOutQueuedRuns, requireApplied, runTarget, type Ta
 import { buildRerunPlan, RerunRefusedError } from "../start/rerun.js";
 import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { LiveWorkerResetRequestSchema, COMMAND_EFFECT_BY_ACTION, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandRequestSchema, CommandResultSchema, StorageRelocationCommandRequestSchema, deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
+import { LiveWorkerResetRequestSchema, commandAssistantAvailability, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandRequestSchema, CommandResultSchema, StorageRelocationCommandRequestSchema, deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
 import { deriveItemId, deriveStableUuid, type IdFactory } from "../../../rules/identity/identifiers.js";
 import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
 import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
@@ -88,7 +91,7 @@ const PHASE1_ACTIVE = {
   ],
   gate: ["resolve-gate"],
 
-  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"],
+  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
 
   intake: [
     "inspect-intake",
@@ -284,6 +287,8 @@ export interface CommandKernelDependencies {
   /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
   readonly settings?: SettingsApplicationExecutor;
   readonly authorityProfileId?: string;
+  readonly assistantSurface?: () => readonly Readonly<{ method: string; path: string }>[];
+  readonly workflowSources?: Readonly<Record<string, "mock" | "served">>;
   readonly assistantRevalidate?: (command: CommandRequest) => void;
   readonly storageRelocationPlans?: StorageRelocationPlanReader;
   readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
@@ -293,6 +298,7 @@ export interface CommandKernelDependencies {
 }
 
 export interface CommandKernel {
+  assistantAvailability(): ReturnType<typeof commandAssistantAvailability>;
   assistantManifest(): z.infer<typeof AssistantActionManifestSchema>;
   execute(input: unknown, parentCommandId?: string): CommandResult;
 
@@ -877,6 +883,15 @@ function executeNotification(
   if (request.target.actorId !== request.requestedBy) {
     reject(request, "invalid-state", "notification target actor does not match the admitted command actor");
   }
+  if ("members" in request.target) {
+    const operation: NotificationCollectionOperation = request.type === "notification-read-all" ? "read" : request.type === "notification-unread-all" ? "unread"
+      : request.type === "notification-snooze-all" ? "snooze" : "unsnooze";
+    const observed = repositories.notifications.collection(request.target.actorId, operation);
+    if (canonicalJsonStringify(observed) !== canonicalJsonStringify(request.target)) reject(request, "invalid-state", "notification collection changed; reload the inbox");
+    const rows = repositories.notifications.listByActor(request.target.actorId).filter(row => notificationMatchesCollection(row, operation));
+    const changes = rows.map(row => applyNotificationState(repositories, row, operation, now));
+    return applied(request, changes.map(change => change.target), changes.map(change => change.version));
+  }
   const current = repositories.notifications.get(request.target.notificationId);
   if (current === undefined) {
     reject(request, "target-not-found", `notification ${request.target.notificationId} does not exist`);
@@ -903,31 +918,21 @@ function executeNotification(
       + `(you loaded ${String(request.target.expectedVersion)}); reload the inbox`,
     );
   }
-  const snoozeUntil = request.type === "notification-snooze"
-    ? new Date(Date.parse(now) + 3_600_000).toISOString()
-    : undefined;
-  repositories.notifications.updateState({
-    notificationId: request.target.notificationId,
-    expectedVersion: current.version,
-    status: request.type === "notification-read"
-      ? "read"
-      : request.type === "notification-unread"
-        ? "unread"
-        : current.status,
-    snooze: snoozeUntil !== undefined
-      ? { state: "snoozed", until: snoozeUntil }
-      : request.type === "notification-unsnooze"
-        ? { state: "not-snoozed" }
-        : current.snooze,
-    updatedAt: now,
-  });
-  const target: TargetReference = { family: "notification", notificationId: request.target.notificationId };
-  return applied(request, [target], [{
-    target,
-    before: current.version,
-    after: current.version + 1,
-  }]);
+  const operation: NotificationCollectionOperation = request.type === "notification-read" ? "read" : request.type === "notification-unread" ? "unread"
+    : request.type === "notification-snooze" ? "snooze" : "unsnooze";
+  const change = applyNotificationState(repositories, current, operation, now);
+  return applied(request, [change.target], [change.version]);
 }
+
+function applyNotificationState(repositories: AuthorityRepositories, current: NotificationRecord, operation: NotificationCollectionOperation, now: string) {
+  repositories.notifications.updateState({ notificationId: current.notificationId, expectedVersion: current.version,
+    status: operation === "read" ? "read" : operation === "unread" ? "unread" : current.status,
+    snooze: operation === "snooze" ? { state: "snoozed", until: new Date(Date.parse(now) + 3_600_000).toISOString() }
+      : operation === "unsnooze" ? { state: "not-snoozed" } : current.snooze, updatedAt: now });
+  const target: TargetReference = { family: "notification", notificationId: current.notificationId };
+  return { target, version: { target, before: current.version, after: current.version + 1 } };
+}
+
 
 
 function executeIntake(
@@ -2613,6 +2618,18 @@ export function executeSettingsCommand(
 }
 
 export function createCommandKernel(dependencies: CommandKernelDependencies): CommandKernel {
+  const availability = () => commandAssistantAvailability((family, action) => {
+    if (DEFERRED_ARM_KEYS.has(`${family}/${action}`)) return false;
+    if (family === "settings") return dependencies.settings !== undefined;
+    if (family === "storage-relocation") return dependencies.storageRelocationPlans !== undefined;
+    if (family === "explorer") return dependencies.explorerEdits !== undefined;
+    if (family === "failure-resolution") return dependencies.failureResolution?.capability().state === "available";
+    if (family === "start" || family === "intake") return dependencies.workflowSources !== undefined
+      && Object.entries(dependencies.workflowSources).some(([id, source]) => source === "served" && dependencies.descriptors.resolve(id) !== undefined
+        && (family !== "intake" || dependencies.intakeProjections.resolve(id) !== undefined));
+    return true;
+  });
+
   // Validated ONCE at composition: a dependency satisfying both seams is a
   // wiring ambiguity, refused before any command can reach it.
   const pool = dependencies.workerRuntime.pool;
@@ -2719,20 +2736,22 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       }
   };
   return Object.freeze({
+    assistantAvailability: availability,
     assistantManifest() {
-      const entries: z.infer<typeof AssistantActionManifestSchema>["entries"] = [];
-      for (const family of COMMAND_FAMILY_REGISTRY) {
-        if (family.family === "worker-browser" && dependencies.assistantRevalidate !== undefined) entries.push({
-          family: family.family, action: "spawn-worker", classification: COMMAND_EFFECT_BY_ACTION["spawn-worker"], subject: "none",
-        });
-        if (family.family !== "notification" && family.family !== "workflow-batch" && family.family !== "settings") continue;
-        for (const action of family.actions) {
-          if (DEFERRED_ARM_KEYS.has(`${family.family}/${action}`) || action === "apply-protected-settings"
-            || (family.family === "settings" && dependencies.settings === undefined)) continue;
-          entries.push({ family: family.family, action, classification: COMMAND_EFFECT_BY_ACTION[action], subject: "none" });
-        }
-      }
-      return AssistantActionManifestSchema.parse({ revision: 1, entries });
+      const entries = availability().filter(entry => entry.availability !== "unavailable" && (
+        entry.family === "notification" || entry.family === "workflow-batch"
+        || entry.family === "settings" && entry.action !== "apply-protected-settings"
+        || entry.family === "worker-browser" && entry.action === "spawn-worker" && dependencies.assistantRevalidate !== undefined
+      )).map(entry => ({ family: entry.family, action: entry.action, classification: entry.classification, subject: "none" as const }));
+      const identity = { commands: availability(), schema: deriveSchemaHash(CommandRequestSchema, "input"),
+        surface: dependencies.assistantSurface?.() ?? null,
+        projection: ASSISTANT_INPUT_PROJECTION_VERSION, knowledge: assistantKnowledgeArtifact(Object.entries(dependencies.workflowSources ?? {}).flatMap(([id, source]) => {
+          const descriptor = dependencies.descriptors.resolve(id);
+          return source === "served" && descriptor !== undefined ? [{ id, label: descriptor.label }] : [];
+        })).policy.exportSha256,
+        workflows: dependencies.workflowSources === undefined ? null : Object.entries(dependencies.workflowSources).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0) };
+      const revision = Number.parseInt(sha256Hex(canonicalJsonStringify(identity)).slice(0, 12), 16) + 1;
+      return AssistantActionManifestSchema.parse({ revision, entries });
     },
     execute(input: unknown, parentCommandId?: string): CommandResult {
       const request = CommandRequestSchema.parse(input);

@@ -32,6 +32,7 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
   const turn = state.turn;
   const refusal = assistantConfirmRefusal(state, revision, accountAvailable) ?? confirmRefusal;
   const waiting = turn.state === 'waiting';
+  const uncertain = turn.state === 'unknown' || turn.state === 'proposal' && turn.disposition === 'unknown';
   const transcriptRef = useCallback((node: HTMLDivElement | null) => {
     transcript.current = node;
     if (!node || !state.messages.length) return;
@@ -61,14 +62,14 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
     try { await navigator.clipboard.writeText(text); setCopyFeedback({ id, copied: true }); }
     catch { setCopyFeedback({ id, copied: false }); }
   }
-  const proposal = turn.state === 'proposal' && <section key={turn.proposal.id} className="assistant-proposal" role="region" aria-label="Proposed run details" tabIndex={0}>
+  const proposal = turn.state === 'proposal' && <section key={turn.proposal.id} className="assistant-proposal" role="region" aria-label={turn.proposal.action === undefined ? "Proposed run details" : "Proposed action details"} tabIndex={0}>
     <div className="assistant-proposal-heading">
       <FileCheck2 aria-hidden size={18} />
-      <div><p>Proposed run</p><h3>{turn.proposal.workflow.label}</h3></div>
-      <span className="assistant-mode">{turn.proposal.mode === 'dry-run' ? 'Dry run' : 'Read only'}</span>
+      <div><p>{turn.proposal.action === undefined ? "Proposed run" : "Proposed action"}</p><h3>{turn.proposal.workflow.label}</h3></div>
+      <span className="assistant-mode">{turn.proposal.mode === 'dry-run' ? 'Dry run' : turn.proposal.mode === 'local-change' ? 'Local change' : 'Read only'}</span>
     </div>
     <dl className="assistant-facts">
-      <dt>Subjects</dt><dd>{turn.proposal.subjects.map(subject => <div key={subject.id}>{subject.name} <span className="assistant-id">{subject.id}</span></div>)}</dd>
+      <dt>{turn.proposal.action === undefined ? "Subjects" : "Subject"}</dt><dd>{turn.proposal.action !== undefined ? "None" : turn.proposal.subjects.map(subject => <div key={subject.id}>{subject.name} <span className="assistant-id">{subject.id}</span></div>)}</dd>
       {turn.proposal.values.map(value => <div className="assistant-fact" key={value.label}><dt>{value.label}</dt><dd>{value.value}</dd></div>)}
     </dl>
     <Disclosure className="assistant-run-disclosure" summary="Effects and stop points" contentClassName="assistant-run-content">
@@ -112,17 +113,18 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
               </li>)}</ol>
               {waiting && <div className="assistant-thinking" role="status"><span className="assistant-thinking-dots" aria-hidden><i /><i /><i /></span>Preparing a proposal…</div>}
               {turn.state === 'failed' && <div className="assistant-error"><CircleAlert aria-hidden size={16} /><div role="alert"><strong>Reply unavailable</strong><p>Your request is kept. Try again.</p></div><Button ref={preserveActionFocus} size="sm" variant="ghost" icon={<RotateCcw aria-hidden size={13} />} disabled={!accountAvailable || state.draft !== turn.prompt} onClick={() => dispatchAndFocus('retry')}>Retry reply</Button></div>}
+              {turn.state === 'unknown' && <p className="assistant-cancelled" role="alert">Action outcome is unknown. Check the current inbox before starting a new request. Do not retry this request.</p>}
               {turn.state === 'cancelled' && <p className="assistant-cancelled" role="status">Reply cancelled. Your request is kept; send it again when ready.</p>}
             </div>
             {awayFromLatest && <button type="button" className={`assistant-latest ${dsFocus}`} onClick={() => { followLatest.current = true; transcript.current?.scrollTo({ top: transcript.current.scrollHeight }); composer.current?.focus({ preventScroll: true }); }}><ArrowDown aria-hidden size={14} />Jump to latest</button>}
           </div>
-          <form className="assistant-composer" onSubmit={event => { event.preventDefault(); if (accountAvailable && !waiting && state.draft.trim()) dispatchAndFocus('send'); }}>
+          <form className="assistant-composer" onSubmit={event => { event.preventDefault(); if (accountAvailable && !waiting && !uncertain && state.draft.trim()) dispatchAndFocus('send'); }}>
             {!accountAvailable && <div className="assistant-account" role="alert"><CircleAlert aria-hidden size={15} /><div><strong>{accountHeading}</strong><p>{accountNotice}</p></div></div>}
             <div className="assistant-input-card">
               <Textarea ref={composer} className="assistant-compose-input" aria-label="Message" placeholder="Send a message…" rows={2} value={state.draft} onChange={event => onAction({ type: 'edit', value: event.target.value })} onKeyDown={event => {
                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
               }} />
-              <div className="assistant-send"><span>Enter to send · Shift+Enter for a new line</span>{waiting ? <IconButton key="stop" ref={preserveActionFocus} label="Stop reply" className="assistant-send-button" icon={<Square aria-hidden size={13} fill="currentColor" />} onClick={() => dispatchAndFocus('cancel')} /> : <IconButton key="send" type="submit" label="Send" className="assistant-send-button" icon={<ArrowUp aria-hidden size={17} />} disabled={!accountAvailable || !state.draft.trim()} />}</div>
+              <div className="assistant-send"><span>Enter to send · Shift+Enter for a new line</span>{waiting ? <IconButton key="stop" ref={preserveActionFocus} label="Stop reply" className="assistant-send-button" icon={<Square aria-hidden size={13} fill="currentColor" />} onClick={() => dispatchAndFocus('cancel')} /> : <IconButton key="send" type="submit" label="Send" className="assistant-send-button" icon={<ArrowUp aria-hidden size={17} />} disabled={!accountAvailable || uncertain || !state.draft.trim()} />}</div>
             </div>
             <p className="assistant-footnote">{footnote}{onOpenSettings !== undefined && <> <Button size="sm" variant="ghost" onClick={() => { setOpen(false); onOpenSettings(); }}>Open Settings</Button></>}</p>
           </form>

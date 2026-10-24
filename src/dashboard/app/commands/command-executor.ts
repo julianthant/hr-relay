@@ -77,7 +77,7 @@ function lockKey(request: CommandRequest): string {
     case "worker-browser": identity = "workflowId" in request.target ? [request.target.workflowId] : [request.target.workerId]; break;
     case "settings": identity = []; break;
     case "storage-relocation": identity = [request.target.installationId]; break;
-    case "notification": identity = [request.target.notificationId, request.target.actorId]; break;
+    case "notification": identity = "members" in request.target ? ["collection", request.target.actorId] : [request.target.notificationId, request.target.actorId]; break;
     case "explorer": identity = [request.target.workflowId]; break;
     case "workflow-batch": identity = [request.target.batchId]; break;
     case "failure-resolution": identity = [request.target.runId, request.target.failureId]; break;

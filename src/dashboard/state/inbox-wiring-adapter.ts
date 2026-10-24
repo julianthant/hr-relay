@@ -137,7 +137,7 @@ export function useInboxWiring({ client, enabled, binding, toast, openInbox }: {
     if (row?.kind !== "notification" || row.actorId !== request.scope.actorId) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
     const owner = current.current.binding;
     const retained = owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
-      && attempt.request.target.notificationId === id && attempt.request.target.actorId === request.scope.actorId
+      && ("members" in attempt.request.target ? attempt.request.target.members.some(member => member.notificationId === id) : attempt.request.target.notificationId === id) && attempt.request.target.actorId === request.scope.actorId
       && (attempt.state === "pending" || attempt.outcome?.kind === "uncertain"));
     if (retained !== undefined) { setCommandNotice({ request, text: retained.outcome?.kind === "uncertain" ? retained.outcome.feedback.text : inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
     const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso, requestedBy: request.scope.actorId,
@@ -168,7 +168,34 @@ export function useInboxWiring({ client, enabled, binding, toast, openInbox }: {
     : inboxProjection(rows, binding.authority.nowIso);
   return { state: projection.state, notice: [rows !== undefined && !current.current.fresh && !settled?.failed ? inboxMessage("NOTIFICATION_REFRESH_PENDING") : "", projection.notice, settled?.request === request ? settled.notice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
     control,
-    readAll: async () => { for (const row of rowsRef.current ?? []) if (row.kind === "notification" && row.readState === "unread" && !await control(row.notificationId, "read")) return; },
+    readAll: async () => {
+      if (!enabled || current.current.request !== request || !current.current.fresh || client.notificationCollection === undefined) return;
+      const owner = current.current.binding;
+      const held = () => owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
+        && attempt.request.target.actorId === request.scope.actorId && (attempt.state === "pending" || attempt.outcome?.kind === "uncertain"));
+      if (held() !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return; }
+      let target: NotificationCollectionTarget;
+      try { target = await client.notificationCollection("read"); }
+      catch { if (current.current.request === request) setCommandNotice({ request, text: inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE") }); return; }
+      if (current.current.request !== request || !current.current.fresh || held() !== undefined || target.actorId !== request.scope.actorId) return;
+      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso,
+        requestedBy: request.scope.actorId, source: "dashboard", family: "notification", type: "notification-read-all", target });
+      setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") });
+      await owner.executor.execute(command, { scope: owner.scope,
+        readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
+        publish: outcome => {
+          if (current.current.request !== request) return;
+          if (outcome.kind === "confirmed") {
+            const confirmed = NotificationWireSchema.array().parse(outcome.readback);
+            const updated = new Map(confirmed.map(row => [row.notificationId, row]));
+            const next = rowsRef.current?.map(row => updated.get(row.notificationId) ?? row);
+            rowsRef.current = next;
+            if (next !== undefined) setSettled(previous => previous?.request === request ? { ...previous, rows: next } : previous);
+            setCommandNotice({ request, text: "" });
+            current.current.fresh = false; readEpoch.current++; refresh(value => value + 1);
+          } else { setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome); }
+        } });
+    },
     open: (item, navigate, opened, refused) => {
       if (!enabled || current.current.request !== request || !current.current.fresh) return;
       void client.notificationTarget(item.id).then(target => {

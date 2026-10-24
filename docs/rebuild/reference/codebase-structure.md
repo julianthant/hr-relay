@@ -55,8 +55,8 @@ Paths in this table are relative to `src/backend/`.
 
 | Path | Ownership |
 | --- | --- |
-| `assistant/` | Pure action policy, private profile-token authorization, server-issued chat custody and once-consumable canonical actions. Profile SQLite owns grants, chats and action records. |
-| `accounts/` | ChatGPT OAuth, verified account and usage state, and the shared Responses OCR/assistant transport. Account-specific model catalogs and bounded strict namespaced function turns use the same selected-account owner; production function bindings remain empty until their availability and authorization gates pass. Browser-safe account and sign-in lifecycle schemas live in `models/dashboard/chatgpt-account.ts`; HTTP routes own the latest account attempt. |
+| `assistant/` | Finite local intent and opaque-reference tools, bounded generated plain knowledge, private profile-token authorization and once-consumable canonical actions. Profile SQLite owns grants, chats and action records. `context.ts` owns the safe knowledge projection; `scripts/build/generate-assistant-knowledge.ts` writes and checks its artifact. |
+| `accounts/` | ChatGPT OAuth, verified account and usage state, and the shared Responses OCR/assistant transport. Account-specific model catalogs and bounded strict namespaced function turns use the same selected-account owner; production functions require their current canonical availability and authorization gates; absent verified model policy refuses inference. Browser-safe account and sign-in lifecycle schemas live in `models/dashboard/chatgpt-account.ts`; HTTP routes own the latest account attempt. |
 | `app/` | Bootstrap, configuration, host admission, preflight, rehearsal manifest validation, and application composition. |
 | `app/composition/` | Storage, dashboard, and worker dependency assembly. `profile-credential-inventory.ts` owns canonical profile copy membership, credential maintenance assessment, and browser-root validation. |
 | `app/registries/` | Workflow, task, step-proof, and test-target registration. `task-registry.ts` composes system, processing, and workflow task stores. |

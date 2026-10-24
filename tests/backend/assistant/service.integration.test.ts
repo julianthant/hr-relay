@@ -1,7 +1,7 @@
 import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { composeSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
-import { bindSyntheticAssistantFunctions, syntheticAssistantResponse, completedAssistantStream } from "../../support/helpers/assistant-function-fixtures.js";
+import { projectSyntheticAssistantInput, bindSyntheticAssistantFunctions, syntheticAssistantResponse, completedAssistantStream } from "../../support/helpers/assistant-function-fixtures.js";
 import { AssistantCitationSchema, type AssistantInferenceRequest } from "../../../src/models/dashboard/assistant.js";
 import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
@@ -39,7 +39,7 @@ function fixture() {
     assertCurrent() {},
     assertSubjectBinding(input) { assert.equal(Reflect.get(input.value as object, "eid"), selected.employeeId); },
   };
-  const options = { context, clock, runtime: () => runtime, isModelPolicyCurrent: () => true,
+  const options = { projectInput: projectSyntheticAssistantInput, context, clock, runtime: () => runtime, isModelPolicyCurrent: () => true,
     modelPolicy: { model: "synthetic-model", eligible: true as const, consented: true as const, billing: "chatgpt-plan" as const, verifiedUntil: "2026-10-19T00:00:00Z" },
     bindFunctions: bindSyntheticAssistantFunctions,
     account: { async listAssistantModels() { return { catalog: { models: [{ slug: "synthetic-model", displayName: "Synthetic" }] }, authority: { revision: 1, attemptGeneration: 1, availability: "available" as const } }; },
@@ -405,4 +405,16 @@ it("revalidates context, policy and cancellation around per-request binding befo
     if (result.state === "refused") assert.equal(result.code, fault === "context" ? "ASSISTANT_CONTEXT_STALE" : fault === "policy" ? "ASSISTANT_MODEL_UNVERIFIED" : "ASSISTANT_CANCELLED");
     assert.equal(bindings, 1); assert.equal(f.resolved(), 1); assert.equal(catalogs, 0); assert.equal(f.calls(), 0); assert.equal(f.planned(), 0);
   }
+});
+
+it("refuses a missing trusted input projector before catalog, binding or inference", async () => {
+  const f = fixture();
+  let catalogs = 0, bindings = 0;
+  const service = createAssistantService({ ...f.options, projectInput: undefined,
+    bindFunctions: async () => { bindings++; return []; },
+    account: { ...f.options.account, async listAssistantModels() { catalogs++; return f.options.account.listAssistantModels(); } } });
+  const result = await service.respond({ message: "local-only request" }, new AbortController().signal);
+  assert.equal(result.state, "refused");
+  if (result.state === "refused") assert.equal(result.code, "ASSISTANT_PROPOSAL_REFUSED");
+  assert.equal(catalogs, 0); assert.equal(bindings, 0); assert.equal(f.calls(), 0);
 });

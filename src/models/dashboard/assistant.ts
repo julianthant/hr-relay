@@ -119,8 +119,27 @@ export const AssistantProposalSchema = z.strictObject({
     afterPrepareTaskId: z.string().min(1), commitTaskId: z.string().min(1) }),
   effects: z.strictObject({ workflowExecuted: z.literal(false), transactionCommitted: z.literal(false) }), confirmation: z.literal("required-in-run"),
 });
+export const AssistantActionIdentitySchema = z.strictObject({ chatId: z.uuid(), actionId: z.uuid(), revision: z.number().int().positive() });
+export type AssistantActionIdentity = z.infer<typeof AssistantActionIdentitySchema>;
+export const AssistantActionProposalSchema = AssistantActionIdentitySchema.extend({
+  expiresAt: z.string().datetime(), label: z.string().min(1).max(160), targetLabel: z.string().min(1).max(160),
+  subject: z.literal("none"), effect: z.literal("local-write"),
+});
+export type AssistantActionProposal = z.infer<typeof AssistantActionProposalSchema>;
+export const AssistantActionDecisionSchema = AssistantActionIdentitySchema.extend({ decision: z.enum(["confirm", "cancel"]) });
+export type AssistantActionDecision = z.infer<typeof AssistantActionDecisionSchema>;
+export const AssistantUnknownActionResultSchema = z.strictObject({ state: z.literal("unknown"), actionId: z.uuid() });
+export const AssistantActionResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("applied"), actionId: z.uuid() }),
+  z.strictObject({ state: z.literal("cancelled"), actionId: z.uuid() }),
+  z.strictObject({ state: z.literal("refused"), code: z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]) }),
+  AssistantUnknownActionResultSchema,
+]);
+export type AssistantActionResult = z.infer<typeof AssistantActionResultSchema>;
 export const AssistantResultSchema = z.discriminatedUnion("state", [
+  AssistantUnknownActionResultSchema.extend({ action: AssistantActionProposalSchema }).refine(value => value.actionId === value.action.actionId, "assistant-action-response-mismatch"),
   z.strictObject({ state: z.literal("answered"), text: z.string().max(8000), citations: z.array(AssistantCitationSchema).max(8) }),
+  z.strictObject({ state: z.literal("action-proposal"), proposal: AssistantActionProposalSchema }),
   z.strictObject({ state: z.literal("proposal"), proposal: AssistantProposalSchema }),
   z.strictObject({ state: z.literal("resolution-required"), candidates: z.array(AssistantSubjectSchema).max(20) }),
   z.strictObject({ state: z.literal("refused"), code: z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]), message: z.string() }),
