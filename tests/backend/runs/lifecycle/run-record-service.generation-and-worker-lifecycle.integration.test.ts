@@ -303,8 +303,10 @@ describe("worker lifecycle service capability", () => {
         assert.equal(raw.prepare("DELETE FROM write_intents WHERE id=?").run(injectedIntent.writeIntentId).changes, 1);
         raw.exec("COMMIT");
       } catch (error) {
+        const rollbackFailures: unknown[] = [];
         try { raw.exec("ROLLBACK"); }
-        catch (rollbackError) { throw new AggregateError([error, rollbackError], "write-fence-fixture-restoration-unproved", { cause: error }); }
+        catch (rollbackError) { rollbackFailures.push(rollbackError); }
+        if (rollbackFailures.length !== 0) throw new AggregateError([error, ...rollbackFailures], "write-fence-fixture-restoration-unproved", { cause: error });
         throw error;
       }
     } finally { raw.close(); }
