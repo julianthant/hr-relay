@@ -1,14 +1,17 @@
+import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { separationsDescriptor } from '../../../support/helpers/registered-workflows.js';
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { notificationDisplayContext } from "../../../../src/backend/runs/queries/notification-display.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
-import { HASH_A,HASH_B } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_A as HASH_A_INPUT, HASH_B as HASH_B_INPUT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { makeWorld, notificationRecordOf,runRecordOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
+const HASH_A = FingerprintSchema.parse(HASH_A_INPUT), HASH_B = FingerprintSchema.parse(HASH_B_INPUT);
 const worlds: DashboardWorld[] = [];
 afterEach(() => { for (const world of worlds.splice(0)) world.dispose(); });
 
-const run = runRecordOf({ seed: 1, attempt: 2, claimGeneration: 1, lifecycle: { state: "terminal", outcome: "failed", failureId: "22222222-2222-4222-8222-222222222222", endedAt: "2026-10-02T17:00:00.000Z" } });
+const run = runRecordOf({ seed: 1, workflow: separationsDescriptor.id, attempt: 2, claimGeneration: 1, lifecycle: { state: "terminal", outcome: "failed", failureId: "22222222-2222-4222-8222-222222222222", endedAt: "2026-10-02T17:00:00.000Z" } });
 const row = notificationRecordOf({ seed: 1, title: "Run failed", lastSeenAt: "2026-10-02T17:00:00.000Z" });
 const checkpoint = (overrides: Record<string, unknown> = {}) => RunCheckpointRecordSchema.parse({
   workflowId: run.envelope.workflow, itemId: run.envelope.itemId, nodeId: "identify", attempt: 2,
@@ -16,13 +19,14 @@ const checkpoint = (overrides: Record<string, unknown> = {}) => RunCheckpointRec
   descriptorVersion: 1, contractFingerprint: HASH_A, implFingerprint: HASH_B, provenance: [],
   writtenAt: "2026-10-02T16:59:00.000Z", ...overrides,
 });
-const descriptor = { version: run.envelope.descriptorVersion, label: "Person lookup", contractFingerprint: HASH_A, subjectProjection: { nodeId: "identify", fieldPath: "person.name" } };
+const descriptor = { ...separationsDescriptor, version: run.envelope.descriptorVersion, label: "Person lookup", contractFingerprint: HASH_A, subjectProjection: { nodeId: "identify", fieldPath: "person.name" } };
 const deps = (records: ReturnType<typeof checkpoint>[], current = descriptor) => {
   const world = makeWorld();
   worlds.push(world);
   return {
     read: () => ({ state: "present" as const, disposition: "live" as const, run }),
     descriptor: () => current,
+    receipt: () => undefined,
     checkpoints: { listByAttempt: () => records },
     presentation: { timeline: world.timeline, authority: { listCheckpoints: () => records, listGateResults: () => [] } },
   };

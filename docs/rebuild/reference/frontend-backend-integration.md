@@ -225,6 +225,8 @@ patch application trigger a resnapshot. Malformed envelopes or non-network strea
 with visible error. Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
 Superseded stream completions cannot reconnect the new stream.
 
+Notification subjects use the registered title projection and the matching retained evidence receipt when a workflow declares one, through the same canonical title resolver as Queue. Unavailable or refused title authority stays unavailable; it does not fall back to a checkpoint or guessed name. Other declared subject projections retain their checkpoint identity checks. This display context belongs only to the served inbox; durable notification summaries and OS delivery are unchanged.
+
 Notification publications originate after the authority transaction commits. They are live-only,
 nonretained events with explicit source identity; baseline reads, replay, reconnect and resnapshot
 never synthesize publications. The stream/client validate actor, day, descriptor and generation,

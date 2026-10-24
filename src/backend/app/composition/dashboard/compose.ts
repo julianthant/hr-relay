@@ -813,6 +813,7 @@ async function composeDashboardRuntimeStartup(
       notification: notificationWireOf(publication.notification, clock.nowMs(), notificationDisplayContext(publication.notification, {
         presentation: runDetailDeps,
         read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
+        receipt: id => database.authority.evidenceReceipts.findByRun(id),
         checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
       }), notificationSourceEventOf(publication.notification, { actorId: publication.notification.actorId, notificationId: publication.notification.notificationId, adopted: false, event: publication.event })),
     })) },
@@ -850,6 +851,7 @@ async function composeDashboardRuntimeStartup(
     notifications: { collection: (actor, operation) => { assertCurrent(); const value = database.withAuthorityReadSnapshot(() => database.authority.notifications.collection(actor, operation)); assertCurrent(); return value; }, snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs(), notificationDisplayContext(record, {
       presentation: runDetailDeps,
       read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
+        receipt: id => database.authority.evidenceReceipts.findByRun(id),
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
     }), notificationSourceEventOf(record, database.authority.notificationPublications.latest(record.notificationId))))), target: (id, actor) => database.withAuthorityReadSnapshot(() => notificationTarget(id, actor)), status: notificationObserver.status },
     ...(staticBundle === undefined ? {} : { staticBundle }),

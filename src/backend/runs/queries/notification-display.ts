@@ -2,14 +2,16 @@ import type { RunExistence } from "../../../models/config/authority.js";
 import type { NotificationRecord } from "../../../models/notifications/notifications.js";
 import type { NotificationDisplayContext } from "../../../models/dashboard/projection.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
-import { resolveSubjectTitle, type SubjectCheckpointSource } from "../projections/run-subject-title.js";
+import { resolveResultTitle, resolveSubjectTitle, type SubjectCheckpointSource } from "../projections/run-subject-title.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "./run-timeline-compatibility.js";
-import type { RunDetailDescriptorView } from "./run-detail-types.js";
-import { LogIdentityRefusedError } from "../commands/refusals.js";
+import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
+import { LogIdentityRefusedError, ProjectionDegradedError } from "../commands/refusals.js";
 
 export function notificationDisplayContext(record: NotificationRecord, deps: {
   read(id: string): RunExistence;
-  descriptor(workflowId: string): { version: number; label: string; contractFingerprint: string; subjectProjection?: { nodeId: string; fieldPath: string }; timeline?: RunDetailDescriptorView["timeline"] } | undefined;
+  descriptor(workflowId: string): AnyWorkflowDescriptor | undefined;
+  receipt(runId: string): RunEvidenceReceipt | undefined;
   checkpoints: { listByAttempt(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[] };
   presentation: RunTimelineEvidenceSource;
 }): NotificationDisplayContext {
@@ -26,6 +28,15 @@ export function notificationDisplayContext(record: NotificationRecord, deps: {
       assertRunTimelineCompatible(current.run, descriptor.timeline, deps.presentation);
     } catch (error) {
       if (error instanceof LogIdentityRefusedError) return { state: "unavailable" };
+      throw error;
+    }
+  }
+  if (descriptor.titleProjection !== undefined) {
+    try {
+      const subject = resolveResultTitle(descriptor, current.run, deps.receipt(current.run.envelope.runId));
+      return subject === undefined ? { state: 'unavailable' } : { state: 'available', workflow: descriptor.label, subject };
+    } catch (error) {
+      if (error instanceof ProjectionDegradedError) return { state: 'unavailable' };
       throw error;
     }
   }

@@ -1444,6 +1444,7 @@ export class RunQueueProjection {
         .map((record) => notificationWireOf(record, this.#deps.clock.nowMs(), notificationDisplayContext(record, {
           read: id => this.#deps.reader.read(id),
           descriptor: id => this.#deps.descriptors.resolve(id),
+          receipt: id => this.#deps.authority.getReceipt(id),
           presentation: this.#deps,
           checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
         }), notificationSourceEventOf(record, this.#deps.authority.latestNotificationSource?.(record.notificationId))))
