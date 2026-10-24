@@ -209,7 +209,7 @@ describe("failure, retry, and resume", () => {
       retained.push(operation);
     } }, { ...claimed, signal: controller.signal });
     await started;
-    const retainedBeforeAbort = retained.length; assert.ok(retainedBeforeAbort > 0);
+    const retainedBeforeAbort = retained.length; assert.equal(retainedBeforeAbort, 2);
     controller.abort(new Error("operator cancelled the run"));
     const outcome = await executing;
     assert.equal(outcome.state, "abandoned");
@@ -227,10 +227,17 @@ describe("failure, retry, and resume", () => {
     await driverSettlement;
     const settled = await Promise.allSettled(retained);
     assert.equal(driverSettled, true);
-    for (const result of settled) {
-      assert.equal(result.status, "rejected");
-      if (result.status === "rejected") assert.equal(result.reason, controller.signal.reason);
+    assert.equal(settled.length, 2);
+    const [sessionOperation, taskOperation] = settled; assert.ok(sessionOperation && taskOperation);
+    assert.equal(sessionOperation.status, "rejected");
+    if (sessionOperation.status === "rejected") {
+      assert.ok(sessionOperation.reason instanceof Error);
+      assert.equal(sessionOperation.reason.constructor, Error);
+      assert.equal(sessionOperation.reason.message, "ucpath driver lease was aborted during use");
+      assert.equal(sessionOperation.reason.cause, undefined);
     }
+    assert.equal(taskOperation.status, "rejected");
+    if (taskOperation.status === "rejected") assert.equal(taskOperation.reason, controller.signal.reason);
     const lifecycle = testRunService(database, clock);
     const claim = runClaim(run); assert.ok(claim);
     const now = clock.now().toISOString();
