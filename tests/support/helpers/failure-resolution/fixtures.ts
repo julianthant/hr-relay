@@ -112,7 +112,7 @@ function diagnosticFoundation(options: { sharedMachine?: true }){
  return running.run;
  };
  const run=createRun(RUN_ID);
- return {root,path,clock,db,snapshot,run,createRun,dispose:()=>{db.close();profile.close();}};
+ return {root,path,clock,db,snapshot,run,createRun,profile,dispose:()=>{db.close();profile.close();}};
 }
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
