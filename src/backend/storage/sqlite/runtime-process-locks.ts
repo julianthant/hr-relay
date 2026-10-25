@@ -25,7 +25,7 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { systemClock, Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
 import {
   FingerprintSchema,
   IsoInstantSchema,
@@ -34,7 +34,7 @@ import {
   type WorkerId,
 } from "../../../rules/identity/ids.js";
 import type { RecoveryRuntimeLockSnapshot } from "./recovery-contracts.js";
-import { RecoveryRuntimeLockSnapshotSchema, RecoveryRuntimeLockSnapshot } from "./recovery-contracts.js";
+import { RecoveryRuntimeLockSnapshotSchema } from "./recovery-contracts.js";
 import { AUTHORITY_APPLICATION_ID } from "./migrations.js";
 
 

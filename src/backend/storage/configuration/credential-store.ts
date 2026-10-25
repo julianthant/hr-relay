@@ -31,7 +31,7 @@ import {
 } from "../../../models/config/protected-settings.js";
 import {
   CredentialEraseInputSchema,
-  type CredentialEraseInput, CredentialStore, CredentialStoreApplyOutcome,
+  type CredentialEraseInput,
 } from "../../../models/config/credential-store.js";
 import {
   SettingsApplyRefusalSchema,
