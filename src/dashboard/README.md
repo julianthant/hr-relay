@@ -48,7 +48,7 @@ from their subfolders. Canonical wire contracts live under `src/models/dashboard
 live under `src/rules/commands/`. Browser imports never reach backend composition or task registries.
 
 `app/workflow-sources.ts` reads `config/dashboard-workflow-sources.json`. Each workflow is explicitly
-`mock` or `served`; all configured workflows currently select `mock`. An undeclared ID throws
+`mock` or `served`. Person Lookup and Separations select `served`; every other configured workflow selects `mock`. An undeclared ID throws
 `WORKFLOW_SOURCE_UNDECLARED`. A served failure never falls back to a mock.
 
 Bootstrap, Settings, Preflight, storage, and the served intake workspace use the typed client.

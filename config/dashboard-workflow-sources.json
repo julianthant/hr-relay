@@ -1,5 +1,5 @@
 {
-  "separations": "mock",
+  "separations": "served",
   "onboarding": "mock",
   "person-lookup": "served",
   "i9-lookup": "mock",
