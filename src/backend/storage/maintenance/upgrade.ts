@@ -282,7 +282,7 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
 export function releaseStoppedMachineControlUpgrade(control: { release(): void } | undefined, restore: RestoreAdmissionHandle, ownsRestore: boolean,
   held: Readonly<{ primary?: unknown; inventories?: readonly { dispose(): void }[]; admission?: RuntimeAdmission }> = {}): void {
   const retain = (errors: readonly unknown[]): never => {
-    throw retainAuthoritySourceClosure(errors, { restore, ...(held.admission === undefined ? {} : { admission: held.admission }) });
+    throw retainAuthoritySourceClosure(errors, { restore, admission: { admission: held.admission, control, inventories: held.inventories } });
   };
   if (held.primary instanceof AuthoritySourceClosureUnprovedError) retain([held.primary]);
   try { control?.release(); }
@@ -293,7 +293,7 @@ export function releaseStoppedMachineControlUpgrade(control: { release(): void }
   }
   if (ownsRestore) {
     try { restore.release(); }
-    catch (error) { retain([error]); }
+    catch (error) { retain(held.primary === undefined ? [error] : [held.primary, error]); }
   }
   if (held.primary !== undefined) throw held.primary;
 }

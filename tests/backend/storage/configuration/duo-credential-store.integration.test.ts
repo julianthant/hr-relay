@@ -1,3 +1,5 @@
+import nativeFs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { verifyStoppedControlCredentialAttestation } from "../../../../src/backend/storage/configuration/credential-store.js";
@@ -8,8 +10,8 @@ import { z } from "zod";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireStoppedProfileControlUpgrade } from "../../../../src/backend/storage/admission/installation.js";
 import { releaseStoppedMachineControlUpgrade, upgradeStoppedMachineControl } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import assert from "node:assert/strict";
@@ -17,7 +19,7 @@ import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { createDuoCredentialStore, DuoCredentialCommitUncertainError } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
 import { issueDuoCredentialPurpose, openDuoCredentialDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { DuoCredentialDocumentSchema } from "../../../../src/models/config/duo-credential-store.js";
@@ -145,26 +147,36 @@ it("fails closed at uint32 exhaustion without changing the last committed count"
   } finally { f.close(); }
 });
 
+const retainedStoppedControlSetupOwners = new Set<object>();
 function stoppedControlFixture(retainedCredential?: unknown) {
-  const fixture = createBoundProfileFixture();
-  const profileId = fixture.admission.profileBinding.profileId;
-  if (retainedCredential !== undefined) writeFileSync(join(fixture.stateRoot, "credentials", "duo-webauthn.json"), JSON.stringify(retainedCredential), { mode: 0o600 });
-  const controlPath = join(fixture.workspace, ".tracker", "control", "profile-registry.json");
-  const markerPath = join(fixture.machine.stateRoot, "machine", "profile-registry-version.json");
-  const current = JSON.parse(readFileSync(controlPath, "utf8")) as { schemaVersion: number; duo: Array<{ state: string }> };
-  assert.equal(current.schemaVersion, 2);
-  assert.ok(current.duo.every(row => row.state === "never-initialized"));
-  const { duo: _duo, ...prior } = current;
-  fixture.admission.release(); fixture.machine.release();
-  writeFileSync(controlPath, JSON.stringify({ ...prior, schemaVersion: 1 }));
-  writeFileSync(markerPath, JSON.stringify({ schemaVersion: 2 }));
-  const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
-  const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
+  const held: { fixture?: ReturnType<typeof createBoundProfileFixture>; restore?: ReturnType<typeof acquireRuntimeRestoreAdmission>;
+    upgrade?: ReturnType<typeof acquireStoppedProfileControlUpgrade>; primary?: unknown } = {};
+  retainedStoppedControlSetupOwners.add(held);
   try {
-    const upgrade = acquireStoppedProfileControlUpgrade(fixture.workspace, restore);
-    return { ...fixture, profileId, controlPath, upgrade, restore,
-      close() { upgrade.release(); restore.release(); fixture.close(); } };
-  } catch (error) { restore.release(); fixture.close(); throw error; }
+    const fixture = createBoundProfileFixture();
+    held.fixture = fixture;
+    const profileId = fixture.admission.profileBinding.profileId;
+    if (retainedCredential !== undefined) writeFileSync(join(fixture.stateRoot, "credentials", "duo-webauthn.json"), JSON.stringify(retainedCredential), { mode: 0o600 });
+    const controlPath = join(fixture.workspace, ".tracker", "control", "profile-registry.json");
+    const markerPath = join(fixture.machine.stateRoot, "machine", "profile-registry-version.json");
+    const current = JSON.parse(readFileSync(controlPath, "utf8")) as { schemaVersion: number; duo: Array<{ state: string }> };
+    assert.equal(current.schemaVersion, 2);
+    assert.ok(current.duo.every(row => row.state === "never-initialized"));
+    const { duo: _duo, ...prior } = current;
+    fixture.admission.release(); fixture.machine.release();
+    writeFileSync(controlPath, JSON.stringify({ ...prior, schemaVersion: 1 }));
+    writeFileSync(markerPath, JSON.stringify({ schemaVersion: 2 }));
+    const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
+    const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
+    held.restore = restore;
+      const upgrade = acquireStoppedProfileControlUpgrade(fixture.workspace, restore);
+      held.upgrade = upgrade;
+      retainedStoppedControlSetupOwners.delete(held);
+      return { ...fixture, profileId, controlPath, upgrade, restore,
+        close() { upgrade.release(); restore.release(); fixture.close(); } };
+
+
+  } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 
 const retainedCredential = { rpId: "duosecurity.com", credentialId: "synthetic-retained-id", privateKey: "synthetic-retained-key", signCount: 42, transport: "internal" };
@@ -435,23 +447,30 @@ function assertUnchanged(paths: { controlPath: string; markerPath: string; datab
   assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
 }
 
+const retainedPublicationRecoveryOwners = new Set<unknown>();
+
 it("finishes one interrupted Duo publication after the producing process exits and refuses a changed or released claim", async () => {
   const f = setup({ sharedMachine: true });
-  f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
-  const canonicalBefore = readFileSync(f.documentPath);
+  const retained: { fixture: typeof f; child?: ChildProcess; maintenance?: RuntimeAdmission; machine?: RuntimeAdmission; admission?: RuntimeAdmission; events?: unknown; failures: unknown[] } = { fixture: f, failures: [] };
+  retainedPublicationRecoveryOwners.add(retained);
+  let recoveryCompleted = false;
   let child: ChildProcess | undefined;
   let closed: Promise<unknown[]> | undefined;
   let closeObserved = false;
   let childReleased = false;
-  let primary: unknown;
-  let cleanup: unknown;
+  let primary: { error: unknown } | undefined;
+  const cleanup: unknown[] = [];
   try {
+    f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
+    const canonicalBefore = readFileSync(f.documentPath);
     child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
       [f.workspace, f.admission.profileBinding.profileId, f.input.credentialId, f.clock.now().toISOString()],
       { execArgv: ["--import", "tsx"], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    retained.child = child;
     const closeEvent = once(child, "close");
     closed = closeEvent;
     const events = on(child, "message");
+    retained.events = events;
     let stderrBytes = 0;
     child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; });
     const next = async () => {
@@ -459,6 +478,7 @@ it("finishes one interrupted Duo publication after the producing process exits a
       assert.equal(result.done, false);
       return z.object({ type: z.string(), name: z.string().optional(), pid: z.number().int().positive().optional() }).parse(result.value?.[0]);
     };
+    let eventFailure: { error: unknown } | undefined;
     try {
       const ready = await next();
       assert.deepEqual(ready, { type: "ready", pid: child.pid });
@@ -474,7 +494,15 @@ it("finishes one interrupted Duo publication after the producing process exits a
       assert.equal(message.type, "uncertain");
       assert.equal(message.name, "DuoCredentialCommitUncertainError");
       assert.equal(stderrBytes, 0);
-    } finally { await events.return?.(undefined); }
+    } catch (error) { eventFailure = { error }; }
+    let eventCloseFailure: { error: unknown } | undefined;
+    try { await events.return?.(undefined); }
+    catch (error) { eventCloseFailure = { error }; }
+    if (eventFailure !== undefined) {
+      if (eventCloseFailure !== undefined) cleanup.push(eventCloseFailure.error);
+      throw eventFailure.error;
+    }
+    if (eventCloseFailure !== undefined) throw eventCloseFailure.error;
     const intentPath = join(f.workspace, ".tracker/control", "profile-publication.json");
     const directory = join(f.machine.stateRoot, "machine", "duo-credentials");
     const stageName = readdirSync(directory).find((name) => name.startsWith(`.${f.admission.profileBinding.profileId}.`) && name.endsWith(".stage"));
@@ -489,7 +517,8 @@ it("finishes one interrupted Duo publication after the producing process exits a
     const profileId = f.admission.profileBinding.profileId;
     f.admission.release(); f.machine.release();
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
-    try {
+    retained.maintenance = maintenance;
+    {
       const changedProfile = JSON.parse(intentBefore.toString("utf8")) as { capture: { profileId: string } };
       changedProfile.capture.profileId = randomUUID();
       privateJson(intentPath, changedProfile);
@@ -535,10 +564,13 @@ it("finishes one interrupted Duo publication after the producing process exits a
       assert.equal(existsSync(intentPath), false);
       assert.equal(existsSync(stagePath), false);
       assert.equal(recovered.revision > 0, true);
-    } finally { maintenance.release(); }
+    }
+    maintenance.release();
     const machine = RuntimeAdmission.acquireMachine(f.workspace, "shared");
+    retained.machine = machine;
     const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(profileId));
-    try {
+    retained.admission = admission;
+    {
       const reopened = createDuoCredentialStore(admission, machine, f.clock);
       const burned = reopened.read().credentials[0];
       assert.ok(burned);
@@ -546,8 +578,10 @@ it("finishes one interrupted Duo publication after the producing process exits a
       const next = reopened.reserve(f.input.credentialId);
       assert.equal(next.count, burned.highWater + 1);
       assert.throws(() => reopened.recoverInterruptedPublication(), /duo-transaction-unissued/u);
-    } finally { admission.release(); machine.release(); }
-  } catch (error) { primary = error; }
+    }
+    admission.release(); machine.release();
+    recoveryCompleted = true;
+  } catch (error) { primary = { error }; retained.failures.push(error); }
   if (!closeObserved && child !== undefined && closed !== undefined) {
     try {
       if (child.exitCode === null && child.signalCode === null) child.send("close");
@@ -557,12 +591,18 @@ it("finishes one interrupted Duo publication after the producing process exits a
       if ((code === null && signal === null) || child.connected || child.pid === undefined) throw new Error("duo-child-close-unproved");
       assertChildProcessReleased(child.pid);
       childReleased = true;
-    } catch (error) { cleanup = error; }
+    } catch (error) { cleanup.push(error); }
   }
-  if (childReleased && cleanup === undefined) f.close();
-  if (primary !== undefined && cleanup !== undefined) throw new AggregateError([primary, cleanup], "Duo interrupt child cleanup unproved", { cause: primary });
-  if (cleanup !== undefined) throw cleanup;
-  if (primary !== undefined) throw primary;
+  if (primary === undefined && cleanup.length === 0 && recoveryCompleted && childReleased) {
+    try { f.close(); retainedPublicationRecoveryOwners.delete(retained); }
+    catch (error) { cleanup.push(error); }
+  }
+  retained.failures.push(...cleanup);
+  if (primary !== undefined && cleanup.length > 0) throw new AggregateError([primary.error, ...cleanup], "Duo interrupt child cleanup unproved", { cause: primary.error });
+  if (cleanup.length > 1) throw new AggregateError(cleanup, "Duo interrupt child cleanup unproved", { cause: cleanup[0] });
+  if (cleanup.length === 1) throw cleanup[0];
+  if (primary !== undefined) throw primary.error;
+  if (!recoveryCompleted || !childReleased) throw new Error('duo-recovery-closure-unproved');
 }, 30_000);
 
 it("refuses unmanaged Duo copies, then backup erase and restore keep burned counters and do not revive erased key material", () => {
@@ -752,4 +792,135 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
   assert.equal(existsSync(snapshotFile), true);
   assert.equal(readFileSync(paths.controlPath).equals(paths.controlBytes), true);
   assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
+});
+
+
+it('keeps erased managed material revoked after a distinct valid enrollment', () => {
+  const f = setup();
+  const retained: { fixture: typeof f; error?: unknown } = { fixture: f };
+  retainedPublicationRecoveryOwners.add(retained);
+  try {
+    f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
+    const anchoredKeyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
+    const anchoredKeyBefore = readFileSync(anchoredKeyPath);
+    const earlierPurpose = issueDuoCredentialPurpose(f.admission, f.machine);
+    const backedUp = f.store.backup();
+    const backupDirectory = join(f.machine.stateRoot, "machine", "duo-purpose-backups", f.admission.profileBinding.profileId);
+    const backupPath = join(backupDirectory, `${backedUp.revision}.json`);
+    const erased = f.store.erase();
+    const replacementKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const replacement = { ...f.input, credentialId: Buffer.from(randomUUID()).toString("base64url"),
+      privateKeyPkcs8: replacementKey.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
+      publicKeySpki: replacementKey.publicKey.export({ type: "spki", format: "der" }).toString("base64") };
+    assert.notEqual(replacement.credentialId, f.input.credentialId);
+    assert.equal(f.store.enroll(replacement).revision > erased.revision, true);
+    f.store.confirm(replacement.credentialId, replacement.scope);
+    assert.equal(readFileSync(anchoredKeyPath).equals(anchoredKeyBefore), true);
+    const reserved = f.store.reserve(replacement.credentialId);
+    const freshPurpose = issueDuoCredentialPurpose(f.admission, f.machine);
+    const current = f.store.read();
+    assert.equal(current.state, 'provisioned');
+    const opened = openDuoCredentialDocument(freshPurpose, readFileSync(f.documentPath), current.revision);
+    assert.equal(opened.credentials.length, 1);
+    assert.equal(opened.credentials.some(row => row.credentialId === replacement.credentialId && row.privateKeyPkcs8 === replacement.privateKeyPkcs8), true);
+    assert.throws(() => openDuoCredentialDocument(freshPurpose, readFileSync(backupPath), backedUp.revision), /duo-erased-key-material-refused/u);
+    assert.throws(() => openDuoCredentialDocument(earlierPurpose, readFileSync(backupPath), backedUp.revision), /duo-erased-key-material-refused/u);
+    assert.throws(() => f.store.restore(backupPath), /duo-purpose-restore-revives-erased-key/u);
+    const newBackup = f.store.backup();
+    const newBackupPath = join(backupDirectory, `${newBackup.revision}.json`);
+    const sameEnrollment = openDuoCredentialDocument(freshPurpose, readFileSync(newBackupPath), newBackup.revision);
+    assert.equal(sameEnrollment.credentials.some(row => row.credentialId === replacement.credentialId), true);
+    assert.equal(f.store.restore(newBackupPath).revision > newBackup.revision, true);
+    assert.equal(f.store.reserve(replacement.credentialId).count, reserved.count + 1);
+    const currentBytes = readFileSync(f.documentPath), changedBytes = Buffer.from(currentBytes);
+    changedBytes[changedBytes.length - 1] = changedBytes[changedBytes.length - 1] === 0 ? 1 : 0;
+    writeFileSync(f.documentPath, changedBytes);
+    assert.throws(() => openDuoCredentialDocument(freshPurpose, readFileSync(newBackupPath), newBackup.revision), (error: unknown) => {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
+      return error instanceof Error && error.message === "duo-document-custody-changed";
+    });
+    writeFileSync(f.documentPath, currentBytes);
+    assert.equal(openDuoCredentialDocument(freshPurpose, readFileSync(newBackupPath), newBackup.revision).credentials.some(row => row.credentialId === replacement.credentialId), true);
+    assert.throws(() => openDuoCredentialDocument(issueDuoCredentialPurpose(f.admission, f.machine), readFileSync(backupPath), backedUp.revision), /duo-erased-key-material-refused/u);
+  } catch (error) { retained.error = error; throw error; }
+  try { f.close(); }
+  catch (error) { retained.error = error; throw error; }
+  retainedPublicationRecoveryOwners.delete(retained);
+});
+
+const retainedInventoryCloseFailures = new Set<object>();
+for (const readOwner of ['scan', 'parse'] as const) it(`retains the actual stopped inventory ${readOwner} descriptor and purpose on failed native close`, () => {
+  const f = stoppedControlFixture(retainedCredential);
+  const held: { fixture: typeof f; descriptor?: number; path?: string; identity?: object; closeFailure?: Error; primary?: unknown; competing?: RuntimeAdmission;
+    inventory?: ReturnType<typeof composeStoppedControlCredentialInventory>; claim?: ReturnType<typeof f.upgrade.profileInventory>; hooks?: Array<{ mockRestore(): void }> } = { fixture: f };
+  retainedInventoryCloseFailures.add(held);
+  const path = join(f.stateRoot, 'credentials', 'duo-webauthn.json');
+  held.path = path;
+  let bytes: Buffer | undefined;
+  const realClose = nativeFs.closeSync, realStat = nativeFs.fstatSync, realRemove = nativeFs.rmSync;
+  const closeFailure = new Error('inventory-native-close-refused');
+  held.closeFailure = closeFailure;
+  let matchingCloses = 0, refusedCloses = 0, destructiveCleanup = 0, observed: unknown, primary: { error: unknown } | undefined;
+  const restoreFailures: unknown[] = [];
+  const hooks: Array<{ mockRestore(): void }> = [];
+  held.hooks = hooks;
+  try {
+    const identity = nativeFs.statSync(path);
+    held.identity = identity;
+    bytes = readFileSync(path);
+    const claim = f.upgrade.profileInventory(f.profileId);
+    held.claim = claim;
+    const removeSpy = vi.spyOn(nativeFs, 'rmSync').mockImplementation((target, options) => {
+      if (target === path || target === f.workspace) destructiveCleanup += 1;
+      realRemove(target, options);
+    });
+    hooks.push(removeSpy);
+    const closeSpy = vi.spyOn(nativeFs, 'closeSync').mockImplementation(descriptor => {
+      const opened = realStat(descriptor);
+      if (opened.dev === identity.dev && opened.ino === identity.ino) {
+        matchingCloses += 1;
+        if (matchingCloses === (readOwner === 'scan' ? 1 : 2)) {
+          held.descriptor = descriptor; refusedCloses += 1;
+          throw closeFailure;
+        }
+      }
+      realClose(descriptor);
+    });
+    hooks.push(closeSpy);
+    syncBuiltinESMExports();
+    try { held.inventory = composeStoppedControlCredentialInventory({ claim, hostFacts: { primaryDisplay: null }, clock: manualClock(new Date()) }); }
+    catch (error) { observed = error; held.primary = error; }
+    assert.ok(observed instanceof AuthoritySourceClosureUnprovedError);
+    assert.equal(observed.cause, observed.errors[0]);
+    const descriptorFailure: unknown = observed.errors[0];
+    assert.ok(descriptorFailure instanceof AuthoritySourceClosureUnprovedError);
+    assert.deepEqual(descriptorFailure.errors, [closeFailure]);
+    assert.equal(descriptorFailure.cause, closeFailure);
+    assert.equal(refusedCloses, 1);
+    assert.equal(matchingCloses, readOwner === 'scan' ? 1 : 2);
+    assert.notEqual(held.descriptor, undefined);
+    if (held.descriptor === undefined) throw new Error('inventory-descriptor-unobserved');
+    assert.equal(realStat(held.descriptor).dev, identity.dev);
+    assert.equal(realStat(held.descriptor).ino, identity.ino);
+    assertRuntimeRestoreAdmission(f.restore, join(f.workspace, rebuildRuntimeIsolation.processLockRoot));
+    assert.equal(f.upgrade.registeredProfileIds().includes(f.profileId), true);
+    assert.throws(() => { held.competing = RuntimeAdmission.acquireMachine(f.workspace, 'exclusive'); });
+    assert.equal(held.competing, undefined);
+    assert.equal(nativeFs.existsSync(f.workspace), true);
+    assert.equal(destructiveCleanup, 0);
+  } catch (error) { primary = { error }; held.primary ??= error; }
+  for (const hook of hooks) {
+    try { hook.mockRestore(); } catch (error) { restoreFailures.push(error); }
+  }
+  try { syncBuiltinESMExports(); } catch (error) { restoreFailures.push(error); }
+  if (primary !== undefined && observed !== undefined && primary.error !== observed) {
+    primary = { error: new AggregateError([observed, primary.error], 'inventory-close-assertion-failed', { cause: observed }) };
+  }
+  if (restoreFailures.length > 0) {
+    const cause = primary?.error ?? observed;
+    throw new AggregateError(cause === undefined ? restoreFailures : [cause, ...restoreFailures], 'inventory-hook-restoration-failed', { cause: cause ?? restoreFailures[0] });
+  }
+  if (primary !== undefined) throw primary.error;
+  if (bytes === undefined) throw new Error('inventory-source-bytes-unobserved');
+  assert.equal(readFileSync(path).equals(bytes), true);
 });

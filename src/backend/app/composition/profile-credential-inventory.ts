@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, credentialCopyProcessCustody, assertCredentialCopyResourcesClosed } from "../../storage/maintenance/profile-inventory.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames, deriveAuthorityUpgradePlanDigest } from "../../storage/sqlite/migrations.js";
@@ -11,7 +12,7 @@ import { createHash } from "node:crypto";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
 import { inspectCredentialKeyCopy, inspectCredentialCopy, assertCredentialStoreOwner, readForErasure, attestStoppedControlCredentials, releaseStoppedControlCredentialAttestation } from "../../storage/configuration/credential-store.js";
-import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readSync, type Stats } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { assessCredentialInventory, countProfileCredentialLoginRows, type CredentialInventory } from "../../profiles/credential-inventory.js";
@@ -48,12 +49,31 @@ function containsCredentialValue(value: unknown, secrets: readonly string[]): bo
   return false;
 }
 
+function withProfileCredentialCopy<T>(path: string, before: ReturnType<typeof inventoryFileIdentity>, read: (descriptor: number, identity: Stats) => T): T {
+  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  let identity: Stats | undefined;
+  let result: { value: T } | undefined, primary: { error: unknown } | undefined;
+  try {
+    identity = fstatSync(descriptor);
+    if (identity.dev !== before.device || identity.ino !== before.inode || identity.size !== before.size) throw new Error('credential-copy-source-changed');
+    result = { value: read(descriptor, identity) };
+  }
+  catch (error) { primary = { error }; }
+  try { closeSync(descriptor); }
+  catch (error) {
+    throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], {
+      descriptor: { descriptor, identity: { path, before, opened: identity } },
+    });
+  }
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error('profile-credential-copy-read-unproved');
+  return result.value;
+}
+
 export function scanProfileCredentialCopy(path: string, capturedSecrets: readonly string[], privateKeyScan?: Readonly<{ containsKey(value: unknown): boolean; keyScanOverlap: number }>): { digest: string; containsSecret: boolean } {
   const secrets = credentialSearchBytes(capturedSecrets);
   const before = inventoryFileIdentity(path);
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  try {
-    const opened = fstatSync(fd);
+  return withProfileCredentialCopy(path, before, (fd, opened) => {
     if (opened.dev !== before.device || opened.ino !== before.inode || opened.size !== before.size) throw new Error("profile-inventory-file-changed");
     const digest = createHash("sha256"), chunk = Buffer.alloc(64 * 1024);
     const overlap = Math.max(privateKeyScan?.keyScanOverlap ?? 0, ...secrets.map(secret => secret.length - 1));
@@ -71,7 +91,7 @@ export function scanProfileCredentialCopy(path: string, capturedSecrets: readonl
     }
     if (count !== before.size || canonicalJsonStringify(before) !== canonicalJsonStringify(inventoryFileIdentity(path))) throw new Error("profile-inventory-file-changed");
     return { digest: digest.digest("hex"), containsSecret };
-  } finally { closeSync(fd); }
+  });
 }
 
 
@@ -103,13 +123,11 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
           try {
             const bootLog = path === join(root, "logs", "boot.jsonl");
             if (bootLog && readEmergencyFaults(root).state !== "present") throw new Error("profile-inventory-log-unavailable");
-            const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-            let bytes: Buffer;
-            try {
-              const info = fstatSync(descriptor), limit = bootLog ? 5 * 1024 * 1024
+            const bytes = withProfileCredentialCopy(path, inventoryFileIdentity(path), (descriptor, info) => {
+              const limit = bootLog ? 5 * 1024 * 1024
                 : dirname(path) === join(root, "credentials") ? Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 : 16 * 1024 * 1024;
               if (!info.isFile() || info.size > limit) throw new Error("profile-inventory-copy-size-invalid");
-              bytes = Buffer.alloc(info.size + 1);
+              const bytes = Buffer.alloc(info.size + 1);
               let count = 0;
               while (count < bytes.length) {
                 const size = readSync(descriptor, bytes, count, bytes.length - count, count);
@@ -117,8 +135,8 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
                 count += size;
               }
               if (count !== info.size) throw new Error("profile-inventory-copy-changed");
-              bytes = bytes.subarray(0, count);
-            } finally { closeSync(descriptor); }
+              return bytes.subarray(0, count);
+            });
             if (createHash("sha256").update(bytes).digest("hex") !== scanned.digest) throw new Error("profile-inventory-copy-changed");
             const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
             const documents: unknown[] = bootLog ? text.trimEnd().split("\n").map(line => JSON.parse(line) as unknown) : [JSON.parse(text) as unknown];
@@ -132,7 +150,10 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
             for (const token of text.matchAll(/"(?:[^"\\]|\\.)*"/gu)) {
               if (containsCredentialValue(JSON.parse(token[0]) as unknown, fields.capturedSecrets) || fields.containsKey(JSON.parse(token[0]) as unknown)) containsSecret = true;
             }
-          } catch { unknownFormats.push(path); }
+          } catch (error) {
+            if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
+            unknownFormats.push(path);
+          }
         }
         if (backup !== undefined) {
           const copyAdmission = admission.verifiedReadOnlyCopy(path, backup.manifest.sha256);
@@ -283,8 +304,16 @@ export function composeProfileCredentialRepairInventory(input: Readonly<{ machin
     const admission = input.admission.forCredentialRepairInventory(request);
     try {
       const inventory = composeProfileCredentialMaintenanceInventory({ ...input, admission }, { kind: "ordinary" }, () => admission.assertLive())(writer, copies);
-      return Object.freeze({ revalidate: inventory.revalidate, dispose: () => admission.release() });
-    } catch (error) { admission.release(); throw error; }
+      return Object.freeze({ revalidate: inventory.revalidate, dispose: () => {
+        try { admission.release(); }
+        catch (error) { throw retainAuthoritySourceClosure([error], { admission }); }
+      } });
+    } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission });
+      try { admission.release(); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission }); }
+      throw error;
+    }
   };
 }
 
@@ -381,6 +410,14 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
     const proof = attestStoppedControlCredentials(input.claim, (copies) => composeProfileCredentialMaintenanceInventory({
       machine: admission, admission, hostFacts: input.hostFacts, clock: input.clock,
     }, { kind: "stopped-control", claim: input.claim }, () => admission.assertLive())(undefined, copies));
-    return Object.freeze({ proof, dispose() { releaseStoppedControlCredentialAttestation(proof); admission.release(); } });
-  } catch (error) { admission.release(); throw error; }
+    return Object.freeze({ proof, dispose() {
+      try { releaseStoppedControlCredentialAttestation(proof); admission.release(); }
+      catch (error) { throw retainAuthoritySourceClosure([error], { admission: { admission, proof } }); }
+    } });
+  } catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission });
+    try { admission.release(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission }); }
+    throw error;
+  }
 }

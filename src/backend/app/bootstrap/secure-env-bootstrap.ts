@@ -131,7 +131,7 @@ export async function runSecureEnvironmentBootstrap(
     } catch (error) {
       if (error instanceof AuthoritySourceClosureUnprovedError) {
         retainCustody = true;
-        throw error;
+        throw retainAuthoritySourceClosure([error], { admission });
       }
       throw error;
     } finally {

@@ -299,10 +299,14 @@ file, and source, then settles the existing publication. It does not reserve ano
 retry UNKNOWN. Erase walks the machine and profile roots, including credentials, backups, artifacts,
 and `machine/duo-purpose-backups`. It refuses a symlink, hard link, same-digest copy, or another
 authenticated envelope for that profile and purpose. Explicit purpose backups live only under
-`machine/duo-purpose-backups/<profileId>/<revision>.json`. The purpose decrypt owner reads the current Duo continuity. When that continuity is erased, it
-refuses to return a document that still contains credential material, including a managed backup
-opened with a fresh or earlier genuine purpose. Restore uses that refusal and still refuses a
-backup that would lower a burned counter. Erase does not delete or import `duo-webauthn.json`.
+`machine/duo-purpose-backups/<profileId>/<revision>.json`. The purpose decrypt owner freshly binds the
+actual runtime profile, current continuity and canonical document's physical witness before returning
+credential material. The current authenticated retired identities keep erased credentials revoked even
+after a different valid enrollment; fresh and earlier genuine purposes cannot decrypt those managed
+backups. A missing or corrupt current witness refuses instead of supplying an empty retired set.
+Same-enrollment backups remain readable, and restore still refuses a backup that would lower a burned
+counter. Decrypt refuses during pending publication; that check does not change the separate
+same-issued or stopped publication settlement. Erase does not delete or import `duo-webauthn.json`.
 `storage upgrade --machine-control` acquires the same stopped maintenance admission, which does not
 require marker 3, and converts only continuity schema 1 plus registry marker 2 into continuity schema
 2 plus marker 3. It backs up those two control files before mutation and reads them back. A failed

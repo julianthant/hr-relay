@@ -2608,13 +2608,15 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
   return canonicalJsonStringify({ prior, profiles, verifiers: controlUpgradeFile(join(machine, "profile-verifiers.json")), pepper: controlUpgradeFile(join(machine, "profile-pepper")) });
 }
 
-export function readIssuedDuoContinuity(lease: InstallationLease, profileId: string): { state: "never-initialized" | "registered" | "erased"; revision: number } {
+export function readIssuedDuoContinuity(lease: InstallationLease, profileId: string): Readonly<DuoContinuityRow> {
   assertInstallationLease(lease);
   lease.assertHeld();
   const continuity = readStrict(join(lease.readInstallationContext().workspace, CONTROL, "profile-registry.json"), ProfileContinuitySchema);
   const row = continuity.duo.find((value) => value.profileId === profileId);
   if (row === undefined) fail("duo-profile-unregistered");
-  return { state: row.state, revision: row.revision };
+  const snapshot = DuoContinuityRowSchema.parse(row);
+  if (snapshot.state !== 'never-provisioned') Object.freeze(snapshot.document);
+  return Object.freeze(snapshot);
 }
 
 export function assertStoppedMachineMaintenance(lease: InstallationLease, restore: RestoreAdmissionHandle): void {

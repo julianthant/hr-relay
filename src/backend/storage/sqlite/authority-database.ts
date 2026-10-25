@@ -591,7 +591,6 @@ const ProtectedSettingsWriteIdLookupSchema = z.strictObject({
   writeId: z.uuid(),
   excludingCommandId: CommandIdSchema,
 });
-const NextEligibleRowSchema = z.strictObject({ next_eligible_at: z.string().nullable() });
 
 const HeldRunRowSchema = z.strictObject({ run_id: z.string().nullable() });
 const IntPragmaRowSchema = z.record(z.string(), z.number().int());

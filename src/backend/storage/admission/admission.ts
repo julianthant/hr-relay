@@ -1196,7 +1196,7 @@ export class RuntimeAdmission {
       }, release: () => this.release() }, root, join(root, "artifacts"), [join(root, "state.db")], "profile-restore", "exclusive", this.#locator, input.profile.binding);
   }
 
-  captureDuoCredentialCustody(profile: RuntimeAdmission): Readonly<{ binding: ProfileDatabaseBinding; generation: number; assertHeld(): void; readDuoContinuity(): { state: "never-initialized" | "registered" | "erased"; revision: number } }> {
+  captureDuoCredentialCustody(profile: RuntimeAdmission): Readonly<{ binding: ProfileDatabaseBinding; generation: number; assertHeld(): void; readDuoContinuity(): ReturnType<typeof readIssuedDuoContinuity> }> {
     this.assertWritable();
     profile.assertProfileRuntime();
     const binding = profile.profileBinding;
@@ -1268,9 +1268,9 @@ export class RuntimeAdmission {
       lease = acquireInstallation(canonical, "exclusive");
       assertStoppedMachineMaintenance(lease, restore);
     } catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { restore });
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { restore, admission: lease });
       try { lease?.release(); }
-      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { restore }); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { restore, admission: lease }); }
       try { restore.release(); }
       catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { restore }); }
       throw error;

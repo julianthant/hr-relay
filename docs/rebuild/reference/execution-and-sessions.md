@@ -297,7 +297,10 @@ The new-purpose Duo document keeps its own reserved counter. That counter is not
 generation. Reservation publishes the next count before signing. An UNKNOWN or crashed attempt is not
 retried or reset. Ordinary reads do not settle a pending publication. Stopped
 `storage recover-duo-publication` can complete only the publication that was already written.
-After erasure, the purpose decrypt owner does not return credential material from an older envelope.
+After erasure, the purpose decrypt owner checks the authenticated current retired identities and
+canonical physical document before returning material. The refusal survives a later distinct
+enrollment; valid same-enrollment backups retain their counter-floor contract. Decrypt-only currentness
+rejects a pending publication without blocking the same-issued or stopped settlement owners.
 
 `AuthorityDatabase.#buildDuoCeremonyLeaseRepository` stores one row per key in `auth_leases`.
 Acquisition and release advance its version under CAS. The row stays retained across generations.

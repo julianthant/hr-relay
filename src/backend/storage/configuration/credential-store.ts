@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../source-closure.js';
 import type { CredentialInventory } from "../../profiles/credential-inventory.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { CredentialInitializationSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, LogoutOperationSchema, type LogoutOperation, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
@@ -165,7 +166,7 @@ function decryptCredentialDocument(input: unknown, key: CredentialKeyDocument, b
 export interface DuoCredentialPurpose { readonly profileId: string }
 
 const duoPurposes = new WeakMap<DuoCredentialPurpose, {
-  custody: ReturnType<RuntimeAdmission["captureDuoCredentialCustody"]>; keyPath: string; witness: CredentialKeyWitness; ancestry: Map<string, DirectoryIdentity>;
+  custody: ReturnType<RuntimeAdmission["captureDuoCredentialCustody"]>; keyPath: string; witness: CredentialKeyWitness; ancestry: Map<string, DirectoryIdentity>; documentPath: string; assertReadable(): void;
 }>();
 
 export function issueDuoCredentialPurpose(profile: RuntimeAdmission, machine: RuntimeAdmission): DuoCredentialPurpose {
@@ -175,7 +176,9 @@ export function issueDuoCredentialPurpose(profile: RuntimeAdmission, machine: Ru
   machine.assertProfileCredentialKeyAnchor(profile, witness.keyId);
   const purpose = Object.freeze({ profileId: binding.profileId }), ancestry = new Map<string, DirectoryIdentity>();
   if (!noSymlinkAncestry(dirname(keyPath), ancestry)) throw new Error("credential-key-required");
-  duoPurposes.set(purpose, { custody, keyPath, witness, ancestry });
+  duoPurposes.set(purpose, { custody, keyPath, witness, ancestry,
+    documentPath: join(machine.stateRoot, 'machine', 'duo-credentials', `${binding.profileId}.json`),
+    assertReadable: () => profile.assertProfileRuntime() });
   return purpose;
 }
 
@@ -215,8 +218,8 @@ export function sealDuoCredentialDocument(purpose: DuoCredentialPurpose, input: 
   return encodePrivate(DuoDocumentEnvelopeSchema.parse({ ...metadata, tag: cipher.getAuthTag().toString("base64"), ciphertext: ciphertext.toString("base64") }));
 }
 
-export function openDuoCredentialDocument(purpose: DuoCredentialPurpose, bytes: Uint8Array, revision: number): DuoCredentialDocument {
-  const { key, custody } = duoPurposeKey(purpose), envelope = DuoDocumentEnvelopeSchema.parse(parseCredentialJson(bytes));
+function decryptDuoCredentialDocument(issued: ReturnType<typeof duoPurposeKey>, bytes: Uint8Array, revision: number): DuoCredentialDocument {
+  const { key, custody } = issued, envelope = DuoDocumentEnvelopeSchema.parse(parseCredentialJson(bytes));
   const { tag, ciphertext, ...metadata } = envelope;
   if (metadata.installationId !== custody.binding.installationId || metadata.profileId !== custody.binding.profileId || metadata.keyId !== key.keyId
     || metadata.revision !== revision) throw new Error("duo-envelope-binding-mismatch");
@@ -230,8 +233,33 @@ export function openDuoCredentialDocument(purpose: DuoCredentialPurpose, bytes: 
   if (plaintext.byteLength > MAX_CREDENTIAL_DOCUMENT_BYTES) throw new Error("duo-document-too-large");
   const document = DuoCredentialDocumentSchema.parse(parseCredentialJson(plaintext));
   if (document.installationId !== metadata.installationId || document.profileId !== metadata.profileId || document.revision !== revision) throw new Error("duo-document-binding-mismatch");
-  const continuity = custody.readDuoContinuity();
-  if (continuity.state === "erased" && document.credentials.length > 0) throw new Error("duo-erased-key-material-refused");
+  return document;
+}
+
+export function openDuoCredentialDocument(purpose: DuoCredentialPurpose, bytes: Uint8Array, revision: number): DuoCredentialDocument {
+  const issued = duoPurposeKey(purpose);
+  issued.assertReadable();
+  const continuity = issued.custody.readDuoContinuity();
+  if (continuity.state === 'never-provisioned' || revision > continuity.revision) throw new Error("duo-envelope-binding-mismatch");
+  const readCurrent = () => {
+    if (!noSymlinkAncestry(dirname(issued.documentPath), issued.ancestry)) throw new Error("duo-directory-required");
+    const file = readPrivateFile(issued.documentPath, { label: "Duo credential", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
+    if (file === undefined) throw new Error("duo-document-required");
+    const identity = { device: file.identity.device, inode: file.identity.inode, digest: createHash('sha256').update(file.bytes).digest('hex') };
+    if (canonicalJsonStringify(identity) !== canonicalJsonStringify(continuity.document)) throw new Error("duo-document-custody-changed");
+    return file;
+  };
+  const currentFile = readCurrent();
+  const current = decryptDuoCredentialDocument(issued, currentFile.bytes, continuity.revision);
+  if ((current.credentials.length === 0) !== (continuity.state === 'erased')) throw new Error("duo-envelope-binding-mismatch");
+  const document = decryptDuoCredentialDocument(issued, bytes, revision);
+  if (continuity.state === 'erased' && document.credentials.length > 0) throw new Error("duo-erased-key-material-refused");
+  if (document.credentials.some(row => current.retired.some(retired => retired.credentialId === row.credentialId))) throw new Error("duo-erased-key-material-refused");
+  duoPurposeKey(purpose);
+  const after = readCurrent();
+  if (!after.bytes.equals(currentFile.bytes)) throw new Error("duo-document-custody-changed");
+  issued.assertReadable();
+  if (canonicalJsonStringify(issued.custody.readDuoContinuity()) !== canonicalJsonStringify(continuity)) throw new Error("duo-document-custody-changed");
   return document;
 }
 
@@ -1616,14 +1644,22 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       } };
     const inventory = options.repairInventory?.(request, writer, copies);
     if (inventory === undefined) throw new Error("credential-repair-inventory-required");
+    let result: { value: T } | undefined, primary: { error: unknown } | undefined;
     try {
       inventory.revalidate();
       assertCredentialErasureHeadFiles(journalPath, head); assertCredentialKeyWitness(keyPath, key, binding);
       const observed = readPrivateFile(protectedPath, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
       if (observed === undefined || observed.identity.device !== current.identity.device || observed.identity.inode !== current.identity.inode
         || !sameBytes(observed.bytes, current.bytes)) throw new Error("credential-repair-source-changed");
-      return work();
-    } finally { inventory.dispose(); }
+      result = { value: work() };
+    } catch (error) { primary = { error }; }
+    const owners = { admission: { admission: options.admission, inventory } };
+    if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([primary.error], owners);
+    try { inventory.dispose(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], owners); }
+    if (primary !== undefined) throw primary.error;
+    if (result === undefined) throw new Error('credential-repair-result-unproved');
+    return result.value;
   }
 
   function needsTombstoneRepair(document: CredentialDocument, journal: ErasureJournal): boolean {
