@@ -273,7 +273,12 @@ export function createDuoCredentialStore(profile: RuntimeAdmission, machine: Run
       if (file === undefined) throw new Error("duo-document-required");
       const envelope = readDuoPublicationEnvelope(file.bytes);
       if (envelope.profileId !== binding.profileId || envelope.installationId !== binding.installationId || envelope.purpose !== "relay:duo-credential:v1") throw new Error("duo-profile-authority-changed");
-      const restored = openDuoCredentialDocument(purpose, file.bytes, envelope.revision);
+      let restored: ReturnType<typeof openDuoCredentialDocument>;
+      try { restored = openDuoCredentialDocument(purpose, file.bytes, envelope.revision); }
+      catch (error) {
+        if (error instanceof Error && error.message === "duo-erased-key-material-refused") throw new Error("duo-purpose-restore-revives-erased-key", { cause: error });
+        throw error;
+      }
       const before = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
       if (before.unauthorized.length > 0) throw new Error("duo-purpose-copy-present");
       const result = transact(current => {

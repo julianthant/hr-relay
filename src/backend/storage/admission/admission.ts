@@ -9,7 +9,7 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpat
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
-import { acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease,
+import { acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease,
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
   type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
   type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
@@ -1196,7 +1196,7 @@ export class RuntimeAdmission {
       }, release: () => this.release() }, root, join(root, "artifacts"), [join(root, "state.db")], "profile-restore", "exclusive", this.#locator, input.profile.binding);
   }
 
-  captureDuoCredentialCustody(profile: RuntimeAdmission): Readonly<{ binding: ProfileDatabaseBinding; generation: number; assertHeld(): void }> {
+  captureDuoCredentialCustody(profile: RuntimeAdmission): Readonly<{ binding: ProfileDatabaseBinding; generation: number; assertHeld(): void; readDuoContinuity(): { state: "never-initialized" | "registered" | "erased"; revision: number } }> {
     this.assertWritable();
     profile.assertProfileRuntime();
     const binding = profile.profileBinding;
@@ -1205,11 +1205,17 @@ export class RuntimeAdmission {
     profile.assertProfileRuntime();
     const ancestry = new Map<string, DirectoryIdentity>();
     if (!noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-profile-root-required");
-    return Object.freeze({ binding, generation, assertHeld: () => {
+    const readDuoContinuity = () => {
+      this.assertLive();
+      if (this.#scope !== "installation") throw new Error("duo-profile-custody-expired");
+      return readIssuedDuoContinuity(this.#authority as InstallationLease, binding.profileId);
+    };
+    return Object.freeze({ binding, generation, readDuoContinuity, assertHeld: () => {
       this.assertLive();
       if (profile.#released || profile.#profileParent !== this || profile.#scope !== "profile") throw new Error("duo-profile-custody-expired");
       if (!noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-profile-root-required");
       assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
+      readDuoContinuity();
     } });
   }
   static forStoppedControlInventory(value: StoppedControlProfileInventory): RuntimeAdmission {

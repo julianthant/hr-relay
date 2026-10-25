@@ -230,6 +230,8 @@ export function openDuoCredentialDocument(purpose: DuoCredentialPurpose, bytes: 
   if (plaintext.byteLength > MAX_CREDENTIAL_DOCUMENT_BYTES) throw new Error("duo-document-too-large");
   const document = DuoCredentialDocumentSchema.parse(parseCredentialJson(plaintext));
   if (document.installationId !== metadata.installationId || document.profileId !== metadata.profileId || document.revision !== revision) throw new Error("duo-document-binding-mismatch");
+  const continuity = custody.readDuoContinuity();
+  if (continuity.state === "erased" && document.credentials.length > 0) throw new Error("duo-erased-key-material-refused");
   return document;
 }
 
