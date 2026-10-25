@@ -1,8 +1,8 @@
 import { createHash, createPrivateKey, createPublicKey, randomUUID } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { z } from "zod";
-import { DuoContinuityRowSchema, DuoCredentialDocumentSchema, DuoEnrollmentScopeSchema, DuoStoredCredentialSchema,
+import { DuoContinuityRowSchema, DuoCredentialDocumentSchema, DuoDocumentEnvelopeSchema, DuoEnrollmentScopeSchema, DuoStoredCredentialSchema,
   type DuoContinuityRow, type DuoCredentialDocument, type DuoEnrollmentScope } from "../../../models/config/duo-credential-store.js";
 import type { ProfileRegistryDocument } from "../../../models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -89,6 +89,11 @@ export function verifyIssuedDuoTransaction(transaction: IssuedDuoTransaction, ca
     openDuoCredentialDocument(issued.purpose, file.bytes, capture.next.revision);
   }
 }
+export function readDuoPublicationEnvelope(bytes: Uint8Array): Readonly<{ profileId: string; installationId: string; revision: number; purpose: string }> {
+  const envelope = DuoDocumentEnvelopeSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(bytes)));
+  return { profileId: envelope.profileId, installationId: envelope.installationId, revision: envelope.revision, purpose: envelope.purpose };
+}
+
 export function resumeIssuedDuoTransaction(transaction: IssuedDuoTransaction, capture: DuoPublicationCapture): void {
   const issued = transactions.get(transaction);
   if (issued === undefined || !issued.used || !issued.publicationStarted || issued.capture === undefined) throw new Error("duo-transaction-unissued");
@@ -99,31 +104,54 @@ export function resumeIssuedDuoTransaction(transaction: IssuedDuoTransaction, ca
 }
 
 
-function assertDuoPurposeCopiesAbsent(machineRoot: string, profileRoot: string, profileId: string): void {
-  const directory = join(machineRoot, "machine", "duo-credentials");
-  const canonical = join(directory, `${profileId}.json`);
-  if (lstatSync(directory, { throwIfNoEntry: false }) !== undefined && !noSymlinkAncestry(directory, new Map())) throw new Error("duo-directory-required");
-  if (lstatSync(directory, { throwIfNoEntry: false }) !== undefined) {
-    for (const name of readdirSync(directory)) {
-      const path = join(directory, name);
-      const stat = lstatSync(path);
-      if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1 || !/^[0-9a-f-]{36}\.json$/u.test(name)) throw new Error("duo-document-membership-mismatch");
-    }
-  }
-  if (lstatSync(canonical, { throwIfNoEntry: false }) === undefined) return;
-  const digest = createHash("sha256").update(readFileSync(canonical)).digest("hex");
-  const credentials = join(profileRoot, "credentials");
-  if (lstatSync(credentials, { throwIfNoEntry: false }) === undefined) return;
-  if (!noSymlinkAncestry(credentials, new Map())) throw new Error("duo-document-membership-mismatch");
-  for (const name of readdirSync(credentials)) {
-    if (name === "duo-webauthn.json") continue;
-    const path = join(credentials, name);
-    const stat = lstatSync(path);
-    if (stat.isSymbolicLink()) throw new Error("duo-document-membership-mismatch");
-    if (!stat.isFile() || stat.nlink !== 1) continue;
-    if (createHash("sha256").update(readFileSync(path)).digest("hex") === digest) throw new Error("duo-purpose-copy-present");
-  }
+function duoPurposeBackupDirectory(machineRoot: string, profileId: string): string {
+  return join(machineRoot, "machine", "duo-purpose-backups", profileId);
 }
+
+export function censusDuoPurposeCopies(machineRoot: string, profileRoot: string, profileId: string, artifactRoot = join(profileRoot, "artifacts")): Readonly<{ canonicalDigest?: string; backups: readonly string[]; unauthorized: readonly string[] }> {
+  const canonical = join(machineRoot, "machine", "duo-credentials", `${profileId}.json`);
+  const backupDirectory = duoPurposeBackupDirectory(machineRoot, profileId);
+  const roots = [machineRoot];
+  for (const extra of [profileRoot, artifactRoot]) {
+    if (!roots.some((root) => extra === root || extra.startsWith(root + sep))) roots.push(extra);
+  }
+  let canonicalBytes: Buffer | undefined;
+  if (lstatSync(canonical, { throwIfNoEntry: false }) !== undefined) {
+    const canonicalStat = lstatSync(canonical);
+    if (canonicalStat.isSymbolicLink() || !canonicalStat.isFile() || canonicalStat.nlink !== 1) throw new Error("duo-document-membership-mismatch");
+    canonicalBytes = readFileSync(canonical);
+  }
+  const canonicalDigest = canonicalBytes === undefined ? undefined : createHash("sha256").update(canonicalBytes).digest("hex");
+  const backups: string[] = [];
+  const unauthorized: string[] = [];
+  const visit = (path: string): void => {
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    if (stat === undefined) return;
+    if (stat.isSymbolicLink()) throw new Error("duo-document-membership-mismatch");
+    if (stat.isDirectory()) {
+      if (!noSymlinkAncestry(path, new Map())) throw new Error("duo-directory-required");
+      for (const name of readdirSync(path).sort()) visit(join(path, name));
+      return;
+    }
+    if (!stat.isFile() || stat.nlink !== 1) throw new Error("duo-document-membership-mismatch");
+    if (path === canonical) return;
+    const bytes = readFileSync(path);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const embedded = canonicalBytes !== undefined && bytes.length !== canonicalBytes.length && bytes.includes(canonicalBytes);
+    let envelope: ReturnType<typeof readDuoPublicationEnvelope> | undefined;
+    if (stat.size <= MAX_DUO_ENVELOPE_BYTES) {
+      try { envelope = readDuoPublicationEnvelope(bytes); } catch { envelope = undefined; }
+    }
+    const sameProfile = envelope?.profileId === profileId && envelope.purpose === "relay:duo-credential:v1";
+    if (!sameProfile && digest !== canonicalDigest && !embedded) return;
+    const managedBackup = path.startsWith(backupDirectory + sep) && /^[1-9][0-9]*\.json$/u.test(path.slice(backupDirectory.length + 1));
+    if (managedBackup && sameProfile) backups.push(path);
+    else unauthorized.push(path);
+  };
+  for (const root of roots) visit(root);
+  return { ...(canonicalDigest === undefined ? {} : { canonicalDigest }), backups, unauthorized };
+}
+
 export function createDuoCredentialStore(profile: RuntimeAdmission, machine: RuntimeAdmission, clock: Clock = systemClock) {
   const purpose = issueDuoCredentialPurpose(profile, machine), { binding } = duoCredentialPurposeBinding(purpose);
   const machineRoot = machine.stateRoot, ancestry = new Map<string, DirectoryIdentity>();
@@ -220,14 +248,70 @@ export function createDuoCredentialStore(profile: RuntimeAdmission, machine: Run
       machine.commitProfileDuo(transaction);
       uncertain = undefined;
     },
+    backup(): Readonly<{ revision: number; digest: string }> {
+      const current = this.read();
+      const canonical = join(machineRoot, "machine", "duo-credentials", `${binding.profileId}.json`);
+      const file = readPrivateFile(canonical, { label: "Duo credential", maxBytes: MAX_DUO_ENVELOPE_BYTES });
+      if (file === undefined) throw new Error("duo-document-required");
+      const digest = createHash("sha256").update(file.bytes).digest("hex");
+      const directory = duoPurposeBackupDirectory(machineRoot, binding.profileId);
+      ensureChildDirectory(join(machineRoot, "machine"), join(machineRoot, "machine", "duo-purpose-backups"), "Duo credentials", 0o700, 0o700);
+      ensureChildDirectory(join(machineRoot, "machine", "duo-purpose-backups"), directory, "Duo credentials", 0o700, 0o700);
+      const path = join(directory, `${current.revision}.json`);
+      if (lstatSync(path, { throwIfNoEntry: false }) !== undefined) throw new Error("duo-purpose-backup-exists");
+      writePrivateStage(path, Buffer.from(file.bytes));
+      const again = readPrivateFile(canonical, { label: "Duo credential", maxBytes: MAX_DUO_ENVELOPE_BYTES });
+      if (again === undefined || !again.bytes.equals(Buffer.from(file.bytes)) || createHash("sha256").update(readFileSync(path)).digest("hex") !== digest) throw new Error("duo-document-custody-changed");
+      return { revision: current.revision, digest };
+    },
+    restore(backupPath: string): Readonly<{ revision: number }> {
+      const directory = duoPurposeBackupDirectory(machineRoot, binding.profileId);
+      const resolved = resolve(backupPath);
+      if (resolved !== backupPath || !resolved.startsWith(directory + sep)) throw new Error("duo-purpose-restore-unmanaged");
+      if (!noSymlinkAncestry(directory, new Map())) throw new Error("duo-directory-required");
+      const file = readPrivateFile(resolved, { label: "Duo credential", maxBytes: MAX_DUO_ENVELOPE_BYTES });
+      if (file === undefined) throw new Error("duo-document-required");
+      const envelope = readDuoPublicationEnvelope(file.bytes);
+      if (envelope.profileId !== binding.profileId || envelope.installationId !== binding.installationId || envelope.purpose !== "relay:duo-credential:v1") throw new Error("duo-profile-authority-changed");
+      const restored = openDuoCredentialDocument(purpose, file.bytes, envelope.revision);
+      const before = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
+      if (before.unauthorized.length > 0) throw new Error("duo-purpose-copy-present");
+      const result = transact(current => {
+        const floors = new Map<string, number>();
+        if (current !== undefined) {
+          if (current.credentials.length === 0 && restored.credentials.length > 0) throw new Error("duo-purpose-restore-revives-erased-key");
+          for (const row of [...current.credentials, ...current.retired]) floors.set(row.credentialId, Math.max(floors.get(row.credentialId) ?? 0, row.highWater));
+          for (const [id, floor] of floors) {
+            const row = [...restored.credentials, ...restored.retired].find((candidate) => candidate.credentialId === id);
+            if ((row?.highWater ?? 0) < floor) throw new Error("duo-purpose-restore-lowers-burned-count");
+          }
+        }
+        const updated = next(current);
+        const retired = new Map<string, number>();
+        for (const row of [...(current?.retired ?? []), ...restored.retired]) retired.set(row.credentialId, Math.max(retired.get(row.credentialId) ?? 0, row.highWater));
+        updated.retired = [...retired].map(([credentialId, highWater]) => ({ credentialId, highWater }));
+        updated.credentials = restored.credentials.map((row) => ({ ...row, highWater: Math.max(row.highWater, floors.get(row.credentialId) ?? 0) }));
+        updated.reservations = current?.reservations ?? [];
+        return { document: updated, result: { revision: updated.revision } };
+      });
+      const after = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
+      if (after.unauthorized.length > 0) throw new Error("duo-purpose-copy-present");
+      return result;
+    },
     erase(): Readonly<{ revision: number }> {
-      return transact(document => {
-        assertDuoPurposeCopiesAbsent(machineRoot, profile.stateRoot, binding.profileId);
+      const before = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
+      if (before.unauthorized.length > 0) throw new Error("duo-purpose-copy-present");
+      const result = transact(document => {
+        const again = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
+        if (again.unauthorized.length > 0 || canonicalJsonStringify(again.backups) !== canonicalJsonStringify(before.backups)) throw new Error("duo-purpose-copy-present");
         const updated = next(document);
         updated.retired.push(...updated.credentials.map(({ credentialId, highWater }) => ({ credentialId, highWater })));
         updated.credentials = [];
         return { document: updated, result: { revision: updated.revision } };
       });
+      const after = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
+      if (after.unauthorized.length > 0) throw new Error("duo-purpose-copy-present");
+      return result;
     },
   });
 }

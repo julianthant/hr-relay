@@ -206,7 +206,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       const backups = membership.manifests.map(manifest => verifyStoppedBackupManifestAtPath(admission, manifest,
         AuthorityDatabase.sourceDatabaseIdentity(join(profileRoot, "state.db"))));
       if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("credential-maintenance-backup-membership-unproved");
-      const assessment = assessProfileCredentialCopies(admission, membership, backups, copies, { kind: "ordinary" });
+      const assessment = assessProfileCredentialCopies(admission, membership, backups, copies, owner);
       if (assessment.backupPlaintext.length > 0 || assessment.unknownFormats.length > 0) throw new Error("credential-maintenance-copy-capture-incomplete");
       const login = countProfileCredentialLoginRows(membership.loginDataPaths);
       if (login === "unreadable" || typeof login === "number" && login > 0) throw new Error("credential-maintenance-login-copy-present");
@@ -226,7 +226,8 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       };
       const duoRoot = owner.kind === "ordinary" ? input.machine.stateRoot : requireStoppedControlProfileInventory(owner.claim).machineRoot;
       const duoDocument = join(duoRoot, "machine", "duo-credentials", `${admission.profileBinding.profileId}.json`);
-      for (const path of [root, processLockRoot, duoDocument]) visit(path);
+      const duoBackups = join(duoRoot, "machine", "duo-purpose-backups");
+      for (const path of [root, processLockRoot, duoDocument, duoBackups]) visit(path);
       if (lstatSync(duoDocument, { throwIfNoEntry: false })?.isFile()) {
         const scanned = scanProfileCredentialCopy(duoDocument, copies.capturedSecrets, copies);
         if (scanned.containsSecret) throw new Error("duo-purpose-plaintext-refused");

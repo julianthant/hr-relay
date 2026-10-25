@@ -1,4 +1,4 @@
-import { retainAuthoritySourceClosure } from "../source-closure.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { CredentialErasureHeadSchema, erasureRequestIdentity } from "../configuration/credential-store.js";
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
@@ -9,14 +9,14 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpat
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
-import { acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, requireStoppedControlProfileInventory, type ExistingAuthorityEvidence, type InstallationLease,
+import { acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease,
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
   type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
   type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
 import type { ProfileRestoreContext, ErasureRequestIdentity, VerifiedSourceControlEntries, AuthorityRestoreInput, AuthorityRestoreVerifier } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
+import { acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 
 import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../../models/profiles/profile.js";
 import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
@@ -57,6 +57,7 @@ function requireRegisteredProfileStorageClaim(claim: RegisteredProfileStorageCla
 
 
 const issuanceToken = Symbol("runtime-admission-issuance");
+const stoppedMaintenanceRestores = new WeakMap<InstallationLease, RestoreAdmissionHandle>();
 
 function within(parent: string, child: string): boolean {
   const part = relative(parent, child);
@@ -951,8 +952,19 @@ export class RuntimeAdmission {
   }
   release(): void {
     if (this.#released) return;
+    const restore = this.#scope === "installation" ? stoppedMaintenanceRestores.get(this.#authority as InstallationLease) : undefined;
     this.#authority.release();
     this.#released = true;
+    if (restore !== undefined) {
+      stoppedMaintenanceRestores.delete(this.#authority as InstallationLease);
+      try { restore.release(); }
+      catch (error) { throw retainAuthoritySourceClosure([error], { restore }); }
+    }
+  }
+  maintenanceRestore(): RestoreAdmissionHandle | undefined {
+    this.assertLive();
+    if (this.#scope !== "installation") return undefined;
+    return stoppedMaintenanceRestores.get(this.#authority as InstallationLease);
   }
 
   #exclusiveInstallationLease(): ExclusiveInstallationLease {
@@ -1220,6 +1232,46 @@ export class RuntimeAdmission {
       [join(stateRoot, "state.db")], "installation", lease.mode, lease.locator);
   }
 
+  #stoppedDuoRecovery(): { lease: InstallationLease; restore: RestoreAdmissionHandle } {
+    this.assertLive();
+    this.assertExclusive();
+    if (this.#scope !== "installation") throw new Error("profile-control-upgrade-machine-membership-unknown");
+    const lease = this.#authority as InstallationLease;
+    const restore = stoppedMaintenanceRestores.get(lease);
+    if (restore === undefined) throw new Error("profile-control-upgrade-machine-membership-unknown");
+    return { lease, restore };
+  }
+  issueStoppedDuoPublicationRecovery(): DuoPublicationRecoveryClaim {
+    const { lease, restore } = this.#stoppedDuoRecovery();
+    return issueStoppedDuoRecoveryClaim(lease, restore);
+  }
+  completeStoppedDuoPublicationRecovery(claim: DuoPublicationRecoveryClaim): { revision: number } {
+    this.#stoppedDuoRecovery();
+    return completeStoppedDuoRecoveryClaim(claim);
+  }
+  recoverInterruptedDuoPublication(): { revision: number } {
+    const claim = this.issueStoppedDuoPublicationRecovery();
+    return this.completeStoppedDuoPublicationRecovery(claim);
+  }
+  static acquireStoppedMachineControlMaintenance(workspace: string): RuntimeAdmission {
+    const canonical = realpathSync(workspace);
+    const processLockRoot = join(canonical, rebuildRuntimeIsolation.processLockRoot);
+    const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
+    let lease: InstallationLease | undefined;
+    try {
+      lease = acquireInstallation(canonical, "exclusive");
+      assertStoppedMachineMaintenance(lease, restore);
+    } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { restore });
+      try { lease?.release(); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { restore }); }
+      try { restore.release(); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { restore }); }
+      throw error;
+    }
+    stoppedMaintenanceRestores.set(lease, restore);
+    return RuntimeAdmission.fromInstallationLease(lease);
+  }
   static acquireMachine(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
     const canonical = realpathSync(workspace);
     const control = join(canonical, ".tracker/control/installation.json");

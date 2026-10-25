@@ -471,6 +471,7 @@ const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage backup [--json]",
   "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
+  "       storage recover-duo-publication",
   "       storage restore --from <manifest.json> [--json]",
   "       storage recover-restore --operation <id> --from <manifest.json> --outcome <unchanged|replaced> [--json]",
   "       storage relocate --plan <command-id> | --resume <operation-id> | --status [--json]",

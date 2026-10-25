@@ -250,14 +250,16 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
   if (context === undefined) throw new Error("profile-control-upgrade-machine-membership-unknown");
   const processLockRoot = resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot);
   machine.assertFixedProcessLockRoot(context.workspace, processLockRoot);
-  const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
+  const heldRestore = machine.maintenanceRestore();
+  const ownsRestore = heldRestore === undefined;
+  const restore = heldRestore ?? acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
   let control: ReturnType<RuntimeAdmission["beginStoppedMachineControlUpgrade"]> | undefined;
   const inventories: Array<{ dispose(): void }> = [];
   let result: { state: "planned" | "current" | "upgraded"; profileCount: number; receiptId?: string } | undefined;
   let primary: { error: unknown } | undefined;
   try {
     control = machine.beginStoppedMachineControlUpgrade(restore);
-    if (!control.machineControlCurrent()) {
+    if (!control.machineControlCurrent() || control.upgradeIntentPresent()) {
       for (const profileId of control.registeredProfileIds()) {
         const claim = control.profileInventory(profileId);
         const inventory = composeStoppedControlCredentialInventory({ claim, hostFacts: input.hostFacts, clock });
@@ -272,15 +274,26 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
     }
     result = report;
   } catch (error) { primary = { error }; }
-  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([primary.error], { restore, ...(control === undefined ? {} : { admission: machine }) });
-  const failures: unknown[] = [];
-  for (const inventory of inventories) {
-    try { inventory.dispose(); } catch (error) { failures.push(error); }
-  }
-  try { control?.release(); } catch (error) { failures.push(error); }
-  try { restore.release(); } catch (error) { failures.push(error); }
-  if (failures.length !== 0) throw retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], { restore });
-  if (primary !== undefined) throw primary.error;
+  releaseStoppedMachineControlUpgrade(control, restore, ownsRestore, { primary: primary?.error, inventories, admission: machine });
   if (result === undefined) throw new Error("profile-control-upgrade-readback-failed");
   return result;
+}
+
+export function releaseStoppedMachineControlUpgrade(control: { release(): void } | undefined, restore: RestoreAdmissionHandle, ownsRestore: boolean,
+  held: Readonly<{ primary?: unknown; inventories?: readonly { dispose(): void }[]; admission?: RuntimeAdmission }> = {}): void {
+  const retain = (errors: readonly unknown[]): never => {
+    throw retainAuthoritySourceClosure(errors, { restore, ...(held.admission === undefined ? {} : { admission: held.admission }) });
+  };
+  if (held.primary instanceof AuthoritySourceClosureUnprovedError) retain([held.primary]);
+  try { control?.release(); }
+  catch (error) { retain(held.primary === undefined ? [error] : [held.primary, error]); }
+  for (const inventory of held.inventories ?? []) {
+    try { inventory.dispose(); }
+    catch (error) { retain(held.primary === undefined ? [error] : [held.primary, error]); }
+  }
+  if (ownsRestore) {
+    try { restore.release(); }
+    catch (error) { retain([error]); }
+  }
+  if (held.primary !== undefined) throw held.primary;
 }
