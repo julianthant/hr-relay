@@ -8,7 +8,10 @@ import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { captureSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
+import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
+import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { bindWorkerProcessAdmission } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 const [dbPath, lockRoot, fixtureKind, subcommand, workflowRaw, poolIndexFlag, poolIndexRaw, ...launchArgs] = process.argv.slice(2);
@@ -39,21 +42,29 @@ const launch = launchArgs.length === 0 ? undefined : (() => {
     ordinal: Number(ordinal), membershipRevision: Number(revision) }), commandId };
 })();
 
-const stateRoot = dirname(dbPath);
 const installed = fixtureKind === "installed";
-const repoRoot = resolve(stateRoot, ...rebuildRuntimeIsolation.stateRoot.split("/").map(() => ".."));
-const admission = installed
-  ? acquireEntrypointAdmission(repoRoot, "shared")
-  : RuntimeAdmission.syntheticFixture(dbPath);
-if (installed && (dbPath !== join(admission.stateRoot, "state.db") || lockRoot !== join(repoRoot, rebuildRuntimeIsolation.processLockRoot))) {
-  admission.release();
-  throw new Error("worker-stub-cli fixture storage pair mismatch");
+const repoRoot = resolve(lockRoot, ...rebuildRuntimeIsolation.processLockRoot.split("/").map(() => ".."));
+const machine = installed ? acquireEntrypointAdmission(repoRoot, "shared") : undefined;
+let admission: RuntimeAdmission;
+let credentials: ReturnType<typeof createCredentialStore> | undefined;
+if (machine === undefined) admission = RuntimeAdmission.syntheticFixture(dbPath);
+else {
+  const selected = captureSelectedProfileStorage(machine);
+  admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(selected.profileId));
+  if (dbPath !== join(admission.stateRoot, "state.db") || lockRoot !== join(repoRoot, rebuildRuntimeIsolation.processLockRoot)) {
+    admission.release(); machine.release();
+    throw new Error("worker-stub-cli fixture storage pair mismatch");
+  }
+  credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+    erasureJournalAdmission: machine, erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
+  selected.assertCurrent();
 }
+
 const bound = bindWorkerProcessAdmission({
   processLockRoot: lockRoot, authorityPath: dbPath, pid: process.pid, clock: systemClock,
   ...(launch === undefined ? {} : { workerId: launch.member.workerId }),
   open: () => AuthorityDatabase.open(admission, { path: dbPath, busyTimeoutMs: 5_000,
-    migrationOwner: "worker-stub-cli" }, systemClock),
+    migrationOwner: "worker-stub-cli" }, systemClock, undefined, undefined, undefined, credentials),
   close: database => database.close(),
   admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
     const now = systemClock.now().toISOString();
@@ -105,6 +116,7 @@ const shutdown = (reason: "operator" | "shutdown"): void => {
   lock.release();
   database.close();
   admission.release();
+  if (machine !== admission) machine?.release();
   // Clearing listeners, timers and the database lets the child exit naturally.
 };
 

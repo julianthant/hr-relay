@@ -6,8 +6,8 @@ import { WorkbookLibraryError } from "../../../workbooks/workbook-library-servic
 import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protected-input.js";
 import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
-import { ProfileSessionRefusedError } from "../../../profiles/profile-session.js";
-import { ProfileBrowserRootRefusalError, ProfileStorageRelocationUnsupportedError } from "../../../storage/admission/admission.js";
+import { ProfileSessionRefusedError, ProfileUpgradeUnavailableError } from "../../../profiles/profile-session.js";
+import { ProfileBrowserRootRefusalError, ProfileStorageRelocationUnsupportedError, ProfileUpgradeSourceRefusalError } from "../../../storage/admission/admission.js";
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
@@ -25,12 +25,13 @@ export function wireError(code: string, message: string, retryable: boolean): Wi
 export function failureStatus(
   error: unknown,
 ): { status: 400 | 403 | 404 | 409 | 500; body: Record<string, unknown> } {
+  if (error instanceof ProfileUpgradeUnavailableError) return { status: 500, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof AssistantAuthorizationError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof z.ZodError) {
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
   const message = errorText(error);
-  if (error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError || error instanceof ProfileStorageRelocationUnsupportedError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError || error instanceof ProfileStorageRelocationUnsupportedError || error instanceof ProfileUpgradeSourceRefusalError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
   if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, message, false) };

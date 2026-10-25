@@ -1,3 +1,5 @@
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
@@ -25,15 +27,24 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
+afterEach(() => { for (const cleanup of [...cleanups]) { cleanup(); cleanups.splice(cleanups.indexOf(cleanup), 1); } });
 function fixture() {
   const bound = createBoundProfileFixture();
-  const { workspace, path } = bound, root = bound.stateRoot, admission = bound.admission;
-  const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-backup" });
-  cleanups.push(() => { database.close(); bound.close(); });
+  const { workspace, path } = bound, root = bound.stateRoot;
+  let admission = bound.admission;
+  const profileId = admission.profileBinding.profileId;
+  let credentials = boundProfileCredentials(admission);
+  const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-backup" }, undefined, undefined, undefined, undefined, credentials);
+  cleanups.push(() => { database.close(); admission.release(); bound.close(); });
   const directory = join(root, "backups", "authority"), clock = capturedInstantClock(NOW);
   const service = new AuthorityBackupService(admission, database, { directory }, clock);
-  return { workspace, root, path, get admission() { return bound.admission; }, get credentials() { return boundProfileCredentials(bound.admission); }, machine: bound.machine, renewAfterRestore: bound.renewAfterRestore, database, directory, clock, service };
+  return { workspace, root, path, get admission() { return admission; }, get credentials() { return credentials; }, machine: bound.machine,
+    renewAfterRestore() {
+      admission.release();
+      admission = bound.machine.admitProfile(createProfileRegistry(bound.machine).storageClaim(profileId));
+      credentials = createCredentialStore({ admission, stateRoot: root, erasureJournalAdmission: bound.machine,
+        erasureJournalPath: join(bound.machine.stateRoot, "machine", "erasures", `${profileId}.json`) });
+    }, database, directory, clock, service };
 }
 describe("native authority backup", () => {
   it("restores the genuine protected command and audit while retaining independent credential bytes and exact replay", async () => {
@@ -60,7 +71,7 @@ describe("native authority backup", () => {
     await expect(restore.restore({ manifestPath, stoppedSystemProof })).resolves.toMatchObject({ state: "restored" });
     expect(() => AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "stale-restore-owner" })).toThrow();
     f.renewAfterRestore();
-    const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "native-protected-restore" });
+    const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "native-protected-restore" }, undefined, undefined, undefined, undefined, f.credentials);
     try {
       expect(reopened.authority.commandAudits.findSettingsHistory(command.commandId)).toEqual(audit);
       expect(execute(reopened)).toEqual({ ...accepted, state: "already-applied" });

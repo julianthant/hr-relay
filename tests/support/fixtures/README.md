@@ -16,6 +16,10 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 
 | Module | Concept |
 | --- | --- |
+| `fixtures/child-execution-build-manifest.ts` | build manifest for the owned child execution process fixture |
+| `fixtures/child-execution-workflows.ts` | canonical child workflow definitions for lifecycle and crash tests |
+| `fixtures/child-execution-write-workflow.ts` | child write workflow with durable attempting and UNKNOWN controls |
+| `helpers/assistant-function-fixtures.ts` | synthetic assistant function descriptors and recording call owners |
 | `fixtures/person-lookup-presentation.ts` | fictional served Person Lookup presentation evidence |
 | `fixtures/advisory-prompt-fixtures.ts` | advisory prompt fixtures |
 | `fixtures/cross-date-search-corpus.ts` | cross date search corpus |

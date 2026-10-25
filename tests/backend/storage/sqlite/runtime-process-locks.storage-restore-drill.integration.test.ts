@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const {CLOCK, composeStorageCommand, drillPaths, open, seedRealShapedAuthority, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup } = createStorageRestoreTestWorld();
+const {CLOCK, composeStorageCommand, drillPaths, attemptingDrillPaths, open, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup } = createStorageRestoreTestWorld();
 
 
 afterEach(cleanup);
@@ -16,11 +16,9 @@ afterEach(cleanup);
 describe("corruption → degraded → restore → rebuild, through the CLI", () => {
 
   it("refuses while a live process holds a runtime lock, and touches nothing", async () => {
-    const paths = drillPaths();
-    const database = open(paths);
-    seedRealShapedAuthority(database,paths);
+    const { paths, database, closeDatabase } = await attemptingDrillPaths();
     const manifestPath = await takeBackup(database, paths);
-    database.close();
+    closeDatabase();
     corrupt(paths);
     const corrupted = readFileSync(paths.authorityPath);
 
@@ -55,6 +53,14 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
       paths.repoRoot,
     );
     assert.equal(after.exitCode, 0, after.output);
+    paths.renewAfterRestore();
+    const restored = open(paths);
+    try {
+      assert.equal(restored.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, 'attempting');
+      assert.deepEqual(restored.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
+      assert.equal(restored.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId)?.envelope.attempt,
+        WRITE_INTENT_ATTEMPTING.runAttempt);
+    } finally { restored.close(); }
   });
 
   it("admits concurrent worker processes under one aggregate restore lock", () => {
@@ -234,11 +240,9 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
   });
 
   it("refuses restore while any worker process is alive", async () => {
-    const paths = drillPaths();
-    const database = open(paths);
-    seedRealShapedAuthority(database,paths);
+    const { paths, database, closeDatabase } = await attemptingDrillPaths();
     const manifestPath = await takeBackup(database, paths);
-    database.close();
+    closeDatabase();
     corrupt(paths);
     const corrupted = readFileSync(paths.authorityPath);
     const held = acquireRuntimeProcessLock({
@@ -256,7 +260,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
       );
       assert.equal(refused.exitCode, 1);
       assert.match(refused.output, new RegExp(
-        `workers process lock generation 2 is active for pid ${String(process.pid)}`,
+        `workers=ACTIVE pid ${String(process.pid)} \\(generation ${String(held.generation)}\\)`,
         "u",
       ));
       assert.equal(readFileSync(paths.authorityPath).equals(corrupted), true);

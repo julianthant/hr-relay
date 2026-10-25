@@ -1,22 +1,44 @@
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import { boundProfileCredentials, createBoundProfileFixture } from '../../../support/helpers/admission-fixture.js';
+import { storageTree } from '../../../support/helpers/integration/storage-recovery-fixture.js';
 import { createInstallationControlTestWorld } from "../../../support/helpers/backend/installation-control-world.js";
 import { randomUUID } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+
 import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { executeStorageRelocationCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
-import { RuntimeAdmission, acquireRecoveryRuntimeRelocation } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireInstallation, inspectPendingRelocationRecovery, inspectPendingRelocationStatus, type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair } from "../../../../src/backend/storage/admission/installation.js";
-import { createStorageRelocationPlanReader, projectStorageRelocationPlanHistory } from "../../../../src/backend/storage/maintenance/storage-relocation-plans.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest, storageRelocationRequestFingerprint } from "../../../../src/rules/commands/commands.js";
-import { NonNegativeIntSchema } from "../../../../src/rules/identity/ids.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
 
-const { workspaces, fixture, restore, adoptSynthetic, relocationPlan, prepareDestination, staged, cleanup } = createInstallationControlTestWorld();
+import { RuntimeAdmission, ProfileStorageRelocationUnsupportedError, acquireRecoveryRuntimeRelocation } from "../../../../src/backend/storage/admission/admission.js";
+import { acquireInstallation, inspectPendingRelocationRecovery, inspectPendingRelocationStatus, type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair } from "../../../../src/backend/storage/admission/installation.js";
+import { createStorageRelocationPlanReader } from "../../../../src/backend/storage/maintenance/storage-relocation-plans.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+
+import { storageRelocationDesiredDigest } from "../../../../src/rules/commands/commands.js";
+import { NonNegativeIntSchema } from "../../../../src/rules/identity/ids.js";
+
+
+const { fixture, restore, adoptSynthetic, relocationPlan, prepareDestination, staged, cleanup } = createInstallationControlTestWorld();
 
 afterEach(cleanup);
+function currentProfileRelocationPlan(locator: ExclusiveInstallationLease['locator'], destination: RuntimePair): RelocationPlanBinding {
+  return { commandId: "11111111-1111-4111-8111-111111111111", revision: 1, expectedRevision: 0,
+    requestFingerprint: "a".repeat(64),
+    desiredDigest: storageRelocationDesiredDigest({ installationId: locator.installationId,
+      sourceGeneration: NonNegativeIntSchema.parse(locator.generation), sourcePair: { stateRoot: locator.stateRoot,
+        artifactRoot: locator.artifactRoot }, expectedRevision: NonNegativeIntSchema.parse(0) }, destination) };
+}
+
+function currentProfileRelocationSnapshot(workspace: string) {
+  const physical: { path: string; device: number; inode: number; mode: number; links: number }[] = [];
+  const visit = (path: string): void => {
+    const entry = statSync(path);
+    physical.push({ path, device: entry.dev, inode: entry.ino, mode: entry.mode, links: entry.nlink });
+    if (entry.isDirectory()) for (const name of readdirSync(path).sort()) visit(join(path, name));
+  };
+  visit(workspace);
+  return { physical, bytes: storageTree(workspace) };
+}
+
 function settledMove(workspace: string, destination: RuntimePair): { operationId: string; locator: ExclusiveInstallationLease["locator"] } {
   const lease = acquireInstallation(workspace, "exclusive");
   const held = restore(workspace);
@@ -92,128 +114,91 @@ it("freezes issued leases and refuses a changed on-disk lease mode", () => {
 });
 
 it("binds destination and retained source capabilities to one live relocation operation", () => {
-  const { workspace, pair } = fixture();
-  const first = adoptSynthetic(workspace, pair); first.release();
-  expect(inspectPendingRelocationStatus(workspace)).toBeUndefined();
-  writeFileSync(join(pair.stateRoot, "state.db"), "synthetic source authority");
-  writeFileSync(join(pair.artifactRoot, "a.artifact"), "synthetic artifact");
-  const lease = acquireInstallation(workspace, "exclusive");
-  const admission = RuntimeAdmission.fromInstallationLease(lease);
-  const held = restore(workspace);
-  const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
-  const plan = relocationPlan(lease, destination);
-  const syntheticWorkspace = realpathSync(mkdtempSync(join(tmpdir(), "runtime-synthetic-")));
-  workspaces.push(syntheticWorkspace);
-  const syntheticState = join(syntheticWorkspace, "state");
-  const syntheticArtifacts = join(syntheticWorkspace, "artifacts");
-  mkdirSync(syntheticState); mkdirSync(syntheticArtifacts);
-  const synthetic = RuntimeAdmission.syntheticRoots(syntheticState, syntheticArtifacts);
-  expect(synthetic.readInstallationContext()).toBeUndefined();
-  expect(() => synthetic.beginRelocation(destination, plan, held)).toThrow(/exclusive installation (relocation )?authority/u);
-  synthetic.release();
-  const operation = admission.beginRelocation(destination, plan, held);
-  expect(() => admission.readInstallationContext()).toThrow(/pending relocation/u);
-  expect(() => operation.destinationAdmission().readInstallationContext()).toThrow(/installation context authority/u);
-  expect(operation.verifiedSourceControlEntries()).toMatchObject({ source: pair,
-    state: [".runtime-owner.json", "locks"], artifact: [".runtime-owner.json"] });
-  expect(operation.inventory()).toMatchObject({ operationId: operation.operationId, source: pair, destination, plan, phase: "preparing" });
-  expect(operation.inventory().evidence).toBeUndefined();
-  expect(operation.readPriorReceipts()).toHaveLength(0);
-  const child = operation.destinationAdmission();
-  expect(child.stateRoot).toBe(destination.stateRoot);
-  expect(child.artifactRoot).toBe(destination.artifactRoot);
-  expect(() => operation.sourceVerificationAdmission()).toThrow(/fully retained source required/u);
-  prepareDestination(lease, destination);
-  child.assertAuthorityDatabase(join(destination.stateRoot, "state.db"));
-  expect(() => child.assertAuthorityDatabase(":memory:")).toThrow(/outside admission/u);
-  expect(() => child.assertAuthorityDatabase(join(pair.stateRoot, "state.db"))).toThrow(/outside admission/u);
-  expect(() => operation.recordVerifiedStage(() => { throw new Error("stage verifier must not run"); }))
-    .toThrow(/activation intent required/u);
-  const verify = staged(lease, destination, operation.operationId, plan);
-  const preparation = operation.inventory().preparation;
-  const activationIntent = operation.inventory().activationIntent;
-  if (activationIntent === undefined) throw new Error("activation intent missing");
-  expect(operation.inventory().phase).toBe("activating");
-  expect(operation.inventory().evidence).toBeUndefined();
-  operation.recordActivationIntent(() => activationIntent);
-  expect(() => operation.recordActivationIntent(() => ({ ...activationIntent,
-    managedInventoryDigest: "f".repeat(64) }))).toThrow(/activation intent changed/u);
-  expect(preparation).toMatchObject({ sourceSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, backupManifestSha256: "1".repeat(64),
-    backupFileSha256: "2".repeat(64) });
-  if (preparation === undefined) throw new Error("preparation missing");
-  operation.recordVerifiedPreparation(() => preparation);
-  expect(() => operation.recordVerifiedPreparation(() => ({ ...preparation,
-    backupManifestSha256: "3".repeat(64) }))).toThrow(/verified preparation changed/u);
-  operation.recordVerifiedStage(verify);
-  const stagedEvidence = verify();
-  expect(operation.inventory().evidence).toEqual(stagedEvidence);
-  expect(Object.isFrozen(operation.inventory().evidence?.managedStateEntries)).toBe(true);
-  operation.fenceRelocationSource();
-  expect(operation.inventory().evidence).toEqual(stagedEvidence);
-  expect(operation.verifiedSourceControlEntries().artifact).toContain(".runtime-source-fence.json");
-  operation.retainRelocationSources();
-  expect(operation.inventory().evidence).toEqual(stagedEvidence);
-  const source = operation.sourceVerificationAdmission();
-  expect(operation.verifiedSourceControlEntries().source).toEqual({
-    stateRoot: source.stateRoot, artifactRoot: source.artifactRoot,
-  });
-  expect(source.stateRoot).toBe(join(workspace, ".tracker", `.data.retained-${operation.operationId}-state`));
-  expect(source.artifactRoot).toBe(join(source.stateRoot, "artifacts"));
-  source.assertStateRoot(join(source.stateRoot, "state.db"));
-  source.assertArtifactRoot(join(source.artifactRoot, "a.artifact"));
-  expect(() => source.assertWritable()).toThrow(/read-only/u);
-  expect(() => source.assertReadOnlyAuthorityDatabase(join(source.stateRoot, "state.db"))).toThrow(/authority unavailable/u);
-  held.release();
-  expect(() => operation.inventory()).toThrow(/restore-admission|restore admission|ENOENT/u);
-  expect(() => operation.readPriorReceipts()).toThrow(/restore-admission|restore admission|ENOENT/u);
-  expect(() => child.assertLive()).toThrow(/restore-admission|restore admission|ENOENT/u);
-  expect(() => source.assertLive()).toThrow(/restore-admission|restore admission|ENOENT/u);
-  admission.release();
+  let cleanup: () => void = () => undefined;
+  let primary: { error: unknown } | undefined = undefined;
+  try {
+    const profile = createBoundProfileFixture();
+    cleanup = () => profile.close();
+    const destination = { stateRoot: join(profile.workspace, 'relocation-target'), artifactRoot: join(profile.workspace, 'relocation-target-artifacts') };
+    const held = restore(profile.workspace);
+    cleanup = () => { held.release(); profile.close(); };
+
+    const before = currentProfileRelocationSnapshot(profile.workspace);
+    const registry = profile.machine.readProfileRegistry();
+    const source = AuthorityDatabase.inspectExistingReadOnly(profile.admission, profile.path);
+    expect(() => profile.machine.beginRelocation(destination, currentProfileRelocationPlan(profile.machine.locator, destination), held))
+      .toThrow(ProfileStorageRelocationUnsupportedError);
+    expect(AuthorityDatabase.inspectExistingReadOnly(profile.admission, profile.path)).toEqual(source);
+    expect(profile.machine.readProfileRegistry()).toEqual(registry);
+    expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(before);
+    expect(existsSync(destination.stateRoot)).toBe(false);
+    expect(existsSync(destination.artifactRoot)).toBe(false);
+    expect(inspectPendingRelocationStatus(profile.workspace)).toBeUndefined();
+  } catch (error) { primary = { error }; }
+  let cleanupFailure: { error: unknown } | undefined = undefined;
+  try { cleanup(); } catch (error) { cleanupFailure = { error }; }
+  if (primary !== undefined) {
+    if (cleanupFailure !== undefined) throw new AggregateError([primary.error, cleanupFailure.error], "profile-relocation-test-cleanup-failed", { cause: primary.error });
+    throw primary.error;
+  }
+  if (cleanupFailure !== undefined) throw cleanupFailure.error;
 });
 
 it("recovers only the exact operation through a fresh held fixed restore lease", () => {
-  const { workspace, pair } = fixture();
-  const first = adoptSynthetic(workspace, pair); first.release();
-  writeFileSync(join(pair.stateRoot, "state.db"), "synthetic source authority");
-  writeFileSync(join(pair.artifactRoot, "a.artifact"), "synthetic artifact");
-  const lease = acquireInstallation(workspace, "exclusive");
-  const admission = RuntimeAdmission.fromInstallationLease(lease);
-  const held = restore(workspace);
-  const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
-  const operation = admission.beginRelocation(destination, relocationPlan(lease, destination), held);
-  prepareDestination(lease, destination);
-  staged(lease, destination, operation.operationId, operation.inventory().plan);
-  const originalPreparation = operation.inventory().preparation;
-  const originalEvidence = operation.inventory().evidence;
-  if (originalPreparation === undefined) throw new Error("preparation missing");
-  const binding = { installationId: lease.locator.installationId, fromGeneration: lease.locator.generation, operationId: operation.operationId };
-  admission.release(); held.release();
-  const resumedHeld = restore(workspace);
-  const journalPath = join(workspace, ".tracker/control", "journal.json");
-  const originalJournal = readFileSync(journalPath, "utf8");
-  const changedJournal = JSON.parse(originalJournal) as Record<string, unknown>;
-  const originalIntent = changedJournal.activationIntent as Record<string, unknown>;
-  const originalSnapshot = originalIntent.snapshot as Record<string, unknown>;
-  const originalConfig = originalSnapshot.config as Record<string, unknown>;
-  writeFileSync(journalPath, JSON.stringify({ ...changedJournal, activationIntent: { ...originalIntent,
-    snapshot: { ...originalSnapshot, config: { ...originalConfig, paths: {
-      ...(originalConfig.paths as Record<string, unknown>), artifactRoot: join(dirname(workspace), "changed") } } } } }));
-  expect(() => inspectPendingRelocationRecovery(workspace, operation.operationId, resumedHeld))
-    .toThrow(/config-snapshot-fingerprint-mismatch/u);
-  expect(() => inspectPendingRelocationStatus(workspace)).toThrow(/config-snapshot-fingerprint-mismatch/u);
-  writeFileSync(journalPath, originalJournal);
-  expect(() => acquireRecoveryRuntimeRelocation(workspace, { ...binding, operationId: randomUUID() }, resumedHeld)).toThrow(/recovery|operation/u);
-  const recovered = acquireRecoveryRuntimeRelocation(workspace, binding, resumedHeld);
-  expect(recovered.operation.inventory().destination).toEqual(destination);
-  expect(recovered.operation.inventory().preparation).toEqual(originalPreparation);
-  expect(recovered.operation.inventory().evidence).toEqual(originalEvidence);
-  recovered.operation.recordVerifiedPreparation(() => originalPreparation);
-  expect(() => recovered.operation.recordVerifiedPreparation(() => ({ ...originalPreparation,
-    backupFileSha256: "4".repeat(64) }))).toThrow(/verified preparation changed/u);
-  const child = recovered.operation.destinationAdmission();
-  recovered.admission.release();
-  expect(() => child.assertLive()).toThrow(/released admission/u);
-  resumedHeld.release();
+  let cleanup: () => void = () => undefined;
+  let primary: { error: unknown } | undefined = undefined;
+  try {
+    const profile = createBoundProfileFixture();
+    cleanup = () => profile.close();
+    const foreign = createBoundProfileFixture();
+    cleanup = () => { foreign.close(); profile.close(); };
+    const held = restore(foreign.workspace);
+    cleanup = () => { held.release(); foreign.close(); profile.close(); };
+    const binding = { installationId: profile.machine.locator.installationId,
+    fromGeneration: profile.machine.locator.generation, operationId: randomUUID() };
+    profile.admission.release(); profile.machine.release();
+
+    const before = currentProfileRelocationSnapshot(profile.workspace);
+    const foreignBefore = currentProfileRelocationSnapshot(foreign.workspace);
+    expect(() => acquireRecoveryRuntimeRelocation(profile.workspace, binding, held)).toThrow("restore-admission-handle-mismatch");
+    expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(before);
+    expect(currentProfileRelocationSnapshot(foreign.workspace)).toEqual(foreignBefore);
+    expect(inspectPendingRelocationStatus(profile.workspace)).toBeUndefined();
+
+    const currentHeld = restore(profile.workspace);
+    cleanup = () => { currentHeld.release(); held.release(); foreign.close(); profile.close(); };
+    const lease = acquireInstallation(profile.workspace, "exclusive");
+    cleanup = () => { lease.release(); currentHeld.release(); held.release(); foreign.close(); profile.close(); };
+    const { workspace: destinationWorkspace } = fixture();
+    const destination = { stateRoot: join(dirname(destinationWorkspace), "recovery-profile-state"),
+      artifactRoot: join(dirname(destinationWorkspace), "recovery-profile-artifacts") };
+    const plan = currentProfileRelocationPlan(lease.locator, destination);
+    const operationId = lease.beginRelocation(destination, plan, currentHeld);
+    const recoveryBinding = { installationId: lease.locator.installationId,
+      fromGeneration: lease.locator.generation, operationId };
+    lease.release();
+    const recoveryBefore = currentProfileRelocationSnapshot(profile.workspace);
+    const pendingBefore = inspectPendingRelocationStatus(profile.workspace);
+    expect(pendingBefore).toMatchObject({ operationId, fromGeneration: recoveryBinding.fromGeneration });
+    expect(() => acquireRecoveryRuntimeRelocation(profile.workspace, recoveryBinding, currentHeld))
+      .toThrow(ProfileStorageRelocationUnsupportedError);
+    expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(recoveryBefore);
+    expect(inspectPendingRelocationStatus(profile.workspace)).toEqual(pendingBefore);
+    expect(existsSync(destination.stateRoot)).toBe(false);
+    expect(existsSync(destination.artifactRoot)).toBe(false);
+    const reacquired = acquireInstallation(profile.workspace, "exclusive",
+      { recoverRelocation: { ...recoveryBinding, restoreAdmission: currentHeld } });
+    cleanup = () => { reacquired.release(); currentHeld.release(); held.release(); foreign.close(); profile.close(); };
+    reacquired.release();
+    expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(recoveryBefore);
+  } catch (error) { primary = { error }; }
+  let cleanupFailure: { error: unknown } | undefined = undefined;
+  try { cleanup(); } catch (error) { cleanupFailure = { error }; }
+  if (primary !== undefined) {
+    if (cleanupFailure !== undefined) throw new AggregateError([primary.error, cleanupFailure.error], "profile-relocation-test-cleanup-failed", { cause: primary.error });
+    throw primary.error;
+  }
+  if (cleanupFailure !== undefined) throw cleanupFailure.error;
 });
 
 it("does not silently re-adopt defaults after control is lost", () => {
@@ -233,95 +218,66 @@ it("refuses an unexplained v1 completed generation without a receipt chain", () 
 });
 
 it("binds the first real saved plan at applied revision one and expected revision zero", () => {
-  const { workspace, pair } = fixture();
-  const adopted = RuntimeAdmission.acquireInitial(workspace, (candidate, inspection) => {
-    const path = join(candidate.stateRoot, "state.db");
-    const inspected = AuthorityDatabase.inspectExistingReadOnly(inspection, path);
-    return { kind: "verified-existing", pair: candidate, authorityGeneration: inspected.authorityGeneration,
-      databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) };
-  }, (candidate, initialization) => {
-    const database = AuthorityDatabase.open(initialization, { path: join(candidate.stateRoot, "state.db"),
-      busyTimeoutMs: 250, migrationOwner: "unit-test" });
-    try {
-      expect(() => database.withAuthorityTransaction(() => database.authority.commands.assertIdentity({
-        family: "worker-browser", type: "plan-worker-count", commandId: randomUUID(),
-        requestedAt: "2026-09-26T12:00:00.000Z", requestedBy: "local-operator", source: "dashboard",
-        target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 1 },
-      }))).toThrow(/fresh initialization path is outside database authority/u);
-      expect(existsSync(join(candidate.stateRoot, "credentials"))).toBe(false);
-      expect(existsSync(join(candidate.stateRoot, "credential-erasures"))).toBe(false);
-    } finally { database.close(); }
-  });
-  adopted.release();
-  const planning = acquireInstallation(workspace, "shared");
-  const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
-  const admission = RuntimeAdmission.fromInstallationLease(planning);
-  const database = AuthorityDatabase.open(admission, { path: join(pair.stateRoot, "state.db"),
-    busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-  const producer = createStorageRelocationPlanReader({ authority: database, admission, workspace });
-  const destinationRoot = fixture().workspace;
-  const destination = { stateRoot: join(destinationRoot, "planned-state"), artifactRoot: join(destinationRoot, "planned-artifacts") };
-  const request = StorageRelocationCommandRequestSchema.parse({ family: "storage-relocation",
-    type: "plan-storage-relocation", commandId: randomUUID(), requestedAt: clock.now().toISOString(),
-    requestedBy: "local-operator", source: "settings-surface",
-    target: { installationId: planning.locator.installationId, sourceGeneration: 0, sourcePair: pair, expectedRevision: 0 },
-    payload: { writeId: randomUUID(), desiredPair: destination, desiredDigest: storageRelocationDesiredDigest({
-      installationId: planning.locator.installationId, sourceGeneration: NonNegativeIntSchema.parse(0),
-      sourcePair: pair, expectedRevision: NonNegativeIntSchema.parse(0) }, destination),
-      requestFingerprint: "0".repeat(64) } });
-  if (request.type !== "plan-storage-relocation") throw new Error("expected plan");
-  const signed = StorageRelocationCommandRequestSchema.parse({ ...request,
-    payload: { ...request.payload, requestFingerprint: storageRelocationRequestFingerprint(request) } });
-  expect(executeStorageRelocationCommand({ authority: database, clock, ids: { uuid: randomUUID },
-    storageRelocationPlans: producer }, signed)).toMatchObject({ state: "applied" });
-  const view = producer.read();
-  expect(view.revision).toBe(1);
-  expect(view.pending?.commandId).toBe(request.commandId);
-  expect(projectStorageRelocationPlanHistory(database.authority, planning.locator, [], workspace)).toEqual(view);
-  expect(() => projectStorageRelocationPlanHistory(database.authority,
-    { ...planning.locator, generation: 1 }, [], workspace)).toThrow(/projected plan epoch differs/u);
-  database.close(); planning.release();
-  const lease = acquireInstallation(workspace, "exclusive");
-  const held = restore(workspace);
-  const binding: RelocationPlanBinding = { commandId: request.commandId, revision: view.revision,
-    expectedRevision: request.target.expectedRevision, requestFingerprint: view.pending?.requestFingerprint ?? "",
-    desiredDigest: view.pending?.desiredDigest ?? "" };
-  expect(lease.beginRelocation(destination, binding, held)).toMatch(/^[0-9a-f-]{36}$/u);
-  lease.release(); held.release();
+  let cleanup: () => void = () => undefined;
+  let primary: { error: unknown } | undefined = undefined;
+  try {
+    const profile = createBoundProfileFixture();
+    cleanup = () => profile.close();
+    let database: AuthorityDatabase;
+    try { database = AuthorityDatabase.open(profile.admission, { path: profile.path,
+    busyTimeoutMs: 250, migrationOwner: 'current-profile-relocation-preflight' }, undefined, undefined, undefined,
+    undefined, boundProfileCredentials(profile.admission)); }
+    catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) cleanup = () => { throw error; };
+    throw error;
+    }
+    cleanup = () => { database.close(); profile.close(); };
+
+    const registry = profile.machine.readProfileRegistry();
+    const source = database.getMeta();
+    const before = currentProfileRelocationSnapshot(profile.workspace);
+    expect(() => createStorageRelocationPlanReader({ authority: database, admission: profile.admission,
+      workspace: profile.workspace })).toThrow(ProfileStorageRelocationUnsupportedError);
+    expect(database.getMeta()).toEqual(source);
+    expect(profile.machine.readProfileRegistry()).toEqual(registry);
+    expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(before);
+    expect(inspectPendingRelocationStatus(profile.workspace)).toBeUndefined();
+  } catch (error) { primary = { error }; }
+  let cleanupFailure: { error: unknown } | undefined = undefined;
+  try { cleanup(); } catch (error) { cleanupFailure = { error }; }
+  if (primary !== undefined) {
+    if (cleanupFailure !== undefined) throw new AggregateError([primary.error, cleanupFailure.error], "profile-relocation-test-cleanup-failed", { cause: primary.error });
+    throw primary.error;
+  }
+  if (cleanupFailure !== undefined) throw cleanupFailure.error;
 });
 
 it("claims destination roots for one operation and refuses foreign witnesses", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
-  const lease = acquireInstallation(workspace, "exclusive");
-  const held = restore(workspace);
-  const destination = { stateRoot: join(dirname(workspace), "next-state"), artifactRoot: join(dirname(workspace), "next-state", "artifacts") };
-  const operationId = lease.beginRelocation(destination, relocationPlan(lease, destination), held);
-  mkdirSync(destination.stateRoot);
-  writeFileSync(join(destination.stateRoot, "foreign"), "unrelated");
-  expect(() => lease.prepareDestinationRoots()).toThrow(/unowned (nested )?destination content/u);
-  unlinkSync(join(destination.stateRoot, "foreign"));
-  lease.prepareDestinationRoots();
-  const stateMarkerPath = join(destination.stateRoot, ".runtime-owner.json");
-  const artifactMarkerPath = join(destination.artifactRoot, ".runtime-owner.json");
-  const stateMarker = readFileSync(stateMarkerPath, "utf8");
-  expect(JSON.parse(stateMarker)).toMatchObject({ schemaVersion: 2, operationId, role: "state" });
-  expect(JSON.parse(readFileSync(artifactMarkerPath, "utf8"))).toMatchObject({ schemaVersion: 2, operationId, role: "artifact" });
-  lease.prepareDestinationRoots();
-  unlinkSync(artifactMarkerPath);
-  lease.prepareDestinationRoots();
-  writeFileSync(stateMarkerPath, JSON.stringify({ ...JSON.parse(stateMarker) as Record<string, unknown>, operationId: randomUUID() }));
-  expect(() => lease.prepareDestinationRoots()).toThrow(/destination marker operation mismatch/u);
-  writeFileSync(stateMarkerPath, stateMarker);
-  const sourceMarkerPath = join(pair.stateRoot, ".runtime-owner.json");
-  const sourceMarker = readFileSync(sourceMarkerPath, "utf8");
-  writeFileSync(sourceMarkerPath, JSON.stringify({ ...JSON.parse(sourceMarker) as Record<string, unknown>, role: "artifact" }));
-  expect(() => lease.verifiedSourceControlEntries()).toThrow(/root ownership mismatch/u);
-  writeFileSync(sourceMarkerPath, sourceMarker);
-  expect(lease.verifiedSourceControlEntries().state).toContain(".runtime-owner.json");
-  held.release();
-  expect(() => lease.prepareDestinationRoots()).toThrow(/restore admission|ENOENT/u);
-  lease.release();
+  let cleanup: () => void = () => undefined;
+  let primary: { error: unknown } | undefined = undefined;
+  try {
+    const profile = createBoundProfileFixture();
+    cleanup = () => profile.close();
+    const held = restore(profile.workspace);
+    cleanup = () => { held.release(); profile.close(); };
+    const destination = { stateRoot: join(profile.workspace, 'released-relocation-target'), artifactRoot: join(profile.workspace, 'released-relocation-artifacts') };
+    const plan = currentProfileRelocationPlan(profile.machine.locator, destination);
+    profile.admission.release(); profile.machine.release();
+
+    const before = currentProfileRelocationSnapshot(profile.workspace);
+    expect(() => profile.machine.beginRelocation(destination, plan, held)).toThrow("runtime-admission: missing or released admission");
+    expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(before);
+    expect(existsSync(destination.stateRoot)).toBe(false);
+    expect(existsSync(destination.artifactRoot)).toBe(false);
+    expect(inspectPendingRelocationStatus(profile.workspace)).toBeUndefined();
+  } catch (error) { primary = { error }; }
+  let cleanupFailure: { error: unknown } | undefined = undefined;
+  try { cleanup(); } catch (error) { cleanupFailure = { error }; }
+  if (primary !== undefined) {
+    if (cleanupFailure !== undefined) throw new AggregateError([primary.error, cleanupFailure.error], "profile-relocation-test-cleanup-failed", { cause: primary.error });
+    throw primary.error;
+  }
+  if (cleanupFailure !== undefined) throw cleanupFailure.error;
 });
 
 it("refuses a retained default-source fence after control and owner markers are lost", () => {

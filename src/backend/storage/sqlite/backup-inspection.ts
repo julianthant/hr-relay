@@ -1,9 +1,10 @@
+import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { createHash } from "node:crypto";
 import { createReadonlyAuthoritySnapshot, openReadOnlyDatabase, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { resolve } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { AuthoritySourceClosureUnprovedError, inspectNativeAuthority, inspectNormalAuthority } from "./authority-database.js";
+import { inspectNativeAuthority, inspectNormalAuthority } from "./authority-database.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
@@ -38,28 +39,35 @@ export function openAuthorityBackupSourceReadOnly(admission:RuntimeAdmission,pat
  catch(error){
   const failures:unknown[]=[];
   try{snapshot.dispose();}catch(cleanupError){failures.push(cleanupError);}
-  if(failures.length!==0)throw new AuthoritySourceClosureUnprovedError([error,...failures]);
+  if(failures.length!==0)throw retainAuthoritySourceClosure([error,...failures], { snapshot });
   throw error;
  }
  try {database.exec("PRAGMA query_only=ON");}
  catch(error){
   const failures:unknown[]=[];
-  try{database.close();}catch(cleanupError){failures.push(cleanupError);}
+  try{database.close();}catch(cleanupError){throw retainAuthoritySourceClosure([error,cleanupError], { snapshot, database });}
   try{snapshot.dispose();}catch(cleanupError){failures.push(cleanupError);}
-  if(failures.length!==0)throw new AuthoritySourceClosureUnprovedError([error,...failures]);
+  if(failures.length!==0)throw retainAuthoritySourceClosure([error,...failures], { snapshot });
   throw error;
  }
  let closed=false;
- const assertOpen=()=>{admission.assertLive();if(closed)throw new Error("authority-backup-source-closed");snapshot.assertUnchanged();};
+ let closeFailure: { error: unknown } | undefined;
+ const assertOpen=()=>{if(closeFailure!==undefined)throw closeFailure.error;admission.assertLive();if(closed)throw new Error("authority-backup-source-closed");snapshot.assertUnchanged();};
  return Object.freeze({
  getMeta(){assertOpen();const row=z.strictObject({schema_version:z.number().int().positive(),authority_generation:z.number().int().nonnegative(),updated_at:z.string().datetime(),installation_id:z.uuid().optional(),profile_id:z.uuid().optional()}).parse(database.prepare(expectedSchemaVersion >= 7 ? "SELECT schema_version,authority_generation,updated_at,installation_id,profile_id FROM database_states WHERE id=1" : "SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());if(row.schema_version!==expectedSchemaVersion)throw new Error("authority-backup-source-schema-mismatch");return Object.freeze({schemaVersion:row.schema_version,authorityGeneration:row.authority_generation,updatedAt:row.updated_at,installationId:row.installation_id,profileId:row.profile_id});},
  getSourceDatabaseIdentity(){assertOpen();return authorityBackupSourceDatabaseIdentity(path);},
  async onlineBackupTo(destinationPath:string){assertOpen();admission.assertAuthorityBackupWrite(destinationPath);admission.assertStateRoot(destinationPath);const pages=await sqliteBackup(database,resolve(destinationPath),{rate:100});snapshot.assertUnchanged();return pages;},
- close(){if(closed)return;closed=true;const failures:unknown[]=[];
-  try{database.close();}catch(error){failures.push(error);}
-  try{snapshot.assertUnchanged();}catch(error){failures.push(error);}
-  try{snapshot.dispose();}catch(error){failures.push(error);}
-  if(failures.length!==0)throw new AuthoritySourceClosureUnprovedError(failures);
+ close(){
+  if(closeFailure!==undefined)throw closeFailure.error;
+  if(closed)return;
+  try{database.close();}
+  catch(error){const failure=retainAuthoritySourceClosure([error], { snapshot, database });closeFailure={error:failure};throw failure;}
+  let validation: { error: unknown } | undefined;
+  try{snapshot.assertUnchanged();}catch(error){validation={error};}
+  try{snapshot.dispose();}
+  catch(error){const failure=retainAuthoritySourceClosure(validation===undefined?[error]:[validation.error,error], { snapshot });closeFailure={error:failure};throw failure;}
+  closed=true;
+  if(validation!==undefined)throw validation.error;
  },
  });
 }

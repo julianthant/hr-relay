@@ -6,7 +6,7 @@ import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/
 import { DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
@@ -28,6 +28,7 @@ function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "public-profile-shell-")));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
   const machine = acquireEntrypointAdmission(root, "exclusive");
+  mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   return { root, machine };
 }
 

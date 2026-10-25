@@ -1,10 +1,18 @@
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
+import { writePrivateStage } from '../../../../src/backend/storage/configuration/credential-safe-file.js';
+import { workerProfileDirectory } from '../../../../src/backend/runtime/browser/browser-session-factory.js';
+import { testRunService } from '../../../support/fixtures/run-lifecycle-fixtures.js';
+import { lifecycleCommandId, requireLifecycleApplied } from '../../../../src/backend/runs/lifecycle/run-record-service.js';
+import { runClaim } from '../../../../src/models/run/record.js';
+import { personLookupDescriptor } from '../../../support/helpers/registered-workflows.js';
+import { ErrorCatalogCodeSchema } from '../../../../src/models/failures/error-catalog.js';
+import { createDashboardPortTestWorld } from "../../../support/helpers/backend/dashboard-port-world.js";
 import { createWorkerSupervisionTestWorld, type Harness } from "../../../support/helpers/backend/worker-supervision-world.js";
 import { default as assert } from "node:assert/strict";
 import { spawn as spawn_m1, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join as join_m1 } from "node:path";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join as join_m1 } from "node:path";
 import { it } from "vitest";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -12,7 +20,7 @@ import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-qu
 import { type WorkerProcessSpawner } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { createDashboardWorkerProcessSupervisor } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { assertWorkerProcessStopped } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { assertWorkerProcessStopped, readRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { workerPoolMember, WorkerPoolMemberSchema } from "../../../../src/models/run/worker-slot.js";
@@ -21,7 +29,7 @@ import { deriveTraceId } from "../../../../src/rules/identity/identifiers.js";
 import { ActorIdSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
-import { AuthorityDatabase, installationAdmission, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
+import { releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 import { foundationFixture, id as id_m0, NOW as NOW_m0 } from "../../../support/helpers/database-foundation/fixtures.js";
 import { ManualScheduler, personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 import { describe, expect } from "vitest";
@@ -52,6 +60,7 @@ it.each(["poolIndex", "membershipRevision"] as const)("refuses an altered same-i
     proveRetirement: () => { throw new Error("retirement must not be requested"); },
     onFault: error => { throw error; },
   });
+  let primary: { error: unknown } | undefined;
   try {
     await supervisor.execute({ command: "spawn-worker", commandId: id_m0(200), member });
     const before = supervisor.memberEvidence(member);
@@ -66,14 +75,42 @@ it.each(["poolIndex", "membershipRevision"] as const)("refuses an altered same-i
     assert.deepEqual(fixture.db.authority.workerSlots.get(member.workerId), slot);
     assert.deepEqual(fixture.db.authority.workerLeases.get(member.workerId), lease);
     assert.equal(fixture.db.getMeta().authorityGeneration, generation);
-  } finally {
-    onExit?.(0, null);
+  } catch (error) { primary = { error }; }
+  const cleanupFailures: unknown[] = [];
+  try { onExit?.(0, null); } catch (error) { cleanupFailures.push(error); }
+  try {
+    const run = fixture.db.authority.runs.get(fixture.run.envelope.runId);
+    assert.ok(run);
+    const claim = runClaim(run); assert.ok(claim);
+    const lifecycle = testRunService(fixture.db, fixture.clock);
+    const now = fixture.clock.now().toISOString();
+    const requested = requireLifecycleApplied(lifecycle.transition({
+      commandId: lifecycleCommandId('supervisor-fixture-cancel', run.envelope.runId),
+      runId: run.envelope.runId, expectedVersion: run.version,
+      lifecycle: { state: 'terminal', outcome: 'cancelled', endedAt: now },
+    }));
+    assert.equal(requested.cancelRequested, true);
+    const terminal = requireLifecycleApplied(lifecycle.terminalize({ kind: 'cancelled',
+      commandId: lifecycleCommandId('supervisor-fixture-terminal', run.envelope.runId),
+      runId: run.envelope.runId, expectedVersion: requested.version,
+      claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, endedAt: now,
+    }, personLookupDescriptor));
+    assert.deepEqual(terminal.lifecycle, { state: 'terminal', outcome: 'cancelled', endedAt: now });
+    assert.equal(fixture.db.authority.runs.listByWorker(claim.workerId).some(owned => runClaim(owned) !== undefined), false);
+    assert.doesNotThrow(() => fixture.db.assertWorkerLifecycleRelease(claim.workerId));
     fixture.dispose();
+  } catch (error) { cleanupFailures.push(error); }
+  if (primary !== undefined) {
+    if (cleanupFailures.length !== 0) throw new AggregateError([primary.error, ...cleanupFailures], 'supervisor-fixture-cleanup-failed', { cause: primary.error });
+    throw primary.error;
   }
+  if (cleanupFailures.length !== 0) throw new AggregateError(cleanupFailures, 'supervisor-fixture-cleanup-failed', { cause: cleanupFailures[0] });
 });
 }
 
 {
+
+const retainedPhysicalWorkerFixtures: object[] = [];
 
 async function waitFor(test: () => boolean, message: string, diagnostics: () => string) {
   const deadline = systemClock.monotonicMs() + 25_000;
@@ -81,41 +118,99 @@ async function waitFor(test: () => boolean, message: string, diagnostics: () => 
 }
 
 it("retires a real worker only after its opened Chromium profile closes, custody releases and the slot directory is deleted", async () => {
-  const root = mkdtempSync(join_m1(realpathSync(tmpdir()), "native-profile-retirement-"));
-  copyFileSync("package.json", join_m1(root, "package.json"));
-  copyFileSync("package-lock.json", join_m1(root, "package-lock.json"));
+  const world = createDashboardPortTestWorld(() => undefined, releaseAdmissionFixtures);
+  let profile: ReturnType<typeof world.createProfileFixture>;
+  try { profile = world.createProfileFixture(systemClock); }
+  catch (primary) {
+    let cleanupFailure: { error: unknown } | undefined = undefined;
+    try { await world.cleanup(); } catch (error) { cleanupFailure = { error }; }
+    if (cleanupFailure !== undefined) throw new AggregateError([primary, cleanupFailure.error], 'Worker fixture initialization and cleanup failed', { cause: primary });
+    throw primary;
+  }
+  const root = profile.workspace;
   const output: string[] = [], children: ChildProcess[] = [], runIds: string[] = [];
   const failures: unknown[] = [];
-  let runtime: DashboardRuntime | undefined, database: AuthorityDatabase | undefined;
-  const diagnostics = () => output.join("") + JSON.stringify({ runs: runIds.map(id => database?.authority.runs.get(id)), leases: database?.authority.workerLeases.listLive(), browsers: database?.authority.workerControls.browsers("person-lookup-worker-2") });
+  let runtime: DashboardRuntime | undefined, database: ReturnType<typeof profile.openDatabase> | undefined;
+  let retiringMember: ReturnType<typeof workerPoolMember> | undefined;
+  const diagnostics = () => output.join("") + JSON.stringify({ runs: runIds.map(id => database?.authority.runs.get(id)), leases: database?.authority.workerLeases.listLive(), browsers: retiringMember === undefined ? [] : database?.authority.workerControls.browsers(retiringMember.workerId) });
   const spawnWorker: WorkerProcessSpawner = request => {
     const child = spawn_m1(request.command, [...request.args], { cwd: request.cwd, stdio: ["ignore", "pipe", "pipe"], detached: true });
     children.push(child); child.stdout?.on("data", chunk => output.push(String(chunk))); child.stderr?.on("data", chunk => output.push(String(chunk)));
     return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
   };
   try {
-    runtime = await composeDashboardRuntime({ admission: installationAdmission(root), preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
+    runtime = await composeDashboardRuntime({ ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
       workerProcess: { launch: { environment: {}, command: process.execPath, prefixArgs: ["--import", "tsx", join_m1(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), root], cwd: process.cwd() }, spawn: spawnWorker, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => output.push(line) } });
-    const origin = `http://127.0.0.1:${String(runtime.port)}`, patch = { "daemon.idleRepollMs": { set: 100 } };
-    const settings = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ commandId: randomUUID(), family: "settings", type: "apply-settings", target: { expectedRevision: 1 }, source: "dashboard", requestedBy: "local-operator", requestedAt: systemClock.now().toISOString(), payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }) });
+    const duoDirectory = join_m1(root, `physical-duo-${randomUUID()}`);
+    mkdirSync(duoDirectory, { mode: 0o700 });
+    const duoCredential = join_m1(duoDirectory, 'credential.json');
+    const generated = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    writePrivateStage(duoCredential, Buffer.from(JSON.stringify({ rpId: 'duosecurity.com', credentialId: Buffer.from(randomUUID()).toString('base64'),
+      privateKey: generated.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'), signCount: 0, transport: 'internal' })));
+    assert.equal(statSync(duoDirectory).mode & 0o777, 0o700);
+    assert.equal(statSync(duoCredential).mode & 0o777, 0o600);
+    const origin = `http://127.0.0.1:${String(runtime.port)}`, patch = { "daemon.idleRepollMs": { set: 100 }, 'paths.duoCredential': { set: duoCredential }, 'paths.duoExtensionDir': { set: join_m1(process.cwd(), 'duo-autopilot') } };
+    const settings = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ commandId: randomUUID(), family: "settings", type: "apply-settings", target: { expectedRevision: world.readRuntimeSettingsRevision(profile) }, source: "dashboard", requestedBy: "local-operator", requestedAt: systemClock.now().toISOString(), payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }) });
     assert.equal(CommandResultSchema.parse(await settings.json()).state, "applied");
-    const db = AuthorityDatabase.open({ path: join_m1(root, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "native-retirement-proof" }, systemClock); database = db;
+    const db = profile.openDatabase({ path: join_m1(profile.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "native-retirement-proof" }, systemClock); database = db;
     const post = async (type: string, target: unknown, payload?: unknown) => {
       assert.ok(runtime); const origin = `http://127.0.0.1:${String(runtime.port)}`;
+      const cursor = db.authority.timelineEvents.highWaterMark();
       const response = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ commandId: randomUUID(), family: "worker-browser", type, target, ...(payload === undefined ? {} : { payload }), source: "dashboard", requestedBy: "local-operator", requestedAt: systemClock.now().toISOString() }) });
-      const result = CommandResultSchema.parse(await response.json()); assert.equal(result.state, "applied", JSON.stringify(result) + diagnostics()); return result;
+      const body: unknown = await response.json();
+      if (!CommandResultSchema.safeParse(body).success) {
+        const catalog = ErrorCatalogCodeSchema.safeParse(typeof body === 'object' && body !== null ? Reflect.get(body, 'code') : undefined);
+        const publicCode: unknown = typeof body === 'object' && body !== null ? Reflect.get(body, 'code') : undefined;
+        const wireCode = publicCode === 'INTERNAL_FAILURE' || publicCode === 'LOGGING_UNAVAILABLE' || publicCode === 'SCHEMA_INVALID' ? publicCode : null;
+        const primary = new Error(JSON.stringify({ status: response.status, code: catalog.success ? catalog.data : null, wireCode }));
+        const frames = (text: string) => [...new Set(text.match(/(?:src|tests)\/[A-Za-z0-9_./-]+\.ts:\d+:\d+/g) ?? [])];
+        const classes = (text: string) => ['Error', 'TypeError', 'RangeError', 'ZodError', 'RuntimeCustodyUncertainError', 'WorkerControlRefusalError']
+          .filter(name => text.startsWith(name + ':') || text.startsWith(name + '\n'));
+        let diagnosticFailure: { error: unknown } | undefined;
+        let diagnostic: { timelineCount: number; debugCount: number; events: { frames: string[]; classes: string[]; code: string | null }[] } | undefined;
+        try {
+          const events = db.authority.timelineEvents.page({ after: cursor, limit: 100 });
+          const debug = events.flatMap(row => row.payload.kind === 'debug' ? [row.payload.event] : []);
+          diagnostic = { timelineCount: events.length, debugCount: debug.length,
+            events: debug.map(event => { const code = ErrorCatalogCodeSchema.safeParse(event.code);
+              return { frames: frames(event.stack ?? ''), classes: classes(event.stack ?? ''),
+                code: code.success ? code.data : event.code === 'INTERNAL_FAILURE' || event.code === 'LOGGING_UNAVAILABLE' || event.code === 'SCHEMA_INVALID' ? event.code : null }; }) };
+        } catch (error) { diagnosticFailure = { error }; }
+        if (diagnosticFailure !== undefined) throw new AggregateError([primary, diagnosticFailure.error], 'worker-start-diagnostic-read-failed', { cause: primary });
+        assert.ok(diagnostic);
+        throw new Error(JSON.stringify({ status: response.status, code: catalog.success ? catalog.data : null, wireCode,
+          ...diagnostic, childFrames: frames(output.join('')), childCount: children.length,
+          children: children.map(child => ({ exitCode: child.exitCode, signalCode: child.signalCode })) }), { cause: primary });
+      }
+      const result = CommandResultSchema.parse(body); assert.equal(result.state, "applied", JSON.stringify(result) + diagnostics()); return result;
     };
     await post("plan-worker-count", { workflowId: "person-lookup", expectedVersion: 0 }, { desiredWorkers: 2 });
-    await post("spawn-worker", { workflowId: "person-lookup", expectedVersion: 1 }, { workerId: "person-lookup-worker-2" });
+    const planned = db.authority.workerSlots.list("person-lookup").filter(slot => slot.retiredAt === null);
+    const excess = planned.slice(1);
+    assert.equal(excess.length, 1);
+    const retiringSlot = excess[0]; assert.ok(retiringSlot);
+    assert.equal(retiringSlot.poolIndex, 2);
+    assert.equal(retiringSlot.ordinal, 2);
+    const member = workerPoolMember(retiringSlot);
+    assert.deepEqual(member, WorkerPoolMemberSchema.parse({ workflowId: retiringSlot.workflow,
+      workerId: retiringSlot.workerId, poolIndex: retiringSlot.poolIndex, ordinal: retiringSlot.ordinal,
+      membershipRevision: retiringSlot.membershipRevision }));
+    retiringMember = member;
+    await post("spawn-worker", { workflowId: "person-lookup", expectedVersion: 1 }, { workerId: member.workerId });
     const active = db.authority.runtimeConfig.get(); assert.ok(active);
+    const activeSnapshot = db.authority.configSnapshots.get(active.configSnapshotId); assert.ok(activeSnapshot);
+    assert.equal(activeSnapshot.fingerprint, active.configFingerprint);
+    assert.equal(activeSnapshot.config.features.duoWebAuthn, true);
+    assert.equal(activeSnapshot.config.paths.duoCredential, duoCredential);
+    assert.equal(activeSnapshot.config.paths.duoExtensionDir, join_m1(process.cwd(), 'duo-autopilot'));
     const runId = randomUUID(), at = systemClock.now().toISOString();
     runIds.push(runId);
     const candidate = RunRecordSchema.parse(personLookupQueuedRun({ runId, itemId: randomUUID(), dryRun: true }));
     const run = RunRecordSchema.parse({ ...candidate, createdAt: at, updatedAt: at, envelope: { ...candidate.envelope, traceId: deriveTraceId("pl", runId, systemClock), enqueuedAt: at, configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
     db.withAuthorityTransaction(repositories => { repositories.runs.enqueue(run); createTimelineEmitter({ repository: repositories.timelineEvents, clock: systemClock }).emit(runQueuedSpanEvent({ run, actorId: ActorIdSchema.parse("local-operator"), title: "Native profile retirement fixture" })); });
-    await waitFor(() => db.authority.workerControls.browsers("person-lookup-worker-2").some(browser => browser.health !== "closed"), "opened browser observation missing", diagnostics);
-    const slot = db.authority.workerSlots.get("person-lookup-worker-2"); assert.ok(slot);
-    const slotDirectory = join_m1(root, rebuildRuntimeIsolation.browserProfileRoot, `w${String(slot.ordinal)}`);
+    await waitFor(() => db.authority.workerControls.browsers(member.workerId).some(browser => browser.health !== "closed"), "opened browser observation missing", diagnostics);
+    const slot = db.authority.workerSlots.get(member.workerId); assert.ok(slot);
+    const slotDirectory = dirname(workerProfileDirectory({ profileRoot: activeSnapshot.config.paths.browserProfileRoot, slotOrdinal: member.ordinal, system: 'crm' }));
     const opened = db.authority.workerControls.browsers(slot.workerId).filter(browser => browser.health !== "closed");
     assert.ok(opened.length > 0); assert.ok(existsSync(slotDirectory));
     assert.ok(opened.every(browser => {
@@ -134,16 +229,52 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     assert.equal(existsSync(slotDirectory), false, "retirement acknowledgement requires deletion of the opened slot profile");
     assert.ok(db.authority.workerSlots.get(slot.workerId)?.retiredAt);
     for (const child of children) { assert.ok(child.pid); assert.deepEqual(JSON.parse(readFileSync(join_m1(root, `cleanup-${String(child.pid)}.json`), "utf8")), { openContexts: 0, failures: 0 }); }
+    const completed = db.authority.runs.get(runId); assert.ok(completed);
+    assert.equal(completed.lifecycle.state, 'terminal');
+    assert.equal(runClaim(completed), undefined);
+    const remaining = db.authority.workerSlots.list(member.workflowId).filter(value => value.retiredAt === null);
+    assert.equal(remaining.length, 1);
+    const survivor = remaining[0]; assert.ok(survivor);
+    assert.equal(survivor.poolIndex, 1);
+    assert.equal(survivor.ordinal, 1);
+    const pool = db.authority.workerPools.get(member.workflowId); assert.ok(pool);
+    assert.equal(pool.desiredWorkers, 1);
+    await post('spawn-worker', { workflowId: member.workflowId, expectedVersion: pool.version }, { workerId: survivor.workerId });
+    await waitFor(() => db.authority.workerLeases.get(survivor.workerId)?.lifecycle.state === 'idle', 'survivor worker did not become idle', diagnostics);
+    const survivorLease = db.authority.workerLeases.get(survivor.workerId); assert.ok(survivorLease);
+    assert.equal(children.some(child => child.pid === survivorLease.processId && child.exitCode === null && child.signalCode === null), true);
+    assert.equal(db.authority.workerPools.get(member.workflowId)?.desiredWorkers, 1);
   } catch (error) { failures.push(error); }
   finally {
-    writeFileSync(join_m1(root, "release-drivers"), "cleanup released");
-    for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
-    for (const child of children) try { await waitFor(() => child.exitCode !== null || child.signalCode !== null, "owned child cleanup did not exit", diagnostics); } catch (error) { failures.push(error); if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL"); }
-    try { await runtime?.stop(); } catch (error) { failures.push(error); }
-    database?.close(); releaseAdmissionFixtures();
-    if (failures.length === 0) rmSync(root, { recursive: true, force: true });
+    try {
+      writeFileSync(join_m1(root, "release-drivers"), "cleanup released");
+      await runtime?.detach();
+      assert.ok(children.every(child => child.exitCode !== null || child.signalCode !== null));
+      if (database !== undefined) {
+        const activeSlots = database.authority.workerSlots.list().filter(slot => slot.retiredAt === null);
+        for (const slot of activeSlots) {
+          assert.equal(database.authority.workerLeases.get(slot.workerId)?.lifecycle.state, 'stopped');
+          assertWorkerProcessStopped(join_m1(root, rebuildRuntimeIsolation.processLockRoot), slot.workerId);
+        }
+      }
+      for (const child of children) {
+        const pid = child.pid; assert.ok(pid);
+        assert.throws(() => process.kill(-pid, 0), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'ESRCH');
+      }
+      database?.close();
+      await runtime?.stop();
+      if (runtime !== undefined) {
+        const server = readRuntimeProcessLock(join_m1(root, rebuildRuntimeIsolation.processLockRoot), 'server');
+        assert.ok(server?.releasedAt !== null && server?.releasedAt !== undefined);
+      }
+      if (failures.length === 0) await world.cleanup();
+      else retainedPhysicalWorkerFixtures.push({ runtime, database, profile, children, world });
+    } catch (error) {
+      retainedPhysicalWorkerFixtures.push({ runtime, database, profile, children, world });
+      failures.push(retainAuthoritySourceClosure([error], { ...(database === undefined ? {} : { database }), admission: profile.dashboardInput.admission }));
+    }
   }
-  if (failures.length > 0) throw new AggregateError(failures, `native retirement proof failed; retained ${root}\n${output.join("")}`);
+  if (failures.length > 0) throw new AggregateError(failures, `native retirement proof failed; retained ${root}\n${output.join("")}`, { cause: failures[0] });
 }, 90_000);
 }
 
@@ -223,29 +354,84 @@ describe("stop-worker", () => {
       .rejects.toThrow(/durable stop directive is UNCERTAIN/);
   });
 
-  it("refuses a stop whose durable request raced the child's exit, preserving the exit evidence", async () => {
+  it('accepts the same child OS exit after its durable stop receipt validates', async () => {
     const { harness, target } = await runningHarness();
     harness.nextGracefulStop = async (): Promise<WorkerDurableStopReceipt> => {
-      // The child dies while the durable directive is still being requested:
-      // the stop must refuse rather than record a stage over a dead child.
       harness.children[0]?.emitExit(1, null);
       return stopReceipt(harness.clock.now().toISOString());
     };
 
     await expect(harness.supervisor.execute(stopRequest(harness, target)))
-      .rejects.toThrow(/graceful stop for person-lookup-worker-1 raced: .*now exited/);
+      .resolves.toMatchObject({ command: "stop-worker", state: "acknowledged", directiveLeaseVersions: stopReceipt(NOW).leaseVersions });
     expect(harness.supervisor.memberEvidence(target)).toEqual({
       state: "exited",
       pid: harness.children[0]?.pid,
-      outcome: "crashed",
+      outcome: "stopped",
       exitCode: 1,
       signal: null,
       at: NOW,
       reportedBy: "os",
-      observedStop: [],
+      observedStop: [{ stage: "graceful-stop-requested", at: NOW }],
     });
     expect(harness.scheduler.pending()).toHaveLength(0);
   });
+
+  it('drain waits for the valid durable receipt after the same born child exits', async () => {
+    const { harness, target } = await runningHarness();
+    let land: ((receipt: WorkerDurableStopReceipt) => void) | undefined;
+    harness.nextGracefulStop = () => new Promise(resolve => { land = resolve; });
+    let settled = false;
+    const draining = harness.supervisor.drainOwnedChildren(stopRequest(harness, target).directive);
+    void draining.then(() => { settled = true; });
+    harness.children[0]?.emitExit(0, null);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: 'exited', outcome: 'crashed', observedStop: [] });
+    expect(land).toBeTypeOf('function');
+    if (land === undefined) throw new Error('receipt gate missing');
+    land(stopReceipt(NOW));
+    await draining;
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: 'exited', outcome: 'stopped',
+      reportedBy: 'os', observedStop: [{ stage: 'graceful-stop-requested', at: NOW }] });
+    expect(harness.children[0]?.signalsSent).toEqual([]);
+    expect(harness.scheduler.pending()).toHaveLength(0);
+    expect(harness.supervisor.close()).toEqual([]);
+  });
+
+  it.each(['wrong-at', 'invalid-versions', 'request-failed', 'closed', 'replacement'] as const)(
+    'early OS exit does not authorize an invalid durable receipt: %s', async fault => {
+      const { harness, target } = await runningHarness();
+      let land: ((receipt: WorkerDurableStopReceipt) => void) | undefined;
+      let fail: ((error: Error) => void) | undefined;
+      harness.nextGracefulStop = () => new Promise((resolve, reject) => { land = resolve; fail = reject; });
+      const stopping = harness.supervisor.execute(stopRequest(harness, target));
+      const refusal = {
+  "wrong-at": "command's own instant, so this worker refuses plan coverage and further stop commands until its ",
+  "invalid-versions": "plan coverage and further stop commands until its exit is observed",
+  "request-failed": "); the directive may or may not have landed, so this worker refuses plan coverage ",
+  "closed": "worker-supervisor-closed",
+  "replacement": "worker-stop-owner-changed"
+};
+      const rejected = expect(stopping).rejects.toThrow(refusal[fault]);
+      harness.children[0]?.emitExit(0, null);
+      if (fault === 'closed') expect(harness.supervisor.close()).toEqual([]);
+      if (fault === 'replacement') {
+        harness.leases.delete(target.workerId);
+        await harness.supervisor.execute({ command: 'spawn-worker', commandId: '10000000-0000-4000-8000-000000000002', member: target });
+      }
+      if (land === undefined || fail === undefined) throw new Error('receipt gate missing');
+      if (fault === 'request-failed') fail(new Error('durable request failed'));
+      else land(fault === 'wrong-at' ? stopReceipt(new Date(Date.parse(NOW) + 1).toISOString())
+        : fault === 'invalid-versions' ? { requestedAt: NOW, leaseVersions: { before: 1, after: 3 } } : stopReceipt(NOW));
+      await rejected;
+      const evidence = harness.supervisor.memberEvidence(target);
+      if (fault === 'replacement') {
+        expect(evidence).toMatchObject({ state: 'running', pid: harness.children[1]?.pid });
+        harness.children[1]?.emitExit(0, null);
+      } else expect(evidence).toMatchObject({ state: 'exited', outcome: 'crashed', reportedBy: 'os', observedStop: [] });
+      expect(harness.children.flatMap(child => child.signalsSent)).toEqual([]);
+      expect(harness.scheduler.pending()).toHaveLength(0);
+    });
 
   it("refuses the second of two concurrent stops — the in-flight guard is synchronous", async () => {
     const { harness, target } = await runningHarness();

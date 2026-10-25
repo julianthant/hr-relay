@@ -1,10 +1,10 @@
+import { storageTree } from "../../../../support/helpers/integration/storage-recovery-fixture.js";
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
-import { fixtureAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { copyFileSync, cpSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { writeDashboardBuildIdentity } from "../../../../../src/backend/app/composition/dashboard/build-identity.js";
@@ -18,7 +18,7 @@ import { ProtectedSettingsCommandRequestSchema } from "../../../../../src/rules/
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
 
-const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, copyRuntimePackageFixture, cleanup } = createDashboardPortTestWorld(() => {
+const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, createProfileFixture, cleanup } = createDashboardPortTestWorld(() => {
       vi.mocked(fsyncSync).mockReset();
       vi.mocked(readFileSync).mockReset();
       vi.mocked(openSync).mockReset();
@@ -73,12 +73,12 @@ afterEach(cleanup);
 describe("composed dashboard runtime over an owned loopback socket", () => {
 
   it("refuses persisted protected write-id reuse after a dashboard restart", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-protected-write-id-"));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const profile = createProfileFixture(clock);
+    const repoRoot = profile.workspace;
     const writeId = "77777777-7777-4777-8777-777777777777";
     let runtime = await composeDashboardRuntime({
+      ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -89,19 +89,27 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const firstClient = createDashboardClient({
       baseUrl: `http://127.0.0.1:${String(runtime.port)}`,
     });
+    const protectedSettings = (await firstClient.editableSettings()).protectedSettings;
+    assert.equal(protectedSettings.state, "available");
+    if (protectedSettings.state !== "available") throw new Error("fixture-protected-settings-unavailable");
+    const protectedRevision = protectedSettings.readback.revision;
     const first = await firstClient.executeCommand(protectedSettingsCommand(
       "33333333-3333-4333-8333-333333333333",
       clock.now().toISOString(),
-      1,
+      protectedRevision,
       writeId,
       "first-synthetic-protected-value",
     ));
     assert.equal(first.state, "applied");
-    const protectedPath = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "credentials", "protected.json");
-    const committedBytes = readFileSync(protectedPath);
+    if (first.state === "applied") assert.equal(first.revision, protectedRevision + 1);
+    const protectedPath = join(profile.stateRoot, "credentials", "protected.json");
+    const firstCommittedBytes = readFileSync(protectedPath);
 
     await runtime.stop();
+    assert.deepEqual(readFileSync(protectedPath), firstCommittedBytes);
+    await profile.restart();
     runtime = await composeDashboardRuntime({
+      ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -111,10 +119,16 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const restartedClient = createDashboardClient({
       baseUrl: `http://127.0.0.1:${String(runtime.port)}`,
     });
+    const resumedProtectedSettings = (await restartedClient.editableSettings()).protectedSettings;
+    assert.equal(resumedProtectedSettings.state, "available");
+    if (resumedProtectedSettings.state !== "available") throw new Error("fixture-protected-settings-unavailable");
+    const resumedProtectedRevision = resumedProtectedSettings.readback.revision;
+    assert.equal(resumedProtectedRevision, protectedRevision + 2);
+    const committedBytes = readFileSync(protectedPath);
     const reused = await restartedClient.executeCommand(protectedSettingsCommand(
       "55555555-5555-4555-8555-555555555555",
       clock.now().toISOString(),
-      2,
+      resumedProtectedRevision,
       writeId,
       "second-synthetic-protected-value",
     ));
@@ -128,11 +142,10 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("creates the artifact root as an owner-only directory", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-private-artifacts-"));
-    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
-    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
+    const profile = createProfileFixture(manualClock(new Date()));
+    const repoRoot = profile.workspace;
     const runtime = await composeDashboardRuntime({
+      ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       frontendPortOverride: 0,
@@ -141,15 +154,13 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     });
     cleanups.push(() => runtime.stop());
 
-    const permissions = statSync(join(repoRoot, rebuildRuntimeIsolation.artifactRoot)).mode & 0o777;
+    const permissions = statSync(profile.artifactRoot).mode & 0o777;
     assert.equal(permissions, 0o700);
   });
 
   it("activates a saved revision immediately and retains it through restart", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-"));
-    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
-    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
+    const profile = createProfileFixture(manualClock(new Date()));
+    const repoRoot = profile.workspace;
     const commandId = "72727272-7272-4272-8272-727272727272";
     const patch = settingsSetOperations({ display: { screenWidth: 1980, screenHeight: 1080 } });
     const command = {
@@ -168,6 +179,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     } as const;
 
     const first = await composeDashboardRuntime({
+      ...profile.dashboardInput,
       frontendPortOverride: 0,
       isolation: rebuildRuntimeIsolation,
       env: {},
@@ -187,8 +199,8 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       const screenWidth = readback.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
       assert.equal(screenWidth?.effectiveValue, 1980);
       assert.equal(screenWidth?.settingsValue, 1980);
-      assert.equal(readPersistedSettings(repoRoot, manualClock(new Date(command.requestedAt))).settings.display?.screenWidth, 1980);
-      assert.equal(readRuntimeSettingsRevision(repoRoot), 2);
+      assert.equal(readPersistedSettings(profile, manualClock(new Date(command.requestedAt))).settings.display?.screenWidth, 1980);
+      assert.equal(readRuntimeSettingsRevision(profile), 2);
       const replay = await client.applySettings(command);
       assert.equal(replay.state, "already-applied");
       if (replay.state === "already-applied") assert.equal(replay.restartRequired, false);
@@ -196,7 +208,9 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       await first.stop();
     }
 
+    await profile.restart();
     const restarted = await composeDashboardRuntime({
+      ...profile.dashboardInput,
       frontendPortOverride: 0,
       isolation: rebuildRuntimeIsolation,
       env: {},
@@ -204,7 +218,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       backendPortOverride: 0,
     });
     try {
-      assert.equal(readRuntimeSettingsRevision(repoRoot), 2);
+      assert.equal(readRuntimeSettingsRevision(profile), 2);
       const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(restarted.port)}` });
       const readback = await client.editableSettings();
       assert.equal(readback.runtimeStatus.state, "current");
@@ -215,13 +229,12 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
   }, 20_000);
 
   it("serves bootstrap, day, and SSE through a real ephemeral listener and releases it at teardown", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
-    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
-    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
+    const profile = createProfileFixture(manualClock(new Date()));
+    const repoRoot = profile.workspace;
 
     reportRealPortPhase("startup", "begin");
     const runtime: DashboardRuntime = await composeDashboardRuntime({
+      ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       frontendPortOverride: 0,
@@ -310,18 +323,29 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     }
   }, 20_000);
   it("built-bundle mode refuses to compose without dist/dashboard/index.html, and serves the bundle beside the API when it exists", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-built-bundle-"));
-    copyRuntimePackageFixture(repoRoot);
+    const profile = createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
+    const repoRoot = profile.workspace;
     cpSync(join(process.cwd(), "src"), join(repoRoot, "src"), { recursive: true });
     mkdirSync(join(repoRoot, "config"), { recursive: true });
     copyFileSync(join(process.cwd(), "config", "dashboard-workflow-sources.json"), join(repoRoot, "config", "dashboard-workflow-sources.json"));
     copyFileSync(join(process.cwd(), "vite.dashboard.config.ts"), join(repoRoot, "vite.dashboard.config.ts"));
     copyFileSync(join(process.cwd(), "tsconfig.json"), join(repoRoot, "tsconfig.json"));
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
 
-    // No bundle: refuse before any authority, lock or socket exists.
+    const authorityPath = join(profile.stateRoot, "state.db");
+    const authorityBytes = storageTree(profile.stateRoot);
+    const nativeSources = () => ["", "-wal", "-shm", "-journal"].map(suffix => {
+      const path = `${authorityPath}${suffix}`;
+      if (!existsSync(path)) return { suffix, exists: false };
+      const source = statSync(path, { bigint: true });
+      return { suffix, exists: true, dev: source.dev, ino: source.ino, size: source.size,
+        mtimeNs: source.mtimeNs, ctimeNs: source.ctimeNs };
+    });
+    const authoritySource = nativeSources();
+
+    // Missing bundle must not alter the existing profile authority.
     await assert.rejects(
-      composeDashboardRuntime({ admission: fixtureAdmission(repoRoot),
+      composeDashboardRuntime({
+        ...profile.dashboardInput,
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
         env: {},
@@ -333,12 +357,16 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     );
     assert.equal(existsSync(join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db")), false, "a refused built-bundle composition opens no authority");
 
+    assert.deepEqual(storageTree(profile.stateRoot), authorityBytes);
+    assert.deepEqual(nativeSources(), authoritySource);
+
     const dist = join(repoRoot, "dist", "dashboard", "assets");
     mkdirSync(dist, { recursive: true });
     writeFileSync(join(repoRoot, "dist", "dashboard", "index.html"), "<!doctype html><title>built</title>");
     writeFileSync(join(dist, "app.f00d.js"), "export const built = true;");
     writeDashboardBuildIdentity({ repoRoot, distDir: join(repoRoot, "dist", "dashboard") });
     const runtime = await composeDashboardRuntime({
+      ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -372,10 +400,10 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
   });
 
   it("vite-dev mode (the default) serves no bundle bytes: an unrouted path stays a JSON 404", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-vite-dev-"));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
+    const profile = createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
+    const repoRoot = profile.workspace;
     const runtime = await composeDashboardRuntime({
+      ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},

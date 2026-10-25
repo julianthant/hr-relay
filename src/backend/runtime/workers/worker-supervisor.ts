@@ -552,6 +552,11 @@ export function createDashboardWorkerProcessSupervisor(
         + "they occur, not re-initiated",
       );
     }
+    const child = record.child;
+    const memberIdentity = canonicalJsonStringify(record.member);
+    const pid = record.pid;
+    const bornAt = record.bornAt;
+    const leaseStartedAt = record.leaseStartedAt;
     record.stopInFlight = true;
     let durable: WorkerDurableStopReceipt | undefined;
     try {
@@ -611,6 +616,18 @@ export function createDashboardWorkerProcessSupervisor(
         + "command's own instant, so this worker refuses plan coverage and further stop commands until its "
         + "exit is observed",
       );
+    }
+    if (records.get(record.member.workerId) !== record || canonicalJsonStringify(record.member) !== memberIdentity
+      || record.child !== child || record.pid !== pid
+      || record.bornAt !== bornAt || record.leaseStartedAt !== leaseStartedAt
+      || record.stopUncertain !== undefined || record.killUndelivered !== undefined) {
+      throw new WorkerControlRefusal("worker-stop-owner-changed");
+    }
+    if (record.state === "exited" && record.exit?.reportedBy === "os") {
+      if (closed) throw new WorkerControlRefusal("worker-supervisor-closed");
+      record.observedStop.push({ stage: "graceful-stop-requested", at: requestedAt });
+      record.exit = { ...record.exit, outcome: "stopped" };
+      return parsedVersions.data;
     }
     if (record.state !== "running") {
       throw new Error(
@@ -701,6 +718,9 @@ export function createDashboardWorkerProcessSupervisor(
         if (initiateStopForRunning) {
           const escalation = canonicalEscalation();
           await beginStopEscalation(record, escalation, directive);
+          if (record.exit !== undefined) {
+            return { member, stage: "unmet", reason: record.exit.outcome === "crashed" ? "crashed" : "not-started" };
+          }
           return {
             member,
             stage: "graceful-stop-requested",

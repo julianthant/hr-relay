@@ -1,3 +1,4 @@
+import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { notificationCollectionTarget, type NotificationCollectionOperation, type NotificationCollectionTarget } from "../../../models/notifications/notifications.js";
 import { AssistantActionRecordSchema, AssistantChatRecordSchema, AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
@@ -125,12 +126,6 @@ import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAut
 import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
 import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceRecordsSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, ResolvedParkedWriteCommitInputSchema, ResolvedParkedWriteAbsenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
 
-export class AuthoritySourceClosureUnprovedError extends AggregateError {
-  constructor(errors: readonly unknown[]) {
-    super(errors, "authority-source-closure-unproved", { cause: errors[0] });
-    this.name = "AuthoritySourceClosureUnprovedError";
-  }
-}
 
 export class AuthoritySchemaVersionError extends Error {
   readonly code = "authority-schema-mismatch";
@@ -1398,7 +1393,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   } catch (error) {
     const failures: unknown[] = [];
     try { database.exec("ROLLBACK"); } catch (rollbackError) { failures.push(rollbackError); }
-    if (failures.length !== 0) throw new AuthoritySourceClosureUnprovedError([error, ...failures]);
+    if (failures.length !== 0) throw retainAuthoritySourceClosure([error, ...failures], { database });
     throw error;
   }
 }
@@ -1885,10 +1880,15 @@ export class AuthorityDatabase implements Disposable {
       result = inspectNativeAuthority(database, readIntPragma(database, "user_version"));
     } catch (error) { primary = { error }; }
     const failures: unknown[] = [];
-    try { database?.close(); } catch (error) { failures.push(error); }
+    try { database?.close(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { snapshot, ...(database === undefined ? {} : { database }) }); }
     try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
-    try { snapshot.dispose(); } catch (error) { failures.push(error); }
-    if (failures.length !== 0) throw new AuthoritySourceClosureUnprovedError(primary === undefined ? failures : [primary.error, ...failures]);
+    try { snapshot.dispose(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [...failures, error] : [primary.error, ...failures, error], { snapshot }); }
+    if (failures.length !== 0) {
+      if (primary !== undefined) throw new AggregateError([primary.error, ...failures], "authority-source-validation-failed", { cause: primary.error });
+      throw failures[0];
+    }
     if (primary !== undefined) throw primary.error;
     if (result === undefined) throw new Error("profile-stopped-upgrade-inspection-unavailable");
     return result;
@@ -1905,7 +1905,7 @@ export class AuthorityDatabase implements Disposable {
     catch (error) { primary = { error }; }
     const failures: unknown[] = [];
     try { database.close(); } catch (error) { failures.push(error); }
-    if (failures.length !== 0) throw new AuthoritySourceClosureUnprovedError(primary === undefined ? failures : [primary.error, ...failures]);
+    if (failures.length !== 0) throw retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], { database });
     if (primary !== undefined) throw primary.error;
     if (result === undefined) throw new Error("profile-stopped-upgrade-result-unavailable");
     return result;

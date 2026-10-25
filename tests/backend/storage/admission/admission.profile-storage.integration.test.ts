@@ -1,3 +1,4 @@
+import * as fixtureAdmissions from '../../../support/helpers/synthetic-database-admission.js';
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -8,7 +9,7 @@ import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } fro
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync, symlinkSync, linkSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
@@ -20,12 +21,20 @@ import { createProfileSession } from "../../../../src/backend/profiles/profile-s
 import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
+import { composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { systemClock } from "../../../../src/rules/time/clock.js";
+import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 
 function fixture() {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "profile-admission-")));
   const machine = acquireEntrypointAdmission(workspace, "exclusive");
+  fs.mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   let busy = false;
   const session = createProfileSession({ admission: machine, machineRoot: machine.stateRoot,
+    initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
     activity: { hasUnquiescedWork: () => busy }, backupPaths: () => [], loginDataPaths: () => [] });
   const registry = createProfileRegistry(machine);
   const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "fixture-password", createdAt: "2026-09-06T12:00:00.000Z" };
@@ -48,7 +57,7 @@ it("boots a genuine machine without a dummy database, then creates a bound canon
       const database = AuthorityDatabase.open(child, { path: join(child.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" });
       try {
         const meta = database.getMeta();
-        assert.equal(meta.schemaVersion, 7);
+        assert.equal(meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
         assert.equal(meta.installationId, f.machine.locator.installationId);
         assert.equal(meta.profileId, active.profileId);
       } finally { database.close(); }
@@ -184,7 +193,10 @@ it("publishes ready only from an exact actual credential witness and rechecks po
     const setup = f.machine.admitProfile(f.registry.storageClaim(operation.profileId));
     AuthorityDatabase.initializeProfile(setup);
     const store = createCredentialStore({ admission: setup, stateRoot: setup.stateRoot, erasureJournalAdmission: f.machine,
+      initializationInventory: (current, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine, admission: setup, clock: systemClock, hostFacts: { primaryDisplay: null } })(current, writer, copies),
       erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${operation.profileId}.json`) });
+    store.migrateHistory({ operation });
+    operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${operation.operationId}.json`), "utf8")));
     const request = ProtectedSettingsApplyInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
       commandFingerprint: operation.commandFingerprint, expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       updatedAt: operation.createdAt, entries: { ucpathPassword: { set: "disposable-committed-password" } } });
@@ -425,4 +437,247 @@ it("refuses actual pending profile operation publication crossing a healthy obse
     assert.throws(() => f.machine.readProfileRegistry(), /profile-registry-observation-changed/u);
     assert.equal(changed, true);
   } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); f.cleanup(); }
+});
+
+
+it.each(["owner-file", "prepared-directory", "control-directory", "closed-with-cleanup-failure"] as const)("preserves mutex preparation failure at %s", stage => {
+  const f = createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
+  const realOpen = fs.openSync, realClose = fs.closeSync, realRename = fs.renameSync;
+  const realUnlink = fs.unlinkSync, realRmdir = fs.rmdirSync, realSync = fs.fsyncSync;
+  const primary = new Error("fixture-mutex-preparation-primary"), cleanup = new Error("fixture-mutex-preparation-cleanup");
+  const closedFailure = stage === "closed-with-cleanup-failure";
+  let prepared: string | undefined, backing: string | undefined, descriptor: number | undefined;
+  let identity: ReturnType<typeof fs.fstatSync> | undefined, bytes: Buffer | undefined;
+  let closes = 0, removals = 0, acquisitions = 0, published = false, descriptorClosed = false, descriptorCloseFailed = false;
+  const failures: unknown[] = [];
+  let observed: unknown, actualCloseFailure: { error: unknown } | undefined;
+  try {
+    const registry = f.machine.readProfileRegistry();
+    const registryBytes = fs.readFileSync(join(f.machine.stateRoot, "machine", "profiles.json"));
+    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+      const fd = realOpen(path, flags, mode);
+      if (typeof path !== "string") return fd;
+      if (basename(dirname(path)).startsWith(".admission-mutex-tmp-")) prepared = dirname(path);
+      if (basename(path).startsWith(".admission-mutex-tmp-")) prepared = path;
+      const selected = prepared !== undefined && ((stage === "owner-file" || closedFailure)
+        ? flags === "r" && dirname(path) === prepared && /^\.[0-9a-f-]{36}\.tmp$/u.test(basename(path))
+        : stage === "prepared-directory" ? path === prepared && published
+        : path === dirname(prepared) && published);
+      if (selected && descriptor === undefined) {
+        descriptor = fd; backing = path; identity = fs.fstatSync(fd);
+        if (identity.isFile()) bytes = fs.readFileSync(fd);
+      }
+      return fd;
+    });
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (to === mutex) acquisitions++;
+      realRename(from, to);
+      if (prepared !== undefined && typeof to === "string" && dirname(to) === prepared && basename(to) === "owner.json") published = true;
+    });
+    vi.spyOn(fs, "fsyncSync").mockImplementation(fd => { if (closedFailure && fd === descriptor) throw primary; realSync(fd); });
+    vi.spyOn(fs, "closeSync").mockImplementation(fd => {
+      if (fd === descriptor) { closes++; if (!closedFailure) throw primary; }
+      try { realClose(fd); }
+      catch (error) {
+        if (fd === descriptor) { descriptorCloseFailed = true; actualCloseFailure = { error }; }
+        throw error;
+      }
+      if (fd === descriptor) descriptorClosed = true;
+    });
+    vi.spyOn(fs, "unlinkSync").mockImplementation(path => {
+      if (prepared !== undefined && typeof path === "string" && dirname(path) === prepared) {
+        removals++; if (closedFailure) throw cleanup;
+      }
+      realUnlink(path);
+    });
+    vi.spyOn(fs, "rmdirSync").mockImplementation(path => { if (path === prepared) removals++; realRmdir(path); });
+    syncBuiltinESMExports();
+    try { f.machine.publishProfileRegistry(registry, registry); } catch (error) { observed = error; }
+    assert.ok(observed instanceof AggregateError);
+    if (closedFailure) {
+      assert.equal(observed instanceof AuthoritySourceClosureUnprovedError, false);
+      assert.equal(observed.errors.length, 2);
+      const first: unknown = observed.errors[0];
+      assert.ok(first instanceof AggregateError);
+      assert.deepEqual(first.errors, [primary, cleanup]); assert.equal(first.cause, primary);
+      assert.equal(observed.errors[1], cleanup); assert.equal(observed.cause, first);
+      assert.equal(removals, 2);
+    } else {
+      assert.ok(observed instanceof AuthoritySourceClosureUnprovedError);
+      assert.equal(observed.errors.length, 1);
+      const first: unknown = observed.errors[0];
+      assert.ok(first instanceof AuthoritySourceClosureUnprovedError);
+      assert.equal(observed.cause, first); assert.deepEqual(first.errors, [primary]); assert.equal(first.cause, primary);
+      assert.equal(removals, 0);
+    }
+    assert.equal(closes, 1); assert.equal(acquisitions, 0);
+    assert.ok(prepared !== undefined && backing !== undefined && descriptor !== undefined && identity !== undefined);
+    assert.equal(fs.existsSync(mutex), false);
+    assert.equal(fs.lstatSync(prepared).mode & 0o777, 0o700);
+    const heldDescriptor = descriptor;
+    if (closedFailure) assert.throws(() => fs.fstatSync(heldDescriptor));
+    else {
+      const held = fs.fstatSync(descriptor), physical = fs.lstatSync(backing);
+      assert.equal(held.dev, identity.dev); assert.equal(held.ino, identity.ino);
+      assert.equal(physical.dev, identity.dev); assert.equal(physical.ino, identity.ino);
+      assert.equal(physical.mode & 0o777, identity.isFile() ? 0o600 : 0o700);
+    }
+    if (bytes !== undefined) assert.deepEqual(fs.readFileSync(backing), bytes);
+    assert.equal(fs.existsSync(join(prepared, "owner.json")), stage === "prepared-directory" || stage === "control-directory");
+    assert.deepEqual(fs.readFileSync(join(f.machine.stateRoot, "machine", "profiles.json")), registryBytes);
+  } catch (error) { failures.push(error); }
+  finally {
+    vi.restoreAllMocks(); syncBuiltinESMExports();
+    if (descriptor !== undefined && !descriptorClosed && !descriptorCloseFailed) {
+      try { realClose(descriptor); descriptorClosed = true; } catch (error) { actualCloseFailure = { error }; }
+    }
+    if (descriptor === undefined || descriptorClosed) {
+      if (prepared !== undefined) { try { fs.rmSync(prepared, { recursive: true }); } catch (error) { failures.push(error); } }
+      try { f.close(); } catch (error) { failures.push(error); }
+    }
+  }
+  if (descriptor !== undefined && !descriptorClosed) {
+    throw retainAuthoritySourceClosure([...(observed === undefined ? [] : [observed]),
+      ...(actualCloseFailure === undefined ? [] : [actualCloseFailure.error]), ...failures], {
+      descriptor: { descriptor, ...(identity === undefined ? {} : { identity }) },
+      directory: { path: prepared, fixture: f },
+    });
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "fixture-mutex-preparation-cleanup", { cause: failures[0] });
+});
+
+for (const unproved of [false, true]) it(`only tolerates a vanished observation mutex when descriptor closure is ${unproved ? 'unproved' : 'proved'}`, () => {
+  const f = createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
+  const ownerPath = join(mutex, "owner.json");
+  const observed = observeProcessIdentity(process.pid);
+  assert.ok(observed.state === 'alive');
+  const bytes = JSON.stringify({ schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: process.pid,
+      processIdentity: observed.identity });
+  const realOpen = fs.openSync, realClose = fs.closeSync, realUnlink = fs.unlinkSync, realRmdir = fs.rmdirSync;
+  let descriptor: number | undefined, closes = 0, removals = 0, proved = false;
+  let missing: unknown;
+  const registry = f.machine.readProfileRegistry();
+  fs.mkdirSync(mutex, { mode: 0o700 }); writeFileSync(ownerPath, bytes, { mode: 0o600 });
+  const ownerIdentity = fs.lstatSync(ownerPath);
+  const removeOwner = () => {
+    const current = fs.lstatSync(ownerPath);
+    assert.equal(current.dev, ownerIdentity.dev); assert.equal(current.ino, ownerIdentity.ino);
+    assert.equal(fs.readFileSync(ownerPath, 'utf8'), bytes);
+    realUnlink(ownerPath); realRmdir(mutex); removals++;
+  };
+  const opened = vi.spyOn(fs, 'openSync').mockImplementation((...args) => {
+    if (args[0] === ownerPath && !unproved && removals === 0) removeOwner();
+    const fd = realOpen(...args);
+    if (args[0] === ownerPath) { assert.equal(descriptor, undefined); descriptor = fd; }
+    return fd;
+  });
+  const closed = vi.spyOn(fs, 'closeSync').mockImplementation(fd => {
+    if (fd === descriptor) {
+      closes++; removeOwner();
+      try { fs.lstatSync(ownerPath); } catch (error) { missing = error; }
+      assert.ok(missing instanceof Error); assert.equal(Reflect.get(missing, 'code'), 'ENOENT');
+      throw missing;
+    }
+    realClose(fd);
+  });
+  syncBuiltinESMExports();
+  try {
+    if (unproved) {
+      let failure: unknown;
+      try { f.machine.readProfileRegistry(); } catch (error) { failure = error; }
+      assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
+      assert.deepEqual(failure.errors, [missing]); assert.equal(failure.cause, missing);
+      assert.ok(descriptor !== undefined);
+      const held = fs.fstatSync(descriptor); assert.equal(held.dev, ownerIdentity.dev); assert.equal(held.ino, ownerIdentity.ino);
+      const heldBytes = Buffer.alloc(Buffer.byteLength(bytes));
+      assert.equal(fs.readSync(descriptor, heldBytes, 0, heldBytes.length, 0), heldBytes.length);
+      assert.equal(heldBytes.toString('utf8'), bytes);
+      assert.equal(closes, 1);
+    } else {
+      assert.deepEqual(f.machine.readProfileRegistry(), registry);
+      assert.equal(descriptor, undefined); assert.equal(closes, 0);
+    }
+    assert.equal(removals, 1); assert.equal(fs.existsSync(mutex), false);
+    opened.mockRestore(); closed.mockRestore(); syncBuiltinESMExports();
+    assert.deepEqual(f.machine.readProfileRegistry(), registry);
+    if (descriptor !== undefined) {
+      realClose(descriptor); const fd = descriptor;
+      assert.throws(() => fs.fstatSync(fd), error => error instanceof Error && Reflect.get(error, 'code') === 'EBADF');
+    }
+    proved = true;
+  } finally { opened.mockRestore(); closed.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+});
+
+
+it('retains genuine bound-profile setup custody after a native source close failure', () => {
+  const actualOpen = fs.openSync, actualClose = fs.closeSync;
+  const actualRegister = fixtureAdmissions.registerBoundProfile;
+  const owned: { workspace?: string; source?: string; descriptor?: number;
+    identity?: { dev: number | bigint; ino: number | bigint };
+    profile?: Parameters<typeof actualRegister>[0]; machine?: Parameters<typeof actualRegister>[1]; sourceFailure?: unknown } = {};
+  const primary = new Error('bound-profile-setup-native-close-refused');
+  let injected = false, closes = 0, removalBaseline = 0;
+  const restores: (() => void)[] = [];
+  let testFailure: { error: unknown } | undefined;
+  try {
+    const temp = vi.spyOn(fs, 'mkdtempSync'); restores.push(() => temp.mockRestore());
+    const removed = vi.spyOn(fs, 'rmSync'); restores.push(() => removed.mockRestore());
+    const registered = vi.spyOn(fixtureAdmissions, 'registerBoundProfile').mockImplementation((profile, machine) => {
+      owned.profile = profile; owned.machine = machine;
+      try { actualRegister(profile, machine); }
+      catch (error) { owned.sourceFailure = error; throw error; }
+    });
+    restores.push(() => registered.mockRestore());
+    const opened = vi.spyOn(fs, 'openSync').mockImplementation((...args) => {
+      const descriptor = actualOpen(...args), flags = args[1], source = args[0];
+      const workspace: unknown = temp.mock.results[0]?.value;
+      if (owned.workspace === undefined && typeof workspace === 'string') owned.workspace = realpathSync(workspace);
+      const readOnly = flags === 'r' || typeof flags === 'number' && (flags & (fs.constants.O_WRONLY | fs.constants.O_RDWR)) === 0;
+      if (owned.profile !== undefined && owned.machine !== undefined && owned.descriptor === undefined && readOnly && typeof source === 'string'
+        && owned.workspace !== undefined && source.startsWith(owned.workspace + '/')) {
+        const identity = fs.fstatSync(descriptor);
+        if (identity.isFile()) { owned.descriptor = descriptor; owned.source = source; owned.identity = identity; }
+      }
+      return descriptor;
+    });
+    restores.push(() => opened.mockRestore());
+    const closed = vi.spyOn(fs, 'closeSync').mockImplementation(descriptor => {
+      if (descriptor === owned.descriptor) {
+        if (!injected) removalBaseline = removed.mock.calls.length;
+        injected = true; closes++; throw primary;
+      }
+      actualClose(descriptor);
+    });
+    restores.push(() => closed.mockRestore());
+    syncBuiltinESMExports();
+    let observed: unknown;
+    try { createBoundProfileFixture(); } catch (error) { observed = error; }
+    assert.ok(observed instanceof AuthoritySourceClosureUnprovedError);
+    assert.equal(observed, owned.sourceFailure);
+    assert.deepEqual(observed.errors, [primary]); assert.equal(observed.cause, primary);
+    assert.ok(owned.machine !== undefined && owned.profile !== undefined && owned.workspace !== undefined
+      && owned.source !== undefined && owned.descriptor !== undefined && owned.identity !== undefined);
+    const machine = owned.machine, profile = owned.profile;
+    assert.equal(injected, true); assert.equal(closes, 1);
+    assert.equal(removed.mock.calls.length, removalBaseline);
+    assert.doesNotThrow(() => machine.assertLive()); assert.doesNotThrow(() => profile.assertLive());
+    assert.equal(machine.stateRoot, join(owned.workspace, rebuildRuntimeIsolation.stateRoot));
+    assert.equal(fs.existsSync(owned.workspace), true);
+    const descriptor = fs.fstatSync(owned.descriptor), source = fs.lstatSync(owned.source);
+    assert.equal(descriptor.dev, owned.identity.dev); assert.equal(descriptor.ino, owned.identity.ino);
+    assert.equal(source.dev, owned.identity.dev); assert.equal(source.ino, owned.identity.ino);
+    assert.equal(removed.mock.calls.length, removalBaseline); assert.equal(closes, 1);
+  } catch (error) { testFailure = { error }; }
+  const cleanupErrors: unknown[] = [];
+  for (const restore of restores.reverse()) { try { restore(); } catch (error) { cleanupErrors.push(error); } }
+  try { syncBuiltinESMExports(); } catch (error) { cleanupErrors.push(error); }
+  if (cleanupErrors.length > 0) throw new AggregateError([
+    ...(testFailure === undefined ? [] : [testFailure.error]), ...cleanupErrors,
+  ], 'bound-profile-setup-observation-restore-failed', { cause: testFailure === undefined ? cleanupErrors[0] : testFailure.error });
+
+  if (testFailure !== undefined) {
+    const error = testFailure.error;
+    throw error instanceof Error ? error : new AggregateError([error], 'Fixture regression failed', { cause: error });
+  }
 });

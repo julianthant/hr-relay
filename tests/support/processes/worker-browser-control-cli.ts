@@ -1,3 +1,5 @@
+import { duoCeremonyGatesOver } from '../helpers/duo-ceremony-fixtures.js';
+import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import assert from "node:assert/strict";
 import type { BrowserProfileAuthority } from "../../../src/backend/app/composition/worker/run-resources.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -30,6 +32,8 @@ const contexts = new Set<BrowserContext>();
 let admission: ReturnType<typeof machine.admitProfile> | undefined;
 let custody: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
 let custodyTransferred = false;
+let database: AuthorityDatabase | undefined;
+let runtimeEntered = false, runtimeClosureProved = false;
 const failures: unknown[] = [];
 try {
   const selected = captureSelectedProfileStorage(machine);
@@ -40,13 +44,10 @@ try {
   admission = child;
   const credentials = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: machine,
     erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
-  const database = AuthorityDatabase.open(child, { path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "browser-control-config" },
+  database = AuthorityDatabase.open(child, { path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "browser-control-config" },
     systemClock, undefined, undefined, undefined, credentials);
-  const resolvedConfig = (() => {
-    try { return resolveConfigWithProvenance(readSettings(database.authority).settings, hostConfigFacts({}), systemClock,
-      { stateRoot: child.stateRoot, artifactRoot: child.artifactRoot }).config; }
-    finally { database.close(); }
-  })();
+  const resolvedConfig = resolveConfigWithProvenance(readSettings(database.authority).settings, hostConfigFacts({}), systemClock,
+    { stateRoot: child.stateRoot, artifactRoot: child.artifactRoot }).config;
   assert.equal(resolvedConfig.paths.browserProfileRoot, join(child.stateRoot, "browsers"));
   const config = { ...resolvedConfig, paths: { ...resolvedConfig.paths, browserProfileRoot: join(child.stateRoot, "browsers") } };
   const protectedSecrets = createCredentialSecretSource({ read: () => { selected.assertCurrent(); return credentials.read(); } });
@@ -79,6 +80,26 @@ try {
     verifyAuthenticated: async ({ page }) => {
       const authenticated = await page.locator("[data-authenticated]").count() === 1 && await page.locator("input[type=password]").count() === 0;
       trace({ event: "verify", system, authenticated, url: page.url() });
+      if (config.features.duoWebAuthn) {
+        const workers = page.context().serviceWorkers().filter(worker => /^chrome-extension:\/\/[^/]+\/src\/background\.js$/.test(worker.url()));
+        assert.equal(workers.length, 1);
+        const worker = workers[0]; assert.ok(worker);
+        const provisioned = await worker.evaluate(async () => {
+          const chrome: unknown = Reflect.get(globalThis, 'chrome');
+          if (typeof chrome !== 'object' || chrome === null) return false;
+          const storage: unknown = Reflect.get(chrome, 'storage');
+          if (typeof storage !== 'object' || storage === null) return false;
+          const session: unknown = Reflect.get(storage, 'session');
+          if (typeof session !== 'object' || session === null) return false;
+          const get: unknown = Reflect.get(session, 'get');
+          if (typeof get !== 'function') return false;
+          const stored: unknown = await Reflect.apply(get, session, ['duoCredentials']);
+          if (typeof stored !== 'object' || stored === null) return false;
+          const credentials: unknown = Reflect.get(stored, 'duoCredentials');
+          return Array.isArray(credentials) && credentials.length === 1;
+        });
+        assert.equal(provisioned, true);
+      }
       return authenticated ? { authenticated: true, evidence: { system, url: page.url(), positive: "isolated fixture session marker", negative: "no sign-in form" } }
         : { authenticated: false, reason: "fixture-neutral-state-missing" };
     },
@@ -89,7 +110,9 @@ try {
     protectedSecrets,
     bindings: { crm: binding("crm"), ucpath: binding("ucpath") },
     launcher: { launch: async input => {
-      const context = await chromium.launchPersistentContext(input.profileDirectory, { channel: "chromium", headless: true, viewport: input.viewport, acceptDownloads: input.acceptDownloads });
+      const context = await chromium.launchPersistentContext(input.profileDirectory, { channel: 'chromium', headless: input.headless,
+        viewport: input.viewport, acceptDownloads: input.acceptDownloads, downloadsPath: input.downloadsPath,
+        args: [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`] });
       contexts.add(context); trace({ event: "open", profileDirectory: input.profileDirectory });
       context.on("close", () => { contexts.delete(context); trace({ event: "close", profileDirectory: input.profileDirectory }); });
       await context.route("**/*", async route => { trace({ event: "fixture-request", url: route.request().url() });
@@ -97,18 +120,32 @@ try {
       return context;
     } },
   });
+  const scheduler = createTimeoutDeadlineScheduler(systemClock);
+  const duoCeremony = duoCeremonyGatesOver(database, systemClock, scheduler);
+  runtimeEntered = true;
   const report = await composeWorkerRuntime({ admission: machine, preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
-    createSessionFactory, takeInitialCustody: () => { custodyTransferred = true; return initialCustody; }, heartbeatIntervalMs: 100, sweepIntervalMs: 60_000 });
+    createSessionFactory, duoCeremony, takeInitialCustody: () => { custodyTransferred = true; return initialCustody; }, heartbeatIntervalMs: 100, sweepIntervalMs: 60_000 });
+  assert.equal(report.closure, 'proved');
+  runtimeClosureProved = true;
   writeFileSync(join(root,`report-${String(process.pid)}.json`),JSON.stringify(report));
 } catch (error) {
   failures.push(error);
 } finally {
-  const results = await Promise.allSettled([...contexts].map(async context => { await context.close(); }));
-  const cleanupFailures: unknown[] = results.flatMap(value => value.status === "rejected" ? [value.reason as unknown] : []);
-  for (const close of [() => { if (!custodyTransferred) custody?.release(); }, () => admission?.release(), () => machine.release()]) {
-    try { close(); } catch (error) { cleanupFailures.push(error); }
+  const cleanupFailures: unknown[] = [];
+  if (!runtimeEntered || runtimeClosureProved) {
+    const results = await Promise.allSettled([...contexts].map(async context => { await context.close(); }));
+    cleanupFailures.push(...results.flatMap(value => value.status === 'rejected' ? [value.reason as unknown] : []));
+    if (cleanupFailures.length === 0 && database !== undefined) {
+      try { database.close(); database = undefined; }
+      catch (error) { cleanupFailures.push(retainAuthoritySourceClosure([...failures, error], { database, admission: machine, processLock: custody })); }
+    }
+    if (cleanupFailures.length === 0) {
+      for (const close of [() => { if (!custodyTransferred) custody?.release(); }, () => admission?.release(), () => machine.release()]) {
+        try { close(); } catch (error) { cleanupFailures.push(error); break; }
+      }
+    }
   }
-  writeFileSync(join(root,`cleanup-${String(process.pid)}.json`), JSON.stringify({ openContexts: contexts.size, failures: cleanupFailures.length }));
+  try { writeFileSync(join(root,`cleanup-${String(process.pid)}.json`), JSON.stringify({ openContexts: contexts.size, failures: cleanupFailures.length + (runtimeEntered && !runtimeClosureProved ? 1 : 0) })); } catch (error) { cleanupFailures.push(error); }
   failures.push(...cleanupFailures);
 }
-if (failures.length > 0) throw new AggregateError(failures, "browser-control-worker-failed");
+if (failures.length > 0) throw new AggregateError(failures, "browser-control-worker-failed", { cause: failures[0] });

@@ -236,7 +236,7 @@ afterEach(_afterEachFixture0);
       expect(bound.processLock.acquisitionId).not.toBe(f.custody().acquisitionId);
       bound.value.close(); bound.processLock.release();
       expect(f.snapshot().processLocks.workers.state).toBe("stopped");
-    } finally { admission.release(); }
+    } finally { admission.release(); f.close(); }
   });
 });
 }

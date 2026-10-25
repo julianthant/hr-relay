@@ -636,3 +636,41 @@ describe("isolated runtime composition", () => {
 
 });
 }
+
+it("propagates the actual replacement-owner lifetime failure and awaits its stop before releasing signals", async () => {
+  const primary = new Error("replacement lifetime failed");
+  let fail: ((error: Error) => void) | undefined;
+  const failure = new Promise<never>((_resolve, reject) => { fail = reject; });
+  const events: string[] = [];
+  await assert.rejects(startRebuildRuntime_m0({ isolation: rebuildRuntimeIsolation, args: ["dashboard"], write: () => undefined,
+    dashboard: async () => ({ port: 3938, failure, stop: async () => { events.push("stop"); } }),
+    signals: { subscribe: () => () => { events.push("dispose"); } },
+    dashboardReady: () => { assert.ok(fail); fail(primary); },
+  }), error => error === primary);
+  assert.deepEqual(events, ["stop", "dispose"]);
+});
+
+it("retains both replacement-owner lifetime and stop failures with the original failure first", async () => {
+  const primary = new Error("replacement lifetime failed"), cleanup = new Error("replacement closure unproved");
+  let fail: ((error: Error) => void) | undefined;
+  const failure = new Promise<never>((_resolve, reject) => { fail = reject; });
+  let disposed = false;
+  await assert.rejects(startRebuildRuntime_m0({ isolation: rebuildRuntimeIsolation, args: ["dashboard"], write: () => undefined,
+    dashboard: async () => ({ port: 3938, failure, stop: async () => { throw cleanup; } }),
+    signals: { subscribe: () => () => { disposed = true; } },
+    dashboardReady: () => { assert.ok(fail); fail(primary); },
+  }), error => {
+    assert.ok(error instanceof AggregateError); assert.deepEqual(error.errors, [primary, cleanup]); assert.equal(error.cause, primary); return true;
+  });
+  assert.equal(disposed, true);
+});
+
+it("closes the accepted dashboard owner if real shutdown subscription fails", async () => {
+  const primary = new Error("signal subscription failed");
+  let stopped = false;
+  await assert.rejects(startRebuildRuntime_m0({ isolation: rebuildRuntimeIsolation, args: ["dashboard"], write: () => undefined,
+    dashboard: async () => ({ port: 3938, stop: async () => { stopped = true; } }),
+    signals: { subscribe: () => { throw primary; } },
+  }), error => error === primary);
+  assert.equal(stopped, true);
+});

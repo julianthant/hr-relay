@@ -15,6 +15,7 @@ function isUnitTest(path: string): boolean {
 }
 const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/helpers\//u;
 const SHARED_RESOURCE_HARNESSES = new Set([
+  'tests/support/helpers/backend/dashboard-port-world.ts',
   "tests/support/helpers/credential-persistence-fixtures.ts",
   "tests/support/helpers/synthetic-database-admission.ts",
   "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts",
@@ -60,6 +61,7 @@ function importsOf(path: string) {
 }
 
 const DEFERRED_CAPABILITIES = [
+  { importer: 'tests/support/helpers/backend/dashboard-port-world.ts', module: 'src/backend/storage/configuration/credential-store.js', symbol: 'createCredentialStore' },
   { importer: "tests/support/helpers/credential-persistence-fixtures.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/credential-persistence-fixtures.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "readForErasure" },
   { importer: "tests/support/helpers/synthetic-database-admission.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
@@ -78,9 +80,11 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/helpers/storage/native-authority/retained-database-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
 ] as const;
 const PROCESS_ENTRYPOINTS = [
+  { file: 'child-execution-crash-worker.ts', consumers: ['tests/backend/app/composition/worker-compose.child-crash.integration.test.ts'] },
+  { file: 'storage-restore-attempt-worker.ts', consumers: ['tests/support/helpers/backend/storage-restore-world.ts'] },
   { file: "worker-composition-child.ts", consumers: ["tests/support/helpers/backend/worker-composition-world.ts"] },
   { file: "worker-browser-control-cli.ts", consumers: ["tests/backend/runtime/workers/worker-supervisor.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts", "tests/backend/app/composition/storage-compose.profile-activity.integration.test.ts"] },
-  { file: "worker-stub-cli.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts"] },
+  { file: "worker-stub-cli.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts", 'tests/backend/app/composition/dashboard/compose.worker-pool-capacity.integration.test.ts'] },
   { file: "run-record-race-worker.ts", consumers: ["tests/support/helpers/backend/run-record-service-world.ts"] },
   { file: "runtime-lock-contender.ts", consumers: ["tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts"] },
 ] as const;
@@ -192,11 +196,25 @@ function processImportViolations(path: string, text: string): string[] {
 }
 
 function childEntrypointBound(path: string, text: string, file: string): boolean {
+  const fileUrlNames = new Set<string>();
+  let urlShadowed = false;
   const source = parseSource(path, text);
   const joinNames = new Set(["join"]);
   for (const declaration of source.statements) {
-    if (!ts.isImportDeclaration(declaration) || !ts.isStringLiteral(declaration.moduleSpecifier)
-      || declaration.moduleSpecifier.text !== "node:path") continue;
+    if (!ts.isImportDeclaration(declaration) || !ts.isStringLiteral(declaration.moduleSpecifier)) continue;
+    const clause = declaration.importClause;
+    if (clause?.name?.text === 'URL' || clause?.namedBindings !== undefined
+      && (ts.isNamespaceImport(clause.namedBindings) ? clause.namedBindings.name.text === 'URL'
+        : clause.namedBindings.elements.some(binding => binding.name.text === 'URL'))) urlShadowed = true;
+    if (declaration.moduleSpecifier.text === 'node:url') {
+      const bindings = declaration.importClause?.namedBindings;
+      if (bindings !== undefined && ts.isNamedImports(bindings)) {
+        for (const binding of bindings.elements) {
+          if (!declaration.importClause?.isTypeOnly && !binding.isTypeOnly && (binding.propertyName ?? binding.name).text === 'fileURLToPath') fileUrlNames.add(binding.name.text);
+        }
+      }
+    }
+    if (declaration.moduleSpecifier.text !== 'node:path') continue;
     const bindings = declaration.importClause?.namedBindings;
     if (bindings !== undefined && ts.isNamedImports(bindings)) {
       for (const binding of bindings.elements) {
@@ -206,6 +224,12 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
   }
   const declarations = new Map<string, ts.Expression>();
   function collect(node: ts.Node) {
+    if ((ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isFunctionDeclaration(node)
+      || ts.isBindingElement(node) || ts.isClassDeclaration(node) || ts.isFunctionExpression(node) || ts.isClassExpression(node))
+      && node.name !== undefined && ts.isIdentifier(node.name)) {
+      fileUrlNames.delete(node.name.text);
+      if (node.name.text === 'URL') urlShadowed = true;
+    }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) declarations.set(node.name.text, node.initializer);
     ts.forEachChild(node, collect);
   }
@@ -214,6 +238,10 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
     if (ts.isIdentifier(node) && !seen.has(node.text)) {
       seen.add(node.text); const initializer = declarations.get(node.text);
       return initializer !== undefined && canonicalPath(initializer, seen);
+    }
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && fileUrlNames.has(node.expression.text)) {
+      const url = node.arguments[0];
+      return !urlShadowed && node.arguments.length === 1 && url !== undefined && ts.isNewExpression(url) && canonicalPath(url);
     }
     if (ts.isNewExpression(node) && node.expression.getText(source) === "URL" && node.arguments?.length === 2) {
       return ts.isStringLiteral(node.arguments[0]) && node.arguments[0].text.endsWith(`/support/processes/${file}`)
@@ -309,6 +337,26 @@ describe("test-data ownership", () => {
       for (const path of consumers) assert.ok(childEntrypointBound(path, readFileSync(join(REPO_ROOT, path), "utf8"), entry.file), `${path}: ${entry.file} must bind a canonical child entrypoint`);
     }
     assert.equal(processImportViolations("tests/support/helpers/violation.ts", 'import "../processes/worker-stub-cli.js";').length, 1);
+    const importer = 'tests/backend/app/composition/worker-compose.child-crash.integration.test.ts';
+    const file = 'child-execution-crash-worker.ts';
+    const canonical = `new URL('../../../support/processes/${file}', import.meta.url)`;
+    const prefix = `import { fileURLToPath as fromUrl } from 'node:url'; import { spawn } from 'node:child_process';`;
+    assert.equal(childEntrypointBound(importer, `${prefix} spawn(process.execPath, [fromUrl(${canonical})]);`, file), true);
+    assert.equal(childEntrypointBound(importer, `${prefix} spawn(process.execPath, [fromUrl(new URL('file:///foreign/${file}'))]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} let root = new URL('file:///foreign/'); spawn(process.execPath, [fromUrl(new URL('../../../support/processes/${file}', root))]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `import { spawn } from 'node:child_process'; const fromUrl = (value: URL) => value; spawn(process.execPath, [fromUrl(${canonical})]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} spawn(process.execPath, [fromUrl(${canonical}, 'extra')]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} function launch(fromUrl: (value: URL) => URL) { spawn(process.execPath, [fromUrl(${canonical})]); }`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} function launch({ fromUrl }: { fromUrl: (value: URL) => URL }) { spawn(process.execPath, [fromUrl(${canonical})]); }`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} const [fromUrl] = supplied; spawn(process.execPath, [fromUrl(${canonical})]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} const { nested: { ...fromUrl } } = supplied; spawn(process.execPath, [fromUrl(${canonical})]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} function launch() { class fromUrl {} spawn(process.execPath, [fromUrl(${canonical})]); }`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} const URL = supplied; spawn(process.execPath, [fromUrl(${canonical})]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} import { URL } from 'untrusted'; spawn(process.execPath, [fromUrl(${canonical})]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} function launch({ URL }: { URL: unknown }) { spawn(process.execPath, [fromUrl(${canonical})]); }`, file), false);
+    assert.equal(childEntrypointBound(importer, `import { fileURLToPath as wrapper } from "node:url"; const holder = function wrapper() { spawn(wrapper(${canonical}), []); };`, file), false);
+    assert.equal(childEntrypointBound(importer, `import { fileURLToPath as wrapper } from "node:url"; const holder = class wrapper { launch() { spawn(wrapper(${canonical}), []); } };`, file), false);
+
   });
 
   it("child-entrypoint controls require canonical executable launch binding", () => {

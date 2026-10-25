@@ -114,12 +114,20 @@ export function rewriteAuthenticatedCredentialFixture(machineRoot: string, profi
   writeFileSync(path, canonicalJsonStringify({ ...envelope, nonce: nonce.toString("base64"), ciphertext: ciphertext.toString("base64"), tag: cipher.getAuthTag().toString("base64") }), { mode: 0o600 });
 }
 
+const failedBoundProfileFixtures = new Set<Readonly<{
+  workspace: string;
+  admissions: readonly RuntimeAdmission[];
+  primary: unknown;
+}>>();
+
 export function createBoundProfileFixture(options: { pending?: true; sharedMachine?: true } = {}) {
   if (options.pending === true && options.sharedMachine === true) throw new Error("pending profile fixture requires exclusive machine");
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")));
-  let machine = acquireEntrypointAdmission(workspace, "exclusive");
-  mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
+  const ownedAdmissions: RuntimeAdmission[] = [];
   try {
+    let machine = acquireEntrypointAdmission(workspace, "exclusive");
+    ownedAdmissions.push(machine);
+    mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
     const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@example.edu",
       password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
     const session = createProfileSession({ admission: machine, machineRoot: machine.stateRoot,
@@ -130,6 +138,7 @@ export function createBoundProfileFixture(options: { pending?: true; sharedMachi
       createdAt: IsoInstantSchema.parse(fields.createdAt), emailKey: createProfileVerifiers(machine.stateRoot).emailKeyFor(fields.email),
       commandFingerprint: "a".repeat(64) });
     let admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
+    ownedAdmissions.push(admission);
     const stateRoot = admission.stateRoot;
     registerBoundProfile(admission, machine);
     const finish = () => {
@@ -137,6 +146,7 @@ export function createBoundProfileFixture(options: { pending?: true; sharedMachi
       if (active.state !== "active" || active.profileId !== operation.profileId) throw new Error("bound profile fixture signup refused");
       admission.release();
       admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+      ownedAdmissions.push(admission);
       registerBoundProfile(admission, machine);
     };
     if (options.pending !== true) finish();
@@ -144,17 +154,23 @@ export function createBoundProfileFixture(options: { pending?: true; sharedMachi
       admission.release();
       machine.release();
       machine = acquireEntrypointAdmission(workspace, "shared");
+      ownedAdmissions.push(machine);
       admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
+      ownedAdmissions.push(admission);
       registerBoundProfile(admission, machine);
     }
     const renewAfterRestore = () => {
       assertBoundFixtureWorkersReleased(admission);
       admission.release();
       admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
+      ownedAdmissions.push(admission);
       registerBoundProfile(admission, machine);
       return { admission, credentials: boundProfileCredentials(admission) };
     };
     return { workspace, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish, renewAfterRestore,
       close() { unregisterBoundProfile(admission); admission.release(); machine.release(); rmSync(workspace, { recursive: true, force: true }); } };
-  } catch (error) { machine.release(); rmSync(workspace, { recursive: true, force: true }); throw error; }
+  } catch (error) {
+    failedBoundProfileFixtures.add({ workspace, admissions: ownedAdmissions, primary: error });
+    throw error;
+  }
 }

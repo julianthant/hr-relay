@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { readPrivateFile } from "../configuration/credential-safe-file.js";
 import { CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness } from "../configuration/credential-store.js";
 import { assertProfileRestoreDatabaseBinding } from "../sqlite/profile-local-databases.js";
@@ -170,6 +171,7 @@ export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator
   readProfileRegistry(): ProfileRegistryDocument;
   capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(): void }>;
   captureStoppedProfileUpgrade(profileId: string): Readonly<{ assertHeld(): void }>;
+  captureProfileUpgradeHandoff(profileId: string): Readonly<{ consume(next: InstallationLease): void }>;
   assertProfileErasureHead(profileId: string, head: CredentialErasureHead): void;
   resumeProfileErasure(profileId: string, request: ErasureRequestIdentity, head: CredentialErasureHead): void;
   beginProfileErasure(profileId: string, witness: VerifiedCredentialErasureIntent): void;
@@ -397,28 +399,62 @@ function privateFile(path: string): void {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (process.getuid && stat.uid !== process.getuid()) || (stat.mode & 0o777) !== 0o600) fail(`unsafe file ${path}`);
 }
-function syncDir(path: string): void { const fd = openSync(path, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } }
+function syncDir(path: string): void {
+  const fd = openSync(path, "r");
+  let primary: { error: unknown } | undefined, descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
+  try { descriptorIdentity = fstatSync(fd); fsyncSync(fd); } catch (error) { primary = { error }; }
+  try { closeSync(fd); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+    { descriptor: { descriptor: fd, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
+  if (primary !== undefined) throw primary.error;
+}
 function readStrict<T>(path: string, schema: z.ZodType<T>): T {
   privateFile(path);
+  const expected = lstatSync(path);
   const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  let result: { value: T } | undefined;
+  let primary: { error: unknown } | undefined;
+  let descriptorIdentity = expected;
   try {
-    const stat = fstatSync(fd);
+    const stat = fstatSync(fd); descriptorIdentity = stat;
     if (!stat.isFile() || stat.nlink !== 1 || (process.getuid && stat.uid !== process.getuid()) || (stat.mode & 0o777) !== 0o600) fail(`unsafe file ${path}`);
-    return schema.parse(JSON.parse(readFileSync(fd, "utf8")));
-  } finally { closeSync(fd); }
+    result = { value: schema.parse(JSON.parse(readFileSync(fd, "utf8"))) };
+  } catch (error) { primary = { error }; }
+  try { closeSync(fd); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+    { descriptor: { descriptor: fd, identity: descriptorIdentity } }); }
+  if (primary !== undefined) throw primary.error;
+  if (result === undefined) throw new Error("installation-read-result-missing");
+  return result.value;
 }
 function atomicJson(path: string, value: unknown, parentKind: "control" | "data" = "control"): void {
   const directory = resolve(path, "..");
   if (parentKind === "control") privateDirectory(directory);
   else dataDirectory(directory);
   const temp = join(directory, `.${randomUUID()}.tmp`);
+  let primary: { error: unknown } | undefined;
   try {
     writeFileSync(temp, `${JSON.stringify(value)}\n`, { mode: 0o600, flag: "wx" });
-    const fd = openSync(temp, "r"); try { fsyncSync(fd); } finally { closeSync(fd); }
+    const fd = openSync(temp, "r");
+    let syncFailure: { error: unknown } | undefined, descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
+    try { descriptorIdentity = fstatSync(fd); fsyncSync(fd); } catch (error) { syncFailure = { error }; }
+    try { closeSync(fd); }
+    catch (error) { throw retainAuthoritySourceClosure(syncFailure === undefined ? [error] : [syncFailure.error, error],
+      { descriptor: { descriptor: fd, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
+    if (syncFailure !== undefined) throw syncFailure.error;
     if (lstatMaybe(path)) privateFile(path);
     renameSync(temp, path);
     syncDir(directory);
-  } finally { if (existsSync(temp)) unlinkSync(temp); }
+  } catch (error) { primary = { error }; }
+  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;
+  let cleanupFailure: { error: unknown } | undefined;
+  try { if (existsSync(temp)) unlinkSync(temp); }
+  catch (error) { cleanupFailure = { error }; }
+  if (cleanupFailure !== undefined) {
+    if (primary !== undefined) throw new AggregateError([primary.error, cleanupFailure.error], "installation-publication-cleanup-failed", { cause: primary.error });
+    throw cleanupFailure.error;
+  }
+  if (primary !== undefined) throw primary.error;
 }
 function assertNoSymlinkComponents(path: string): void {
   let component = parse(path).root;
@@ -573,6 +609,7 @@ function mutex<T>(control: string, callback: () => T): T {
   const released = join(control, `.admission-mutex-released-${suffix}`);
   mkdirSync(temporary, { mode: 0o700 });
   let acquired = false;
+  let result: { value: T } | undefined, primary: { error: unknown } | undefined;
   try {
     atomicJson(join(temporary, "owner.json"), owner);
     syncDir(control);
@@ -602,8 +639,13 @@ function mutex<T>(control: string, callback: () => T): T {
       if (remaining <= 0) throw new AdmissionMutexBusyError();
       Atomics.wait(mutexWait, 0, 0, Math.min(10, remaining));
     }
-    return callback();
-  } finally {
+    result = { value: callback() };
+  } catch (error) { primary = { error }; }
+  if (!acquired && primary?.error instanceof AuthoritySourceClosureUnprovedError) {
+    throw retainAuthoritySourceClosure([primary.error], { directory: { path: temporary, owner, control } });
+  }
+  let cleanupFailure: { error: unknown } | undefined;
+  try {
     if (acquired) {
       privateDirectory(path);
       const held = readStrict(join(path, "owner.json"), MutexOwnerSchema);
@@ -614,7 +656,13 @@ function mutex<T>(control: string, callback: () => T): T {
       removeMutexFolder(released);
     } else removeMutexFolder(temporary);
     syncDir(control);
-  }
+  } catch (error) { cleanupFailure = { error }; }
+  const errors = [...(primary === undefined ? [] : [primary.error]), ...(cleanupFailure === undefined ? [] : [cleanupFailure.error])];
+  if (errors.some(error => error instanceof AuthoritySourceClosureUnprovedError)) throw retainAuthoritySourceClosure(errors, {});
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, "installation-mutex-cleanup-failed", { cause: errors[0] });
+  if (result === undefined) throw new Error("installation-mutex-result-missing");
+  return result.value;
 }
 const MutexOwnerSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
   phase: z.literal("admitting"), pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema });
@@ -650,6 +698,7 @@ function assertLiveObservationMutex(control: string): void {
       || file.identity.device !== current.identity.device || file.identity.inode !== current.identity.inode
       || !file.bytes.equals(current.bytes)) fail("profile-registry-observation-changed");
   } catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
     if ((filesystemCode(error) === "ENOENT" || (error instanceof Error && filesystemCode(error.cause) === "ENOENT"))
       && lstatMaybe(path) === undefined) return;
     throw error;
@@ -1452,6 +1501,40 @@ function profileObservation(control: string, locator: RuntimeLocator): string {
   return canonicalJsonStringify({ files, operations });
 }
 
+function readProfileUpgradeAuthority(control: string, workspace: string, locator: RuntimeLocator, id: string, assertHeld: () => void): string {
+  assertHeld();
+  if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-stopped-upgrade-locator-changed");
+  assertLiveObservationMutex(control);
+  const before = profileObservation(control, locator);
+  const document = readMachineRegistry(control, locator, false);
+  const row = document.profiles.find(entry => entry.profileId === id);
+  if (row?.lifecycle !== "ready" || row.credentialState !== "saved") fail("profile-stopped-upgrade-ready-required");
+  const continuity = readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
+  const head = continuity.erasures.find(entry => entry.profileId === id);
+  if (head?.credentialKey === undefined) fail("profile-stopped-upgrade-key-required");
+  const journal = erasurePath(locator, id), key = join(locator.stateRoot, "machine", "credential-keys", `${id}.json`);
+  const files = [journal, `${journal}.authority`, key].map(path => {
+    const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
+    if (file === undefined) {
+      if (path === key || head.head.state !== "never-erased") fail("profile-stopped-upgrade-evidence-required");
+      return { path, absent: true };
+    }
+    return { path, identity: file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
+  });
+  if (profileObservation(control, locator) !== before || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-stopped-upgrade-observation-changed");
+  assertHeld();
+  assertLiveObservationMutex(control);
+  const directories = [control, join(locator.stateRoot, "machine"), join(locator.stateRoot, "machine", "credential-keys"),
+    join(locator.stateRoot, "machine", "erasures"), join(locator.stateRoot, "machine", "operations")].map(path => {
+    if (lstatSync(path, { throwIfNoEntry: false }) === undefined && path === join(locator.stateRoot, "machine", "erasures")
+      && head.head.state === "never-erased") return { path, absent: true };
+    privateDirectory(path);
+    const info = lstatSync(path);
+    return { path, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid };
+  });
+  return canonicalJsonStringify({ document, observation: before, files, directories });
+}
+
 function initializeMachineRegistry(control: string, locator: RuntimeLocator): void {
   const directory = join(locator.stateRoot, "machine");
   mkdirSync(directory, { mode: 0o700 }); syncDir(locator.stateRoot);
@@ -1757,42 +1840,24 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
       return document;
     },
+    captureProfileUpgradeHandoff(profileId: string) {
+      if (mode !== "shared") fail("profile-upgrade-handoff-shared-required");
+      const id = z.uuid().parse(profileId);
+      const original = createHash("sha256").update(readProfileUpgradeAuthority(control, workspace, locator, id, assertHeld)).digest("hex");
+      let consumed = false;
+      return Object.freeze({ consume(next: InstallationLease): void {
+        if (consumed) fail("profile-upgrade-handoff-consumed");
+        consumed = true;
+        if (!released) fail("profile-upgrade-handoff-release-required");
+        assertInstallationLease(next);
+        if (next.mode !== "exclusive" || next.readInstallationContext().workspace !== workspace || !equalLocator(next.locator, locator)) fail("profile-upgrade-handoff-installation-changed");
+        if (createHash("sha256").update(readProfileUpgradeAuthority(control, workspace, locator, id, () => next.assertHeld())).digest("hex") !== original) fail("profile-upgrade-handoff-authority-changed");
+      } });
+    },
     captureStoppedProfileUpgrade(profileId: string) {
       if (mode !== "exclusive") fail("profile-stopped-upgrade-exclusive-required");
       const id = z.uuid().parse(profileId);
-      const read = () => {
-        assertHeld();
-        if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-stopped-upgrade-locator-changed");
-        assertLiveObservationMutex(control);
-        const before = profileObservation(control, locator);
-        const document = readMachineRegistry(control, locator, false);
-        const row = document.profiles.find(entry => entry.profileId === id);
-        if (row?.lifecycle !== "ready" || row.credentialState !== "saved") fail("profile-stopped-upgrade-ready-required");
-        const continuity = readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        const head = continuity.erasures.find(entry => entry.profileId === id);
-        if (head?.credentialKey === undefined) fail("profile-stopped-upgrade-key-required");
-        const journal = erasurePath(locator, id), key = join(locator.stateRoot, "machine", "credential-keys", `${id}.json`);
-        const files = [journal, `${journal}.authority`, key].map(path => {
-          const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
-          if (file === undefined) {
-            if (path === key || head.head.state !== "never-erased") fail("profile-stopped-upgrade-evidence-required");
-            return { path, absent: true };
-          }
-          return { path, identity: file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
-        });
-        if (profileObservation(control, locator) !== before || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-stopped-upgrade-observation-changed");
-        assertHeld();
-        assertLiveObservationMutex(control);
-        const directories = [control, join(locator.stateRoot, "machine"), join(locator.stateRoot, "machine", "credential-keys"),
-          join(locator.stateRoot, "machine", "erasures"), join(locator.stateRoot, "machine", "operations")].map(path => {
-          if (lstatSync(path, { throwIfNoEntry: false }) === undefined && path === join(locator.stateRoot, "machine", "erasures")
-            && head.head.state === "never-erased") return { path, absent: true };
-          privateDirectory(path);
-          const info = lstatSync(path);
-          return { path, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid };
-        });
-        return canonicalJsonStringify({ document, observation: before, files, directories });
-      };
+      const read = () => readProfileUpgradeAuthority(control, workspace, locator, id, assertHeld);
       const original = read();
       return Object.freeze({ assertHeld() {
         if (read() !== original) fail("profile-stopped-upgrade-authority-changed");

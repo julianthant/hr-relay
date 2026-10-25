@@ -129,9 +129,7 @@ it("revokes runtime, command and retained producer authority before held actual 
     assert.equal(context.database.getMeta().profileId, f.active.profileId);
     context.admission.assertLive();
     const origin = `http://127.0.0.1:${String(dashboard.port)}`;
-    const response = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: "{}" });
-    assert.equal(response.status, 409);
-    assert.deepEqual(await response.json(), { state: "error", code: "PROFILE_SESSION_STALE", message: ERROR_CATALOG.PROFILE_SESSION_STALE.text, retryable: false });
+    await assert.rejects(fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: "{}" }), TypeError);
     release(); await stopping; dashboard = undefined;
     assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).equals(protectedBefore), true);
     assert.throws(() => context.database.getMeta(), /closed/u);

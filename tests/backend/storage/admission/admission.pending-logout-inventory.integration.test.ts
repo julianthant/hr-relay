@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { appendFileSync, copyFileSync, existsSync, lstatSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import fs, { appendFileSync, chmodSync, copyFileSync, existsSync, lstatSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { it, vi } from "vitest";
@@ -369,4 +370,73 @@ it("disposes the issued copy if actual operation custody changes before pending 
     assert.equal(copies.length, 1);
     assert.equal(copies.every(path => !existsSync(path)), true);
   } finally { observer.mockRestore(); f.close(); }
+});
+
+
+for (const method of ["state-root", "readonly-database"] as const) {
+  it(`keeps actual physical root checks in direct pending ${method} inspection`, () => {
+    const f = pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
+    const path = method === "state-root" ? f.f.stateRoot : f.f.path;
+    const artifactRoot = join(f.f.stateRoot, "artifacts"), mode = lstatSync(artifactRoot).mode & 0o7777;
+    const databaseBefore = readFileSync(f.f.path), operationBefore = readFileSync(f.path);
+    const protectedPath = join(f.f.stateRoot, "credentials", "protected.json"), protectedBefore = readFileSync(protectedPath);
+    const inspect = () => method === "state-root" ? purpose.assertStateRoot(path) : purpose.assertReadOnlyAuthorityDatabase(path);
+    try {
+      inspect();
+      chmodSync(artifactRoot, 0o770);
+      purpose.assertLive();
+      assert.throws(inspect, /runtime-admission: storage root ownership changed/u);
+      assert.equal(readFileSync(f.f.path).equals(databaseBefore), true);
+      assert.equal(readFileSync(f.path).equals(operationBefore), true);
+      assert.equal(readFileSync(protectedPath).equals(protectedBefore), true);
+    } finally { chmodSync(artifactRoot, mode); purpose.release(); f.close(); }
+  });
+
+  for (const state of ["released", "changed-operation"] as const) it(`checks ${state} pending custody before a refused ${method} path`, () => {
+    const f = pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
+    const invalidPath = method === "state-root" ? join(f.f.workspace, "outside-profile") : ":memory:";
+    const databaseBefore = readFileSync(f.f.path);
+    try {
+      if (state === "released") purpose.release();
+      else f.f.machine.publishProfileOperation({ ...f.operation, phase: "incomplete" });
+      const inspect = () => method === "state-root" ? purpose.assertStateRoot(invalidPath) : purpose.assertReadOnlyAuthorityDatabase(invalidPath);
+      assert.throws(inspect, state === "released" ? /runtime-admission: missing or released admission/u : /profile-pending-logout-operation-changed/u);
+      assert.equal(readFileSync(f.f.path).equals(databaseBefore), true);
+    } finally { purpose.release(); f.close(); }
+  });
+}
+
+it("revalidates actual pending copy custody after its completed digest read", () => {
+  const f = pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
+  const path = join(f.f.stateRoot, "pending-digest-observation.sqlite");
+  copyFileSync(f.f.path, path);
+  const sourceBefore = readFileSync(f.f.path), copyBefore = readFileSync(path);
+  const copy = purpose.verifiedReadOnlyCopy(path, createHash("sha256").update(copyBefore).digest("hex"));
+  const identity = lstatSync(path), close = fs.closeSync;
+  let changed = false;
+  const observer = vi.spyOn(fs, "closeSync").mockImplementation(descriptor => {
+    const current = fs.fstatSync(descriptor);
+    close(descriptor);
+    if (!changed && current.dev === identity.dev && current.ino === identity.ino) {
+      changed = true;
+      f.f.machine.publishProfileOperation({ ...f.operation, phase: "incomplete" });
+    }
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => copy.assertReadOnlyAuthorityDatabase(path), /profile-pending-logout-operation-changed/u);
+    assert.equal(changed, true);
+    assert.equal(readFileSync(f.f.path).equals(sourceBefore), true);
+    assert.equal(readFileSync(path).equals(copyBefore), true);
+    const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(f.path, "utf8")));
+    assert.equal(operation.operationId, f.operation.operationId);
+    assert.equal(operation.at, f.operation.at);
+    assert.equal(operation.phase, "incomplete");
+    assert.equal(operation.commandId, f.operation.commandId);
+    assert.equal(operation.writeId, f.operation.writeId);
+    assert.equal(operation.expectedRevision, f.operation.expectedRevision);
+  } finally {
+    observer.mockRestore(); syncBuiltinESMExports();
+    copy.release(); purpose.release(); unlinkSync(path); f.close();
+  }
 });

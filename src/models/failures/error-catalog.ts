@@ -449,6 +449,14 @@ export const ERROR_CATALOG = Object.freeze({
     "A password change waits for a live sign-in that proves the new password.",
     EmptyParametersSchema,
   ),
+  PROFILE_UPGRADE_STARTING: catalogEntry(
+    "A verified backup and local storage upgrade are starting. Sign in again after Relay restarts.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_UPGRADE_UNAVAILABLE: catalogEntry(
+    "The authenticated storage upgrade could not finish. Storage custody is retained; do not retry the upgrade.",
+    EmptyParametersSchema,
+  ),
   PROFILE_TRANSITION_BLOCKED: catalogEntry(
     "Sign in waits until the other profile is logged out.",
     EmptyParametersSchema,

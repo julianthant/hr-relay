@@ -1,36 +1,59 @@
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
-
 import { join } from "node:path";
 
-
-
-import { AuthorityBackupService, AuthorityDatabase } from "../synthetic-storage-admission.js";
+import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../admission-fixture.js";
 
 import type { Clock } from "../../../../src/rules/time/clock.js";
 
-export function createBackupFixtures(temporaryRoot: (prefix: string) => string, databases: AuthorityDatabase[], CLOCK: Clock) {
+export function createBackupFixtures(cleanups: (() => void)[], CLOCK: Clock) {
   function openCurrentWorld() {
-    const root = temporaryRoot("hrauto-v3-backup-");
-    const stateRoot = join(root, ".tracker");
-    mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
-    const authorityPath = join(stateRoot, "state.db");
-    const database = AuthorityDatabase.open({
-      path: authorityPath,
+    const profile = createBoundProfileFixture();
+    let database: AuthorityDatabase | undefined = undefined;
+    let openingFailure: AuthoritySourceClosureUnprovedError | undefined = undefined;
+    let cleanupFailure: { error: unknown } | undefined = undefined;
+    let closure: { state: "closed" } | { state: "failed"; error: unknown } | undefined = undefined;
+    const closeDatabase = () => {
+      if (openingFailure !== undefined) throw openingFailure;
+      if (closure?.state === "closed") return;
+      if (closure?.state === "failed") throw closure.error;
+      try { database?.close(); closure = { state: "closed" }; }
+      catch (error) { closure = { state: "failed", error }; throw error; }
+    };
+    cleanups.push(() => {
+      if (openingFailure !== undefined) throw openingFailure;
+      if (cleanupFailure !== undefined) throw cleanupFailure.error;
+      try { closeDatabase(); profile.close(); }
+      catch (error) { cleanupFailure = { error }; throw error; }
+    });
+    const admission = profile.admission, credentials = boundProfileCredentials(admission);
+    try {
+      database = AuthorityDatabase.open(admission, {
+      path: profile.path,
       busyTimeoutMs: 250,
       migrationOwner: "backup-test",
-    }, CLOCK);
-    databases.push(database);
+      }, CLOCK, undefined, undefined, undefined, credentials);
+    } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) openingFailure = error;
+      throw error;
+    }
     return {
-      stateRoot,
-      authorityPath,
+      workspace: profile.workspace,
+      machine: profile.machine,
+      admission,
+      credentials,
+      stateRoot: profile.stateRoot,
+      authorityPath: profile.path,
       database,
-      backupDirectory: join(stateRoot, "backups", "authority"),
+      closeDatabase,
+      backupDirectory: join(profile.stateRoot, "backups", "authority"),
     };
   }
 
   async function takeBackup(world: ReturnType<typeof openCurrentWorld>) {
-    const service = new AuthorityBackupService(world.database, { directory: world.backupDirectory }, CLOCK);
+    const service = new AuthorityBackupService(world.admission, world.database, { directory: world.backupDirectory }, CLOCK);
     const report = await service.request({
       trigger: "operator",
       requiredGeneration: world.database.getMeta().authorityGeneration,

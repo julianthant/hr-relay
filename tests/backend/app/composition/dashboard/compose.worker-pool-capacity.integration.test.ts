@@ -1,3 +1,5 @@
+import { spawn, execFileSync } from "node:child_process";
+import { once } from "node:events";
 import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { createProfileRegistry } from "../../../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
@@ -21,6 +23,7 @@ import { WorkerControlRefusal } from "../../../../../src/models/run/worker-contr
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { copyFileSync } from "node:fs";
 import { join } from "node:path";
+import { RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { type WorkerRuntimeContext } from "../../../../../src/backend/runs/commands/command-kernel.js";
@@ -524,7 +527,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
   afterEach(cleanup);
 
   it("does not reserve recovery or launch a stopped standing worker at dashboard boot", async () => {
-    const profile = createBoundProfileFixture(), repoRoot = profile.workspace;
+    const profile = createBoundProfileFixture({ sharedMachine: true }), repoRoot = profile.workspace;
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), name), join(repoRoot, name));
     cleanups.push(() => profile.close());
     const clock = manualClock(new Date(NOW));
@@ -539,19 +542,84 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
         fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
         capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
       assert.equal(active.configFingerprint, resolved.fingerprint);
-      database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
-      const reservation = { commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
-        family: "worker-browser", type: "plan-worker-count", target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { desiredWorkers: 1 } };
-      database.authority.commands.insert(reservation);
-      database.authority.workerSlots.allocate({ workflow: WORKFLOW, poolIndex: 1, commandId: reservation.commandId, now: NOW });
-      const started = database.authority.workerLeases.start({ workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
-        processId: 7001, requestedBy: "local-operator", now: NOW });
-      assert.equal(started.state, "started");
-      database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
-        lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW }, now: NOW });
-      database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
-        lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: NOW, reason: "crashed" }, now: NOW });
     } finally { database.close(); }
+    const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
+    for (const poolIndex of [1, 2, 3]) {
+      const seed = spawn(process.execPath, ['--import', 'tsx', join(process.cwd(), 'tests/support/processes/worker-stub-cli.ts'),
+        profile.path, processLockRoot, 'installed', "worker", WORKFLOW, '--pool-index', String(poolIndex)],
+        { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+      const seedClosed = new Promise<void>(resolve => { seed.once('close', () => resolve()); });
+      const seedExit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+        seed.once('exit', (code, signal) => resolve({ code, signal })); seed.once('error', reject);
+      });
+      const seedGroup = () => execFileSync('ps', ['-axo', 'pid=,pgid='], { encoding: 'utf8' }).split('\n').flatMap(line => {
+        const [pid, pgid] = line.trim().split(/\s+/u).map(Number);
+        return pgid === seed.pid && pid !== undefined ? [pid] : [];
+      });
+      cleanups.push(async () => {
+        if (seed.exitCode === null && seed.signalCode === null) seed.kill('SIGTERM');
+        const exited = await seedExit; await seedClosed;
+        assert.equal(exited.code, 0); assert.equal(exited.signal, null); assert.deepEqual(seedGroup(), []);
+      });
+      assert.ok(seed.stdout);
+      let seedStderr = '';
+      seed.stderr?.setEncoding('utf8');
+      seed.stderr?.on('data', (chunk: string) => { seedStderr = (seedStderr + chunk).slice(-65_536); });
+      await Promise.race([once(seed.stdout, 'data'), seedExit.then(exited => {
+        const frameOwners = [
+          'tests/support/processes/worker-stub-cli.ts',
+          'src/backend/storage/admission/admission.ts',
+          'src/backend/storage/admission/installation.ts',
+          'src/backend/storage/admission/bootstrap-admission.ts',
+          'src/backend/storage/sqlite/authority-database.ts',
+          'src/backend/storage/sqlite/worker-slots.ts',
+          'src/backend/storage/sqlite/profile-local-databases.ts',
+          'src/backend/storage/sqlite/runtime-process-locks.ts',
+        ];
+        const frames = [...seedStderr.matchAll(/((?:src|tests)\/[a-z0-9/.-]+\.ts):(\d+):(\d+)/g)]
+          .filter(match => frameOwners.includes(match[1] ?? ''))
+          .slice(0, 8).map(match => ({ owner: match[1], line: Number(match[2]), column: Number(match[3]) }));
+        const classes = ['Error', 'TypeError', 'SyntaxError', 'RangeError', 'ProfileSessionRefusedError',
+          'AuthoritySourceClosureUnprovedError', 'WorkerControlRefusal'];
+        const codes = ['ERR_MODULE_NOT_FOUND', 'ERR_INVALID_STATE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CONSTRAINT'];
+        console.error(JSON.stringify({ event: 'capacity-seed-failure', exitCode: exited.code,
+          signalled: exited.signal !== null, retainedStderrCharacters: seedStderr.length, frames,
+          classes: classes.map(kind => ({ kind, count: seedStderr.split(`${kind}:`).length - 1 })),
+          codes: codes.map(code => ({ code, count: seedStderr.split(code).length - 1 })) }));
+        throw new Error('capacity-seed-worker-exited-before-ready');
+      })]);
+      assert.ok(seed.pid);
+      const liveGroup = seedGroup(); assert.ok(liveGroup.includes(seed.pid));
+      let seededWorkerId: ReturnType<typeof WorkerIdSchema.parse> | undefined;
+      const started = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: 'test-capacity-seed' },
+        clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+      try {
+        const slot = started.authority.workerSlots.list(WORKFLOW).find(value => value.poolIndex === poolIndex && value.retiredAt === null);
+        assert.ok(slot); seededWorkerId = slot.workerId;
+        if (poolIndex === 1) assert.equal(seededWorkerId, WORKER_1);
+        const lease = started.authority.workerLeases.get(seededWorkerId); assert.ok(lease);
+        assert.equal(lease.lifecycle.state, 'starting');
+        assert.equal(started.workerLifetimeCustody(seededWorkerId).state, 'alive');
+        const readyAt = new Date().toISOString();
+        assert.equal(started.authority.workerLeases.reportLifecycle({ workerId: seededWorkerId, leaseGeneration: lease.leaseGeneration,
+          lifecycle: { state: 'idle', startedAt: lease.lifecycle.startedAt, heartbeatAt: readyAt }, now: readyAt }).state, 'applied');
+      } finally { started.close(); }
+      assert.ok(seededWorkerId);
+      seed.kill('SIGTERM');
+      const exited = await seedExit; await seedClosed;
+      assert.equal(exited.code, 0); assert.equal(exited.signal, null);
+      assert.deepEqual(seedGroup(), []);
+      for (const pid of liveGroup) assert.throws(() => process.kill(pid, 0), error => error instanceof Error && Reflect.get(error, 'code') === 'ESRCH');
+      const stopped = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: 'test-capacity-seed' },
+        clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+      try {
+        assert.equal(stopped.authority.workerLeases.get(seededWorkerId)?.lifecycle.state, 'stopped');
+        assert.equal(stopped.workerLifetimeCustody(seededWorkerId).state, 'released');
+        stopped.assertWorkerLifecycleRelease(seededWorkerId);
+        assert.equal(stopped.authority.workerPools.get(WORKFLOW)?.desiredWorkers, poolIndex);
+        assert.equal(stopped.authority.workerSlots.list(WORKFLOW).filter(slot => slot.retiredAt === null).length, poolIndex);
+      } finally { stopped.close(); }
+    }
     const admission = profile.machine;
     const recovery = vi.spyOn(AdmittedAuthorityDatabase.prototype, "reserveStandingWorkerRecovery").mockImplementation(() => {
       throw new Error("worker-boot-recovery-must-not-be-requested");
@@ -573,14 +641,27 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     }
   });
 
-  it.each(["manual-worker", "dashboard-start"] as const)("%s writes a graceful stop, waits for the owned OS exit, then releases the server lock", async mode => {
+const retainedCapacityCustody: {
+  profile: ReturnType<typeof createBoundProfileFixture>;
+  runtime?: Awaited<ReturnType<typeof composeDashboardApplication>>;
+  selectedAdmission?: RuntimeAdmission;
+  children: FakeWorkerChild[];
+  databases: AdmittedAuthorityDatabase[];
+  credentials?: ReturnType<typeof createCredentialStore>;
+  shutdownFailure?: unknown;
+  backend?: NonNullable<ReturnType<typeof readRuntimeProcessLock>>;
+  refusal?: RuntimeCustodyUncertainError;
+}[] = [];
+
+  it.each(["manual-worker", "dashboard-start"] as const)("retains backend custody when adversarial %s work cannot drain", async mode => {
     const profile = createBoundProfileFixture(), repoRoot = profile.workspace;
+    const children: FakeWorkerChild[] = [];
+    const retained: (typeof retainedCapacityCustody)[number] = { profile, children, databases: [] };
+    retainedCapacityCustody.push(retained);
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), name), join(repoRoot, name));
-    cleanups.push(() => profile.close());
     const clock = manualClock(new Date(NOW));
     const admission = profile.machine;
     const scheduler = new ManualScheduler(clock, 0);
-    const children: FakeWorkerChild[] = [];
     const faultLines: string[] = [];
     const lockRecord = () => {
       const record = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
@@ -608,23 +689,19 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       },
     });
     const selectedAdmission: { current?: RuntimeAdmission } = {};
-    const stops: (() => Promise<void>)[] = [() => runtime.stop()];
-    cleanups.push(async () => {
-      for (const stop of stops.splice(0)) {
-        const stopping = stop();
-        for (const child of children) child.emitExit(0, null);
-        await stopping;
-      }
-      selectedAdmission.current?.release();
-    });
+    retained.runtime = runtime;
+    retained.backend = lockRecord();
 
     const cookie = await signInPoolApplication(runtime);
     const stateRoot = profile.stateRoot;
     const selectedProfileId = profile.machine.readProfileRegistry().activeProfileId; assert.ok(selectedProfileId);
     selectedAdmission.current = profile.machine.admitProfile(createProfileRegistry(profile.machine).storageClaim(selectedProfileId));
     const currentAdmission = selectedAdmission.current;
+    retained.selectedAdmission = currentAdmission;
     const credentials = createCredentialStore({ admission: currentAdmission, stateRoot, erasureJournalAdmission: profile.machine,
       erasureJournalPath: join(profile.machine.stateRoot, "machine", "erasures", `${currentAdmission.profileBinding.profileId}.json`) });
+
+    retained.credentials = credentials;
 
     const commandId = nextCommandId();
     const origin = `http://127.0.0.1:${String(runtime.port)}`;
@@ -663,6 +740,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       { path: profile.path, busyTimeoutMs: 5_000, migrationOwner: "unit-test" },
       clock, undefined, undefined, undefined, credentials,
     );
+    retained.databases.push(sideDoor);
     try {
       assert.equal(sideDoor.authority.workerLeases.start({
         workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
@@ -686,6 +764,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       assert.equal(((await planned.json()) as { state: string }).state, "applied");
       const blocked = AdmittedAuthorityDatabase.open(currentAdmission,
         { path: profile.path, busyTimeoutMs: 5_000, migrationOwner: "unit-test" }, clock, undefined, undefined, undefined, credentials);
+      retained.databases.push(blocked);
       try {
         assert.equal(blocked.authority.commands.get(commandId)?.source, "dashboard");
         for (let index = 1; index <= 3; index++) {
@@ -718,6 +797,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       assert.equal(((await failure.json()) as { state: string }).state, "applied");
       const committed = AdmittedAuthorityDatabase.open(currentAdmission,
         { path: profile.path, busyTimeoutMs: 5_000, migrationOwner: "unit-test" }, clock, undefined, undefined, undefined, credentials);
+      retained.databases.push(committed);
       try {
         assert.equal(committed.authority.commandAudits.findByCommand(nextId)?.result.state, "applied");
         assert.equal(committed.authority.runs.listByWorkflow(WORKFLOW).length, 2);
@@ -729,14 +809,17 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     // must remain pending until this owned child reports its real OS exit.
     assert.ok(lockRecord());
     assert.equal(lockRecord().releasedAt, null);
-    stops.splice(0);
+    const backendBeforeStop = lockRecord();
+    retained.backend = backendBeforeStop;
     const stopping = runtime.stop();
+    const observedShutdown = stopping.then(() => ({ error: undefined }), (error: unknown) => ({ error }));
     let stopRequested = false;
     for (let waited = 0; waited < 200 && !stopRequested; waited += 1) {
       const probe = AdmittedAuthorityDatabase.open(currentAdmission,
         { path: profile.path, busyTimeoutMs: 5_000, migrationOwner: "unit-test" },
         clock, undefined, undefined, undefined, credentials,
       );
+      retained.databases.push(probe);
       try {
         stopRequested = probe.authority.workerLeases.get(WORKER_1)?.control.directive === "stop";
       } finally {
@@ -747,10 +830,26 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     assert.equal(stopRequested, true, "shutdown must persist the graceful stop directive");
     assert.equal(lockRecord().releasedAt, null);
     children[0]?.emitExit(0, null);
-    await stopping;
+    const { error } = await observedShutdown;
+    retained.shutdownFailure = error;
+    assert.ok(error instanceof RuntimeCustodyUncertainError);
+    retained.refusal = error;
+    const causes: unknown[] = Array.from<unknown>(error.errors);
+    const expectedRefusal = mode === 'dashboard-start' ? 'profile-worker-supervisor-custody-unavailable' : 'profile-work-drain-unproved';
+    let drainUnproved = false;
+    while (causes.length > 0) {
+      const cause = causes.shift();
+      if (cause instanceof AggregateError) causes.push(...Array.from<unknown>(cause.errors));
+      else if (cause instanceof Error && cause.message === expectedRefusal) drainUnproved = true;
+    }
+    assert.equal(drainUnproved, true, error);
 
     assert.equal(faultLines.some((line) => line.includes("dashboard shutdown leaves a worker child")), false);
-    assert.notEqual(lockRecord().releasedAt, null);
+    assert.equal(lockRecord().releasedAt, null);
+    assert.equal(lockRecord().acquisitionId, backendBeforeStop.acquisitionId);
+    currentAdmission.assertLive();
+    profile.admission.assertLive();
+    profile.machine.assertLive();
   });
 });
 

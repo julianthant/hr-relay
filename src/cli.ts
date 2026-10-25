@@ -28,7 +28,7 @@ import type { RuntimeAdmission } from "./backend/storage/admission/admission.js"
 /** The checkout that owns this cli module, never the caller's CWD. */
 const REPOSITORY_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined): Promise<void> {
+export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void): Promise<void> {
   admission.assertLive();
   if (process.argv[2] === "storage" && process.argv[3] === "transactions") {
     const command = parseTransactionExportArgs(process.argv.slice(4));
@@ -39,8 +39,11 @@ export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: (
     finally { database.close(); }
     return;
   }
-  registerDashboardComposer((runtimeIsolation, options) =>
-    composeDashboardApplication({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend }));
+  registerDashboardComposer(async (runtimeIsolation, options) => {
+    const application = await composeDashboardApplication({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend });
+    acceptDashboardAdmission?.();
+    return application;
+  });
   registerTestDataComposer((runtimeIsolation, args) => composeTestDataCommand(admission,runtimeIsolation, args, REPOSITORY_ROOT, {
     loadManifests: async () => Promise.all(listDryRunScenarioWorkflows().map(async (workflow) =>
       parseDryRunScenarioManifest(await loadDryRunScenarioManifest(workflow)))),

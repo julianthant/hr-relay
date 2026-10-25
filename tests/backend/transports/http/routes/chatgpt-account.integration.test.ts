@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import { Hono } from "hono";
 import { it } from "vitest";
 import { chatGptFixture } from "../../../../support/helpers/chatgpt-account-fixtures.js";
@@ -78,4 +79,53 @@ it("keeps typed OCR resource closure uncertainty distinct and exposes only its d
   const response = await app.request(`http://127.0.0.1${path}/test-ocr`, { method: "POST",
     headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/json" }, body: "{}" });
   assert.deepEqual(await response.json(), { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text });
+});
+
+for (const alreadyAborted of [false, true]) it(`ends only the completion GET wait when its request is ${alreadyAborted ? "already aborted" : "aborted while pending"}`, async () => {
+  const f = setup();
+  try {
+    const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
+    const cancellation = new AbortController(), reason = new Error("synthetic completion request ended");
+    if (alreadyAborted) cancellation.abort(reason);
+    let settled = false;
+    const waiting = Promise.resolve(f.app.request(new Request(`http://127.0.0.1${path}/sign-in/${started.attemptId}`, { signal: cancellation.signal })))
+      .then(response => { settled = true; return response; });
+    if (!alreadyAborted) {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(settled, false);
+      cancellation.abort(reason);
+    }
+    const response = await waiting;
+    assert.equal(response.status, 400);
+    assert.equal((await response.json() as { code: string }).code, "CHATGPT_AUTH_UNAVAILABLE");
+    assert.equal(cancellation.signal.reason, reason);
+    assert.equal((await (await f.request()).json() as { state: string }).state, "signing-in");
+    await f.callback(f.authorization());
+    const completed = ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json());
+    assert.equal(completed.state, "completed");
+  } finally { await f.cleanup(); }
+});
+
+it("refuses an already completed authorization result when the completion GET aborts before its awaited return", async () => {
+  const f = setup();
+  try {
+    const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
+    await f.callback(f.authorization());
+    const completed = ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json());
+    assert.equal(completed.state, "completed");
+    const cancellation = new AbortController(), reason = new Error("synthetic completion response cancelled");
+    const request = new Request(`http://127.0.0.1${path}/sign-in/${started.attemptId}`, { signal: cancellation.signal });
+    assert.equal(getEventListeners(request.signal, "abort").length, 0);
+    const waiting = Promise.resolve(f.app.request(request));
+    assert.equal(getEventListeners(request.signal, "abort").length, 1);
+    cancellation.abort(reason);
+    const response = await waiting;
+    assert.equal(response.status, 400);
+    assert.equal((await response.json() as { code: string }).code, "CHATGPT_AUTH_UNAVAILABLE");
+    assert.equal(request.signal.reason, reason);
+    assert.equal(getEventListeners(request.signal, "abort").length, 0);
+    const current = ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json());
+    assert.equal(current.state, "completed");
+    assert.equal((await (await f.request()).json() as { state: string }).state, "connected");
+  } finally { await f.cleanup(); }
 });
