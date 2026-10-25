@@ -1,7 +1,7 @@
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { verifyStoppedControlCredentialAttestation } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { execFileSync, fork, type ChildProcess } from "node:child_process";
+import { execFileSync, fork, spawnSync, type ChildProcess } from "node:child_process";
 import { on, once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -393,6 +393,22 @@ function snapshotNames(): Set<string> {
   return new Set(readdirSync(tmpdir()).filter((name) => name.startsWith("relay-readonly-authority-")));
 }
 
+function assertChildProcessReleased(pid: number): void {
+  let groupGone = false;
+  try { process.kill(-pid, 0); }
+  catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") groupGone = true;
+    else if (process.platform === "darwin" && error instanceof Error && "code" in error && error.code === "EPERM") {
+      const groups = execFileSync("/bin/ps", ["-axo", "pgid="], { encoding: "utf8" }).trim().split(/\s+/u);
+      if (!groups.every((value) => /^[1-9][0-9]*$/u.test(value))) throw new Error("duo-child-process-group-unproved", { cause: error });
+      groupGone = !groups.includes(String(pid));
+    } else throw error;
+  }
+  if (!groupGone) throw new Error("duo-child-process-group-unproved");
+  const listed = spawnSync("/usr/sbin/lsof", ["-nP", "-a", "-p", String(pid)], { encoding: "utf8" });
+  if (listed.error !== undefined || listed.signal !== null || listed.status !== 1) throw new Error("duo-child-fd-unproved", { cause: listed.error });
+}
+
 function controlPaths(fixture: ReturnType<typeof createBoundProfileFixture>) {
   const stateRoot = fixture.machine.stateRoot;
   return { stateRoot, workspace: fixture.workspace, databasePath: fixture.path, database: readFileSync(fixture.path),
@@ -424,20 +440,22 @@ it("finishes one interrupted Duo publication after the producing process exits a
   f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
   const canonicalBefore = readFileSync(f.documentPath);
   let child: ChildProcess | undefined;
-  let proved = false;
+  let closed: Promise<unknown[]> | undefined;
+  let closeObserved = false;
+  let childReleased = false;
   let primary: unknown;
   let cleanup: unknown;
-  let releaseWorkspace = false;
   try {
     child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
       [f.workspace, f.admission.profileBinding.profileId, f.input.credentialId, f.clock.now().toISOString()],
-      { execArgv: ["--import", "tsx"], stdio: ["ignore", "ignore", "pipe", "ipc"] });
-    const exit = once(child, "exit");
+      { execArgv: ["--import", "tsx"], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    const closeEvent = once(child, "close");
+    closed = closeEvent;
     const events = on(child, "message");
     let stderrBytes = 0;
     child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; });
     const next = async () => {
-      const result = await Promise.race([events.next(), exit.then(() => { throw new Error("Duo interrupt child exited before the required event"); })]);
+      const result = await Promise.race([events.next(), closeEvent.then(() => { throw new Error("Duo interrupt child exited before the required event"); })]);
       assert.equal(result.done, false);
       return z.object({ type: z.string(), name: z.string().optional(), pid: z.number().int().positive().optional() }).parse(result.value?.[0]);
     };
@@ -446,13 +464,16 @@ it("finishes one interrupted Duo publication after the producing process exits a
       assert.deepEqual(ready, { type: "ready", pid: child.pid });
       const uncertain = once(child, "message");
       child.send("interrupt-publication");
-      const [code, signal] = z.tuple([z.number().int().nullable(), z.string().nullable()]).parse(await exit);
+      const [code, signal] = z.tuple([z.number().int().nullable(), z.string().nullable()]).parse(await closeEvent);
+      closeObserved = true;
+      if (child.connected || child.pid === undefined) throw new Error("duo-child-close-unproved");
+      assertChildProcessReleased(child.pid);
+      childReleased = true;
       const message = z.object({ type: z.string(), name: z.string().optional() }).parse((await uncertain)[0]);
       assert.deepEqual([code, signal], [97, null]);
       assert.equal(message.type, "uncertain");
       assert.equal(message.name, "DuoCredentialCommitUncertainError");
       assert.equal(stderrBytes, 0);
-      proved = true;
     } finally { await events.return?.(undefined); }
     const intentPath = join(f.workspace, ".tracker/control", "profile-publication.json");
     const directory = join(f.machine.stateRoot, "machine", "duo-credentials");
@@ -526,18 +547,20 @@ it("finishes one interrupted Duo publication after the producing process exits a
       assert.equal(next.count, burned.highWater + 1);
       assert.throws(() => reopened.recoverInterruptedPublication(), /duo-transaction-unissued/u);
     } finally { admission.release(); machine.release(); }
-    releaseWorkspace = true;
   } catch (error) { primary = error; }
-  if (!proved && child !== undefined && child.exitCode === null && child.signalCode === null) {
+  if (!closeObserved && child !== undefined && closed !== undefined) {
     try {
-      child.send("close");
-      const closed = await Promise.race([once(child, "exit"), new Promise<never>((_resolve, reject) => { setTimeout(() => reject(new Error("duo-child-close-unproved")), 10_000); })]);
-      const [code] = z.tuple([z.number().int().nullable(), z.string().nullable()]).parse(closed);
-      if (code === null) throw new Error("duo-child-close-unproved");
+      if (child.exitCode === null && child.signalCode === null) child.send("close");
+      const outcome = await Promise.race([closed, new Promise<never>((_resolve, reject) => { setTimeout(() => reject(new Error("duo-child-close-unproved")), 10_000); })]);
+      const [code, signal] = z.tuple([z.number().int().nullable(), z.string().nullable()]).parse(outcome);
+      closeObserved = true;
+      if ((code === null && signal === null) || child.connected || child.pid === undefined) throw new Error("duo-child-close-unproved");
+      assertChildProcessReleased(child.pid);
+      childReleased = true;
     } catch (error) { cleanup = error; }
   }
-  if (releaseWorkspace && cleanup === undefined) f.close();
-  if (primary !== undefined && cleanup !== undefined) throw new AggregateError([primary, cleanup], "Duo interrupt child cleanup unproved");
+  if (childReleased && cleanup === undefined) f.close();
+  if (primary !== undefined && cleanup !== undefined) throw new AggregateError([primary, cleanup], "Duo interrupt child cleanup unproved", { cause: primary });
   if (cleanup !== undefined) throw cleanup;
   if (primary !== undefined) throw primary;
 }, 30_000);
@@ -556,6 +579,12 @@ it("refuses unmanaged Duo copies, then backup erase and restore keep burned coun
     assert.equal(second.count, first.count + 1);
     assert.throws(() => f.store.restore(backupPath), /duo-purpose-restore-lowers-burned-count/u);
     assert.equal(f.store.read().credentials[0]?.highWater, second.count);
+    const purpose = issueDuoCredentialPurpose(f.admission, f.machine);
+    const currentRevision = f.store.read().revision;
+    const currentDocument = openDuoCredentialDocument(purpose, readFileSync(f.documentPath), currentRevision);
+    const backedUpDocument = openDuoCredentialDocument(purpose, readFileSync(backupPath), backedUp.revision);
+    assert.equal(currentDocument.credentials.length, 1);
+    assert.equal(backedUpDocument.credentials.length, 1);
     assert.throws(() => f.store.restore(f.path), /duo-purpose-restore-unmanaged/u);
     const enginePath = join(f.stateRoot, "credentials", "duo-webauthn.json");
     const engineBefore = existsSync(enginePath) ? readFileSync(enginePath) : Buffer.from("{\"activeEngine\":true}\n");
@@ -583,6 +612,11 @@ it("refuses unmanaged Duo copies, then backup erase and restore keep burned coun
     assert.equal(readFileSync(enginePath).equals(engineBefore), true);
     assert.equal(readFileSync(currentBackupPath).equals(before), true);
     assert.equal(readFileSync(f.documentPath).equals(before), false);
+    const freshPurpose = issueDuoCredentialPurpose(f.admission, f.machine);
+    assert.throws(() => openDuoCredentialDocument(freshPurpose, readFileSync(currentBackupPath), currentBackup.revision), /duo-erased-key-material-refused/u);
+    assert.throws(() => openDuoCredentialDocument(purpose, readFileSync(backupPath), backedUp.revision), /duo-erased-key-material-refused/u);
+    const erasedDocument = openDuoCredentialDocument(freshPurpose, readFileSync(f.documentPath), f.store.read().revision);
+    assert.equal(erasedDocument.credentials.length, 0);
     assert.throws(() => f.store.restore(currentBackupPath), /duo-purpose-restore-revives-erased-key/u);
     assert.throws(() => f.store.restore(backupPath), /duo-purpose-restore-revives-erased-key/u);
     const reopened = createDuoCredentialStore(f.admission, f.machine, f.clock);
