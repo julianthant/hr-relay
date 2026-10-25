@@ -1,19 +1,21 @@
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { verifyStoppedControlCredentialAttestation } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { fork } from "node:child_process";
+import { execFileSync, fork, type ChildProcess } from "node:child_process";
 import { on, once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireStoppedProfileControlUpgrade } from "../../../../src/backend/storage/admission/installation.js";
-import { upgradeStoppedMachineControl } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { releaseStoppedMachineControlUpgrade, upgradeStoppedMachineControl } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
-import { chmodSync, copyFileSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
 import { createDuoCredentialStore, DuoCredentialCommitUncertainError } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
@@ -383,94 +385,337 @@ it("recovers an interrupted Duo publication only for the issued claim and keeps 
   } finally { f.close(); }
 });
 
-it("does not let a replacement process finish another process's interrupted Duo publication", async () => {
+function privateJson(path: string, value: unknown): void {
+  writeFileSync(path, JSON.stringify(value), { mode: 0o600 });
+}
+
+function snapshotNames(): Set<string> {
+  return new Set(readdirSync(tmpdir()).filter((name) => name.startsWith("relay-readonly-authority-")));
+}
+
+function controlPaths(fixture: ReturnType<typeof createBoundProfileFixture>) {
+  const stateRoot = fixture.machine.stateRoot;
+  return { stateRoot, workspace: fixture.workspace, databasePath: fixture.path, database: readFileSync(fixture.path),
+    controlPath: join(fixture.workspace, ".tracker/control", "profile-registry.json"),
+    markerPath: join(stateRoot, "machine", "profile-registry-version.json"),
+    processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot) };
+}
+
+function downgradeStoppedControl(fixture: ReturnType<typeof createBoundProfileFixture>, markerVersion: 1 | 2, dropCredentialKey = false) {
+  const paths = controlPaths(fixture);
+  const current = JSON.parse(readFileSync(paths.controlPath, "utf8")) as { schemaVersion: number; duo?: unknown; erasures?: Array<Record<string, unknown>> };
+  fixture.admission.release();
+  fixture.machine.release();
+  const { duo: _duo, erasures, ...prior } = current;
+  const nextErasures = dropCredentialKey === true ? (erasures ?? []).map((row) => { const { credentialKey: _key, ...rest } = row; return rest; }) : erasures;
+  privateJson(paths.controlPath, { ...prior, ...(nextErasures === undefined ? {} : { erasures: nextErasures }), schemaVersion: 1 });
+  privateJson(paths.markerPath, { schemaVersion: markerVersion });
+  return { ...paths, controlBytes: readFileSync(paths.controlPath), markerBytes: readFileSync(paths.markerPath) };
+}
+
+function assertUnchanged(paths: { controlPath: string; markerPath: string; databasePath: string; database: Buffer; controlBytes: Buffer; markerBytes: Buffer }): void {
+  assert.equal(readFileSync(paths.controlPath).equals(paths.controlBytes), true);
+  assert.equal(readFileSync(paths.markerPath).equals(paths.markerBytes), true);
+  assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
+}
+
+it("finishes one interrupted Duo publication after the producing process exits and refuses a changed or released claim", async () => {
   const f = setup({ sharedMachine: true });
-  const child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
-    [f.workspace, f.admission.profileBinding.profileId, f.input.credentialId, f.clock.now().toISOString()],
-    { execArgv: ["--import", "tsx"], stdio: ["ignore", "ignore", "pipe", "ipc"] });
-  let stderrBytes = 0;
-  child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; });
-  const exit = once(child, "exit");
-  const ready = await new Promise<unknown>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Duo interrupt child did not become ready")), 10_000);
-    child.once("message", (message) => { clearTimeout(timer); resolve(message); });
-    child.once("exit", () => { clearTimeout(timer); reject(new Error("Duo interrupt child exited before ready")); });
-  });
+  f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
+  const canonicalBefore = readFileSync(f.documentPath);
+  let child: ChildProcess | undefined;
+  let proved = false;
+  let primary: unknown;
+  let cleanup: unknown;
+  let releaseWorkspace = false;
   try {
-    f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
-    assert.deepEqual(ready, { type: "ready", pid: child.pid });
-    child.send("interrupt-publication");
-    assert.deepEqual(await exit, [97, null]);
-    assert.equal(stderrBytes, 0);
-    assert.throws(() => f.store.read(), /duo-transaction-unissued/u);
-  } finally {
-    if (child.exitCode === null) { child.kill("SIGKILL"); await exit; }
-    f.close();
+    child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
+      [f.workspace, f.admission.profileBinding.profileId, f.input.credentialId, f.clock.now().toISOString()],
+      { execArgv: ["--import", "tsx"], stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    const exit = once(child, "exit");
+    const events = on(child, "message");
+    let stderrBytes = 0;
+    child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; });
+    const next = async () => {
+      const result = await Promise.race([events.next(), exit.then(() => { throw new Error("Duo interrupt child exited before the required event"); })]);
+      assert.equal(result.done, false);
+      return z.object({ type: z.string(), name: z.string().optional(), pid: z.number().int().positive().optional() }).parse(result.value?.[0]);
+    };
+    try {
+      const ready = await next();
+      assert.deepEqual(ready, { type: "ready", pid: child.pid });
+      const uncertain = once(child, "message");
+      child.send("interrupt-publication");
+      const [code, signal] = z.tuple([z.number().int().nullable(), z.string().nullable()]).parse(await exit);
+      const message = z.object({ type: z.string(), name: z.string().optional() }).parse((await uncertain)[0]);
+      assert.deepEqual([code, signal], [97, null]);
+      assert.equal(message.type, "uncertain");
+      assert.equal(message.name, "DuoCredentialCommitUncertainError");
+      assert.equal(stderrBytes, 0);
+      proved = true;
+    } finally { await events.return?.(undefined); }
+    const intentPath = join(f.workspace, ".tracker/control", "profile-publication.json");
+    const directory = join(f.machine.stateRoot, "machine", "duo-credentials");
+    const stageName = readdirSync(directory).find((name) => name.startsWith(`.${f.admission.profileBinding.profileId}.`) && name.endsWith(".stage"));
+    assert.equal(typeof stageName, "string");
+    const stagePath = join(directory, stageName ?? "");
+    const intentBefore = readFileSync(intentPath);
+    const stageBefore = readFileSync(stagePath);
+    assert.throws(() => f.store.read(), /duo-publication-pending|duo-transaction-unissued/u);
+    assert.equal(readFileSync(intentPath).equals(intentBefore), true);
+    assert.equal(readFileSync(stagePath).equals(stageBefore), true);
+    assert.equal(readFileSync(f.documentPath).equals(canonicalBefore), true);
+    const profileId = f.admission.profileBinding.profileId;
+    f.admission.release(); f.machine.release();
+    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+    try {
+      const changedProfile = JSON.parse(intentBefore.toString("utf8")) as { capture: { profileId: string } };
+      changedProfile.capture.profileId = randomUUID();
+      privateJson(intentPath, changedProfile);
+      assert.throws(() => maintenance.issueStoppedDuoPublicationRecovery(), /duo-publication-prior-changed|duo-publication-file-changed/u);
+      assert.equal(readFileSync(stagePath).equals(stageBefore), true);
+      assert.equal(readFileSync(f.documentPath).equals(canonicalBefore), true);
+      writeFileSync(intentPath, intentBefore);
+      const envelope = JSON.parse(stageBefore.toString("utf8")) as { purpose: string; revision: number };
+      envelope.revision += 1;
+      const rewritten = Buffer.from(JSON.stringify(envelope));
+      writeFileSync(stagePath, rewritten, { mode: 0o600 });
+      const info = statSync(stagePath);
+      const intent = JSON.parse(intentBefore.toString("utf8")) as { capture: { next: { document: { digest: string; device: number; inode: number } } } };
+      intent.capture.next.document = { digest: createHash("sha256").update(rewritten).digest("hex"), device: info.dev, inode: info.ino };
+      privateJson(intentPath, intent);
+      assert.throws(() => maintenance.issueStoppedDuoPublicationRecovery(), /duo-publication-prior-changed/u);
+      writeFileSync(stagePath, stageBefore);
+      writeFileSync(intentPath, intentBefore);
+      const purposeEnvelope = JSON.parse(stageBefore.toString("utf8")) as { purpose: string };
+      purposeEnvelope.purpose = "relay:duo-credential:v2";
+      const purposeBytes = Buffer.from(JSON.stringify(purposeEnvelope));
+      writeFileSync(stagePath, purposeBytes, { mode: 0o600 });
+      const purposeInfo = statSync(stagePath);
+      const purposeIntent = JSON.parse(intentBefore.toString("utf8")) as { capture: { next: { document: { digest: string; device: number; inode: number } } } };
+      purposeIntent.capture.next.document = { digest: createHash("sha256").update(purposeBytes).digest("hex"), device: purposeInfo.dev, inode: purposeInfo.ino };
+      privateJson(intentPath, purposeIntent);
+      assert.throws(() => maintenance.issueStoppedDuoPublicationRecovery());
+      writeFileSync(intentPath, intentBefore);
+      writeFileSync(stagePath, stageBefore);
+      const continuityPath = join(f.workspace, ".tracker/control", "profile-registry.json");
+      const continuityBefore = readFileSync(continuityPath);
+      const flipped = Buffer.from(continuityBefore);
+      flipped[flipped.length - 1] = flipped[flipped.length - 1] === 0x7d ? 0x7c : 0x7d;
+      writeFileSync(continuityPath, flipped);
+      assert.throws(() => maintenance.issueStoppedDuoPublicationRecovery());
+      writeFileSync(continuityPath, continuityBefore);
+      assert.equal(readFileSync(stagePath).equals(stageBefore), true);
+      assert.equal(readFileSync(f.documentPath).equals(canonicalBefore), true);
+      const claim = maintenance.issueStoppedDuoPublicationRecovery();
+      const recovered = maintenance.completeStoppedDuoPublicationRecovery(claim);
+      assert.throws(() => maintenance.completeStoppedDuoPublicationRecovery(claim), /duo-publication-recovery-unissued/u);
+      assert.throws(() => maintenance.recoverInterruptedDuoPublication(), /duo-publication-recovery-absent/u);
+      assert.equal(existsSync(intentPath), false);
+      assert.equal(existsSync(stagePath), false);
+      assert.equal(recovered.revision > 0, true);
+    } finally { maintenance.release(); }
+    const machine = RuntimeAdmission.acquireMachine(f.workspace, "shared");
+    const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(profileId));
+    try {
+      const reopened = createDuoCredentialStore(admission, machine, f.clock);
+      const burned = reopened.read().credentials[0];
+      assert.ok(burned);
+      assert.equal(burned.highWater >= Math.floor(f.clock.nowMs() / 1000), true);
+      const next = reopened.reserve(f.input.credentialId);
+      assert.equal(next.count, burned.highWater + 1);
+      assert.throws(() => reopened.recoverInterruptedPublication(), /duo-transaction-unissued/u);
+    } finally { admission.release(); machine.release(); }
+    releaseWorkspace = true;
+  } catch (error) { primary = error; }
+  if (!proved && child !== undefined && child.exitCode === null && child.signalCode === null) {
+    try {
+      child.send("close");
+      const closed = await Promise.race([once(child, "exit"), new Promise<never>((_resolve, reject) => { setTimeout(() => reject(new Error("duo-child-close-unproved")), 10_000); })]);
+      const [code] = z.tuple([z.number().int().nullable(), z.string().nullable()]).parse(closed);
+      if (code === null) throw new Error("duo-child-close-unproved");
+    } catch (error) { cleanup = error; }
   }
+  if (releaseWorkspace && cleanup === undefined) f.close();
+  if (primary !== undefined && cleanup !== undefined) throw new AggregateError([primary, cleanup], "Duo interrupt child cleanup unproved");
+  if (cleanup !== undefined) throw cleanup;
+  if (primary !== undefined) throw primary;
 }, 30_000);
 
-it("refuses Duo erasure while a same-digest copy exists and then erases through the purpose document", () => {
+it("refuses unmanaged Duo copies, then backup erase and restore keep burned counters and do not revive erased key material", () => {
   const f = setup();
   try {
     f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
+    const first = f.store.reserve(f.input.credentialId);
+    const backedUp = f.store.backup();
+    const backupDirectory = join(f.machine.stateRoot, "machine", "duo-purpose-backups", f.admission.profileBinding.profileId);
+    const backupPath = join(backupDirectory, `${backedUp.revision}.json`);
+    assert.equal(readFileSync(backupPath).equals(readFileSync(f.documentPath)), true);
+    assert.equal(statSync(backupPath).mode & 0o777, 0o600);
+    const second = f.store.reserve(f.input.credentialId);
+    assert.equal(second.count, first.count + 1);
+    assert.throws(() => f.store.restore(backupPath), /duo-purpose-restore-lowers-burned-count/u);
+    assert.equal(f.store.read().credentials[0]?.highWater, second.count);
+    assert.throws(() => f.store.restore(f.path), /duo-purpose-restore-unmanaged/u);
+    const enginePath = join(f.stateRoot, "credentials", "duo-webauthn.json");
+    const engineBefore = existsSync(enginePath) ? readFileSync(enginePath) : Buffer.from("{\"activeEngine\":true}\n");
+    if (!existsSync(enginePath)) writeFileSync(enginePath, engineBefore, { mode: 0o600 });
     const before = readFileSync(f.documentPath);
-    const copy = join(f.stateRoot, "credentials", "duo-purpose-copy.json");
-    writeFileSync(copy, before, { mode: 0o600 });
+    const copies = [join(f.stateRoot, "credentials", "duo-purpose-copy.json"), join(f.stateRoot, "artifacts", "nested", "duo-purpose-copy.json"), join(f.stateRoot, "backups", "authority", "duo-purpose-copy.bin")];
+    for (const copy of copies) { mkdirSync(join(copy, ".."), { recursive: true, mode: 0o700 }); writeFileSync(copy, before, { mode: 0o600 }); }
     assert.throws(() => f.store.erase(), /duo-purpose-copy-present/u);
     assert.equal(readFileSync(f.documentPath).equals(before), true);
-    unlinkSync(copy);
-    const revision = f.store.erase().revision;
+    for (const copy of copies) unlinkSync(copy);
+    const link = join(f.stateRoot, "credentials", "duo-purpose-link.json");
+    symlinkSync(f.documentPath, link);
+    assert.throws(() => f.store.erase(), /duo-document-membership-mismatch/u);
+    unlinkSync(link);
+    const hard = join(f.stateRoot, "artifacts", "duo-purpose-hard.json");
+    linkSync(f.documentPath, hard);
+    assert.throws(() => f.store.erase(), /duo-document-membership-mismatch/u);
+    unlinkSync(hard);
+    assert.equal(readFileSync(enginePath).equals(engineBefore), true);
+    const currentBackup = f.store.backup();
+    const currentBackupPath = join(backupDirectory, `${currentBackup.revision}.json`);
+    const erased = f.store.erase();
+    assert.equal(erased.revision > currentBackup.revision, true);
     assert.deepEqual(f.store.read().credentials, []);
-    assert.equal(revision > 1, true);
+    assert.equal(readFileSync(enginePath).equals(engineBefore), true);
+    assert.equal(readFileSync(currentBackupPath).equals(before), true);
+    assert.equal(readFileSync(f.documentPath).equals(before), false);
+    assert.throws(() => f.store.restore(currentBackupPath), /duo-purpose-restore-revives-erased-key/u);
+    assert.throws(() => f.store.restore(backupPath), /duo-purpose-restore-revives-erased-key/u);
+    const reopened = createDuoCredentialStore(f.admission, f.machine, f.clock);
+    assert.deepEqual(reopened.read().credentials, []);
+    assert.throws(() => reopened.reserve(f.input.credentialId), /duo-ready-credential-required/u);
+    assert.equal(readFileSync(enginePath).equals(engineBefore), true);
   } finally { f.close(); }
 });
 
 const hostFacts = { primaryDisplay: null };
 const upgradeClock = () => manualClock(new Date("2026-01-15T00:00:00.000Z"));
 
-it("holds machine-control marker versions outside the finite conversion", async () => {
-  const fixture = createBoundProfileFixture();
-  const markerPath = join(fixture.machine.stateRoot, "machine", "profile-registry-version.json");
-  const before = readFileSync(fixture.path);
-  writeFileSync(markerPath, JSON.stringify({ schemaVersion: 1 }));
+it("admits only the finite stopped machine-control pair through maintenance admission", async () => {
+  const unsupported = createBoundProfileFixture();
+  const unsupportedPaths = downgradeStoppedControl(unsupported, 1);
   try {
-    await assert.rejects(upgradeStoppedMachineControl(fixture.machine, { plan: true, hostFacts }, upgradeClock()), /profile-control-upgrade-pending-conversion-unsupported/u);
-    assert.equal(JSON.parse(readFileSync(markerPath, "utf8")).schemaVersion, 1);
-    assert.equal(readFileSync(fixture.path).equals(before), true);
-  } finally { fixture.close(); }
+    assert.throws(() => RuntimeAdmission.acquireMachine(unsupported.workspace, "exclusive"));
+    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(unsupported.workspace);
+    try {
+      await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock()), /profile-control-upgrade-pending-conversion-unsupported/u);
+      assertUnchanged(unsupportedPaths);
+    } finally { maintenance.release(); }
+  } finally { unsupported.close(); }
+  const missingKey = createBoundProfileFixture();
+  const missingPaths = downgradeStoppedControl(missingKey, 2, true);
+  try {
+    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(missingKey.workspace);
+    try {
+      await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock()), /profile-control-upgrade-credential-conversion-required/u);
+      assertUnchanged(missingPaths);
+    } finally { maintenance.release(); }
+  } finally { missingKey.close(); }
+  const live = createBoundProfileFixture();
+  const livePaths = downgradeStoppedControl(live, 2);
+  const lock = acquireRuntimeProcessLock({ processLockRoot: livePaths.processLockRoot, name: "server", pid: process.pid });
+  try {
+    assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(live.workspace), /profile-control-upgrade-runtime-active/u);
+    assertUnchanged(livePaths);
+  } finally { lock.release(); live.close(); }
 });
 
-it("upgrades stopped machine control from the held exclusive admission with a control backup and exact readback", async () => {
+it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and rolls back a mutated stage", async () => {
   const fixture = createBoundProfileFixture();
-  const controlPath = join(fixture.workspace, ".tracker/control", "profile-registry.json");
-  const markerPath = join(fixture.machine.stateRoot, "machine", "profile-registry-version.json");
-  const databaseBefore = readFileSync(fixture.path);
-  const current = JSON.parse(readFileSync(controlPath, "utf8")) as { schemaVersion: number; duo?: unknown };
-  assert.equal(current.schemaVersion, 2);
-  const { duo: _duo, ...prior } = current;
-  writeFileSync(controlPath, JSON.stringify({ ...prior, schemaVersion: 1 }));
-  writeFileSync(markerPath, JSON.stringify({ schemaVersion: 2 }));
-  const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
-  const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
-  const opened = fixture.machine.beginStoppedMachineControlUpgrade(restore);
+  const paths = downgradeStoppedControl(fixture, 2);
+  assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "exclusive"));
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
   try {
-    assert.throws(() => opened.profileInventory(randomUUID()), /profile-control-upgrade-profile-unavailable/u);
-  } finally { opened.release(); restore.release(); }
-  try {
-    const planned = await upgradeStoppedMachineControl(fixture.machine, { plan: true, hostFacts }, upgradeClock());
+    const planned = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock());
     assert.equal(planned.state, "planned");
-    assert.equal(JSON.parse(readFileSync(markerPath, "utf8")).schemaVersion, 2);
-    const upgraded = await upgradeStoppedMachineControl(fixture.machine, { plan: false, hostFacts }, upgradeClock());
-    assert.equal(upgraded.state, "upgraded");
-    assert.equal(JSON.parse(readFileSync(markerPath, "utf8")).schemaVersion, 3);
-    assert.equal(JSON.parse(readFileSync(controlPath, "utf8")).schemaVersion, 2);
-    assert.equal(readFileSync(fixture.path).equals(databaseBefore), true);
+    assertUnchanged(paths);
+    execFileSync("/usr/bin/chflags", ["uchg", paths.controlPath]);
+    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock()), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
+    execFileSync("/usr/bin/chflags", ["nouchg", paths.controlPath]);
+    assert.equal(readFileSync(paths.controlPath).equals(paths.controlBytes), true);
+    assert.equal(readFileSync(paths.markerPath).equals(paths.markerBytes), true);
     const backupDirectory = join(fixture.workspace, ".tracker/control", "profile-control-upgrades");
-    const names = readdirSync(backupDirectory);
-    assert.ok(names.length > 0);
-    const databaseDigest = createHash("sha256").update(databaseBefore).digest("hex");
-    for (const name of names) assert.notEqual(createHash("sha256").update(readFileSync(join(backupDirectory, name))).digest("hex"), databaseDigest);
-    const currentAgain = await upgradeStoppedMachineControl(fixture.machine, { plan: false, hostFacts }, upgradeClock());
-    assert.equal(currentAgain.state, "current");
-  } finally { fixture.close(); }
+    const stageName = readdirSync(backupDirectory).find((name) => name.endsWith(".control.stage"));
+    assert.equal(typeof stageName, "string");
+    const stagePath = join(backupDirectory, stageName ?? "");
+    const stageBytes = readFileSync(stagePath);
+    const mutated = Buffer.from(stageBytes);
+    mutated[0] = mutated[0] === 0x7b ? 0x5b : 0x7b;
+    writeFileSync(stagePath, mutated);
+    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock()), /profile-control-upgrade-recovery-required/u);
+    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock()), /profile-control-upgrade-publication-uncertain/u);
+    assert.equal(readFileSync(paths.controlPath).equals(paths.controlBytes), true);
+    writeFileSync(stagePath, stageBytes);
+    const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock());
+    assert.equal(upgraded.state, "upgraded");
+    const names = readdirSync(backupDirectory).sort();
+    const operationNames = names.filter((name) => name.endsWith(".control.before.json"));
+    assert.equal(operationNames.length, 1);
+    const operationId = operationNames[0]?.slice(0, -".control.before.json".length);
+    assert.deepEqual(names, [`${operationId}.control.before.json`, `${operationId}.marker.before.json`, `${operationId}.receipt.json`].sort());
+    const controlBackup = readFileSync(join(backupDirectory, `${operationId}.control.before.json`));
+    const markerBackup = readFileSync(join(backupDirectory, `${operationId}.marker.before.json`));
+    assert.equal(controlBackup.equals(paths.controlBytes), true);
+    assert.equal(markerBackup.equals(paths.markerBytes), true);
+    assert.equal(statSync(join(backupDirectory, `${operationId}.control.before.json`)).mode & 0o777, 0o600);
+    assert.equal(statSync(join(backupDirectory, `${operationId}.marker.before.json`)).mode & 0o777, 0o600);
+    assert.equal(createHash("sha256").update(controlBackup).digest("hex"), createHash("sha256").update(paths.controlBytes).digest("hex"));
+    assert.equal(JSON.parse(readFileSync(paths.markerPath, "utf8")).schemaVersion, 3);
+    assert.equal(JSON.parse(readFileSync(paths.controlPath, "utf8")).schemaVersion, 2);
+    assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
+    const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock());
+    assert.equal(current.state, "current");
+    assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
+  } finally { maintenance.release(); fixture.close(); }
+});
+
+it("recovers a machine-control publication stopped between the control and marker renames", async () => {
+  const fixture = createBoundProfileFixture();
+  const paths = downgradeStoppedControl(fixture, 2);
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
+  try {
+    execFileSync("/usr/bin/chflags", ["uchg", paths.markerPath]);
+    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock()), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
+    execFileSync("/usr/bin/chflags", ["nouchg", paths.markerPath]);
+    assert.equal(JSON.parse(readFileSync(paths.controlPath, "utf8")).schemaVersion, 2);
+    assert.equal(readFileSync(paths.markerPath).equals(paths.markerBytes), true);
+    const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock());
+    assert.equal(upgraded.state, "upgraded");
+    assert.equal(JSON.parse(readFileSync(paths.markerPath, "utf8")).schemaVersion, 3);
+    const backupDirectory = join(fixture.workspace, ".tracker/control", "profile-control-upgrades");
+    const controlName = readdirSync(backupDirectory).find((name) => name.endsWith(".control.before.json"));
+    assert.equal(typeof controlName, "string");
+    assert.equal(readFileSync(join(backupDirectory, controlName ?? "")).equals(paths.controlBytes), true);
+    assert.equal(readFileSync(join(backupDirectory, (controlName ?? "").replace(".control.before.json", ".marker.before.json"))).equals(paths.markerBytes), true);
+    assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
+  } finally { maintenance.release(); fixture.close(); }
+});
+
+it("keeps the restore admission when stopped-control snapshot disposal is unproved", async () => {
+  const fixture = createBoundProfileFixture();
+  const paths = downgradeStoppedControl(fixture, 2);
+  const before = snapshotNames();
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
+  const restore = maintenance.maintenanceRestore();
+  assert.ok(restore);
+  const control = maintenance.beginStoppedMachineControlUpgrade(restore);
+  const profileId = control.registeredProfileIds()[0];
+  assert.equal(typeof profileId, "string");
+  control.profileInventory(profileId ?? "");
+  const created = [...snapshotNames()].filter((name) => !before.has(name));
+  assert.equal(created.length, 1);
+  const snapshotFile = join(tmpdir(), created[0] ?? "", "authority.sqlite");
+  execFileSync("/usr/bin/chflags", ["uchg", snapshotFile]);
+  assert.throws(() => releaseStoppedMachineControlUpgrade(control, restore, true), (error: unknown) => error instanceof AuthoritySourceClosureUnprovedError);
+  assert.equal(existsSync(join(paths.processLockRoot, "restore-admission.lock.json")), true);
+  assert.throws(() => acquireRuntimeRestoreAdmission({ processLockRoot: paths.processLockRoot, pid: process.pid }), /held by live pid/u);
+  assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "shared"), /installation lease busy/u);
+  assert.throws(() => releaseStoppedMachineControlUpgrade(control, restore, true), (error: unknown) => error instanceof AuthoritySourceClosureUnprovedError);
+  assert.equal(existsSync(snapshotFile), true);
+  assert.equal(readFileSync(paths.controlPath).equals(paths.controlBytes), true);
+  assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
 });
