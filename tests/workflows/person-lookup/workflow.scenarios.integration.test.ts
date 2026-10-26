@@ -1,6 +1,4 @@
-import { join } from "node:path";
 import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createDiagnosticCaptureService } from "../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createRunBrowserScreenshotCapture } from "../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
 import { WorkerSessionManager } from "../../../src/backend/runtime/workers/worker-sessions.js";
@@ -296,8 +294,8 @@ describe("approved Person Lookup scenarios", () => {
   });
   for (const failed of [false, true]) it(`persists actual ${failed ? "failure" : "success"} lease screenshot artifacts`, async () => {
     const { harness, queued } = makeCase({ id: "capture", state: failed ? "failed" : "active", ucpathFailure: failed });
-    const { database, clock, stateRoot } = harness.authority;
-    const writer = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(stateRoot, "capture"), join(stateRoot, "capture/artifacts")) });
+    const { database, clock, profile } = harness.authority;
+    const writer = createContentAddressedArtifactWriter({ admission: profile.admission });
     await writer.ready;
     const service = createDiagnosticCaptureService({ artifacts: writer, authority: database.authority, clock, ids: sequentialIdFactory("d") });
     const factory = { ...harness.sessions.factory, async open(input: Parameters<typeof harness.sessions.factory.open>[0]) {

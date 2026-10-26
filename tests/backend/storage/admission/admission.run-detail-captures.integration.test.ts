@@ -1,4 +1,5 @@
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -53,12 +54,11 @@ function refOf(attachment: typeof ATTACHMENT): ArtifactRef {
 }
 
 function writeArtifactEnvelope(
-  workspaceRoot: string,
+  artifactRoot: string,
   ref: ArtifactRef,
   bytes: Uint8Array,
   storedRef: ArtifactRef = ref,
 ): void {
-  const artifactRoot = join(workspaceRoot, "artifacts");
   mkdirSync(artifactRoot, { recursive: true });
   writeFileSync(join(artifactRoot, `${ref.sha256}.artifact`), JSON.stringify({
     ref: storedRef,
@@ -87,11 +87,16 @@ function harness() {
   const world = makeWorld();
   cleanups.push(() => world.dispose());
   queuedEventOf(world, { seed: 1, enqueuedAt: NOW });
+  const profile = createBoundProfileFixture();
+  cleanups.push(() => profile.close());
   const database = AuthorityDatabase.open({
-    path: join(world.stateRoot, "capture-authority.db"), busyTimeoutMs: 1000,
+    path: profile.path, busyTimeoutMs: 1000,
     migrationOwner: "run-detail-captures-test",
   }, world.clock);
-  cleanups.push(() => database.close());
+  cleanups.push(() => {
+    releaseSeededWriteOwners(database, world.clock.now().toISOString());
+    database.close();
+  });
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const run = world.authority.getRun(uuidOf(1));
   assert.ok(run);
@@ -99,18 +104,18 @@ function harness() {
     schemaHash: deriveSchemaHash(personLookupDescriptor.canonicalInput, "output") } }, envelope: {
     ...run.envelope, descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
   } });
-  testWorkerPorts(database, world.clock, { path: join(world.stateRoot, "capture-authority.db"), descriptor: personLookupDescriptor, poolIndex: 1 });
-  writeArtifactEnvelope(world.stateRoot, refOf(ATTACHMENT), BYTES);
+  testWorkerPorts(database, world.clock, { path: profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
+  writeArtifactEnvelope(profile.admission.artifactRoot, refOf(ATTACHMENT), BYTES);
   const sourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
-    admission: RuntimeAdmission.syntheticRoots(world.stateRoot, join(world.stateRoot, "artifacts")),
+    admission: profile.admission,
     observeIo: (kind, bytes) => {
       if (kind === "source-read") sourceReads.push(bytes);
     },
   });
   const captures = { authority: database.authority.diagnosticBundles, artifactReader };
   const deps: RunDetailQueryDeps = { runReader: sqliteRunReader(database, world.clock),
-    stateRoot: world.stateRoot, timeline: database.authority.timelineEvents, projection: world.projection,
+    stateRoot: profile.stateRoot, timeline: database.authority.timelineEvents, projection: world.projection,
     authority: { ...world.authority, getRun: (id) => database.authority.runs.get(id) },
     descriptors: { resolve: () => undefined }, captures,
   };
@@ -122,9 +127,9 @@ function harness() {
     sourceReads,
     world,
     removeArtifact: (ref: ArtifactRef) =>
-      rmSync(join(world.stateRoot, "artifacts", `${ref.sha256}.artifact`)),
+      rmSync(join(profile.admission.artifactRoot, `${ref.sha256}.artifact`)),
     writeArtifact: (ref: ArtifactRef, bytes: Uint8Array, storedRef: ArtifactRef = ref) =>
-      writeArtifactEnvelope(world.stateRoot, ref, bytes, storedRef),
+      writeArtifactEnvelope(profile.admission.artifactRoot, ref, bytes, storedRef),
   };
 }
 
