@@ -245,6 +245,10 @@ export const ERROR_CATALOG = Object.freeze({
     "This failure code is not in the current catalog. Review the recorded local evidence.",
     EmptyParametersSchema,
   ),
+  INTERNAL_FAILURE: catalogEntry(
+    "Relay could not complete this request. Review the recorded local evidence before trying again.",
+    EmptyParametersSchema,
+  ),
   BOUNDARY_VALIDATION_FAILED: catalogEntry(
     "The supplied data does not match the expected contract.",
     z.strictObject({ source: BoundarySourceSchema }),

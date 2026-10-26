@@ -10,6 +10,14 @@ import {
 import { AssistantRefusalCodeSchema } from "../../../src/models/profiles/assistant-permissions.js";
 
 describe("error catalog", () => {
+  it("maps the HTTP internal failure code without exposing its native cause", () => {
+    const failure = { code: "INTERNAL_FAILURE", parameters: {}, summary: "private native path" };
+    const resolved = resolveErrorCatalogFailure(failure, "http-response");
+    assert.equal(resolved.state, "resolved");
+    assert.equal(resolved.code, "INTERNAL_FAILURE");
+    assert.equal(resolved.text, "Relay could not complete this request. Review the recorded local evidence before trying again.");
+    assert.equal(resolved.text.includes(failure.summary), false);
+  });
   it("registers Person Lookup and shared sign-in codes with fixed sentence-case text", () => {
     const expected = {
       PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS: "Match requires a date of birth or SSN.",
