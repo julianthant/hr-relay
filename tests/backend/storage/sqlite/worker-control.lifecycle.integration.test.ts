@@ -32,6 +32,7 @@ import { admitWorkerReset, admitWorkerLifecycle } from "../../../../src/backend/
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
+import { boundFixtureProcessLock } from "../../../support/helpers/synthetic-database-admission.js";
 
 const world = createWorkerDirectiveTestWorld();
 afterEach(world.cleanup);
@@ -71,7 +72,7 @@ function stopped(h: ReturnType<typeof fixture>, workerId: string, reason: "crash
   h.database.authority.workerLeases.reportLifecycle({ workerId, leaseGeneration: lease.leaseGeneration,
     lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt, stoppedAt: h.authority.clock.now().toISOString(), reason }, now: h.authority.clock.now().toISOString() });
 }
-async function owned(h: ReturnType<typeof fixture>, workerId: string) {
+async function owned(h: ReturnType<typeof fixture>, workerId: string, executeInProcess = false) {
   const slot = h.database.authority.workerSlots.get(workerId);
   if (slot === undefined) throw new Error("missing slot");
   const member = workerPoolMember(slot), children: FakeWorkerChild[] = [];
@@ -83,10 +84,13 @@ async function owned(h: ReturnType<typeof fixture>, workerId: string) {
     launch: { command: "/node", environment: {}, prefixArgs: [], cwd: "/test-owned-worker" },
     clock: h.authority.clock, scheduler: h.scheduler, birth: { pollMs: 50, timeoutMs: 1000 },
     spawn: () => {
-      const child = new FakeWorkerChild(nextPid++); children.push(child);
+      const child = new FakeWorkerChild(executeInProcess ? process.pid : nextPid++); children.push(child);
       const command = h.database.authority.workerControls.lifecycleForWorker(workerId);
-      const started = h.database.authority.workerLeases.start({ workerId, workflow: member.workflowId, commandId: command?.commandId,
-        browserSystems: command?.lifecycle?.operation.kind === "retry" ? command.lifecycle.operation.systems : ["ucpath", "crm"], processId: child.pid, requestedBy: "local-operator", now: h.authority.clock.now().toISOString() });
+      const request = { workerId, workflow: member.workflowId, commandId: command?.commandId,
+        browserSystems: command?.lifecycle?.operation.kind === "retry" ? command.lifecycle.operation.systems : ["ucpath", "crm"], processId: child.pid, requestedBy: "local-operator" as const, now: h.authority.clock.now().toISOString() };
+      const started = executeInProcess
+        ? h.database.startOwnedWorker(request, boundFixtureProcessLock(h.database, h.authority.path, workerId))
+        : h.database.authority.workerLeases.start(request);
       if (started.state !== "started") throw new Error("controlled child birth refused");
       return child;
     },
@@ -124,8 +128,8 @@ async function owned(h: ReturnType<typeof fixture>, workerId: string) {
     lifecycle: { state: "idle", startedAt: lease.lifecycle.startedAt, heartbeatAt: h.authority.clock.now().toISOString() }, now: h.authority.clock.now().toISOString() });
   return { supervisor, children, removeWorker, retryWorker, gates, faults };
 }
-async function retryStarting(h: ReturnType<typeof fixture>, mode: "initialize" | "browserless" = "initialize") {
-  const owner = await owned(h, h.deps.workerId);
+async function retryStarting(h: ReturnType<typeof fixture>, mode: "initialize" | "browserless" = "initialize", executeInProcess = false) {
+  const owner = await owned(h, h.deps.workerId, executeInProcess);
   stopped(h, h.deps.workerId); owner.children.at(-1)?.emitExit(1, null);
   const record = admit(h, h.deps.workerId, "retry-worker", mode);
   if (record.lifecycle === undefined || record.lifecycle.operation.kind !== "retry") throw new Error("missing retry");
@@ -226,7 +230,7 @@ describe("exact lifecycle reservation", () => {
     expect(h.database.authority.workerLeases.get(h.deps.workerId)?.lifecycle.state).toBe("starting");
   });
   it("releases initialization binding before warm browser control and a genuine next run", async () => {
-    const h = fixture(), f = await retryStarting(h);
+    const h = fixture(), f = await retryStarting(h, "initialize", true);
     if (f.binding.operation.kind !== "retry") throw new Error("missing retry");
     const configFingerprint = f.binding.operation.configFingerprint;
     h.database.authority.runs.enqueue(personLookupQueuedRun());
@@ -249,7 +253,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("Stop aborts actual Retry authentication and durably releases readiness before the next real claim", async () => {
-    const h = fixture(), f = await retryStarting(h);
+    const h = fixture(), f = await retryStarting(h, "initialize", true);
     if (f.binding.operation.kind !== "retry") throw new Error("missing retry");
     const configFingerprint = f.binding.operation.configFingerprint;
     let entered!: () => void;

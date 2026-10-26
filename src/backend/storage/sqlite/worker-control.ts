@@ -353,7 +353,8 @@ export function admitWorkerReset(repositories: AuthorityRepositories, input: unk
     if (seen.has(run.envelope.runId)) throw new Error("worker-reset-cascade-cycle");
     seen.add(run.envelope.runId);
     for (const child of repositories.runs.listChildren(run.envelope.runId)) {
-      const edges = repositories.dependencies.listByParentRun(run.envelope.runId).filter(edge => repositories.dependencies.childHistory(edge.dependencyId).includes(child.envelope.runId));
+      const edges = repositories.dependencies.listByParentRun(run.envelope.runId).filter(edge => edge.childRunId === child.envelope.runId
+        || repositories.dependencies.childHistory(edge.dependencyId).includes(child.envelope.runId));
       if (edges.length !== 1) throw new Error("worker-reset-cascade-authority-unavailable");
       const edge = edges[0];
       if (edge === undefined) throw new Error("worker-reset-cascade-authority-unavailable");

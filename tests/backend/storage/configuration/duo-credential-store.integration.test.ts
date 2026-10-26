@@ -723,7 +723,7 @@ it("admits only the finite stopped machine-control pair through maintenance admi
     assert.throws(() => RuntimeAdmission.acquireMachine(unsupported.workspace, "exclusive"));
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(unsupported.workspace);
     try {
-      await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock()), /profile-control-upgrade-pending-conversion-unsupported/u);
+      await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /profile-control-upgrade-pending-conversion-unsupported/u);
       assertUnchanged(unsupportedPaths);
     } finally { maintenance.release(); }
   } finally { unsupported.close(); }
@@ -732,7 +732,7 @@ it("admits only the finite stopped machine-control pair through maintenance admi
   try {
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(missingKey.workspace);
     try {
-      await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock()), /profile-credential-key-unowned/);
+      await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /profile-credential-key-unowned/);
       assertUnchanged(missingPaths);
     } finally { maintenance.release(); }
   } finally { missingKey.close(); }
@@ -751,11 +751,11 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
   assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "exclusive"));
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
   try {
-    const planned = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock());
+    const planned = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(planned.state, "planned");
     assertUnchanged(paths);
     execFileSync("/usr/bin/chflags", ["uchg", paths.controlPath]);
-    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock()), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
+    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
     execFileSync("/usr/bin/chflags", ["nouchg", paths.controlPath]);
     assert.equal(readFileSync(paths.controlPath).equals(paths.controlBytes), true);
     assert.equal(readFileSync(paths.markerPath).equals(paths.markerBytes), true);
@@ -767,11 +767,11 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     const mutated = Buffer.from(stageBytes);
     mutated[0] = mutated[0] === 0x7b ? 0x5b : 0x7b;
     writeFileSync(stagePath, mutated);
-    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock()), /profile-control-upgrade-recovery-required/u);
-    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock()), /profile-control-upgrade-publication-uncertain/u);
+    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /profile-control-upgrade-recovery-required/u);
+    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /profile-control-upgrade-publication-uncertain/u);
     assert.equal(readFileSync(paths.controlPath).equals(paths.controlBytes), true);
     writeFileSync(stagePath, stageBytes);
-    const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock());
+    const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(upgraded.state, "upgraded");
     const names = readdirSync(backupDirectory).sort();
     const operationNames = names.filter((name) => name.endsWith(".control.before.json"));
@@ -788,7 +788,7 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 3);
     assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.controlPath, "utf8"))).schemaVersion, 2);
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
-    const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock());
+    const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(current.state, "current");
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
   } finally { maintenance.release(); fixture.close(); }
@@ -800,11 +800,11 @@ it("recovers a machine-control publication stopped between the control and marke
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
   try {
     execFileSync("/usr/bin/chflags", ["uchg", paths.markerPath]);
-    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock()), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
+    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
     execFileSync("/usr/bin/chflags", ["nouchg", paths.markerPath]);
     assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.controlPath, "utf8"))).schemaVersion, 2);
     assert.equal(readFileSync(paths.markerPath).equals(paths.markerBytes), true);
-    const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock());
+    const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(upgraded.state, "upgraded");
     assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 3);
     const backupDirectory = join(fixture.workspace, ".tracker/control", "profile-control-upgrades");

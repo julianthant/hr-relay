@@ -1,3 +1,4 @@
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { RunLifecycleSchema } from "../../../src/models/run/record.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { composeCommandRequest } from "../../../src/dashboard/app/commands/command-dispatch.js";
@@ -65,6 +66,10 @@ const MANIFEST = readPendingWireBindings();
 
 async function scannedAndSavedReferences() {
   return clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root)));
+}
+
+function servedDashboardRoutes() {
+  return servedRoutes(`${dashboardRouteSource()}\n${readFileSync(join(REPO_ROOT, "src/backend/app/composition/dashboard/compose.ts"), "utf8")}`);
 }
 
 function bindingsFor(prefix: string): readonly PendingWireBinding[] {
@@ -162,7 +167,8 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
     for (const section of availableSections(row, record, trust)) reachable.add(section);
   }
 
-  const database = AuthorityDatabase.open({ path: join(world.stateRoot, "wire-capture-authority.db"),
+  const profile = createBoundProfileFixture();
+  const database = AuthorityDatabase.open({ path: profile.path,
     busyTimeoutMs: 1000, migrationOwner: "wire-capture-census" }, world.clock);
   try {
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -197,7 +203,7 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
     const detail = await readRunDetail(deps, uuidOf(1));
     assert.deepEqual(detail.captures, { state: "available", artifactCount: 1 }, "the async census did not verify its canonical capture");
     for (const section of detail.availableSections) reachable.add(section);
-  } finally { database.close(); }
+  } finally { database.close(); profile.close(); }
   return { reachable, statesSwept };
 }
 
@@ -262,6 +268,7 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "notification-unsnooze-all": "complete actor inbox target, not a run row",
 
   "apply-explorer-edit": "The reviewed Explorer draft targets a workflow override revision, not a run row",
+  "set-assistant-model-preference": "the assistant surface owns the model choice; no run row can express it",
 };
 
 /* ── the tests ───────────────────────────────────────────────────────────── */
@@ -379,7 +386,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
   });
 
   it("resolves every client-called path to a served route, and declares every uncalled route", async () => {
-    const routes = servedRoutes(dashboardRouteSource());
+    const routes = servedDashboardRoutes();
     assert.ok(routes.length > 10, `route extraction from ${API_ROUTES_FILE} found only ${String(routes.length)}`);
     const references = await scannedAndSavedReferences();
     assert.ok(references.length > 10, "client path extraction found almost nothing; the scan is broken");
@@ -420,7 +427,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     assert.ok(!projected.has("force-done"));
 
 
-    const routes = servedRoutes(dashboardRouteSource());
+    const routes = servedDashboardRoutes();
     assert.ok(!routes.some(({ path }) => routeMatches(path, "/api/v1/invented")));
     assert.ok(routeMatches("/api/v1/runs/:runId", normalizeClientPath("/api/v1/runs/${runId}")));
     assert.ok(!routeMatches("/api/v1/runs/:runId", "/api/v1/runs/abc/logs"));

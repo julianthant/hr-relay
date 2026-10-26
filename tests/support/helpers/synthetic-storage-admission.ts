@@ -1,4 +1,5 @@
 import { createBoundProfileCredentialStore, findProfileFixtureAdmission } from "./admission-fixture.js";
+import { findProfileFixtureInWorkspace } from "./synthetic-database-admission.js";
 import { withAuthorityDatabaseReadOnly as realWithAuthorityDatabaseReadOnly } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { inspectAuthorityBackupReadOnly as realInspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly as realOpenAuthorityBackupSourceReadOnly } from "../../../src/backend/storage/sqlite/backup-inspection.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -86,13 +87,18 @@ export async function upgradeStorage(input: Parameters<typeof realUpgradeStorage
 }
 
 export async function doctorAuthorityStorage(options: Parameters<typeof realDoctorAuthorityStorage>[1], clock?: Parameters<typeof realDoctorAuthorityStorage>[2]) {
-  return realDoctorAuthorityStorage(RuntimeAdmission.syntheticFixture((options as {authorityPath:string}).authorityPath),options,clock);
+  const authorityPath = resolve((options as { authorityPath: string }).authorityPath);
+  const admission = findProfileFixtureAdmission(dirname(authorityPath)) ?? RuntimeAdmission.syntheticFixture(authorityPath);
+  return realDoctorAuthorityStorage(admission, options, clock);
 }
 
 export const AuthorityBootStore = new Proxy(RealAuthorityBootStore, {
   get(target, property, receiver) {
-    if (property === "open") return (input: unknown, clock?: Parameters<typeof RealAuthorityBootStore.open>[2]) =>
-      target.open(RuntimeAdmission.syntheticFixture((input as {path:string}).path),input,clock);
+    if (property === "open") return (input: unknown, clock?: Parameters<typeof RealAuthorityBootStore.open>[2]) => {
+      const path = resolve((input as { path: string }).path);
+      const admission = findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path);
+      return target.open(admission, input, clock);
+    };
     return Reflect.get(target,property,receiver) as unknown;
   },
 }) as unknown as Omit<typeof RealAuthorityBootStore,"open"> & {open(input:unknown,clock?:Parameters<typeof RealAuthorityBootStore.open>[2]):RealAuthorityBootStore};
@@ -108,7 +114,8 @@ export class AuthorityHealthPreflightRunner extends RealAuthorityHealthPreflight
 export async function composeStorageCommand(isolation: Parameters<typeof realComposeStorageCommand>[0],
   args: Parameters<typeof realComposeStorageCommand>[1], clock?: Parameters<typeof realComposeStorageCommand>[2],
   repoRoot: string = process.cwd()) {
-  return realComposeStorageCommand(isolation,args,clock,repoRoot,syntheticStateRoot(resolve(repoRoot,isolation.stateRoot)));
+  const profile = findProfileFixtureInWorkspace(repoRoot);
+  return realComposeStorageCommand(isolation,args,clock,repoRoot,profile ?? syntheticStateRoot(resolve(repoRoot,isolation.stateRoot)));
 }
 
 export function createCredentialStore(options: Omit<Parameters<typeof realCreateCredentialStore>[0],"admission">) {

@@ -1,18 +1,11 @@
 import { readPrivateFile } from "../storage/configuration/credential-safe-file.js";
+import type { CredentialInventory } from "../storage/configuration/credential-safe-file.js";
 import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { countUcsdLoginRows } from "../storage/sqlite/profile-local-databases.js";
+import { countProfileCredentialLoginRows } from "../storage/sqlite/profile-local-databases.js";
+export { countProfileCredentialLoginRows };
 
-export interface CredentialInventory {
-  readonly entriesAbsent: boolean;
-  readonly protectedPlaintext: boolean;
-  readonly stagePlaintext: boolean;
-  readonly backupPlaintext: readonly string[];
-  readonly unknownFormats: readonly string[];
-  readonly inventoryMissing: boolean;
-  readonly loginDataUcSdRows: number | "unreadable" | "absent";
-  readonly logoutComplete: boolean;
-}
+export type { CredentialInventory };
 
 type CopyClass = "absent" | "clean" | "holds" | "unknown" | "plaintext" | "unreadable";
 
@@ -77,20 +70,6 @@ function classifyPath(path: string, inspectEncrypted?: (path: string) => Readonl
     return classifyBytes(bytes);
   }
   catch { return "unreadable"; }
-}
-
-export function countProfileCredentialLoginRows(paths: readonly string[]): number | "unreadable" | "absent" {
-  if (paths.length === 0) return "absent";
-  let rows = 0;
-  let sawFile = false;
-  for (const path of paths) {
-    const count = countUcsdLoginRows(path);
-    if (count === "unreadable") return "unreadable";
-    if (count === "absent") continue;
-    sawFile = true;
-    rows += count;
-  }
-  return sawFile ? rows : "absent";
 }
 
 function containsCaptured(bytes: Uint8Array, secrets: readonly Uint8Array[]): boolean {

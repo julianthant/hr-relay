@@ -2,14 +2,12 @@ import { insertImportedArtifact } from "../../../../src/backend/storage/sqlite/i
 import { importedArtifact } from "../../../../src/models/intake/imported-artifact.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { IntakeSessionSchema,type IntakeSession } from "../../../../src/models/intake/session.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { HASH_A,LATER,NOW,UUID_2,UUID_3,UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const disposers: (() => void)[] = [];
@@ -20,14 +18,9 @@ afterEach(() => {
 
 function database(legacySession?: IntakeSession): AuthorityDatabase {
   const clock = manualClock(new Date(NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-intake-session-"));
-  disposers.push(() => rmSync(root, { recursive: true, force: true }));
-  const path = join(root, "state.db");
-  const opened = AuthorityDatabase.open(
-    { path, busyTimeoutMs: 250, migrationOwner: "intake-session-test" },
-    clock,
-  );
-  databasePaths.set(opened, path);
+  const opened = openBoundDatabaseFixture("intake-session-test", clock);
+  const path = opened.path;
+  databasePaths.set(opened.database, path);
   if (legacySession !== undefined) {
     const legacy = new DatabaseSync(path);
     try {
@@ -37,7 +30,7 @@ function database(legacySession?: IntakeSession): AuthorityDatabase {
     }
   }
   disposers.push(() => opened.close());
-  return opened;
+  return opened.database;
 }
 
 function session(overrides: Record<string, unknown> = {}) {

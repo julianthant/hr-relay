@@ -25,7 +25,7 @@ export function createRunQueueProjectionTestWorld() {
 
 
   function otherConnection(w: DashboardWorld, pid = 777) {
-    const database = AuthorityDatabase.open({ path: join(w.stateRoot, "authority.db"),
+    const database = AuthorityDatabase.open({ path: join(w.stateRoot, "state.db"),
       busyTimeoutMs: 500, migrationOwner: "projection-peer-fixture" }, w.clock);
     return { database, writer: createTimelineEmitter({ repository: database.authority.timelineEvents, clock: w.clock, pid }) };
   }

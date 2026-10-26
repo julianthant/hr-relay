@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -13,16 +10,17 @@ import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../..
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { seedInitialSettingsRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
 import { settingsSetOperations } from "../../../support/fixtures/settings-operation-fixtures.js";
-import { AuthorityDatabase,createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
+import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
+import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
 function fixture() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "native-settings-domain-"));
   const clock = manualClock(new Date("2026-08-30T12:00:00.000Z"));
-  const database = AuthorityDatabase.open({ path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "settings-domain-test" }, clock);
-  cleanups.push(() => { database.close(); rmSync(root, { recursive: true, force: true }); });
+  const opened = openBoundDatabaseFixture("settings-domain-test", clock);
+  cleanups.push(() => opened.close());
+  const { database } = opened;
   seedInitialSettingsRuntimeConfig(database, clock);
-  const store = createCredentialStore({ stateRoot: root });
+  const store = createCredentialStore({ stateRoot: opened.stateRoot });
   const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, hostConfigFacts({}), clock), store);
   return { database, read: () => readSettings(database.authority), execute: (request: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, request) };
 }

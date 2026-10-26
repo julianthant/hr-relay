@@ -29,6 +29,20 @@ export function countUcsdLoginRows(path: string): number | "unreadable" | "absen
 
 }
 
+export function countProfileCredentialLoginRows(paths: readonly string[]): number | "unreadable" | "absent" {
+  if (paths.length === 0) return "absent";
+  let rows = 0;
+  let sawFile = false;
+  for (const path of paths) {
+    const count = countUcsdLoginRows(path);
+    if (count === "unreadable") return "unreadable";
+    if (count === "absent") continue;
+    sawFile = true;
+    rows += count;
+  }
+  return sawFile ? rows : "absent";
+}
+
 function isUcsdIdentity(value: string | undefined): boolean {
   if (value === undefined) return false;
   try {

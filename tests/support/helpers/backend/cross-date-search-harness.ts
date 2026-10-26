@@ -40,14 +40,16 @@ export function insertMeasuredSearchRun(database: AuthorityDatabase, input: Seed
   if (workerId === undefined) throw new Error("search fixture worker admission missing");
   const claimMember1 = database.authority.workerSlots.get(workerId);
   if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-  const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, "separations", claimMember1.poolIndex).workerLifetime, workflow: "separations", workerId, now });
+  const workerLifetime = testWorkerLifetime(database, "separations", claimMember1.poolIndex).workerLifetime;
+  const claimed = database.authority.runs.claimNext({ workerLifetime, workflow: "separations", workerId, now });
   if (claimed.state !== "claimed") throw new Error("measured search fixture was not claimed");
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
+  const held = { workerId, workerLifetime, claimedAt: now, heartbeatAt: now };
   const validating = database.authority.runs.transition({
     runId: queued.envelope.runId,
     expectedVersion: claimed.run.version,
     claim,
-    lifecycle: { state: "validating", workerId, claimedAt: now, heartbeatAt: now },
+    lifecycle: { state: "validating", ...held },
     now,
   });
   if (validating.state !== "applied") throw new Error("measured search fixture did not enter validating");
@@ -55,7 +57,7 @@ export function insertMeasuredSearchRun(database: AuthorityDatabase, input: Seed
     runId: queued.envelope.runId,
     expectedVersion: validating.run.version,
     claim,
-    lifecycle: { state: "running", workerId, claimedAt: now, heartbeatAt: now },
+    lifecycle: { state: "running", ...held },
     now,
   });
   if (running.state !== "applied") throw new Error("measured search fixture did not enter running");

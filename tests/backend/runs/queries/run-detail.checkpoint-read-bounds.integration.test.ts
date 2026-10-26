@@ -79,7 +79,7 @@ it("keeps checkpoint reads fixed as timeline nodes and checkpoint executions gro
   const unneeded = countSqliteStatements(() => buildRunDetail({ ...deps, descriptors: { resolve: () => undefined } }, uuidOf(1)));
   assert.equal(unneeded.count.statements, 0);
 
-  const raw = new DatabaseSync(join(w.stateRoot, "authority.db"));
+  const raw = new DatabaseSync(join(w.stateRoot, "state.db"));
   try {
     const trigger = raw.prepare("SELECT sql FROM sqlite_schema WHERE name='run_checkpoints_immutable'").get();
     assert.equal(typeof trigger?.sql, "string");

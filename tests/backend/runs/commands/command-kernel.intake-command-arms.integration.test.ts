@@ -4,9 +4,7 @@ import { importedArtifact } from "../../../../src/models/intake/imported-artifac
 import { reviewedIntakeFixture } from "../../../support/fixtures/intake-kernel-seams.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { deriveIntakeParse } from "../../../../src/backend/processing/spreadsheet/intake-parser.js";
@@ -34,6 +32,7 @@ UUID_3,
 UUID_7,
 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 /* ── the source file, as a grid the shared edge would have produced ──────── */
@@ -99,14 +98,19 @@ function commandId(): string {
 }
 
 function harness(sessionOverrides: Record<string, unknown> = {}, preReservation = false) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-intake-arms-"));
-  roots.push(root);
   const clock = manualClock(new Date(NOW));
-  const path = join(root, "state.db");
-  const database = AuthorityDatabase.open(
-    { path, busyTimeoutMs: 250, migrationOwner: "intake-arms-test" },
-    clock,
-  );
+  const opened = openBoundDatabaseFixture("intake-arms-test", clock);
+  const database = opened.database;
+  const path = opened.path;
+  const close = database.close.bind(database);
+  let closed = false;
+  database.close = () => {
+    if (closed) return;
+    closed = true;
+    close();
+    opened.profile.close();
+  };
+  roots.push(opened.profile.workspace);
   openDatabases.push(database);
   // The config identity an intake fan-out stamps must name a stored snapshot.
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);

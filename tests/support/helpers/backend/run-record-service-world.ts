@@ -1,5 +1,6 @@
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
+import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import assert from "node:assert/strict";
@@ -46,7 +47,10 @@ export function createRunRecordServiceTestWorld() {
       terminalizationHooks,
       lifecycleHooks,
     );
-    cleanups.push(() => database.close());
+    cleanups.push(() => {
+      releaseSeededWriteOwners(database, clock.now().toISOString());
+      database.close();
+    });
     const active = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     testWorkerPorts(database,clock,{path:join(root,"state.db"),descriptor:personLookupDescriptor,poolIndex:1});
     const runtimeConfig = RuntimeConfigClaimTokenSchema.parse({

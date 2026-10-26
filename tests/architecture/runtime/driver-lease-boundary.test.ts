@@ -114,7 +114,7 @@ function withoutRetryInitialization(content: string): string {
     'if(binding.member.workflowId!==descriptor.id||binding.operation.configSnapshotId!==database.authority.runtimeConfig.get()?.configSnapshotId||binding.operation.configFingerprint!==configFingerprint||binding.operation.descriptorVersion!==descriptor.version||binding.operation.contractFingerprint!==descriptor.contractFingerprint)thrownewError("worker-initialization-current-settings-changed");',
     'if(database.authority.workerControls.get(commandId)?.readiness?.state!=="initializing")thrownewError("worker-initialization-authority-unavailable");',
     'constcontracts=newSet(workflowProjections(descriptor).contracts.map(contract=>contract.id));',
-    'constneeds=taskStoreRegistry.stores.flatMap(store=>Object.values(store.tasks).filter(task=>contracts.has(task.contract.id)).flatMap(task=>task.impl.sessions));',
+    'constneeds=(input.stores??taskStoreRegistry).stores.flatMap(store=>Object.values(store.tasks).filter(task=>contracts.has(task.contract.id)).flatMap(task=>task.impl.sessions));',
     'if(systems.has(need.system))continue;systems.add(need.system);',
     'database.completeWorkerInitialization(command.commandId,leaseGeneration,descriptor,clock.now().toISOString());',
   ];

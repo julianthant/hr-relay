@@ -90,10 +90,17 @@ export function parkedAttemptingWriteFixture(
     workflow: WRITE_FIXTURE_WORKFLOW_ID,
     workerId: WRITE_FIXTURE_WORKER_ID,
     now,
+    workerLifetime: (() => {
+      const member = database.authority.workerSlots.get(WRITE_FIXTURE_WORKER_ID);
+      const lease = database.authority.workerLeases.get(WRITE_FIXTURE_WORKER_ID);
+      if (member === undefined || lease === undefined) throw new Error("guard fixture claim lifetime unavailable");
+      return { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration };
+    })(),
   });
   if (claimed.state !== "claimed") throw new Error("guard fixture claim failed");
   const claim = { workerId: WRITE_FIXTURE_WORKER_ID, claimGeneration: claimed.run.claimGeneration };
-  const base = { workerId: WRITE_FIXTURE_WORKER_ID, claimedAt: now, heartbeatAt: now };
+  const lifetime = "workerLifetime" in claimed.run.lifecycle ? claimed.run.lifecycle.workerLifetime : undefined;
+  const base = { workerId: WRITE_FIXTURE_WORKER_ID, claimedAt: now, heartbeatAt: now, ...(lifetime === undefined ? {} : { workerLifetime: lifetime }) };
   assert.equal(database.authority.runs.transition({
     runId: WRITE_FIXTURE_RUN_ID, expectedVersion: claimed.run.version, claim,
     lifecycle: { state: "validating", ...base }, now,

@@ -1,4 +1,4 @@
-import type { createBoundProfileFixture } from "../admission-fixture.js";
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { explorerEditCommandFingerprint } from "../../../../src/models/dashboard/explorer-override.js";
@@ -7,7 +7,7 @@ import { WRITE_FIXTURE_IMPL_FINGERPRINT, writeFixtureDescriptor } from "../../fi
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { separationsIdentityCheckModule } from "../../../../src/backend/app/registries/step-proof-modules.js";
@@ -181,12 +181,26 @@ export function createCommandKernelTestWorld() {
     const settingsOverride = settingsInputOrOptions !== undefined && "applyOrdinary" in settingsInputOrOptions
       ? settingsInputOrOptions : undefined;
     const clock = manualClock(new Date(NOW));
-    const path = options.profile?.path ?? databasePath("kernel.sqlite");
-    const stateRoot = dirname(path);
+    const created = options.profile === undefined ? createBoundProfileFixture() : undefined;
+    const profile = options.profile ?? created;
+    if (profile === undefined) throw new Error("kernel fixture profile missing");
+    const path = profile.path;
+    const stateRoot = profile.stateRoot;
     const database = AuthorityDatabase.open(
       { path, busyTimeoutMs: 250, migrationOwner: "kernel-test" },
       clock,
     );
+    if (created !== undefined) {
+      roots.push(created.workspace);
+      const close = database.close.bind(database);
+      let closed = false;
+      database.close = () => {
+        if (closed) return;
+        closed = true;
+        close();
+        created.close();
+      };
+    }
     openDatabases.push(database);
     if (options.profile === undefined) seedInitialSettingsRuntimeConfig(database, clock);
     if (wrap !== undefined) {

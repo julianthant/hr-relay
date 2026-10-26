@@ -1,8 +1,5 @@
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import {
 evaluateWriteResolutionBinding,
@@ -42,7 +39,7 @@ writeFixtureDescriptorWithMovedKey,
 writeFixtureQueuedRun,
 writeFixtureSaveDescriptorAfterUnrelatedEdit,
 } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
 const COMMIT_TASK_ID = "ucpath/submit-write-fixture";
 
@@ -53,17 +50,9 @@ afterEach(() => {
 
 
 function repositories(): WriteBindingRepositories {
-  const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-write-binding-"));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "write-binding-test" },
-    clock,
-  );
-  disposers.push(() => {
-    database.close();
-    rmSync(root, { recursive: true, force: true });
-  });
-  return database.authority;
+  const opened = openBoundDatabaseFixture("write-binding-test", manualClock(new Date(WRITE_FIXTURE_NOW)));
+  disposers.push(() => opened.close());
+  return opened.database.authority;
 }
 
 function parkedRun(overrides: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown }> = {}): RunRecord {

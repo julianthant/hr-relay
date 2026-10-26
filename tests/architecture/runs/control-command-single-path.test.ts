@@ -247,10 +247,14 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
         let refuses = false;
         function refusal(statement: ts.Node): void {
           const literal = (expression: ts.Expression): ts.Expression => ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression) || ts.isParenthesizedExpression(expression) ? literal(expression.expression) : expression;
-          if (ts.isThrowStatement(statement) || ts.isReturnStatement(statement) && statement.expression !== undefined
-            && (statement.expression.kind === ts.SyntaxKind.FalseKeyword || ts.isObjectLiteralExpression(statement.expression)
-              && statement.expression.properties.some(property => ts.isPropertyAssignment(property) && property.name.getText(source) === "state"
-                && ts.isStringLiteral(literal(property.initializer)) && literal(property.initializer).text === "unavailable"))) refuses = true;
+          const returned = ts.isReturnStatement(statement) ? statement.expression : undefined;
+          const unavailable = returned !== undefined && ts.isObjectLiteralExpression(returned)
+            && returned.properties.some(property => {
+              if (!ts.isPropertyAssignment(property) || property.name.getText(source) !== "state") return false;
+              const value = literal(property.initializer);
+              return ts.isStringLiteral(value) && value.text === "unavailable";
+            });
+          if (ts.isThrowStatement(statement) || returned !== undefined && (returned.kind === ts.SyntaxKind.FalseKeyword || unavailable)) refuses = true;
           ts.forEachChild(statement, refusal);
         }
         refusal(node.thenStatement);

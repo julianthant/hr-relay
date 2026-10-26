@@ -2,9 +2,6 @@ import { registryWithCrmSearch } from "../support/helpers/backend/run-executor-w
 import { crmDriver } from "../../src/backend/systems/crm/driver-declaration.js";
 import { defineTask } from "../../src/workflow-kit/task.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun, type RunExecutorDependencies, type WriteSequencerContext } from "../../src/backend/runtime/execution/run-executor.js";
 import { withBoundRunConfigFingerprint } from "../../src/backend/runtime/workers/worker-sessions.js";
@@ -43,7 +40,7 @@ import {
   sessionManagerFor,
 } from "../support/helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
-import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
+import { openBoundDatabaseFixture } from "../support/helpers/admission-fixture.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -123,17 +120,11 @@ describe("failure, retry, and resume", () => {
 describe("dry-run — structurally zero intent, zero fence, zero commit", () => {
   it("executeTransaction refuses a dry-run context before any side effect", async () => {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-write-sequencer-"));
-    const database = AuthorityDatabase.open(
-      { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "write-sequencer-test" },
-      clock,
-    );
-    disposers.push(() => {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
-    });
+    const opened = openBoundDatabaseFixture("write-sequencer-test", clock);
+    const database = opened.database;
+    disposers.push(() => opened.close());
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-    testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
+    testWorkerPorts(database, clock, { path: opened.path, descriptor: writeFixtureDescriptor, poolIndex: 1 });
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
     const manager = writeFixtureSessionManager(writeFixtureSessions(world), registry, clock);

@@ -123,7 +123,7 @@ describe("secrets single source", () => {
       content.replace('authorityPath: selected.authorityPath', 'authorityPath: join(admission.stateRoot, "state.db")'),
       content.replace('initialWorkerCustody = acquireRuntimeProcessLock', 'AuthorityDatabase.open(admission, { path: selected.authorityPath }); initialWorkerCustody = acquireRuntimeProcessLock'),
       content.replace('!bootDiagnostics &&', ''),
-      content.replace('acquireExclusiveRuntimeAdmission, type RuntimeAdmission', 'forgedAdmission, type RuntimeAdmission'),
+      content.replace('{ acquireExclusiveRuntimeAdmission, RuntimeAdmission }', '{ forgedAdmission, RuntimeAdmission }'),
     ]) assert.ok(audit(candidate).length > 0, candidate);
     const wrapperPath = "scripts/dev/secure-env-bootstrap.ts";
     const wrapper = readFileSync(join(REPO_ROOT, wrapperPath), "utf8");

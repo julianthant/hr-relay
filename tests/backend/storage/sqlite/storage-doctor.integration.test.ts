@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import fs, { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import { afterEach, describe, it, vi } from "vitest";
@@ -25,6 +25,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
+import { createBoundProfileFixture, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase as AuthorityDatabase_m2, composeStorageCommand, doctorAuthorityStorage as doctorAuthorityStorage_m2, syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -158,15 +159,36 @@ afterEach(_afterEachFixture0);
     const { marker, event, field } = testCase;
     const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-diagnostic-redaction-")));
     roots.push(repoRoot);
+    const profile = createBoundProfileFixture({ workspace: repoRoot });
     if (event === "nested-root") {
       const actualParent = join(repoRoot, "owned");
       mkdirSync(actualParent);
       fs.symlinkSync(actualParent, join(repoRoot, marker), "dir");
+      const stateRoot = join(repoRoot, marker, "state");
+      const authorityPath = join(repoRoot, "owned", "state", "state.db");
+      mkdirSync(dirname(authorityPath), { recursive: true });
+      const doctorOptions = {
+        stateRootTrustAnchor: repoRoot, stateRoot, authorityPath,
+        backupDirectory: join(stateRoot, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
+      };
+      const expected = boundary === "doctor"
+        ? "runtime-admission: fixture overlaps installation witness"
+        : "runtime-admission: unsafe synthetic fixture ancestor";
+      await assert.rejects(async () => boundary === "doctor"
+        ? doctorAuthorityStorage_m2(doctorOptions, clock)
+        : buildStorageDoctor({ admission: syntheticStateRoot(doctorOptions.stateRoot), doctorOptions, clock,
+          serviceState: () => ({ state: "never-run", reason: "test has no backup service" }) }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, expected);
+        assert.equal(error.message.includes(marker), false);
+        return true;
+      });
+      profile.close();
+      return;
     }
-    const stateRoot = join(repoRoot,
-      event === "nested-root" ? join(marker, "state") : rebuildRuntimeIsolation.stateRoot);
-    mkdirSync(stateRoot, { recursive: true });
-    const authorityPath = join(event === "nested-root" ? join(repoRoot, "owned", "state") : stateRoot, "state.db");
+    const stateRoot = profile.stateRoot;
+    const authorityPath = profile.path;
     const database = AuthorityDatabase_m2.open({ path: authorityPath, busyTimeoutMs: 500, migrationOwner: "redaction-test" }, clock);
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -235,22 +257,6 @@ afterEach(_afterEachFixture0);
       stateRootTrustAnchor: repoRoot, stateRoot, authorityPath,
       backupDirectory: join(stateRoot, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
     };
-    if (event === "nested-root") {
-      const expected = boundary === "doctor"
-        ? "runtime-admission: storage doctor roots differ from active locator"
-        : "runtime-admission: unsafe synthetic fixture ancestor";
-      await assert.rejects(async () => boundary === "doctor"
-        ? doctorAuthorityStorage_m2(doctorOptions, clock)
-        : buildStorageDoctor({ admission: syntheticStateRoot(doctorOptions.stateRoot), doctorOptions, clock,
-          serviceState: () => ({ state: "never-run", reason: "test has no backup service" }) }),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.equal(error.message, expected);
-        assert.equal(error.message.includes(marker), false);
-        return true;
-      });
-      return;
-    }
     let output: string;
     if (boundary === "cli-json") {
       const result = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, repoRoot);
@@ -273,6 +279,7 @@ afterEach(_afterEachFixture0);
       assert.match(output, /span-stream-invalid/u);
       if (event === "schema-key" || event === "schema-field") assert.match(output, /timeline-record-invalid/u);
     } else assert.match(output, /span_stream/u);
+    profile.close();
   });
 });
 }
@@ -288,14 +295,10 @@ const MAX_AGE_MS = 45 * 60 * 1000;
 
 function world() {
   const clock = manualClock(new Date(NOW));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-backup-summary-"));
-  disposers.push(() => rmSync(root, { recursive: true, force: true }));
-  const database = AuthorityDatabase_m2.open(
-    { path: join(root, "state.db"), busyTimeoutMs: 1000, migrationOwner: "summary-test" },
-    clock,
-  );
-  disposers.push(() => database.close());
-  const directory = join(root, "backups", "authority");
+  const opened = openBoundDatabaseFixture("summary-test", clock, 1000);
+  disposers.push(() => opened.close());
+  const database = opened.database;
+  const directory = join(opened.stateRoot, "backups", "authority");
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const service = new AuthorityBackupService(database, { directory }, clock);
   const options = { backupDirectory: directory, maxBackupAgeMs: MAX_AGE_MS };

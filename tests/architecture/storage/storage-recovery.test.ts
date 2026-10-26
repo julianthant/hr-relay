@@ -9,7 +9,7 @@ import type { RuntimeAdmission } from "../../../src/backend/storage/admission/ad
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 import { completionFromAuthorization } from "../../../src/models/run/completion.js";
-import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -534,7 +534,11 @@ afterEach(() => {
   timelineFixturePaths.clear();
   timelineFixtureOwners.clear();
   for (const store of bootStores.splice(0)) store.close();
-  for (const database of databases.splice(0)) database.close();
+  for (const database of databases.splice(0)) {
+    try { releaseSeededWriteOwners(database, CLOCK.now().toISOString()); }
+    catch (error) { if (!(error instanceof Error) || error.message !== "database is not open") throw error; }
+    database.close();
+  }
   admissions.clear();
   for (const profile of profiles.values()) profile.close();
   profiles.clear(); initialGenerations.clear(); roots.splice(0);
@@ -1708,6 +1712,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const recordSchemaPath = join(testRoot(), "state.db");
     const recordSchemaDatabase = openDatabase(recordSchemaPath);
     fenceWriteFixture(recordSchemaDatabase, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, recordSchemaPath);
+    releaseSeededWriteOwners(recordSchemaDatabase, CLOCK.now().toISOString());
     recordSchemaDatabase.close();
     const badRecordSchema = new DatabaseSync(recordSchemaPath);
     badRecordSchema.prepare("UPDATE write_intents SET payload_json = ? WHERE id = ?")
@@ -2558,6 +2563,7 @@ describe("authority.health preflight and static recovery boundary", () => {
     const adapterPath = "src/backend/storage/sqlite/authority-database.ts";
     const sqliteBoundaryPaths = [
       "src/backend/storage/sqlite/assistant-authorization.ts",
+      "src/backend/storage/sqlite/assistant-model-preference.ts",
       "src/backend/storage/sqlite/authority-database.ts",
       "src/backend/storage/sqlite/backup-inspection.ts",
       "src/backend/storage/sqlite/command-record-row.ts",

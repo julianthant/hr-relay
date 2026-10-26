@@ -25,7 +25,7 @@ export function delegatedCandidateEligible(repositories: AuthorityRepositories, 
     current = parent;
   }
   if (current.envelope.workflow !== homeWorkflow) return false;
-  if (candidate.envelope.parent === undefined) return true;
+  if (candidate.envelope.parent === undefined || current.sessionId === undefined) return true;
   authenticateRootRun(repositories, current);
   if (resolveDescriptor === undefined) throw new Error("delegation-dispatch-resolver-unavailable");
   for (const child of ancestry.slice(0, -1)) {

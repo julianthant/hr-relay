@@ -1,6 +1,6 @@
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
-import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
+import { releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
+import { writeFenceFixtureInput } from "../../../support/helpers/write-fence-fixture.js";
 import { ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
@@ -26,7 +26,7 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 
 const world = createRunRecordServiceTestWorld();
 afterEach(world.cleanup);
-async function fixture() { return ownedWorkerLifetimeFixture(world); }
+async function fixture(fenceInOwner = false) { return ownedWorkerLifetimeFixture(world, { fenceInOwner }); }
 
 function actualReplacement(f: Awaited<ReturnType<typeof fixture>>, commandId: string, beforeDeath?: () => void) {
   const scheduler = new ManualScheduler(f.clock);
@@ -460,12 +460,12 @@ it("rolls back safe provisional old-work cancellation when replacement owner dea
 
 
 it.each(["attempting", "unknown"] as const)("preserves exact %s write authority during public failed Stop", async outcome => {
-  const f = await fixture();
+  const f = await fixture(true);
   try {
     const commit = { ...ATOMIC_WRITE_COMMIT, transaction: { ...ATOMIC_WRITE_COMMIT.transaction, workflowId: f.slot.workflow },
       committedSpan: { ...ATOMIC_WRITE_COMMIT.committedSpan, workflowId: f.slot.workflow } };
     seedAtomicWriteOwner(f.database, commit, join(f.root, "state.db"), 1);
-    fenceWriteFixture(f.database, { intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: f.slot.workflow }, attempt: WRITE_ATTEMPT });
+    await f.fence(writeFenceFixtureInput(f.database, { intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: f.slot.workflow }, attempt: WRITE_ATTEMPT }));
     const run = f.database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
     const claim = run === undefined ? undefined : runClaim(run);
     if (run === undefined || claim === undefined || claim.workerId !== f.slot.workerId) throw new Error("missing exact old write owner");
@@ -557,5 +557,8 @@ it("rolls back a failed Stop with a separately claimed foreign cascade before te
     expect(f.database.authority.workerControls.get(command.commandId)).toBeUndefined();
     expect(f.database.authority.commands.get(command.commandId)).toBeUndefined();
     expect(actual.spawns()).toBe(0);
-  } finally { await f.dispose(); }
+  } finally {
+    releaseSeededWriteOwners(f.database, f.clock.now().toISOString());
+    await f.dispose();
+  }
 });

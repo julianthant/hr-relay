@@ -1,10 +1,9 @@
+import { releaseSeededWriteOwners } from "../../support/helpers/timeline-write-fixture.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { testRunLifecycle, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
@@ -152,9 +151,9 @@ interface OrderingHarness {
 
 function orderingHarness(): OrderingHarness {
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-subject-fence-guard-"));
+  const profile = createBoundProfileFixture();
   const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "subject-fence-guard" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "subject-fence-guard" },
     clock,
   );
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -183,10 +182,11 @@ function orderingHarness(): OrderingHarness {
       () => sequencer.executeTransaction(context),
     );
   return {
-    world, database, path: join(root, "authority.sqlite"), clock, sessions, sequencer, execute,
+    world, database, path: profile.path, clock, sessions, sequencer, execute,
     dispose: () => {
+      releaseSeededWriteOwners(database, clock.now().toISOString());
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     },
   };
 }

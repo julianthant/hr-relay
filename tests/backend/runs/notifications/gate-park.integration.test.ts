@@ -4,9 +4,6 @@ import { seedSyntheticRuntimeConfig } from "../../../support/fixtures/operator-c
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import { createGateParkNotifier } from "../../../../src/backend/runs/notifications/gate-park.js";
 import { createNotificationInbox,type NotificationPublishReport } from "../../../../src/backend/runs/notifications/inbox.js";
@@ -15,7 +12,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { NOW,UUID_1,UUID_2 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -52,13 +49,9 @@ function recordingInbox(): {
 
 function realWorld() {
   const clock = manualClock(new Date(NOW));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-gate-park-"));
-  disposers.push(() => rmSync(root, { recursive: true, force: true }));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "gate-park-test" },
-    clock,
-  );
-  disposers.push(() => database.close());
+  const opened = openBoundDatabaseFixture("gate-park-test", clock);
+  disposers.push(() => opened.close());
+  const database = opened.database;
   seedSyntheticRuntimeConfig(database);
   const active = database.authority.runtimeConfig.get(); assert.ok(active);
   for (const park of [PARK_A, PARK_B]) {

@@ -710,7 +710,7 @@ describe("the Activity report's write-ledger block", () => {
     overrides: Readonly<{ system?: string; instance?: "prod" | "test"; confirmedAt: string }>,
   ): void {
     const f = ledgerCommitFixture(seq, { ...overrides, runId: fixtureUuid(`activity-history-${String(seq)}`), itemId: fixtureUuid(`activity-history-item-${String(seq)}`) });
-    seedAtomicWriteOwner(w.database, f.commit, join(w.stateRoot, "authority.db"));
+    seedAtomicWriteOwner(w.database, f.commit, join(w.stateRoot, "state.db"));
     fenceWriteFixture(w.database, { intent: f.intent, attempt: f.attempt });
     w.database.commitWriteAttempt(f.commit, atomicWriteCheckpoint(f.commit));
   }

@@ -1,4 +1,4 @@
-import { lifecycleCommandId } from "../rules/identity/identifiers.js";
+import { lifecycleCommandId } from "../rules/commands/lifecycle-command-id.js";
 import { sha256Hex } from "../rules/validation/sha256.js";
 import type { RerunValueMappingSpec } from "../models/workflow/rerun-values.js";
 import {

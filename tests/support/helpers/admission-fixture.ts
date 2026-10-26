@@ -1,9 +1,9 @@
-import { registerBoundProfile, unregisterBoundProfile, assertBoundFixtureWorkersReleased, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
+import { AuthorityDatabase, registerBoundProfile, unregisterBoundProfile, assertBoundFixtureWorkersReleased, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
 export { registerBoundProfile, unregisterBoundProfile, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission, profileFixtureStorageAdmission, boundProfileAdmission } from "./synthetic-database-admission.js";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../src/backend/app/composition/profile-credential-inventory.js";
-import { systemClock } from "../../../src/rules/time/clock.js";
+import { systemClock, type Clock } from "../../../src/rules/time/clock.js";
 import { createProfileVerifiers } from "../../../src/backend/profiles/verifier-store.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { tmpdir } from "node:os";
@@ -120,9 +120,11 @@ const failedBoundProfileFixtures = new Set<Readonly<{
   primary: unknown;
 }>>();
 
-export function createBoundProfileFixture(options: { pending?: true; sharedMachine?: true } = {}) {
+export function createBoundProfileFixture(options: { pending?: true; sharedMachine?: true; workspace?: string } = {}) {
   if (options.pending === true && options.sharedMachine === true) throw new Error("pending profile fixture requires exclusive machine");
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")));
+  const workspace = options.workspace === undefined
+    ? realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")))
+    : realpathSync(options.workspace);
   const ownedAdmissions: RuntimeAdmission[] = [];
   try {
     let machine = acquireEntrypointAdmission(workspace, "exclusive");
@@ -171,6 +173,20 @@ export function createBoundProfileFixture(options: { pending?: true; sharedMachi
       close() { unregisterBoundProfile(admission); admission.release(); machine.release(); rmSync(workspace, { recursive: true, force: true }); } };
   } catch (error) {
     failedBoundProfileFixtures.add({ workspace, admissions: ownedAdmissions, primary: error });
+    throw error;
+  }
+}
+
+export function openBoundDatabaseFixture(migrationOwner: string, clock: Clock = systemClock, busyTimeoutMs = 250,
+  writeHooks?: Parameters<typeof AuthorityDatabase.open>[2], terminalHooks?: Parameters<typeof AuthorityDatabase.open>[3],
+  lifecycleHooks?: Parameters<typeof AuthorityDatabase.open>[4]) {
+  const profile = createBoundProfileFixture();
+  try {
+    const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs, migrationOwner }, clock, writeHooks, terminalHooks, lifecycleHooks);
+    return { profile, database, path: profile.path, stateRoot: profile.stateRoot,
+      close() { database.close(); profile.close(); } };
+  } catch (error) {
+    profile.close();
     throw error;
   }
 }

@@ -247,8 +247,8 @@ export class RunRecordService {
     });
   }
 
-  assertCurrentExecution(input: unknown): void {
-    try { this.dependencies.database.assertCurrentExecution(input); }
+  assertCurrentExecution(input: unknown, allowAdmittedReset = false): void {
+    try { this.dependencies.database.assertCurrentExecution(input, allowAdmittedReset); }
     catch (error) {
       if (error instanceof WorkerControlRefusal && error.message === "worker-execution-lost") throw new RunLifecycleRefusedError(refused({ reason: "lost" }));
       throw error;
@@ -576,7 +576,11 @@ export class RunRecordService {
       if (journal.state === "replay") return this.replayRun(journal.result);
       const current = this.read(request.runId);
       if (current.state !== "present") return refused({ reason: "lost" });
-      this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
+      try { this.assertCurrentExecution({ runId: request.runId, claim: request.claim }); }
+      catch (error) {
+        if (error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") return error.outcome;
+        throw error;
+      }
       const outcome = repositories.runs.renewClaim({ runId: request.runId, claim: request.claim,
         now: this.dependencies.clock.now().toISOString() });
       if (outcome.state === "lost") return refused({ reason: "lost" });
@@ -607,7 +611,7 @@ export class RunRecordService {
         return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
           to: request.lifecycle.state, message: violation === undefined ? "worker transition cannot replace ownership or settle" : violation });
       }
-      this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
+      this.assertCurrentExecution({ runId: request.runId, claim: request.claim }, request.lifecycle.state === "parked-write");
       const retainedLifetime = "workerLifetime" in current.run.lifecycle ? current.run.lifecycle.workerLifetime : undefined;
       const lifecycle = "workerId" in request.lifecycle && request.lifecycle.workerLifetime === undefined && retainedLifetime !== undefined
         ? { ...request.lifecycle, workerLifetime: retainedLifetime } : request.lifecycle;

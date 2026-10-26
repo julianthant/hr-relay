@@ -61,10 +61,11 @@ poolIndex = (preferredPoolIndex === undefined ? [1, 2, 3] : [preferredPoolIndex]
 if (poolIndex === undefined) throw new Error("fixture has no unheld worker slot");
   }
   assert.ok(poolIndex !== undefined);
-  const owned = testAdmittedWorker(database, capturedInstantClock(ledger.fencedAt), { path, workflow: ledger.workflowId, poolIndex,
-    browserSystems: [ledger.system] });
-  const slot = owned.member;
-  if (owned.started !== undefined) assert.equal(owned.started.state, "started");
+  const owned = admitted === undefined ? testAdmittedWorker(database, capturedInstantClock(ledger.fencedAt), { path, workflow: ledger.workflowId, poolIndex,
+    browserSystems: [ledger.system] }) : undefined;
+  if (owned?.started !== undefined) assert.equal(owned.started.state, "started");
+  const slot = owned?.member ?? admitted;
+  if (slot === undefined) throw new Error("fixture has no unheld worker slot");
   const lease = database.authority.workerLeases.get(slot.workerId);
   if (lease === undefined) throw new Error("fixture claim lifetime unavailable");
   const claim = database.authority.runs.claimNext({ workflow: ledger.workflowId, workerId: slot.workerId,

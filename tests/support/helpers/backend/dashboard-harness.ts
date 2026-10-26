@@ -1,3 +1,4 @@
+import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../src/models/run/worker-slot.js";
@@ -339,7 +340,10 @@ export function makeWorld(input?: Readonly<{
       if (held.failure !== undefined) throw held.failure;
       if (closeAttempted) return;
       closeAttempted = true;
-      try { database.close(); fixture.close(); retainedDashboardWorldOwners.delete(held); }
+      try {
+        releaseSeededWriteOwners(database, clock.now().toISOString());
+        database.close(); fixture.close(); retainedDashboardWorldOwners.delete(held);
+      }
       catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
     },
   };

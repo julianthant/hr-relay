@@ -46,21 +46,20 @@ describe("exact native worker reset reservation", () => {
     expect(admit(h).reset?.work.kind).toBe("current");
   });
 
-  it("does not attach the newest lifetime to a historical unbound active claim", () => {
+  it("keeps the lifetime supplied at claim on the admitted reset", () => {
     const h = world.harness();
     const request = resetRequest(h);
     h.database.authority.runs.enqueue(writeFixtureQueuedRun());
     const claimMember1 = h.database.authority.workerSlots.get(request.target.workerId);
     if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-    const claimed = h.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(h.database, "write-fixture", claimMember1.poolIndex).workerLifetime, workflow: "write-fixture", workerId: request.target.workerId,
+    const lifetime = testWorkerLifetime(h.database, "write-fixture", claimMember1.poolIndex).workerLifetime;
+    const claimed = h.database.authority.runs.claimNext({ workerLifetime: lifetime, workflow: "write-fixture", workerId: request.target.workerId,
       now: h.clock.now().toISOString() });
     expect(claimed.state).toBe("claimed");
     if (claimed.state !== "claimed" || claimed.run.lifecycle.state !== "claimed") throw new Error("missing claim");
-    expect(claimed.run.lifecycle.workerLifetime).toBeUndefined();
-    const generation = h.database.getMeta().authorityGeneration;
-    expect(() => admit(h, request)).toThrow("worker-reset-current-run-lifetime-unavailable");
-    expect(h.database.getMeta().authorityGeneration).toBe(generation);
-    expect(h.database.authority.workerControls.get(request.commandId)).toBeUndefined();
+    expect(claimed.run.lifecycle.workerLifetime).toEqual(lifetime);
+    const record = admit(h, request);
+    expect(record.reset?.work).toMatchObject({ kind: "current", current: { runId: claimed.run.envelope.runId, claimGeneration: claimed.run.claimGeneration } });
   });
 
   for (const operation of ["fenceAttempt", "refenceRetryable"] as const) {
@@ -136,10 +135,13 @@ describe("exact native worker reset reservation", () => {
     expect(() => h.database.authority.workerControls.audit(record.commandId, h.clock.now().toISOString())).toThrow("worker-reset-settlement-unavailable");
     expect(h.database.authority.workerControls.pending(record.scope)).toEqual([record]);
   });
-  it("binds every safely owned cascade claim and queued dependent; foreign ownership refuses atomically", () => {
+  it("refuses an unproved queued cascade and a foreign owned child before reservation", () => {
     for (const childState of ["queued", "foreign"] as const) {
       const h = world.harness();
-      const { run } = world.claimRunning(h.database, h.clock);
+      const owned = world.claimRunning(h.database, h.clock);
+      const { run } = owned;
+      let foreign: { run: ReturnType<typeof world.claimRunning>["run"]; claim: { workerId: string; claimGeneration: number } } | undefined;
+      try {
       const childId = randomUUID(), manifestId = randomUUID(), dependencyId = randomUUID();
       const source = RunRecordSchema.parse(writeFixtureQueuedRun());
       const child = { ...source, envelope: { ...source.envelope, runId: childId, itemId: childId,
@@ -161,15 +163,19 @@ describe("exact native worker reset reservation", () => {
         if (claimMember2 === undefined) throw new Error("fixture-claim-member-required");
         const claimed = h.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(h.database, run.envelope.workflow, claimMember2.poolIndex).workerLifetime, workflow: run.envelope.workflow, workerId: worker.workerId, now: h.clock.now().toISOString() });
         expect(claimed.state).toBe("claimed");
+        if (claimed.state === "claimed") foreign = { run: claimed.run, claim: { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration } };
       }
       const before = h.database.getMeta().authorityGeneration;
       if (childState === "foreign") {
         expect(() => admit(h)).toThrow("worker-reset-foreign-cascade-owner");
         expect(h.database.getMeta().authorityGeneration).toBe(before);
       } else {
-        const record = admit(h);
-        expect(record.reset?.work).toMatchObject({ kind: "current", cascade: [{ runId: childId, state: "queued" }] });
-        expect(h.database.authority.workerControls.resetForRun(childId)?.commandId).toBe(record.commandId);
+        expect(() => admit(h)).toThrow("delegation-invocation-authority-unavailable");
+        expect(h.database.getMeta().authorityGeneration).toBe(before);
+      }
+      } finally {
+        if (foreign !== undefined) world.releaseClaim(h.database, h.clock, foreign.run, foreign.claim);
+        world.releaseClaim(h.database, h.clock, owned.run, owned.claim);
       }
     }
   });

@@ -14,19 +14,31 @@ export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => z.union([
   z.record(z.string(), JsonValueSchema),
 ]));
 
-function serialize(value: JsonValue): string {
-  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
+function serialize(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("canonical-json-invalid");
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return `[${value.map((item: JsonValue) => serialize(item)).join(",")}]`;
+    const parts = new Array<string>(value.length);
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.hasOwn(value, index)) throw new Error("canonical-json-invalid");
+      parts[index] = serialize(value[index]);
+    }
+    return `[${parts.join(",")}]`;
   }
-  return `{${Object.entries(value)
-    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
-    .map(([key, item]) => `${JSON.stringify(key)}:${serialize(item)}`)
-    .join(",")}}`;
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw new Error("canonical-json-invalid");
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+      .map(([key, item]) => `${JSON.stringify(key)}:${serialize(item)}`)
+      .join(",")}}`;
+  }
+  throw new Error("canonical-json-invalid");
 }
 
 export function canonicalJsonStringify(input: unknown): string {
-  return serialize(JsonValueSchema.parse(input));
+  return serialize(input);
 }

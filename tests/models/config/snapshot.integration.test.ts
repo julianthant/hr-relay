@@ -1,7 +1,4 @@
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
@@ -10,20 +7,21 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { NOW,UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { AuthorityBootStore,AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const SNAPSHOT_ID = UUID_4;
 const CLOCK = manualClock(new Date(NOW), 1_000);
 
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) profile.close();
 });
 
 function databasePath(): string {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-config-generation-"));
-  roots.push(root);
-  return join(root, "authority.sqlite");
+  const profile = createBoundProfileFixture();
+  profiles.push(profile);
+  return profile.path;
 }
 
 function currentConfig() {

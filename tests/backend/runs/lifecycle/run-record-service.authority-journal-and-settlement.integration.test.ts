@@ -525,6 +525,7 @@ describe("canonical run-record service", () => {
               commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
             } } : { kind, request: { runtimeConfig, workflow: WORKFLOW_ID,
               workerId: `person-lookup-worker-${String(index + 1)}`,
+              workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, index + 1).workerLifetime,
               commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
             } },
           }));

@@ -10,11 +10,10 @@ import { explorerAuthorityFixture } from "../../fixtures/explorer-authority.js";
 import { GATE_RESULT, NOTIFICATION, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RUN_SESSION, START_PLAN } from "../../fixtures/phase1f-run-fixtures.js";
 import { testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../timeline-write-fixture.js";
+import { atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
@@ -30,6 +29,7 @@ import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-loo
 import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, HASH_A, HASH_B, HASH_C, ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, LATER, NOW, UUID_1, UUID_2, UUID_3, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKER_START_REQUEST, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { currentAtomicWriteFixture } from "../timeline-write-fixture.js";
 
@@ -197,10 +197,10 @@ export function createAuthorityAccountingTestWorld() {
     updatedAt: NOW,
   };
 
-  function databasePath(name = "authority.sqlite"): string {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-sqlite-"));
-    roots.push(root);
-    return join(root, name);
+  function databasePath(_name = "authority.sqlite"): string {
+    const profile = createBoundProfileFixture();
+    roots.push(profile.workspace);
+    return profile.path;
   }
 
   function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
@@ -418,7 +418,14 @@ export function createAuthorityAccountingTestWorld() {
     execution: { state: "not-started", reason: "subject-unavailable" },
   };
   function cleanup(): void {
-    for (const database of openDatabases.splice(0)) database.close();
+    for (const database of openDatabases.splice(0)) {
+      try {
+        releaseSeededWriteOwners(database, CLOCK.now().toISOString());
+        database.close();
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("database is not open")) throw error;
+      }
+    }
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   }
   return { ATOMIC_WRITE_COMMIT, roots, openDatabases, cleanup, databasePaths, CLOCK, BULK_COMMAND_ACCEPTANCE, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT };

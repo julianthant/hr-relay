@@ -829,7 +829,7 @@ export function auditSoleRunnerInvocation(
       && compact(selector.body.statements[0].thenStatement) === 'returnselector;' && selector.body.statements[0].elseStatement === undefined && ts.isThrowStatement(selector.body.statements[1]);
     const machineAdmissions = runtimeAdmissionCalls.filter(call => compact(call) === "acquireEntrypointAdmission(workspace,requested)");
     const exclusiveAdmission = runtimeAdmissionCalls.filter(call => compact(call) === "acquireExclusiveRuntimeAdmission(workspace)");
-    const custodyCall = invocations.filter(call => call.runner === "runCli").find(call => compact(call.node) === "runCli(admission,()=>{constcustody=initialWorkerCustody;initialWorkerCustody=undefined;returncustody;})");
+    const custodyCall = invocations.filter(call => call.runner === "runCli").find(call => compact(call.node) === "runCli(admission,()=>{constcustody=initialWorkerCustody;initialWorkerCustody=undefined;returncustody;},()=>{if(entrypointArgs[0]!==\"dashboard\"||dashboardOwnsAdmission)thrownewError(\"dashboardadmissionownershipunavailable\");dashboardOwnsAdmission=true;})");
     const exclusiveImport = source.statements.some(statement => ts.isImportDeclaration(statement)
       && ts.isStringLiteral(statement.moduleSpecifier) && resolvedModule(path, statement.moduleSpecifier.text) === "src/backend/storage/admission/admission.ts"
       && statement.importClause?.namedBindings !== undefined && ts.isNamedImports(statement.importClause.namedBindings)

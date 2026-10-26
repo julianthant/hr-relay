@@ -975,8 +975,10 @@ export async function composeStorageCommand(
           return { output: `unsupported storage upgrade argument: ${rest.find((argument) => !allowed.has(argument)) ?? "duplicate"}\n${STORAGE_USAGE}`, exitCode: 2 };
         }
         const { upgradeStoppedMachineControl } = await import("../../storage/maintenance/upgrade.js");
+        const { composeStoppedControlCredentialInventory } = await import("./profile-credential-inventory.js");
         const { hostConfigFacts } = await import("../../../models/config/host-display.js");
-        const report = await upgradeStoppedMachineControl(admission, { plan: rest.includes("--plan"), hostFacts: hostConfigFacts(process.env) }, clock);
+        const { workerBootstrapEnvironment } = await import("../../../models/config/secrets.js");
+        const report = await upgradeStoppedMachineControl(admission, { plan: rest.includes("--plan"), hostFacts: hostConfigFacts(workerBootstrapEnvironment()) }, clock, composeStoppedControlCredentialInventory);
         return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: machine-control ${report.state} (${String(report.profileCount)} profiles)`, exitCode: 0 };
       }
       const { upgradeStorage } = await import("../../storage/maintenance/upgrade.js");
@@ -1009,7 +1011,7 @@ export async function composeStorageCommand(
       admission.assertExclusive();
       if (admission.readInstallationContext() !== undefined) admission.assertFixedProcessLockRoot(repoRoot, join(repoRoot, isolation.processLockRoot));
       database = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 5000,
-        migrationOwner: "orphan-verification-retirement" }, clock);
+        migrationOwner: "orphan-verification-retirement" }, clock, undefined, undefined, undefined, credentials);
       const report = retireOrphanVerification(admission, database, { acquisitionId: parsed.data[1], plan: rest.includes("--plan") }, clock);
       return { output: rest.includes("--json") ? JSON.stringify(report) : `orphan verification: ${report.state} ${report.workerId}`, exitCode: 0 };
     } catch {

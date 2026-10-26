@@ -71,11 +71,8 @@ function runIdOf(record: RunRecord): string {
 
 function activeClaimsByWorker(database: AuthorityDatabase): ReadonlyMap<string, readonly string[]> {
   const held = new Map<string, string[]>();
-  for (const record of database.authority.runs.listByWorkflow(WORKFLOW_ID)) {
-    if (!ACTIVE_STATES.has(record.lifecycle.state)) continue;
-    const owner = "workerId" in record.lifecycle ? record.lifecycle.workerId : undefined;
-    assert.ok(owner !== undefined, `${runIdOf(record)} is ${record.lifecycle.state} with no owner`);
-    held.set(owner, [...(held.get(owner) ?? []), runIdOf(record)]);
+  for (const row of database.authority.runs.listActiveOwners(WORKFLOW_ID)) {
+    held.set(row.workerId, [...(held.get(row.workerId) ?? []), row.runId]);
   }
   return held;
 }

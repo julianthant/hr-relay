@@ -2,9 +2,6 @@ import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import { FingerprintSchema } from "../../src/rules/identity/ids.js";
 import { manualClock } from "../../src/rules/time/clock.js";
@@ -12,29 +9,25 @@ import {
 assertDuoCeremonyLeaseToken,
 isDuoCeremonyLeaseToken,
 } from "../../src/workflow-kit/duo-ceremony-lease.js";
-import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
+import { openBoundDatabaseFixture } from "../support/helpers/admission-fixture.js";
+import type { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
 
 const CREDENTIAL = FingerprintSchema.parse("ab".repeat(32));
 const OTHER_CREDENTIAL = FingerprintSchema.parse("cd".repeat(32));
 const TTL_MS = 80_000;
 const T0 = "2026-08-21T10:00:00.000Z";
 
-const roots: string[] = [];
+const closers: (() => void)[] = [];
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-duo-lease-"));
-  roots.push(root);
   const clock = manualClock(new Date(T0));
-  const path = join(root, "authority.sqlite");
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    clock,
-  );
-  for (const poolIndex of [1, 2]) testWorkerPorts(database, clock, { path, descriptor: personLookupDescriptor, poolIndex });
-  assert.deepEqual(database.authority.workerSlots.list().map(slot => slot.workerId), ["person-lookup-worker-1", "person-lookup-worker-2"]);
-  return database;
+  const opened = openBoundDatabaseFixture("unit-test", clock);
+  closers.push(() => opened.close());
+  for (const poolIndex of [1, 2]) testWorkerPorts(opened.database, clock, { path: opened.path, descriptor: personLookupDescriptor, poolIndex });
+  assert.deepEqual(opened.database.authority.workerSlots.list().map(slot => slot.workerId), ["person-lookup-worker-1", "person-lookup-worker-2"]);
+  return opened.database;
 }
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const close of closers.splice(0)) close();
 });
 
 function at(offsetMs: number): string {

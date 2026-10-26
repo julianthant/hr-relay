@@ -1,16 +1,15 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../source-closure.js';
-import type { CredentialInventory } from "../../profiles/credential-inventory.js";
+import {
+  CREDENTIAL_DIRECTORY_MODE, CredentialLockRecordSchema, errorCode, fsyncPath, noSymlinkAncestry, statDirectory,
+  sameDirectory, removeExactPath, ensureChildDirectory, readPrivateFile,
+  createPrivateLock, writePrivateStage, replacePrivateFile, companionCredentialEntries,
+  type CredentialInventory, type DirectoryIdentity,
+} from "./credential-safe-file.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { CredentialInitializationSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, LogoutOperationSchema, type LogoutOperation, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { linkSync, lstatSync, mkdirSync, readdirSync, renameSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import {
-  CREDENTIAL_DIRECTORY_MODE, CredentialLockRecordSchema, errorCode, fsyncPath, noSymlinkAncestry, statDirectory,
-  sameDirectory, removeExactPath, ensureChildDirectory, readPrivateFile,
-  createPrivateLock, writePrivateStage, replacePrivateFile, companionCredentialEntries,
-  type DirectoryIdentity,
-} from "./credential-safe-file.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type {
@@ -1748,6 +1747,22 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     return second ?? missing();
   }
 
+  // shortcut: a replacement that keeps device, inode, mtime, and size stays cached until restart
+  let ownedCommandIds: { readonly identity: string; readonly ids: ReadonlySet<string> } | undefined;
+
+  function ownedCommandIdsForCurrentFile(): ReadonlySet<string> {
+    const status = lstatSync(protectedPath, { throwIfNoEntry: false });
+    if (status === undefined || !status.isFile() || status.isSymbolicLink()) {
+      ownedCommandIds = undefined;
+      return new Set(observeCurrent().document.history.map(({ receipt }) => receipt.commandId));
+    }
+    const identity = `${String(status.dev)}:${String(status.ino)}:${String(status.mtimeMs)}:${String(status.size)}`;
+    if (ownedCommandIds?.identity === identity) return ownedCommandIds.ids;
+    const ids = new Set(observeCurrent().document.history.map(({ receipt }) => receipt.commandId));
+    ownedCommandIds = { identity, ids };
+    return ids;
+  }
+
   function divergent(): CredentialStoreApplyOutcome {
     return frozenRefusal(
       "command-divergent",
@@ -1892,8 +1907,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     ownsCommandId(commandId: string): boolean {
       admission.assertLive();
       const id = z.uuid().parse(commandId);
-      const document = observeCurrent().document;
-      return document.history.some(({ receipt }) => receipt.commandId === id);
+      return ownedCommandIdsForCurrentFile().has(id);
     },
     acceptedAt(commandId: string): string | undefined {
       admission.assertLive();

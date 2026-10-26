@@ -1,4 +1,5 @@
 import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
+import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
 import { createBoundProfileFixture } from "./admission-fixture.js";
 import assert from "node:assert/strict";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
@@ -87,7 +88,10 @@ export function openAuthorityHarness(): AuthorityHarness {
     dispose: (): void => {
       if (closeAttempted) { if (closeFailure !== undefined) throw closeFailure; return; }
       closeAttempted = true;
-      try { database.close(); fixture.close(); retainedAuthorityHarnessOwners.delete(held); }
+      try {
+        releaseSeededWriteOwners(database, clock.now().toISOString());
+        database.close(); fixture.close(); retainedAuthorityHarnessOwners.delete(held);
+      }
       catch (error) { held.primary = { error }; closeFailure = retainAuthoritySourceClosure([error], { admission: held }); throw closeFailure; }
     },
   };

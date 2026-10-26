@@ -251,7 +251,7 @@ it("requires a real verified own backup before changing the ready source schema"
     const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
     const backedBefore = storageTree(f.stateRoot);
     assert.throws(() => AuthorityDatabase.upgradeStopped(owner, f.path, f.processLockRoot, systemClock,
-      inspection.authorityContentFingerprint, { ...verified, manifest: { ...verified.manifest, sha256: FingerprintSchema.parse("0".repeat(64)) } }),
+      inspection.authorityContentFingerprint, { ...verified, manifest: { ...verified.manifest, sha256: FingerprintSchema.parse("0".repeat(64)) } }, verifyStoppedBackupManifestAtPath),
     { message: "profile-stopped-upgrade-backup-changed" });
     assert.deepEqual(storageTree(f.stateRoot), backedBefore);
     const original = readFileSync(verified.backupPath), sourceBefore = rawEight(f.path);
@@ -280,7 +280,7 @@ it("refuses changed source content inside the real migration transaction and can
     finally { raw.close(); }
     const before = storageTree(f.stateRoot);
     assert.throws(() => AuthorityDatabase.upgradeStopped(owner, f.path, f.processLockRoot, systemClock,
-      inspection.authorityContentFingerprint, verified), { message: "profile-stopped-upgrade-source-changed" });
+      inspection.authorityContentFingerprint, verified, verifyStoppedBackupManifestAtPath), { message: "profile-stopped-upgrade-source-changed" });
     assert.deepEqual(storageTree(f.stateRoot), before);
     const restored = new DatabaseSync(f.path);
     try { assert.equal(restored.prepare("UPDATE database_states SET updated_at=? WHERE id=1").run(original).changes, 1); }

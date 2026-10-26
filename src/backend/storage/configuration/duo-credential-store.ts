@@ -288,7 +288,8 @@ export function createDuoCredentialStore(profile: RuntimeAdmission, machine: Run
           for (const row of [...current.credentials, ...current.retired]) floors.set(row.credentialId, Math.max(floors.get(row.credentialId) ?? 0, row.highWater));
           for (const [id, floor] of floors) {
             const row = [...restored.credentials, ...restored.retired].find((candidate) => candidate.credentialId === id);
-            if ((row?.highWater ?? 0) < floor) throw new Error("duo-purpose-restore-lowers-burned-count");
+            const highWater = row === undefined ? 0 : row.highWater;
+            if (highWater < floor) throw new Error("duo-purpose-restore-lowers-burned-count");
           }
         }
         const updated = next(current);

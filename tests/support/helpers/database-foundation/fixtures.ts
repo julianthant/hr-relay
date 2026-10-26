@@ -2,7 +2,7 @@ import { createBoundProfileFixture } from "../admission-fixture.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { AuthorityDatabase } from "../synthetic-database-admission.js";
+import { AuthorityDatabase, detachBoundFixtureWorkers } from "../synthetic-database-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
@@ -17,6 +17,7 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
+import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 export function foundationFixture(options:{input?:RunRecord["input"]}={}){
  const profile=createBoundProfileFixture();
@@ -39,7 +40,13 @@ export function foundationFixture(options:{input?:RunRecord["input"]}={}){
  return running.run;
  };
  const run=createRun(RUN_ID);
- return {root,path,clock,db,snapshot,run,createRun,profile,dispose:()=>{db.close();profile.close();}};
+ return {root,path,clock,db,snapshot,run,createRun,profile,dispose:()=>{
+  const closed = (error: unknown) => error instanceof Error && error.message.includes("database is not open");
+  try { releaseSeededWriteOwners(db, clock.now().toISOString()); } catch (error) { if (!closed(error)) throw error; }
+  detachBoundFixtureWorkers(db);
+  try { db.close(); } catch (error) { if (!closed(error)) throw error; }
+  profile.close();
+ }};
 }
 export function failure(){return FailureRecordSchema.parse({failureId:id(80),fingerprint:HASH,runId:RUN_ID,traceId:QUEUED_RUN.envelope.traceId,attempt:1,workflowId:"person-lookup",code:"FIXTURE_FAILURE",summary:"Synthetic failure",transient:false,writeState:"unknown",action:{operation:"commit"},causeChain:[{code:"FIXTURE_FAILURE",summary:"Synthetic failure",role:"primary",transient:false}],remediation:[{kind:"no-safe-action",message:"Do not retry an unknown submit"}],occurredAt:NOW});}
 export function update(n=1){return ArtifactOutboxStorageRecordSchema.parse({outboxId:id(n),artifactId:id(70),projectionId:"retention-row",stableKeyFingerprint:HASH,keyValues:[{field:"subject",value:"synthetic"}],sinkId:"xlsx-retention",sourceRunId:RUN_ID,sourceNodeId:"searching",state:"pending",payload:{schemaHash:HASH,value:`retained-${n}`},createdAt:NOW});}

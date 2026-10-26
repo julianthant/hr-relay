@@ -3,9 +3,8 @@ import { protectedSecretSource } from "./protected-secret-source.js";
 import { testWorkerLifetime, testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { openBoundDatabaseFixture } from "./admission-fixture.js";
+import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { manualClock, type TestClock } from "../../../src/rules/time/clock.js";
 import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-executor.js";
@@ -337,16 +336,9 @@ export function compositionHarness(options: Readonly<{
   kualiCommitDoesNotPersist?: boolean;
 }> = {}): CompositionHarness {
   const clock = manualClock(new Date(COMPOSITION_NOW));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-separations-composition-"));
-  const database = AuthorityDatabase.open(
-    {
-      path: join(root, "authority.sqlite"),
-      busyTimeoutMs: 250,
-      migrationOwner: "separations-composition-test",
-    },
-    clock,
-  );
-  testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: separationsDescriptor, poolIndex: 1 });
+  const opened = openBoundDatabaseFixture("separations-composition-test", clock);
+  const database = opened.database;
+  testWorkerPorts(database, clock, { path: opened.path, descriptor: separationsDescriptor, poolIndex: 1 });
   const ucpath = createUcpathSmartHrFakeWorld({
     emplId: COMPOSITION_EID,
     displayedName: COMPOSITION_UCPATH_NAME,
@@ -403,8 +395,8 @@ export function compositionHarness(options: Readonly<{
     bound: <Result>(work: () => Promise<Result>): Promise<Result> =>
       withBoundRunConfigFingerprint(manager, COMPOSITION_CONFIG_FINGERPRINT, work),
     dispose: (): void => {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
+      releaseSeededWriteOwners(database, clock.now().toISOString());
+      opened.close();
     },
   };
 }
@@ -421,14 +413,15 @@ export function compositionClaimRunning(
   if (enqueued.state !== "inserted") throw new Error(`enqueue outcome was ${enqueued.state}`);
   const claimMember1 = database.authority.workerSlots.get(workerId);
   if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-  const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, COMPOSITION_WORKFLOW_ID, claimMember1.poolIndex).workerLifetime,
+  const workerLifetime = testWorkerLifetime(database, COMPOSITION_WORKFLOW_ID, claimMember1.poolIndex).workerLifetime;
+  const claimed = database.authority.runs.claimNext({ workerLifetime,
     workflow: COMPOSITION_WORKFLOW_ID,
     workerId,
     now,
   });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  const base = { workerId, claimedAt: now, heartbeatAt: now };
+  const base = { workerId, workerLifetime, claimedAt: now, heartbeatAt: now };
   const validating = database.authority.runs.transition({
     runId: claimed.run.envelope.runId,
     expectedVersion: claimed.run.version,

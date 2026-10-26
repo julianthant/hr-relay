@@ -1,24 +1,21 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase, inspectAuthorityBackupReadOnly } from "../../../support/helpers/synthetic-storage-admission.js";
 import { createWorkbookLibraryService, WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const clock = manualClock(new Date("2026-10-15T12:00:00.000Z"));
 const workbook = { name: "Dates.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Dates", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: new Date("2026-01-01T00:00:00.000Z") }] }] }] };
 function fixture() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "workbook-authority-"));
-  roots.push(root);
-  const path = join(root, "state.db");
-  const open = () => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "workbook-test" }, clock);
-  return { path, open };
+  const profile = createBoundProfileFixture();
+  profiles.push(profile);
+  const open = () => AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "workbook-test" }, clock);
+  return { path: profile.path, open };
 }
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { for (const profile of profiles.splice(0)) profile.close(); });
 
 it("accounts for workbook snapshots and history in one authority generation, persists dates, and refuses stale saves", () => {
   const f = fixture();

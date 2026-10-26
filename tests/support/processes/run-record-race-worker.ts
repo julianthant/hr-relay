@@ -6,6 +6,7 @@ import { z } from "zod";
 import { RunRecordService, CreateRunRequestSchema } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../src/models/config/runtime-generation.js";
+import { WorkerClaimLifetimeSchema } from "../../../src/models/run/worker.js";
 import { CommandIdSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -20,7 +21,7 @@ const data = z.strictObject({
     z.strictObject({ kind: z.literal("create"), request: CreateRunRequestSchema }),
     z.strictObject({ kind: z.literal("claim"), request: z.strictObject({
       commandId: CommandIdSchema, workflow: WorkflowIdSchema, workerId: WorkerIdSchema,
-      runtimeConfig: RuntimeConfigClaimTokenSchema,
+      workerLifetime: WorkerClaimLifetimeSchema, runtimeConfig: RuntimeConfigClaimTokenSchema,
     }) }),
   ]),
 }).parse(workerData);

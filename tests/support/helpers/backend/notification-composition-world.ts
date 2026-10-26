@@ -3,9 +3,9 @@ import { createNotificationInbox } from "../../../../src/backend/runs/notificati
 import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory, QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
-import { storageRecoveryFixture } from "../integration/storage-recovery-fixture.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
-import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import { openBoundDatabaseFixture } from "../admission-fixture.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";
 
 
@@ -14,13 +14,14 @@ import { type RunRecord } from "../../../../src/models/run/record.js";
 
 export function createNotificationCompositionTestWorld() {
   async function fixture() {
-    const f = storageRecoveryFixture(); await f.run();
-    const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "notification-producers" }, f.clock);
+    const clock = manualClock(new Date("2026-09-10T20:00:00.000Z"));
+    const opened = openBoundDatabaseFixture("notification-producers", clock);
+    const db = opened.database;
     db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-    testWorkerPorts(db, f.clock, { path: f.path, descriptor: personLookupDescriptor, poolIndex: 1 });
-    const reader = new RunRecordService({ database: db, clock: f.clock, ids: sequentialIdFactory("e"), publishQueued: () => {} });
-    const inbox = createNotificationInbox({ authority: db, clock: f.clock, ids: sequentialIdFactory("a"), actorId: "local-operator", runReader: reader });
-    return { ...f, db, reader, inbox, close: () => { db.close(); f.dispose(); } };
+    testWorkerPorts(db, clock, { path: opened.path, descriptor: personLookupDescriptor, poolIndex: 1 });
+    const reader = new RunRecordService({ database: db, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} });
+    const inbox = createNotificationInbox({ authority: db, clock, ids: sequentialIdFactory("a"), actorId: "local-operator", runReader: reader });
+    return { root: opened.stateRoot, path: opened.path, clock, db, reader, inbox, close: () => opened.close(), dispose: () => opened.close() };
   }
 
   function seedRun(f: Awaited<ReturnType<typeof fixture>>, desired: RunRecord) {

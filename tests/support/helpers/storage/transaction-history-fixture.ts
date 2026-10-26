@@ -8,7 +8,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { testRunService, testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { separationsDescriptor } from "../registered-workflows.js";
 import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
-import { atomicWriteCheckpoint } from "../timeline-write-fixture.js";
+import { atomicWriteCheckpoint, releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { ledgerCommitFixture, fixtureUuid } from "../../fixtures/ledger-projection-fixtures.js";
 export const HISTORY_NOW = "2026-09-09T12:00:00.000Z";
 export const historyClock = capturedInstantClock(HISTORY_NOW);
@@ -52,8 +52,8 @@ export function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) 
       separationsDescriptor).state, "applied");
       return fixture;
     },
-    reopen() { database.close(); database = open(); },
-    dispose() { database.close(); admitted.dispose(); },
+    reopen() { releaseSeededWriteOwners(database, historyClock.now().toISOString()); database.close(); database = open(); },
+    dispose() { releaseSeededWriteOwners(database, historyClock.now().toISOString()); database.close(); admitted.profile.close(); },
   };
 }
 

@@ -4,6 +4,8 @@ import { derivePersistedSettingsFingerprint } from "../../../models/config/setti
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { spawnSync } from "node:child_process";
+// Tests replace this. A direct node:child_process import is not reached by the fixture spy.
+export const orphanProcessQuery = { spawnSync };
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { z } from "zod";
@@ -37,7 +39,7 @@ function requireRoot(path: string, descendants = false): void {
 function proveOrphanProfileRootsUnused(roots: readonly string[]): void {
   if (process.platform !== "darwin") refuse();
   const query = (command: string, args: string[]) => {
-    const result = spawnSync(command, args, { encoding: "utf8", timeout: 10_000, maxBuffer: 32 * 1024 * 1024 });
+    const result = orphanProcessQuery.spawnSync(command, args, { encoding: "utf8", timeout: 10_000, maxBuffer: 32 * 1024 * 1024 });
     if (result.error !== undefined || result.signal !== null || result.stderr.length !== 0
       || result.status !== 0) refuse();
     return result.stdout;

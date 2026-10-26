@@ -18,6 +18,11 @@ export interface DashboardHttpMount {
   close(this: void): Promise<void>;
 }
 
+/** In-process dispatch of the signed-in application. The fetch identifier stays in this network owner. */
+export function dispatchMountedRequest(app: DashboardApp, request: Request): ReturnType<DashboardApp["fetch"]> {
+  return app.fetch(request);
+}
+
 export interface DashboardHttpServer {
   readonly port: number;
   close(): Promise<void>;

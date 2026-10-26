@@ -25,7 +25,6 @@ import { readAppSettings } from "./settings-storage.js";
 import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
 import { requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody } from "./worker-slots.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
-import { verifyStoppedBackupManifestAtPath } from "./backup-service.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
@@ -359,6 +358,7 @@ type RunRepository = Readonly<{
   findByTrace(traceId: string): RunRecord | undefined;
 
   listByWorkflow(workflow: string): readonly RunRecord[];
+  listActiveOwners(workflow: string): readonly Readonly<{ workerId: string; runId: string }>[];
   listPage(input: Readonly<{ workflow?: string; offset: number; limit: number }>): readonly RunRecord[];
 
   listCurrentByWorkflow(workflow: string): readonly RunRecord[];
@@ -1348,7 +1348,7 @@ function readAuthorityUpgradeRecords(database: DatabaseSync) {
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
 }
 
-function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, path: string, expectedFingerprint?: string, backup?: VerifiedBackup) {
+function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, path: string, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string, expectedSourceDatabaseIdentity: string) => VerifiedBackup) {
   requireRuntimeAdmission(admission);
   const version = readIntPragma(database, "user_version");
   if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) return inspectNormalAuthority(database);
@@ -1367,7 +1367,8 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     if (expectedFingerprint !== undefined && fingerprint !== expectedFingerprint) throw new Error("source-changed: re-plan upgrade");
     if (backup === undefined || expectedFingerprint === undefined) throw new Error("upgrade-verified-backup-required");
     if (purpose === "ready") {
-      const verified = verifyStoppedBackupManifestAtPath(admission, backup.manifestPath, AuthorityDatabase.sourceDatabaseIdentity(path));
+      if (verifyBackup === undefined) throw new Error("stopped-backup-verifier-required");
+      const verified = verifyBackup(admission, backup.manifestPath, AuthorityDatabase.sourceDatabaseIdentity(path));
       if (canonicalJsonStringify(verified) !== canonicalJsonStringify(backup)
         || verified.manifest.installationId !== binding.installationId || verified.manifest.profileId !== binding.profileId) throw new Error("profile-stopped-upgrade-backup-changed");
     }
@@ -1896,14 +1897,14 @@ export class AuthorityDatabase implements Disposable {
     return result;
   }
 
-  static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup) {
+  static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string, expectedSourceDatabaseIdentity: string) => VerifiedBackup) {
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
     const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
     if (before.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return before;
     const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
     let result: ReturnType<typeof migrateStoppedAuthority> | undefined;
     let primary: { error: unknown } | undefined;
-    try { result = migrateStoppedAuthority(database, clock, admission, path, expectedFingerprint, backup); }
+    try { result = migrateStoppedAuthority(database, clock, admission, path, expectedFingerprint, backup, verifyBackup); }
     catch (error) { primary = { error }; }
     const failures: unknown[] = [];
     try { database.close(); } catch (error) { failures.push(error); }
@@ -2716,12 +2717,12 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  assertCurrentExecution(input: unknown): void {
+  assertCurrentExecution(input: unknown, allowAdmittedReset = false): void {
     const request = RunHeartbeatRequestSchema.pick({ runId: true, claim: true }).parse(input);
-    this.withAuthorityReadSnapshot(() => this.#assertCurrentExecution(request.runId, request.claim));
+    this.withAuthorityReadSnapshot(() => this.#assertCurrentExecution(request.runId, request.claim, allowAdmittedReset));
   }
 
-  #assertCurrentExecution(runId: string, claim: z.infer<typeof RunClaimTokenSchema>): void {
+  #assertCurrentExecution(runId: string, claim: z.infer<typeof RunClaimTokenSchema>, allowAdmittedReset = false): void {
     this.#admission.assertProfileRuntime();
     const run = this.#readRunRow(runId), held = run === undefined ? undefined : runClaim(run);
     const lifetime = run !== undefined && "workerLifetime" in run.lifecycle ? run.lifecycle.workerLifetime : undefined;
@@ -2731,7 +2732,7 @@ export class AuthorityDatabase implements Disposable {
       || lifetime.membershipRevision !== slot.membershipRevision || lifetime.leaseGeneration !== lease.leaseGeneration
       || lease.workflow !== slot.workflow || lease.processId !== process.pid || lease.birthCommandId === undefined
       || !isLiveWorker(lease) || lease.lifecycle.state === "stopping"
-      || this.authority.workerControls.resetForWorker(claim.workerId) !== undefined
+      || (!allowAdmittedReset && this.authority.workerControls.resetForWorker(claim.workerId) !== undefined)
       || this.authority.workerControls.lifecycleForWorker(claim.workerId) !== undefined
       || this.authority.workerControls.initializingForWorker(claim.workerId, lease.leaseGeneration) !== undefined
       || this.authority.workerSlots.recovery(claim.workerId) !== undefined
@@ -2744,7 +2745,7 @@ export class AuthorityDatabase implements Disposable {
     for (;;) {
       if (visited.has(current.envelope.runId)) throw new Error("delegation-ancestry-cycle");
       visited.add(current.envelope.runId);
-      if (this.authority.workerControls.resetForRun(current.envelope.runId) !== undefined) throw new WorkerControlRefusal("worker-execution-lost");
+      if (!allowAdmittedReset && this.authority.workerControls.resetForRun(current.envelope.runId) !== undefined) throw new WorkerControlRefusal("worker-execution-lost");
       if (current.envelope.parent === undefined) break;
       const edge = delegationEdgeForChild(this.authority, current.envelope.parent.runId, current.envelope.runId);
       if (edge.policy.cascadeCancel === "independent") break;
@@ -4744,6 +4745,12 @@ export class AuthorityDatabase implements Disposable {
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id
       `).all(workflow).map((row) => runRecordFromRow(row))),
+      listActiveOwners: (workflow: string) => Object.freeze(this.#database.prepare(`
+        SELECT owner_worker_id AS workerId, id AS runId FROM runs
+        WHERE workflow = ? AND state IN ('claimed', 'validating', 'running')
+      `).all(workflow).map((row) => Object.freeze(z.strictObject({
+        workerId: z.string(), runId: z.string(),
+      }).parse(row)))),
       listCurrentByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT t.* FROM runs AS t
         WHERE t.workflow = ?

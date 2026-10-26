@@ -191,6 +191,16 @@ export function observePid(pid: number): PidObservation {
 // Observe OS birth identity as well as PID occupancy to detect PID reuse.
 export function observeProcessIdentity(pid: number): ProcessIdentityObservation {
   const parsedPid = PositiveIntSchema.parse(pid);
+  if (parsedPid === process.pid && selfProcessIdentity !== undefined) return selfProcessIdentity;
+  const observed = observeUncachedProcessIdentity(parsedPid);
+  if (parsedPid === process.pid) selfProcessIdentity = observed;
+  return observed;
+}
+
+// This process's birth identity cannot change while it is alive. Other pids are observed every time.
+let selfProcessIdentity: ProcessIdentityObservation | undefined;
+
+function observeUncachedProcessIdentity(parsedPid: number): ProcessIdentityObservation {
   if (observePid(parsedPid).state === "gone") return { state: "gone" };
   if (process.platform === "linux") {
     try {

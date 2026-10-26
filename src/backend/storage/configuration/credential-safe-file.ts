@@ -12,6 +12,17 @@ export interface DirectoryIdentity {
   readonly inode: number;
 }
 
+export interface CredentialInventory {
+  readonly entriesAbsent: boolean;
+  readonly protectedPlaintext: boolean;
+  readonly stagePlaintext: boolean;
+  readonly backupPlaintext: readonly string[];
+  readonly unknownFormats: readonly string[];
+  readonly inventoryMissing: boolean;
+  readonly loginDataUcSdRows: number | "unreadable" | "absent";
+  readonly logoutComplete: boolean;
+}
+
 const expectedUid = typeof process.getuid === "function" ? process.getuid() : undefined;
 
 export function errorCode(error: unknown): string | undefined {

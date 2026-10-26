@@ -1,9 +1,5 @@
 import { createSeededDashboardWorld } from "../../support/helpers/seeded-dashboard-world.js";
 import { default as assert } from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach } from "vitest";
 import { describe } from "vitest";
@@ -20,6 +16,7 @@ import { RUN_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { RUN_SESSION_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { RUN_SESSION } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { DAY } from "../../support/helpers/backend/dashboard-harness.js";
 import { instantOffsetOf } from "../../support/helpers/backend/dashboard-harness.js";
@@ -29,11 +26,11 @@ import type { DashboardWorld } from "../../support/helpers/backend/dashboard-har
 
 {
 
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 function databasePath(): string {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-parallel-runs-authority-"));
-  roots.push(root);
-  return join(root, "authority.sqlite");
+  const profile = createBoundProfileFixture();
+  profiles.push(profile);
+  return profile.path;
 }
 function open(path: string): AuthorityDatabase {
   const database = AuthorityDatabase.open(
@@ -44,7 +41,7 @@ function open(path: string): AuthorityDatabase {
   return database;
 }
 const _afterEachFixture0 = () => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) profile.close();
 };
 
 const RUN_ID_2 = "aaaaaaaa-0002-4000-8000-000200000000";

@@ -17,6 +17,7 @@ import { buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_EID, 
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase, type AuthorityWriteCommitHooks } from "../synthetic-storage-admission.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
+import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 
 interface Harness {
   readonly world: WriteFixtureWorld;
@@ -60,7 +61,10 @@ export function createWriteSequencerTestWorld() {
       if (held.failure !== undefined) throw held.failure;
       if (closeAttempted) return;
       closeAttempted = true;
-      try { database.close(); profile.close(); retainedWriteSequencerOwners.delete(held); }
+      try {
+        releaseSeededWriteOwners(database, clock.now().toISOString());
+        database.close(); profile.close(); retainedWriteSequencerOwners.delete(held);
+      }
       catch (error) { held.primary ??= { error }; held.failure = retainAuthoritySourceClosure(held.primary.error === error ? [error] : [held.primary.error, error], { admission: held }); throw held.failure; }
     });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);

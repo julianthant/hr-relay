@@ -21,6 +21,10 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { insertMeasuredSearchRun } from "../../support/helpers/backend/cross-date-search-harness.js";
 import { foundationFixture } from "../../support/helpers/database-foundation/fixtures.js";
 import { storageTree } from "../../support/helpers/integration/storage-recovery-fixture.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { createBoundProfileFixture, openBoundDatabaseFixture } from "../../support/helpers/admission-fixture.js";
+import { detachBoundFixtureWorkers } from "../../support/helpers/synthetic-database-admission.js";
+import { releaseSeededWriteOwners } from "../../support/helpers/timeline-write-fixture.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { upgradeStorage } from "../../support/helpers/synthetic-storage-admission.js";
 
@@ -29,9 +33,10 @@ import { upgradeStorage } from "../../support/helpers/synthetic-storage-admissio
 describe("cross-date search authority read", () => {
 
   it("authenticates complete retained actor sources and keeps frozen actors through genuine ordinary pruning", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-search-actor-"));
-    const path=join(root,"authority.db"),clock=manualClock(new Date("2026-11-01T16:00:00.000Z"));
-    const database=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-actor-test"},clock);
+    const clock=manualClock(new Date("2026-11-01T16:00:00.000Z"));
+    const opened=openBoundDatabaseFixture("search-actor-test",clock,1000);
+    const path=opened.path;
+    const database=opened.database;
     const raw=new DatabaseSync(path);
     try {
       const run=insertMeasuredSearchRun(database,{seed:983,enqueuedAt:"2026-08-01T16:00:00.000Z",authorityPath:path});
@@ -100,7 +105,7 @@ describe("cross-date search authority read", () => {
       const reopened=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-post-prune-genuine-reopen"},clock);
       try { assert.deepEqual(reopened.authority.runs.search({q:e.runId,scope:"run",facets:{},limit:1}),before); }
       finally { reopened.close(); }
-    } finally { raw.close();database.close();rmSync(root,{recursive:true,force:true}); }
+    } finally { raw.close(); releaseSeededWriteOwners(database, clock.now().toISOString()); opened.close(); }
   });
 });
 }
@@ -108,21 +113,22 @@ describe("cross-date search authority read", () => {
 {
 
 const roots: string[] = [];
+const pendingProfiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
-const _afterEachFixture0 = () => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
+const _afterEachFixture0 = () => {
+  for (const profile of pendingProfiles.splice(0)) profile.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+};
 function fresh() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "storage-upgrade-"));
-  roots.push(root);
-  mkdirSync(join(root, "artifacts"), { mode: 0o700 });
-  const path = join(root, "state.db");
-  const input = { stateRoot: root, processLockRoot: join(root, "locks"), plan: false };
-  return { root, path, input, run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
+  const profile = createBoundProfileFixture({ pending: true });
+  pendingProfiles.push(profile);
+  const input = { stateRoot: profile.stateRoot, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false };
+  return { root: profile.stateRoot, path: profile.path, input, run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
 }
 function rows(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
-    assert.equal(tables.length, 36);
     assert.deepEqual(tables.map(row => row.name), AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort());
     return Object.fromEntries(tables.map(row => {
       assert.equal(typeof row.name, "string");
@@ -148,7 +154,7 @@ afterEach(_afterEachFixture0);
       const run = f.db.authority.runs.get(f.run.envelope.runId);
       assert.ok(run); assert.equal(run.lifecycle.state, "running");
       const generation = f.db.getMeta().authorityGeneration;
-      f.db.close();
+      detachBoundFixtureWorkers(f.db); f.db.close();
       const before = rows(f.path); const bytes = readFileSync(f.path);
       const input = { stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan: true };
       assert.equal((await upgradeStorage(input, clock)).state, "planned");
@@ -174,7 +180,7 @@ afterEach(_afterEachFixture0);
   it("refuses a missing selected snapshot before healthy open or upgrade with all bytes unchanged", async () => {
     const f = foundationFixture();
     try {
-      const snapshotId = f.snapshot.configSnapshotId; f.db.close();
+      const snapshotId = f.snapshot.configSnapshotId; detachBoundFixtureWorkers(f.db); f.db.close();
       const raw = new DatabaseSync(f.path);
       try {
         raw.exec("PRAGMA foreign_keys=OFF");
@@ -202,7 +208,7 @@ afterEach(_afterEachFixture0);
       const retained = inputs.map(input => f.db.authority.timelineEvents.append(input).record);
       assert.equal(retained.length, 4); assert.equal(new Set(retained.map(event => event.eventId)).size, 4);
       assert.deepEqual(retained.map(event => event.retentionDate), ["2026-07-31", "2026-07-31", "2026-07-31", "2026-08-01"]);
-      f.db.close(); const before = rows(f.path);
+      detachBoundFixtureWorkers(f.db); f.db.close(); const before = rows(f.path);
       assert.equal((await upgradeStorage({ stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan: false }, clock)).state, "already-upgraded");
       assert.deepEqual(rows(f.path), before);
       const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "native-timeline-replay" }, clock);

@@ -8,9 +8,10 @@ import { readSettings } from "../../../../src/backend/runtime/settings/settings-
 import { SETTINGS_SCHEMA_HASH, SettingsApplyRejectionCodeSchema, derivePersistedSettingsFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { roots, openDatabases, databasePath, createHarness, nextCommandId } = createCommandKernelTestWorld();
+const { roots, openDatabases, createHarness, nextCommandId } = createCommandKernelTestWorld();
 
 
 afterEach(() => {
@@ -52,7 +53,8 @@ describe("apply-settings authority", () => {
   );
 
   it("maps candidate validation failure to a value-free rejection without changing SQLite", () => {
-    const credentials = createCredentialStore({ stateRoot: databasePath("validation-credentials") });
+    const credentialProfile = createBoundProfileFixture();
+    const credentials = createCredentialStore({ stateRoot: credentialProfile.stateRoot });
     const harness = createHarness(undefined, createSettingsApplicationExecutor(() => {
       throw new Error("private candidate diagnostic must not cross the authority boundary");
     }, credentials));
@@ -85,6 +87,7 @@ describe("apply-settings authority", () => {
       settingsFingerprint: derivePersistedSettingsFingerprint({}),
       settings: {},
     });
+    credentialProfile.close();
   });
 
   it("recovers an ambiguous SQLite COMMIT through exact command replay", () => {

@@ -13,7 +13,7 @@ import { personLookupDescriptor, separationsDescriptor } from "../../../support/
 const {world, runRecordOf, queuedEventOf, CLAIM, otherConnection, appendOther, seedWorld, cleanup } = createRunQueueProjectionTestWorld();
 
 function corruptLatest(w: DashboardWorld): void {
-  using raw = new DatabaseSync(join(w.stateRoot, "authority.db"));
+  using raw = new DatabaseSync(join(w.stateRoot, "state.db"));
   const sql = raw.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='timeline_events_immutable'").get()?.sql;
   assert.equal(typeof sql, "string");
   if (typeof sql !== "string") throw new Error("missing timeline immutable guard");

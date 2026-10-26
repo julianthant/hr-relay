@@ -3,7 +3,7 @@ import { parse as parseCsvSync } from "csv-parse/sync";
 import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
-import { mkdtempSync,rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import readXlsxFile from "read-excel-file/node";
@@ -38,6 +38,7 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { sha256Hex } from "../../../../../src/rules/validation/sha256.js";
 import { CONFIG_SNAPSHOT } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runRecordOf } from "../../../../support/helpers/backend/dashboard-harness.js";
+import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 
 const cleanup:(()=>void)[]=[];
@@ -102,11 +103,12 @@ function shiftActivityVolumeSeries(report:ActivityReportWire):ActivityReportWire
     runs:bucket.runs+(index===source?-1:index===destination?1:0)}))}};
 }
 function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) {
-  const root=mkdtempSync(join(tmpdir(),"activity-selection-proof-")),path=join(root,"state.db");
+  const profile=createBoundProfileFixture();
+  const scratch=mkdtempSync(join(tmpdir(),"activity-selection-proof-"));
   const clock=manualClock(new Date("2026-09-21T17:00:00Z"));
-  const database=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"activity-selection-proof"},clock);
+  const database=AuthorityDatabase.open({path:profile.path,busyTimeoutMs:500,migrationOwner:"activity-selection-proof"},clock);
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  cleanup.push(()=>{database.close();rmSync(root,{recursive:true,force:true});});
+  cleanup.push(()=>{database.close();profile.close();rmSync(scratch,{recursive:true,force:true});});
   const activityDays: readonly string[] = options.rangeAware ? RANGE_AWARE_ACTIVITY_DAYS : ["2026-09-20", "2026-09-20", "2026-09-20"];
   for (const [index, day] of activityDays.entries()) {
     const seed = 3701 + index;
@@ -131,7 +133,7 @@ function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) 
     :composedActivity;
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
-  const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts"))});
+  const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(scratch, ".tracker"), join(scratch, ".tracker/data/artifacts"))});
   const xlsx=createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,
     search,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));

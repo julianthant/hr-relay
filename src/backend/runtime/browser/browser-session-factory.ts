@@ -1,11 +1,13 @@
 import { DuoCredentialSchema, DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
+import { workerProfileDirectory } from "../../storage/maintenance/profile-inventory.js";
+export { workerProfileDirectory };
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
 import { lstatSync, mkdirSync, readdirSync, readlinkSync, rmSync, statSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { hostname } from "node:os";
 import { chromium } from "playwright";
 import type { BrowserContext, Page } from "playwright";
@@ -129,17 +131,6 @@ const DEFAULT_LAUNCHER: PersistentContextLauncher = {
   },
 };
 
-
-export function workerProfileDirectory(input: Readonly<{
-  profileRoot: string;
-  slotOrdinal: number;
-  system: BrowserSystemId;
-}>): string {
-  const root = AbsolutePathSchema.parse(input.profileRoot);
-  const ordinal = PositiveIntSchema.parse(input.slotOrdinal);
-  const system = BrowserSystemIdSchema.parse(input.system);
-  return resolve(root, `w${String(ordinal)}`, system);
-}
 
 function browserModeFor(
   requested: BrowserPresentationMode | undefined,

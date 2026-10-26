@@ -1,8 +1,7 @@
 import { fenceWriteFixture, writeFenceFixtureInput } from "../../../support/helpers/write-fence-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,9 +9,10 @@ import { createCommandKernel, type WriteResolutionContext } from "../../../../sr
 import { RunRecordService, runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createItemAttemptHistoryQuery } from "../../../../src/backend/runs/queries/item-attempt-history.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { AuthorityDatabase, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { AuthorityDatabase, detachBoundFixtureWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import { deletedRunFromRow } from "../../../../src/backend/storage/sqlite/deleted-run-row.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { reconstructConfirmedOperation } from "../../../../src/models/events/confirmed-operation.js";
@@ -28,6 +28,7 @@ import { TransactionOutcomeSchema, WriteIntentRecordSchema, deriveIdempotencyKey
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { COMMITTED_OUTCOME, CONFIG_SNAPSHOT, HASH_A, LATER, LATEST, LEDGER_PAYLOAD, NOW, SPAN_OUTBOX_PAYLOAD, UUID_1, UUID_3, UUID_5, UUID_6, UUID_7, UUID_8, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { testAdmittedWorker, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 import { NOW as NOW_m2, foundationFixture as baseFoundationFixture_m2, failure as failure_m2, id as id_m2, terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -41,12 +42,12 @@ const cleanups:(()=>void)[]=[];
 const _afterEachFixture0 = ()=>{for(const cleanup of cleanups.splice(0))cleanup();};
 function fixture(fault?:string) {
   let activeFault=fault;
-  const root=realpathSync(mkdtempSync(join(tmpdir(),"relay-native-deletion-")));
-  const path=join(root,"authority.sqlite");const admission=RuntimeAdmission.syntheticFixture(path);
-  const open=()=>AuthorityDatabase.open(admission,{path,busyTimeoutMs:250,migrationOwner:"native-test"},undefined,undefined,undefined,
+  const profile=createBoundProfileFixture();
+  const path=profile.path;const admission=profile.admission;
+  const open=()=>AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"native-test"},undefined,undefined,undefined,
     {afterDeleteStep:({step})=>{if(step===activeFault)throw new Error("deletion-fault");},
       afterDeletionFileRemoved:()=>{if(activeFault === "file")throw new Error("deletion-file-fault");}});
-  let db=open();cleanups.push(()=>{db.close();rmSync(root,{recursive:true,force:true});});
+  let db=open();cleanups.push(()=>{db.close();profile.close();});
   db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const terminalTemplate=RunRecordSchema.parse({...QUEUED_RUN,envelope:{...QUEUED_RUN.envelope,configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,
     configFingerprint:CONFIG_SNAPSHOT.fingerprint},lifecycle:{state:"terminal",outcome:"discarded",endedAt:NOW}});
@@ -159,33 +160,29 @@ const cleanups:(()=>void)[]=[];
 const _afterEachFixture0 = ()=>{for(const cleanup of cleanups.splice(0))cleanup();};
 function fixture(faultStep?:string) {
   let activeFault=faultStep;
-  const root=realpathSync(mkdtempSync(join(tmpdir(),"relay-native-parked-")));const path=join(root,"authority.sqlite");
-  const admission=RuntimeAdmission.syntheticFixture(path);
-  const open=()=>AuthorityDatabase.open(admission,{path,busyTimeoutMs:250,migrationOwner:"native-test"},undefined,{afterStorageStep:step=>{if(step === activeFault)throw new Error("resolution-storage-fault");}});
-  let db=open();cleanups.push(()=>{db.close();rmSync(root,{recursive:true,force:true});});
+  const profile=createBoundProfileFixture();
+  const path=profile.path;
+  mkdirSync(join(profile.stateRoot,"locks"),{recursive:true,mode:0o700});
+  const open=()=>AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"native-test"},undefined,{afterStorageStep:step=>{if(step === activeFault)throw new Error("resolution-storage-fault");}});
+  let db=open();cleanups.push(()=>{db.close();profile.close();});
   db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const run=RunRecordSchema.parse({...QUEUED_RUN,envelope:{...QUEUED_RUN.envelope,workflow:WRITE_INTENT_ATTEMPTING.workflowId,
     configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},version:5,claimGeneration:1,
     lifecycle:{state:"parked-write",writeIntentId:WRITE_INTENT_ATTEMPTING.writeIntentId,intentGeneration:1,
       parkedAt:NOW,code:"unknown",message:"offline indeterminate probe"}});
-  const worker=db.withAuthorityTransaction(repositories=>{
-    const slot=admitDirectWorker(repositories,{commandId:"80000000-0000-4000-8000-000000000001",workflow:run.envelope.workflow,
-      poolIndex:1,expectedPoolVersion:0,processId:process.pid,processAcquisitionId:"80000000-0000-4000-8000-000000000002",
-      authorityPath:path,processLockRoot:join(root,"locks"),now:NOW},"80000000-0000-4000-8000-000000000003");
-    expect(repositories.workerLeases.start({workerId:slot.workerId,workflow:run.envelope.workflow,browserSystems:[],
-      processId:process.pid,requestedBy:"local-operator",now:NOW}).state).toBe("started");
-    return slot.workerId;
-  });
+  const admitted=testAdmittedWorker(db,capturedInstantClock(NOW),{path,workflow:run.envelope.workflow,poolIndex:1,browserSystems:[]});
+  const worker=admitted.workerId;
+  const workerLifetime=admitted.workerLifetime;
   db.authority.runs.enqueue({...run,version:1,claimGeneration:0,lifecycle:{state:"queued"}});
-  const claim=db.authority.runs.claimNext({workflow:run.envelope.workflow,workerId:worker,now:NOW});
+  const claim=db.authority.runs.claimNext({workflow:run.envelope.workflow,workerId:worker,workerLifetime,now:NOW});
   expect(claim.state).toBe("claimed");
   if(claim.state !== "claimed")throw new Error("fixture claim failed");
   const validating=db.authority.runs.transition({runId:run.envelope.runId,expectedVersion:claim.run.version,
-    claim:{workerId:worker,claimGeneration:1},lifecycle:{state:"validating",workerId:worker,claimedAt:NOW,heartbeatAt:NOW},now:NOW});
+    claim:{workerId:worker,claimGeneration:1},lifecycle:{state:"validating",workerId:worker,workerLifetime,claimedAt:NOW,heartbeatAt:NOW},now:NOW});
   expect(validating.state).toBe("applied");
   if(validating.state !== "applied")throw new Error("fixture validation failed");
   const running=db.authority.runs.transition({runId:run.envelope.runId,expectedVersion:validating.run.version,
-    claim:{workerId:worker,claimGeneration:1},lifecycle:{state:"running",workerId:worker,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"termination"},now:NOW});
+    claim:{workerId:worker,claimGeneration:1},lifecycle:{state:"running",workerId:worker,workerLifetime,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"termination"},now:NOW});
   expect(running.state).toBe("applied");
   if(running.state !== "applied")throw new Error("fixture run failed");
   fenceWriteFixture(db, {intent:WRITE_INTENT_ATTEMPTING,attempt:WRITE_ATTEMPT});
@@ -514,18 +511,11 @@ afterEach(_afterEachFixture0);
       const publication=f.db.authority.writeIntents.getPublication(intent.writeIntentId)!;
       expect(publication.ledger).toEqual(transaction);expect(publication.span).toEqual(committedSpan);
       expect(f.db.authority.timelineEvents.get(publication.timeline.eventId)?.payload).toEqual(publication.timeline.payload);
-      const worker=f.db.withAuthorityTransaction(repositories=>{
-        const slot=admitDirectWorker(repositories,{commandId:"90000000-0000-4000-8000-000000000010",workflow:f.run.envelope.workflow,
-          poolIndex:2,expectedPoolVersion:repositories.workerPools.get(f.run.envelope.workflow)?.version??0,processId:process.pid,processAcquisitionId:"90000000-0000-4000-8000-000000000011",
-          authorityPath:f.path,processLockRoot:join(f.path,"..","locks"),now:LATEST},"90000000-0000-4000-8000-000000000012");
-        expect(repositories.workerLeases.start({workerId:slot.workerId,workflow:f.run.envelope.workflow,browserSystems:[],
-          processId:process.pid,requestedBy:"local-operator",now:LATEST}).state).toBe("started");
-        return slot.workerId;
-      });
+      const worker=testAdmittedWorker(f.db,capturedInstantClock(LATEST),{path:f.path,workflow:f.run.envelope.workflow,poolIndex:2,browserSystems:[]}).workerId;
       const current=f.db.authority.runs.get(f.run.envelope.runId)!;
       expect(f.db.authority.runs.requeue({runId:current.envelope.runId,expectedVersion:current.version,
         cause:"recovery",now:LATEST}).state).toBe("applied");
-      const claim=f.db.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:worker,now:LATEST});
+      const claim=f.db.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:worker,workerLifetime:testWorkerLifetime(f.db,f.run.envelope.workflow,2).workerLifetime,now:LATEST});
       expect(claim.state).toBe("claimed");
       if(claim.state !== "claimed")throw new Error("later current claim failed");
       expect(claim.run.claimGeneration).toBe(3);f.restart();
@@ -576,7 +566,7 @@ describe("same-attempt native recovery",()=>{
       assert.deepEqual(release.run.envelope,f.run.envelope);assert.deepEqual(release.run.input,f.run.input);
       assert.equal(release.run.version,f.run.version+1);assert.equal(release.run.claimGeneration,f.run.claimGeneration);
       assert.equal(release.run.lifecycle.state,"queued");
-      const next=f.db.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:claim.workerId,now:NOW_m2});assert.equal(next.state,"claimed");
+      const next=f.db.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:claim.workerId,workerLifetime:testWorkerLifetime(f.db,f.run.envelope.workflow,f.db.authority.workerSlots.get(claim.workerId)!.poolIndex).workerLifetime,now:NOW_m2});assert.equal(next.state,"claimed");
       if(next.state!=="claimed")throw new Error("primitive release not claimable");
       assert.deepEqual(next.run.envelope,f.run.envelope);assert.equal(next.run.claimGeneration,claim.claimGeneration+1);
       const claimedBytes=rawState(f.path);
@@ -599,11 +589,11 @@ describe("same-attempt native recovery",()=>{
       assert.deepEqual(released.envelope,f.run.envelope);assert.deepEqual(released.input,f.run.input);
       assert.equal(released.claimGeneration,f.run.claimGeneration);assert.equal(released.lifecycle.state,"queued");
       const settled=rawState(f.path);assert.equal(service.requeue(request).state,"applied-already");assert.equal(rawState(f.path),settled);
-      f.db.close();const reopened=AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"same-attempt-reopen"},f.clock);
+      detachBoundFixtureWorkers(f.db);f.db.close();const reopened=AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"same-attempt-reopen"},f.clock);
       try{
         const replay=new RunRecordService({database:reopened,clock:f.clock,ids:sequentialIdFactory(),publishQueued:()=>{throw new Error("replayed queue publication");}});
         assert.equal(replay.requeue(request).state,"applied-already");assert.equal(rawState(f.path),settled);
-        const claimed=reopened.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:claim.workerId,now:NOW_m2});assert.equal(claimed.state,"claimed");
+        const claimed=reopened.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:claim.workerId,workerLifetime:testWorkerLifetime(reopened,f.run.envelope.workflow,reopened.authority.workerSlots.get(claim.workerId)!.poolIndex).workerLifetime,now:NOW_m2});assert.equal(claimed.state,"claimed");
         if(claimed.state!=="claimed")throw new Error("not reclaimed");
         assert.deepEqual(claimed.run.envelope,f.run.envelope);assert.equal(claimed.run.claimGeneration,claim.claimGeneration+1);
         const fenced=reopened.authority.runs.requeue({runId:request.runId,expectedVersion:claimed.run.version,claim,cause:"recovery",now:NOW_m2});assert.deepEqual(fenced,{state:"conflict",currentVersion:claimed.run.version,currentState:claimed.run.lifecycle.state,message:`run ${request.runId} is no longer claimed by ${claim.workerId} at generation ${String(claim.claimGeneration)}`});
@@ -629,7 +619,7 @@ describe("truthful immutable final evidence",()=>{
       if(evidence?.kind!=="lifecycle-evidence")throw new Error("wrong cancellation owner");assert.equal(evidence.commandId,request.commandId);assert.equal(evidence.auditId,request.commandId);
       const receipt=trust(f.db,f).ensureReceipt(result.runId);assert.deepEqual(receipt.output,[]);
       const settled=rawState(f.path);assert.equal(service.terminalize(request,personLookupDescriptor).state,"applied-already");assert.equal(rawState(f.path),settled);
-      f.db.close();const reopened=AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"terminal-reopen"},f.clock);
+      detachBoundFixtureWorkers(f.db);f.db.close();const reopened=AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"terminal-reopen"},f.clock);
       try{const replay=new RunRecordService({database:reopened,clock:f.clock,ids:sequentialIdFactory(),publishQueued:()=>{throw new Error("unexpected publication");}});
         assert.equal(replay.terminalize(request,personLookupDescriptor).state,"applied-already");assert.deepEqual(trust(reopened,f).ensureReceipt(result.runId),receipt);assert.equal(rawState(f.path),settled);
       }finally{reopened.close();}
@@ -696,7 +686,7 @@ describe("truthful immutable final evidence",()=>{
         db.prepare("DELETE FROM run_results WHERE run_id=?").run(f.run.envelope.runId);for(const row of triggers)db.exec(String(row.sql));
       }finally{db.close();}
       const partial=rawState(f.path);assert.throws(()=>service.terminalize(request,personLookupDescriptor),/composite authority/u);assert.equal(rawState(f.path),partial);
-      f.db.close();assert.throws(()=>AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"partial-terminal"},f.clock),/run-completion-consequences|final-runs-bind-result-owner/u);
+      detachBoundFixtureWorkers(f.db);f.db.close();assert.throws(()=>AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"partial-terminal"},f.clock),/run-completion-consequences|final-runs-bind-result-owner/u);
     }finally{f.dispose();}
   });
   it("keeps interrupted recovery without immutable final evidence or receipt",()=>{
@@ -718,7 +708,7 @@ describe("truthful immutable final evidence",()=>{
         for(const row of triggers)db.exec(String(row.sql));
       }finally{db.close();}
       assert.throws(()=>f.db.authority.runResults.get(f.run.envelope.runId),error=>error instanceof Error && error.message==="run-result-payload-invalid");
-      f.db.close();assert.throws(()=>AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"private-result-refusal"},f.clock),error=>
+      detachBoundFixtureWorkers(f.db);f.db.close();assert.throws(()=>AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"private-result-refusal"},f.clock),error=>
         error instanceof Error && error.message.includes("run-result-payload-invalid") && !error.message.includes("SYNTHETIC_PRIVATE_RESULT"));
     }finally{f.dispose();}
   });
@@ -734,7 +724,7 @@ describe("truthful immutable final evidence",()=>{
         for(const row of triggers)db.exec(String(row.sql));
       }finally{db.close();}
       assert.throws(()=>f.db.authority.runResults.get(result.runId),/terminal-(?:failure-result|evidence-command-audit)/u);
-      f.db.close();assert.throws(()=>AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"terminal-refusal"},f.clock),/terminal-(?:failure-result|evidence-command-audit)/u);
+      detachBoundFixtureWorkers(f.db);f.db.close();assert.throws(()=>AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"terminal-refusal"},f.clock),/terminal-(?:failure-result|evidence-command-audit)/u);
     }finally{f.dispose();}
   });
 });

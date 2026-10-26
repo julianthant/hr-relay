@@ -1,3 +1,4 @@
+import { syntheticDatabasePath } from "../../support/helpers/synthetic-database-admission.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { ledgerCommitFixture, fixtureUuid } from "../../support/fixtures/ledger-projection-fixtures.js";
@@ -231,7 +232,7 @@ describe("one-projection-counts", () => {
     for (const [index, instance] of [[0, "prod"], [1, "test"]] as const) {
       const fixture = ledgerCommitFixture(index, { instance, confirmedAt: instantOffsetOf(0),
         runId: fixtureUuid(`one-projection-run-${String(index)}`), itemId: fixtureUuid(`one-projection-item-${String(index)}`) });
-      seedAtomicWriteOwner(world.database, fixture.commit, join(world.stateRoot, "authority.db"));
+      seedAtomicWriteOwner(world.database, fixture.commit, syntheticDatabasePath(world.database));
       assert.equal(fenceWriteFixture(world.database, { intent: fixture.intent, attempt: fixture.attempt }).state, "fenced");
       world.database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
     }

@@ -1,5 +1,6 @@
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { workerProfileDirectory } from "../../runtime/browser/browser-session-factory.js";
+import { AbsolutePathSchema } from "../../../models/config/schema.js";
+import { BrowserSystemIdSchema, PositiveIntSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
 import { CredentialLockRecordSchema, readPrivateFile } from "../configuration/credential-safe-file.js";
 import { lstatSync, readdirSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -11,10 +12,21 @@ import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
-import { countProfileCredentialLoginRows } from "../../profiles/credential-inventory.js";
+import { countProfileCredentialLoginRows } from "../sqlite/profile-local-databases.js";
 import { readRuntimeProcessLock } from "../sqlite/runtime-process-locks.js";
 
 type CredentialMembershipCustody = Pick<ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, "slots" | "reservations" | "browsers" | "configSnapshots" | "artifactReferences" | "upgrades">;
+
+export function workerProfileDirectory(input: Readonly<{
+  profileRoot: string;
+  slotOrdinal: number;
+  system: BrowserSystemId;
+}>): string {
+  const root = AbsolutePathSchema.parse(input.profileRoot);
+  const ordinal = PositiveIntSchema.parse(input.slotOrdinal);
+  const system = BrowserSystemIdSchema.parse(input.system);
+  return resolve(root, `w${String(ordinal)}`, system);
+}
 
 export function assertRetainedProfileBrowserRoot(admissionInput: RuntimeAdmission, path: string): void {
   const admission = requireRuntimeAdmission(admissionInput), root = admission.stateRoot;

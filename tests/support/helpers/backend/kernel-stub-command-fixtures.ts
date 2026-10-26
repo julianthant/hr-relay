@@ -1,8 +1,6 @@
 import { RunRecordService, type RunRecordServiceDependencies } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import {
   createCommandKernel,
   type CommandKernel,
@@ -59,12 +57,20 @@ export function createKernelStubCommandFixtures(input: {
 
   function createHarness(options: { publishQueued?: RunRecordServiceDependencies["publishQueued"] } = {}): KernelStubHarness {
     const clock = manualClock(new Date(NOW));
-    const root = mkdtempSync(join(realpathSync(tmpdir()), input.prefix));
-    input.roots.push(root);
+    const profile = createBoundProfileFixture();
     const database = AuthorityDatabase.open(
-      { path: join(root, "kernel.sqlite"), busyTimeoutMs: 250, migrationOwner: input.migrationOwner },
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: input.migrationOwner },
       clock,
     );
+    const close = database.close.bind(database);
+    let closed = false;
+    database.close = () => {
+      if (closed) return;
+      closed = true;
+      close();
+      profile.close();
+    };
+    input.roots.push(profile.workspace);
     input.openDatabases.push(database);
     seedSyntheticRuntimeConfig(database);
     const active = database.authority.runtimeConfig.get();

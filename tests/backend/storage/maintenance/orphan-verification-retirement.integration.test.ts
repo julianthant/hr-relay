@@ -1,11 +1,10 @@
-import { initializeAdmissionFixture, fixtureAdmission, releaseAdmissionFixture } from "../../../support/helpers/admission-fixture.js";
+import { initializeAdmissionFixture, fixtureAdmission, releaseAdmissionFixture, createBoundProfileFixture, boundProfileCredentials, AuthorityDatabase } from "../../../support/helpers/admission-fixture.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { validateNativeLifecycleRequest } from "../../../../src/backend/storage/sqlite/native-lifecycle-request.js";
 import { RunLifecycleCommandRecordSchema } from "../../../../src/rules/commands/commands.js";
 import { WorkerVerificationRetirementRequestSchema } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
-import * as childProcess from "node:child_process";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
@@ -13,9 +12,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { orphanProcessQuery } from "../../../../src/backend/storage/sqlite/orphan-verification-proof.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import * as locks from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { admitWorkerVerification, retireWorkerVerification } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { WorkerVerificationClaimSchema } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
@@ -23,13 +21,9 @@ import { recordSmokeSlot } from "../../../../scripts/verify/browser-login.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
-vi.mock("node:child_process", async importOriginal => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
-  return { ...actual, spawnSync: vi.fn(actual.spawnSync) };
-});
 const nativeChildProcess = await vi.importActual<typeof import("node:child_process")>("node:child_process");
 beforeEach(() => {
-  vi.mocked(childProcess.spawnSync).mockImplementation((...args: Parameters<typeof childProcess.spawnSync>) => {
+  vi.spyOn(orphanProcessQuery, "spawnSync").mockImplementation((...args: Parameters<typeof orphanProcessQuery.spawnSync>) => {
     if (args[0] === "/usr/sbin/lsof") return { pid: 0, output: [], stdout: `p${process.pid}\nfcwd\ntDIR\nn/isolated-fixture\n`, stderr: "", status: 0, signal: null };
     return nativeChildProcess.spawnSync(...args);
   });
@@ -41,12 +35,10 @@ const cleanups: (() => void)[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0)) cleanup(); });
 
 function fixture() {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-orphan-")));
-  const stateRoot = resolve(workspace, rebuildRuntimeIsolation.stateRoot);
-  mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
-  const admission = RuntimeAdmission.syntheticRoots(stateRoot, join(stateRoot, "artifacts"));
+  const profile = createBoundProfileFixture();
+  const { workspace, stateRoot, admission } = profile;
   const clock = manualClock(new Date("2026-10-16T10:00:00.000Z"));
-  const database = AuthorityDatabase.open(admission, { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "orphan-test" }, clock);
+  const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "orphan-test" }, clock);
   const processLockRoot = resolve(workspace, rebuildRuntimeIsolation.processLockRoot);
   const original = locks.acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
   const owner = locks.readRuntimeProcessLock(processLockRoot, "live-smoke");
@@ -63,19 +55,20 @@ function fixture() {
   const claimPath = join(claimRoot, "live-smoke-claims", `${owner.acquisitionId}.slot.json`);
   const claim = WorkerVerificationClaimSchema.parse(JSON.parse(readFileSync(claimPath, "utf8")));
   writeFileSync(claimPath, JSON.stringify({ ...claim, profileRunId: randomUUID() }));
-  const profileRoots = [join(stateRoot, "scratch", "live-smoke"), resolve(workspace, rebuildRuntimeIsolation.browserProfileRoot)];
+  const profileRoots = [join(stateRoot, "scratch", "live-smoke"), join(stateRoot, "browsers")];
   const profiles = profileRoots.map(root => join(root, randomUUID(), "browsers", "w1", "ucpath"));
   for (const profile of profiles) { mkdirSync(profile, { recursive: true, mode: 0o700 }); writeFileSync(join(profile, "retain"), "unchanged"); }
   original.release();
   vi.spyOn(locks, "observeProcessIdentity").mockReturnValue({ state: "gone" });
   vi.spyOn(locks, "observeRuntimeLockSnapshot").mockImplementation((input, selectedClock, hooks) =>
     nativeObserveRuntimeLockSnapshot(input, selectedClock, { ...hooks, observeProcessIdentity: locks.observeProcessIdentity }));
-  const invoke = (plan = false, selectedAdmission = admission, extra: string[] = []) => composeStorageCommand(rebuildRuntimeIsolation,
-    ["retire-orphan-verification", "--acquisition", owner.acquisitionId, ...(plan ? ["--plan"] : []), "--json", ...extra], clock, workspace, selectedAdmission);
+  const invoke = async (plan = false, selectedAdmission = admission, extra: string[] = []) => composeStorageCommand(rebuildRuntimeIsolation,
+    ["retire-orphan-verification", "--acquisition", owner.acquisitionId, ...(plan ? ["--plan"] : []), "--json", ...extra], clock, workspace, selectedAdmission,
+    selectedAdmission === admission ? boundProfileCredentials(admission) : undefined);
   const snapshot = () => ({ generation: database.getMeta().authorityGeneration, slot: database.authority.workerSlots.get(slot.workerId), pool: database.authority.workerPools.get(slot.workflow) });
   const retained = () => { for (const profile of profiles) expect(readFileSync(join(profile, "retain"), "utf8")).toBe("unchanged"); expect(existsSync(claimPath)).toBe(true); };
-  cleanups.push(() => { database.close(); admission.release(); rmSync(workspace, { recursive: true, force: true }); });
-  return { workspace, stateRoot, admission, clock, database, processLockRoot, owner, releasePath: join(processLockRoot, "live-smoke-claims", `${owner.generation}-${owner.acquisitionId}.release.json`), slot: claim.slot, peer, credentialKey, claimPath, profileRoots, profiles, invoke, snapshot, retained };
+  cleanups.push(() => { database.close(); profile.close(); });
+  return { workspace, stateRoot, path: profile.path, admission, clock, database, processLockRoot, owner, releasePath: join(processLockRoot, "live-smoke-claims", `${owner.generation}-${owner.acquisitionId}.release.json`), slot: claim.slot, peer, credentialKey, claimPath, profileRoots, profiles, invoke, snapshot, retained };
 }
 
 async function refuses(f: ReturnType<typeof fixture>, plan = false) {
@@ -158,7 +151,7 @@ describe("offline orphan verification retirement", () => {
     if (failure === "duo-held") f.database.authority.duoCeremonyLeases.acquire({ credentialKey: f.credentialKey, workerId: f.slot.workerId,
       system: "ucpath", now: f.clock.now().toISOString(), ttlMs: 60_000 });
     if (failure === "open-file") {
-      vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
+      vi.mocked(orphanProcessQuery.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
       const profile = f.profiles[0];
       if (profile === undefined) throw new Error("fixture profile missing");
       fd = openSync(join(profile, "held"), "w");
@@ -195,7 +188,7 @@ describe("offline orphan verification retirement", () => {
 
   it.each([0, 1])("refuses a real open file anywhere in browser root %s", async index => {
     const f = fixture();
-    vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
+    vi.mocked(orphanProcessQuery.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
     const profile = f.profiles[index];
     if (profile === undefined) throw new Error("fixture profile missing");
     const fd = openSync(join(profile, "open"), "w");
@@ -204,7 +197,7 @@ describe("offline orphan verification retirement", () => {
 
   it.each(["cwd", "arguments"])("refuses an owned child using a profile through %s", async mode => {
     const f = fixture();
-    vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
+    vi.mocked(orphanProcessQuery.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
     const profile = f.profiles[0];
     if (profile === undefined) throw new Error("fixture profile missing");
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", ...(mode === "arguments" ? [profile] : [])], { cwd: mode === "cwd" ? profile : f.workspace, stdio: "ignore" });
@@ -220,7 +213,7 @@ describe("offline orphan verification retirement", () => {
     [1, "cwd", false], [1, "cwd", true], [1, "descriptor", false], [1, "descriptor", true],
   ] as const)("refuses root %s with a deleted-descendant %s (plan=%s)", async (rootIndex, kind, plan) => {
     const f = fixture();
-    vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
+    vi.mocked(orphanProcessQuery.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
     const root = f.profileRoots[rootIndex];
     if (root === undefined) throw new Error("fixture profile root missing");
     const removedDirectory = join(root, "removed-descendant");
@@ -259,7 +252,7 @@ describe("offline orphan verification retirement", () => {
 
   it.each(["ps-error", "ps-empty", "ps-malformed", "ps-signal", "ps-status", "ps-spawn", "lsof-error", "lsof-malformed", "lsof-empty", "lsof-no-newline", "lsof-orphan-name", "lsof-truncated-file", "lsof-pid-only", "lsof-missing-name", "lsof-unknown-field", "lsof-signal", "lsof-spawn", "lsof-no-type", "lsof-nofd", "lsof-empty-type", "lsof-empty-directory", "lsof-empty-regular", "lsof-empty-unknown", "lsof-trailing-process"])("refuses an incomplete process query: %s", async mode => {
     const f = fixture();
-    vi.mocked(childProcess.spawnSync).mockImplementation((...args: Parameters<typeof childProcess.spawnSync>) => {
+    vi.mocked(orphanProcessQuery.spawnSync).mockImplementation((...args: Parameters<typeof orphanProcessQuery.spawnSync>) => {
       if (args[0] === "/bin/ps" && Array.isArray(args[1]) && args[1][0] === "-axo") {
         return { pid: 0, output: [], stdout: mode === "ps-empty" ? "" : mode === "ps-malformed" ? "unparseable\n" : `${process.pid} node\n`,
           stderr: mode === "ps-error" ? "failure" : "", status: mode === "ps-status" ? 2 : 0, signal: mode === "ps-signal" ? "SIGTERM" : null, ...(mode === "ps-spawn" ? { error: new Error("fixture spawn failed") } : {}) };
@@ -282,7 +275,7 @@ describe("offline orphan verification retirement", () => {
 
   it.each(["NPOLICY", "NEXUS", "PIPE"])("accepts a complete nameless %s kernel object record", async fileType => {
     const f = fixture();
-    vi.mocked(childProcess.spawnSync).mockImplementation((...args: Parameters<typeof childProcess.spawnSync>) => {
+    vi.mocked(orphanProcessQuery.spawnSync).mockImplementation((...args: Parameters<typeof orphanProcessQuery.spawnSync>) => {
       if (args[0] === "/usr/sbin/lsof") return { pid: 0, output: [], stdout: `p${process.pid}\nf3\nt${fileType}\nn\n`, stderr: "", status: 0, signal: null };
       return nativeChildProcess.spawnSync(...args);
     });
@@ -312,11 +305,13 @@ describe("offline orphan verification retirement", () => {
 
   it("refuses a released admission without mutation", async () => {
     const f = fixture();
-    const before = f.snapshot();
+    const bytes = (path: string) => existsSync(path) ? readFileSync(path) : undefined;
+    const files = [f.path, `${f.path}-wal`, `${f.path}-shm`];
+    const before = files.map(bytes);
     f.admission.release();
     await expect(f.invoke(true)).rejects.toThrow("missing or released admission");
     await expect(f.invoke()).rejects.toThrow("missing or released admission");
-    expect(f.snapshot()).toEqual(before);
+    expect(files.map(bytes)).toEqual(before);
     f.retained();
   });
 
@@ -352,7 +347,7 @@ describe("offline orphan verification retirement", () => {
     const planned = await f.invoke(true);
     expect(planned.exitCode, planned.output).toBe(0);
     const proof = f.database.authority.workerSlots.planOrphanRetirement({ acquisitionId: f.owner.acquisitionId, now: f.clock.now().toISOString() }).proof;
-    vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
+    vi.mocked(orphanProcessQuery.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
     const profile = f.profiles[0];
     if (profile === undefined) throw new Error("fixture profile missing");
     const fd = openSync(join(profile, "late-open"), "w");

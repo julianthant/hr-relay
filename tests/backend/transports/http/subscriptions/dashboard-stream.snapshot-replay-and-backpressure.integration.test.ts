@@ -73,7 +73,7 @@ afterEach(() => {
 });
 
 function admitOwnedWorker(w: DashboardWorld) {
-  const authorityPath = join(w.stateRoot, "authority.db"), processLockRoot = join(w.stateRoot, "locks");
+  const authorityPath = join(w.stateRoot, "state.db"), processLockRoot = join(w.stateRoot, "locks");
   const bound = bindWorkerProcessAdmission({ authorityPath, processLockRoot, clock: w.clock, pid: process.pid,
     open: () => w.database, close: () => {},
     admit: (database, processAcquisitionId) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {

@@ -102,7 +102,7 @@ import { createStartPlanService } from "../../../runs/commands/start-plan-servic
 import { createDashboardApp } from "../../../transports/http/routes/api.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
-import { startDashboardHttpServer, type DashboardHttpServer, type DashboardHttpListener } from "../../../transports/http/http-server.js";
+import { dispatchMountedRequest, startDashboardHttpServer, type DashboardHttpServer, type DashboardHttpListener } from "../../../transports/http/http-server.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
 
 import { createDashboardPreflightRunners } from "../../preflight/dashboard-runners.js";
@@ -495,8 +495,9 @@ async function composeDashboardRuntimeStartup(
     const record = database.authority.assistantModelPreference.get();
     const identity = record === undefined ? undefined : canonicalJsonStringify(record);
     const view = AssistantModelPreferenceViewSchema.parse({ profileId: selectedModelProfileId, epoch: selectedModelEpoch,
-      revision: record?.revision ?? 0, preference: record === undefined
-        ? { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } : record.preference });
+      ...(record === undefined
+        ? { revision: 0, preference: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } }
+        : { revision: record.revision, preference: record.preference }) });
     const assertPreferenceCurrent = (): true => {
       assertSelectedModelContext();
       const current = database.authority.assistantModelPreference.get();
@@ -1188,7 +1189,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       });
       guarded.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
       let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
-      guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return selectedApp.fetch(c.req.raw); });
+      guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return dispatchMountedRequest(selectedApp, c.req.raw); });
       const runtime = await composeDashboardRuntime({ ...input, profile: { runtime: profile, token: result.token },
         applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } });
       selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
@@ -1197,12 +1198,24 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
     } finally { if (!upgradePending) transitioning = false; }
   };
-  for (const [path, signup] of [["sign-in", false], ["sign-up", true]] as const) app.post(`/api/v1/profile/${path}`, async c => {
-    const activated = await activate(c.req.raw, signup);
+  const admitProfile = async (signup: boolean, request: Request) => {
+    const activated = await activate(request, signup);
     const result = PublicProfileStateSchema.parse(activated.state === "refused" ? { state: activated.state, code: activated.code } : activated);
-    if (result.state === "active" && selection !== undefined) c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
-    const response = c.json(result);
-    if (activated.state === "refused" && "upgrade" in activated) scheduleUpgrade(activated.upgrade, listener.committedResponse(response));
+    return { result, session: result.state === "active" ? selection : undefined,
+      upgrade: activated.state === "refused" && "upgrade" in activated ? activated.upgrade : undefined };
+  };
+  app.post("/api/v1/profile/sign-in", async c => {
+    const admitted = await admitProfile(false, c.req.raw);
+    if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+    const response = c.json(admitted.result);
+    if (admitted.upgrade !== undefined) scheduleUpgrade(admitted.upgrade, listener.committedResponse(response));
+    return response;
+  });
+  app.post("/api/v1/profile/sign-up", async c => {
+    const admitted = await admitProfile(true, c.req.raw);
+    if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+    const response = c.json(admitted.result);
+    if (admitted.upgrade !== undefined) scheduleUpgrade(admitted.upgrade, listener.committedResponse(response));
     return response;
   });
   app.post("/api/v1/profile/logout", async c => {

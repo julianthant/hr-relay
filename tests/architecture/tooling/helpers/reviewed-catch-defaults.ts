@@ -3,22 +3,22 @@
 export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "660ff67923ea0d920ac0e300be4170ee89a7250b655c3287ed35de30b0874d1c",
+    "sha256": "e2d7b690b164501d59ecb857d12efb0359fdc72c0bdb89b19da2af9326de2c93",
     "reason": "A failed selected-context open marks database closure unproved only for typed custody uncertainty and immediately rethrows; process release remains fenced. Startup and stop cleanup retain every failed required producer closure and original cause before dependent storage release."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "72aaa3eecba8d6a627ca362426bf5eb1b244eb7682a30ac7b854e1487e7b41cd",
+    "sha256": "ebf7584175778cb374978923ef0cf5b811f1dbeb91e517e35e93b41172048587",
     "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure."
   },
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
-    "sha256": "787a3b251eff61dc5c980fa745dfd22930ad908c72ad4ce70b8d73cefde43d05",
+    "sha256": "19fe28b0e30dd5cbfe357a1cfd00561bdb7378bfc5c27d743f4b2e1c2b25a94a",
     "reason": "Rejected authority activation clears only the same failed promise and rethrows its error; no account authority or availability is substituted. Other catches publish explicit errors or unconfirmed revocation."
   },
   {
       "path": "src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
-      "sha256": "728dcd1bfec5b26ec04f3ff6b8dc65efa32e85cab5ace3719aef8ef54aa4ef7a",
+      "sha256": "2d1be41d998c07b1cec1c0c3ca0c42cc8426ac5ab4b8e1cf09010d8bceb3e327",
       "reason": "Only ENOENT denotes no diagnostic stage directory (empty inventory, zero reclaimed stages or bytes) or an already absent captured file; all other errors rethrow. EEXIST verifies exact winner bytes; custody and cleanup failures throw or aggregate."
   },
   {
@@ -58,7 +58,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "b6e5de7382da8545a8d82a708e1854968a040dcedd84f311da65d8fe64591790",
+      "sha256": "137cf154e86eabdc3b9429f406dc6728cc810a58a62ad83ae5aec9a92be16d70",
     "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate."
   },
   {
@@ -78,7 +78,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/workers/worker-supervisor.ts",
-    "sha256": "14218910fac62ae2758e13e576075716a1f4e6c662efa1ffd543570fb0d24231",
+    "sha256": "876f9298455edeb9962c23b5d99a1003e9aa5929070adb5e447163c819acd4b2",
     "reason": "The rejection observer does not replace the original drain promise; shutdown races that promise and throws aggregate failure."
   },
   {
@@ -103,17 +103,17 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "5b5d0ebd797366488f7bbc62d44bd45f220fe377d2400724b82e08abfb2c1da4",
+    "sha256": "e33d46d88c4dfcdd01d6474a8beb0ef897c15dd73480db1e53e9086c2dcb9716",
     "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-    "sha256": "3061b3d83440dd591023f42f6e9c42c760dad47fcb85c8ea353e1f1aceb3fad1",
+    "sha256": "53ea2fb8be0e70f8e928d788d8aae3ae40d2336cf2e439802fa6806941caebbf",
     "reason": "Only ENOENT denotes an absent optional sidecar; a missing main database throws, unsafe or changed inputs throw, and failed construction disposes only its private snapshot before rethrowing."
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "sha256": "43a313449fb64ab336892607550a523ff7b0e4cc81e509116abf06ea6c33d0b3",
+    "sha256": "5103d20ea27cad73d607637b25218a0de9fe82d0c0062445430f9d7ca9c4d2a6",
     "reason": "Failed admission releases custody only after the opened resource closes successfully; close and release failures remain aggregate errors, uncertain resources keep their custody, and the original admission error always rejects."
   },
   {
@@ -135,5 +135,20 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "path": "src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.ts",
     "sha256": "d514cc6f756dde3823fe115093cf1c38fd7266b1525383f6777156e2a9f3d340",
     "reason": "Only CellCoercionError or ZodError makes the field-validation predicate false; the caller marks the supplied value invalid. Unknown field IDs and unexpected errors throw. Blank cells are explicitly optional and never substituted."
+  },
+  {
+    "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
+    "sha256": "ce615397276436a9adbc6da3353dcab1f60f29395a8f0e27fbb418aeaa8db8ec",
+    "reason": "An unproved source closure keeps the stopped machine-control admission and rethrows; release runs only when that custody was not retained."
+  },
+  {
+    "path": "src/backend/storage/configuration/duo-credential-store.ts",
+    "sha256": "5bab6b8375f13223a87e0f4694407f003d4aceaf5b247c424720c487b7a3cd07",
+    "reason": "A file that does not parse as a Duo publication envelope stays unread; only a matching digest or embedded canonical credential keeps it in the unauthorized or backup set."
+  },
+  {
+    "path": "src/backend/storage/sqlite/backup-inspection.ts",
+    "sha256": "361392559d62ba18705f8baf9a3843d69cd9eccaa48c9bb269d09c877a109ef6",
+    "reason": "Snapshot and database cleanup failures accumulate and rethrow as source-closure uncertainty; the empty list is the accumulator, and the original inspection error is never dropped."
   },
 ] as const;

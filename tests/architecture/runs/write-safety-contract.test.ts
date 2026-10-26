@@ -1,10 +1,10 @@
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
+import { releaseSeededWriteOwners } from "../../support/helpers/timeline-write-fixture.js";
+import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-authority-reason.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { testRunContinuation, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
@@ -118,14 +118,14 @@ describe("write-safety contract completeness (no escape hatch)", () => {
 describe("crash recovery routes probe-first with evidence-qualified settlement", () => {
   function recoveryWorld() {
     const clock = manualClock(new Date("2026-08-03T09:00:00.000Z"));
-    const root = mkdtempSync(join(tmpdir(), "hrauto-write-safety-guard-"));
+    const profile = createBoundProfileFixture();
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "write-safety-guard" },
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "write-safety-guard" },
       clock,
     );
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
-    testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
+    testWorkerPorts(database, clock, { path: profile.path, descriptor: writeFixtureDescriptor, poolIndex: 1 });
     const recovery = createWriteRecoveryService({
       continuation: testRunContinuation(database, clock),
       stores: registry,
@@ -142,8 +142,20 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
     return {
       clock, database, world, recovery,
       dispose: () => {
+        const now = clock.now().toISOString();
+        const authorityReason = deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "fixture release");
+        for (const run of database.authority.runs.listByWorkflow(writeFixtureDescriptor.id)) {
+          for (const intent of database.authority.writeIntents.listByRun(run.envelope.runId)) {
+            if (intent.status !== "attempting") continue;
+            database.authority.writeIntents.parkAttempt({
+              writeIntentId: intent.writeIntentId, generation: intent.generation, expectedVersion: intent.version,
+              code: "unknown", message: "fixture release", authorityReason, now,
+            });
+          }
+        }
+        releaseSeededWriteOwners(database, now);
         database.close();
-        rmSync(root, { recursive: true, force: true });
+        profile.close();
       },
     };
   }

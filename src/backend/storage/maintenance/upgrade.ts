@@ -18,7 +18,6 @@ import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { readStoppedProfileUpgradeInventory } from "./profile-inventory.js";
-import { composeStoppedControlCredentialInventory } from "../../app/composition/profile-credential-inventory.js";
 import type { VerifiedBackup } from "../sqlite/backup-service.js";
 import { deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
 
@@ -109,7 +108,7 @@ export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpg
         const manifest=backupReport.manifests.at(-1);
         if(manifest===undefined)throw new Error("upgrade-verified-backup-required");
         const backup=await verifyBackupManifestAtPath(admission,join(input.stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`),AuthorityDatabase.sourceDatabaseIdentity(path));
-        AuthorityDatabase.upgradeStopped(admission,path,input.processLockRoot,clock,inspection.authorityContentFingerprint,backup);
+        AuthorityDatabase.upgradeStopped(admission,path,input.processLockRoot,clock,inspection.authorityContentFingerprint,backup,verifyStoppedBackupManifestAtPath);
         requireStopped(admission,input,clock);
         inspectAuthorityBackupReadOnly(admission,path);
         return report("upgraded");
@@ -235,7 +234,7 @@ async function runReadyProfileUpgrade(machine: RuntimeAdmission, owner: RuntimeA
   inventory = revalidate(produced);
   const verified = await verifyBackupManifestAtPath(owner, manifestPath, AuthorityDatabase.sourceDatabaseIdentity(path));
   revalidate(verified);
-  AuthorityDatabase.upgradeStopped(owner, path, processLockRoot, clock, initial.authorityContentFingerprint, verified);
+  AuthorityDatabase.upgradeStopped(owner, path, processLockRoot, clock, initial.authorityContentFingerprint, verified, verifyStoppedBackupManifestAtPath);
   const current = inspect();
   if (current.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || current.authorityGeneration !== initial.authorityGeneration
     || current.installationId !== owner.profileBinding.installationId || current.profileId !== owner.profileBinding.profileId) throw new Error("profile-stopped-upgrade-readback-unproved");
@@ -244,7 +243,10 @@ async function runReadyProfileUpgrade(machine: RuntimeAdmission, owner: RuntimeA
   return report("upgraded");
 }
 
-export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock) {
+type StoppedMachineControl = ReturnType<RuntimeAdmission["beginStoppedMachineControlUpgrade"]>;
+
+export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock,
+  composeInventory: (input: Readonly<{ claim: ReturnType<StoppedMachineControl["profileInventory"]>; hostFacts: HostConfigFacts; clock: Clock }>) => { readonly proof: Parameters<StoppedMachineControl["recordProfileInventory"]>[1]; dispose(): void }) {
   requireRuntimeAdmission(machine).assertExclusive();
   const context = machine.readInstallationContext();
   if (context === undefined) throw new Error("profile-control-upgrade-machine-membership-unknown");
@@ -262,7 +264,7 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
     if (!control.machineControlCurrent() || control.upgradeIntentPresent()) {
       for (const profileId of control.registeredProfileIds()) {
         const claim = control.profileInventory(profileId);
-        const inventory = composeStoppedControlCredentialInventory({ claim, hostFacts: input.hostFacts, clock });
+        const inventory = composeInventory({ claim, hostFacts: input.hostFacts, clock });
         inventories.push(inventory);
         control.recordProfileInventory(claim, inventory.proof);
       }

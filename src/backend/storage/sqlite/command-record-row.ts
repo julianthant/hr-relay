@@ -1,19 +1,18 @@
 import { validateNativeLifecycleRequest } from "./native-lifecycle-request.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { StoredAuthorityCommandRecordSchema, AuthorityCommandAuditRecordSchema, CommandIdentityConflictError } from "../../../rules/commands/commands.js";
+import { StoredAuthorityCommandRecordSchema, AuthorityCommandAuditRecordSchema, CommandIdentityConflictError, RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../rules/commands/commands.js";
 import { SettingsInitializationCommandSchema, SettingsInitializationAuditSchema } from "../../../models/config/settings-initialization.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
-import type { CommandApplication } from "../../runs/commands/command-application.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 
 let activeRunCommand: Readonly<{ repositories: AuthorityRepositories; request: string }> | undefined;
 
-export function withCanonicalRunCommandScope(repositories: AuthorityRepositories, request: CommandRequest,
-  work: () => CommandApplication, parentCommandId?: string): CommandApplication {
+export function withCanonicalRunCommandScope<Result extends object>(repositories: AuthorityRepositories, request: CommandRequest,
+  work: () => Result, parentCommandId?: string): Result {
   if (activeRunCommand !== undefined || request.family !== "run" || (request.type !== "retry" && request.type !== "cancel")) {
     throw new Error("canonical-run-command-scope-unavailable");
   }
@@ -43,8 +42,14 @@ const RowSchema = z.strictObject({
   request_digest: z.string(), request_json: z.string(), state: z.enum(["admitted", "executing", "succeeded", "refused", "uncertain"]),
   outcome_json: z.string().nullable(), created_at: z.string(), updated_at: z.string(),
 });
+function isRunLifecycleCommand(input: unknown): boolean {
+  return typeof input === "object" && input !== null && "kind" in input && input.kind === "run-lifecycle";
+}
+
 export function commandIdentity(input: unknown) {
-  const request = NativeCommandRequestSchema.parse(input);
+  const request = isRunLifecycleCommand(input)
+    ? RunLifecycleCommandRecordSchema.parse(input)
+    : NativeCommandRequestSchema.parse(input);
   if ("kind" in request && request.kind === "run-lifecycle") validateNativeLifecycleRequest(request);
   const family = "kind" in request ? request.kind : request.family;
   const actor = "requestedBy" in request ? request.requestedBy : "acceptance" in request ? request.acceptance.request.requestedBy : LOCAL_OPERATOR_ACTOR_ID;
@@ -66,7 +71,10 @@ export function commandFromRow(input: unknown) {
     throw new Error("command-row-identity-mismatch");
   }
   if (row.outcome_json !== null) {
-    const audit = NativeCommandAuditSchema.parse(JSON.parse(row.outcome_json));
+    const outcome = JSON.parse(row.outcome_json) as unknown;
+    const audit = isRunLifecycleCommand(outcome)
+      ? RunLifecycleCommandAuditRecordSchema.parse(outcome)
+      : NativeCommandAuditSchema.parse(outcome);
     if (canonicalJsonStringify(audit.request) !== identity.json || audit.completedAt !== row.updated_at
       || commandAuditState(audit) !== row.state) throw new Error("command-row-outcome-mismatch");
   } else if (row.state === "succeeded" || row.state === "refused" || row.state === "uncertain") {
@@ -91,7 +99,9 @@ export function insertNativeCommand(database: DatabaseSync, input: unknown, pare
       identity.family === "bulk-parent" ? "succeeded" : "admitted", identity.createdAt, identity.createdAt).changes);
 }
 export function settleNativeCommand(database: DatabaseSync, input: unknown): void {
-  const audit = NativeCommandAuditSchema.parse(input);
+  const audit = isRunLifecycleCommand(input)
+    ? RunLifecycleCommandAuditRecordSchema.parse(input)
+    : NativeCommandAuditSchema.parse(input);
   const row = database.prepare("SELECT * FROM commands WHERE id=?").get(audit.request.commandId);
   if (row === undefined || canonicalJsonStringify(commandFromRow(row)) !== canonicalJsonStringify(audit.request)) throw new Error("command-audit-request-mismatch");
   const existing = RowSchema.parse(row).outcome_json, json = canonicalJsonStringify(audit);
