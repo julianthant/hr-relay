@@ -14,7 +14,6 @@ import { inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/a
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase, detachBoundFixtureWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import { deletedRunFromRow } from "../../../../src/backend/storage/sqlite/deleted-run-row.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { reconstructConfirmedOperation } from "../../../../src/models/events/confirmed-operation.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunResultRecordSchema, deriveRunResultDigest, terminalEvidenceResult } from "../../../../src/models/run/result.js";

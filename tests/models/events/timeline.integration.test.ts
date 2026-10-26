@@ -2,12 +2,8 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.j
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdirSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
 import { readFileSync } from "node:fs";
-import { realpathSync } from "node:fs";
 import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach } from "vitest";

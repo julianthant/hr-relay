@@ -1,4 +1,4 @@
-import { AuthorityDatabase, registerBoundProfile, unregisterBoundProfile, assertBoundFixtureWorkersReleased, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
+import { registerBoundProfile, unregisterBoundProfile, assertBoundFixtureWorkersReleased, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
 export { registerBoundProfile, unregisterBoundProfile, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission, profileFixtureStorageAdmission, boundProfileAdmission } from "./synthetic-database-admission.js";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
@@ -71,7 +71,7 @@ export const AuthorityDatabase = new Proxy(ProductionAuthorityDatabase, {
     return Reflect.get(target, property, receiver) as unknown;
   },
 }) as unknown as Omit<typeof ProductionAuthorityDatabase, "open"> & {
-  open(input: unknown, clock?: Parameters<typeof ProductionAuthorityDatabase.open>[2]): ProductionAuthorityDatabase;
+  open(...args: Parameters<typeof ProductionAuthorityDatabase.open> extends [unknown, ...infer Rest] ? Rest : never): ProductionAuthorityDatabase;
 };
 export function createCredentialStore(input: Omit<Parameters<typeof productionCredentialStore>[0], "admission">) {
   const admission = findProfileFixtureAdmission(input.stateRoot);

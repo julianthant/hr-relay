@@ -246,4 +246,3 @@ describe("one-projection-counts", () => {
     assert.equal(report.totalRuns, 6);
   });
 });
-import { join } from "node:path";

@@ -29,7 +29,7 @@ function serialize(value: unknown): string {
     return `[${parts.join(",")}]`;
   }
   if (typeof value === "object") {
-    const prototype = Object.getPrototypeOf(value);
+    const prototype: unknown = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) throw new Error("canonical-json-invalid");
     return `{${Object.entries(value)
       .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
