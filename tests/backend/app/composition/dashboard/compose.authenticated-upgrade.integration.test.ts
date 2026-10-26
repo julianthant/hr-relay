@@ -37,6 +37,7 @@ import { PublicProfileStateSchema } from "../../../../../src/models/profiles/pub
 import { RuntimeCustodyUncertainError, composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { runtimeProcessLockIsActive } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../src/backend/storage/sqlite/migrations.js";
 
 vi.mock("../../../../../src/backend/transports/http/http-server.js", { spy: true });
 vi.mock("../../../../../src/backend/storage/admission/admission.js", async importOriginal => {
@@ -70,7 +71,7 @@ const inspectStopped = AuthorityDatabase.inspectStoppedUpgrade.bind(AuthorityDat
 
 const login = { email: "fixture@example.edu", password: "disposable-fixture-password" };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
-function priorSeven() {
+function priorEight() {
   const profile = createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -96,14 +97,14 @@ function priorSeven() {
     assert.equal(result.state, "applied");
   } finally { database.close(); }
   profile.admission.release();
-  // Synthetic current8-to-prior7 layout; not prior-producer proof.
+  // Synthetic current-to-prior8 layout; not prior-producer proof.
   const raw = new DatabaseSync(profile.path);
   try {
     raw.exec("PRAGMA foreign_keys=ON");
-    for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
-    raw.exec("BEGIN EXCLUSIVE; DROP TABLE assistant_actions; DROP TABLE assistant_chats; DROP TABLE assistant_grants; UPDATE database_states SET schema_version=7 WHERE id=1; PRAGMA user_version=7; COMMIT");
-    const prior = inspectNativeAuthority(raw, 7);
-    assert.equal(prior.schemaVersion, 7);
+    assert.equal(raw.prepare("SELECT count(*) AS count FROM assistant_model_preference").get()?.count, 0);
+    raw.exec("BEGIN EXCLUSIVE; DROP TABLE assistant_model_preference; UPDATE database_states SET schema_version=8 WHERE id=1; PRAGMA user_version=8; COMMIT");
+    const prior = inspectNativeAuthority(raw, 8);
+    assert.equal(prior.schemaVersion, 8);
     assert.equal(prior.installationId, binding.installationId);
     assert.equal(prior.profileId, binding.profileId);
   } finally { raw.close(); }
@@ -120,11 +121,11 @@ function post(port: number) {
 
 const retainedPositiveOwners = new WeakMap<Error, {
   application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
-  fixture: ReturnType<typeof priorSeven>;
+  fixture: ReturnType<typeof priorEight>;
 }>();
 
 it("commits authenticated refusal, stops, upgrades with backup, restarts the public shell and requires fresh sign-in", async () => {
-  const f = priorSeven();
+  const f = priorEight();
   const protectedPath = join(f.profile.stateRoot, "credentials", "protected.json");
   const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.binding.profileId}.json`);
   const protectedBefore = digest(protectedPath), keyBefore = digest(keyPath);
@@ -149,7 +150,7 @@ it("commits authenticated refusal, stops, upgrades with backup, restarts the pub
     assert.equal(response.headers.has("set-cookie"), false);
     await Promise.race([restarted, application.failure]);
     assert.equal(starts, 2);
-    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
+    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(digest(protectedPath), protectedBefore); assert.equal(digest(keyPath), keyBefore);
     assert.ok(readdirSync(join(f.profile.stateRoot, "backups", "authority")).some(name => name.endsWith(".manifest.json")));
     const signedOut = await fetch(`http://127.0.0.1:${application.port}/api/v1/profile/state`);
@@ -182,7 +183,7 @@ it("commits authenticated refusal, stops, upgrades with backup, restarts the pub
 });
 
 it("drains the actual notification health writer before preparing profile inventory", async () => {
-  const f = priorSeven();
+  const f = priorEight();
   const actualHttp = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
   const actualNotifications = await vi.importActual<typeof notificationOwner>("../../../../../src/backend/app/composition/dashboard/notifications.js");
   const actualHealth = await vi.importActual<typeof notificationHealthOwner>("../../../../../src/backend/app/composition/dashboard/notification-health.js");
@@ -288,7 +289,7 @@ it("drains the actual notification health writer before preparing profile invent
 });
 
 it("retains credential source custody when authenticated upgrade capture cannot close its real key descriptor", async () => {
-  const f = priorSeven();
+  const f = priorEight();
   const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.binding.profileId}.json`);
   const keyIdentity = lstatSync(keyPath), root = join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot);
   const captureReady = credentialOwner.captureReadyUpgradeCredentialSource;
@@ -478,7 +479,7 @@ it("drains startup producers before inventory when the real HTTP listener cannot
 });
 
 for (const control of ["wrong-password", "locked", "forged", "reused", "verifier-change", "source-replaced"] as const) it(`refuses ${control} without ordinary admission or operation creation`, () => {
-  const f = priorSeven();
+  const f = priorEight();
   let exclusive: RuntimeAdmission | undefined;
   let proved = false;
   const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot });
@@ -491,7 +492,7 @@ for (const control of ["wrong-password", "locked", "forged", "reused", "verifier
       at: systemClock.now().toISOString() });
     assert.equal(result.state, "refused");
     assert.deepEqual(readdirSync(operations), before);
-    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 7);
+    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
     if (control === "wrong-password" || control === "locked") {
       assert.equal("upgrade" in result, false);
       assert.ok("code" in result); assert.equal(result.code, "PROFILE_SIGN_IN_REFUSED");
@@ -521,20 +522,20 @@ for (const control of ["wrong-password", "locked", "forged", "reused", "verifier
   } finally { if (proved) { session.close(); exclusive?.release(); f.machine.release(); f.profile.close(); } }
 });
 
-it("keeps current8 sign-in ordinary with no maintenance authorization", () => {
+it("keeps current sign-in ordinary with no maintenance authorization", () => {
   const profile = createBoundProfileFixture({ sharedMachine: true });
   const session = createProfileSession({ admission: profile.machine, machineRoot: profile.machine.stateRoot });
   try {
     const signed = session.signIn({ ...login, at: systemClock.now().toISOString() });
     assert.equal(signed.state, "active");
     assert.equal("upgrade" in signed, false);
-    assert.equal(readProfileDatabaseBinding(profile.path).schemaVersion, 8);
+    assert.equal(readProfileDatabaseBinding(profile.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(existsSync(join(profile.stateRoot, "backups", "authority")), false);
   } finally { session.close(); profile.close(); }
 });
 
 it("surfaces an actual restart failure after exclusive readback without claiming an authenticated session", async () => {
-  const f = priorSeven();
+  const f = priorEight();
   const actual = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
   const injected = new Error("upgrade restart injected");
   let starts = 0;
@@ -556,14 +557,14 @@ it("surfaces an actual restart failure after exclusive readback without claiming
     assert.equal(failure.errors.length, 1); assert.equal(failure.errors[0], injected); assert.equal(failure.cause, injected);
     await assert.rejects(application.stop(), error => error === failure);
     assert.equal(starts, 2);
-    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
+    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(runtimeProcessLockIsActive(join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot), "server"), false);
     proved = true;
   } finally { start.mockRestore(); if (proved) { f.machine.release(); f.profile.close(); } }
 });
 
-it("preserves an existing canonical applying operation and refuses READY7 upgrade authority", () => {
-  const f = priorSeven();
+it("preserves an existing canonical applying operation and refuses ready prior upgrade authority", () => {
+  const f = priorEight();
   const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot });
   const row = f.machine.readProfileRegistry().profiles.find(value => value.profileId === f.binding.profileId); assert.ok(row);
   const operation = SignUpOperationSchema.parse({ schemaVersion: 1, kind: "sign-up", operationId: randomUUID(), profileId: row.profileId,
@@ -575,28 +576,28 @@ it("preserves an existing canonical applying operation and refuses READY7 upgrad
   try {
     assert.throws(() => session.signIn({ ...login, at: systemClock.now().toISOString() }), error => error instanceof ProfileUpgradeSourceRefusalError && error.code === "PROFILE_UPGRADE_UNAVAILABLE");
     assert.deepEqual(readFileSync(path), before);
-    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 7);
+    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
     proved = true;
   } finally { if (proved) { f.machine.publishProfileOperation(operation.operationId); session.close(); f.machine.release(); f.profile.close(); } }
 });
 
 it("rejects a genuine foreign installation after authentication without granting either profile admission", () => {
-  const f = priorSeven(), foreign = createBoundProfileFixture();
+  const f = priorEight(), foreign = createBoundProfileFixture();
   const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot });
   let proved = false;
   try {
     const result = session.signIn({ ...login, at: systemClock.now().toISOString() }); assert.ok("upgrade" in result);
     session.close(); f.machine.release();
     assert.throws(() => consumeAuthenticatedProfileUpgrade(result.upgrade, foreign.machine), { message: "runtime-control: profile-upgrade-handoff-installation-changed" });
-    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 7);
-    assert.equal(readProfileDatabaseBinding(foreign.path).schemaVersion, 8);
+    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
+    assert.equal(readProfileDatabaseBinding(foreign.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(existsSync(join(f.profile.stateRoot, "backups", "authority")), false);
     proved = true;
   } finally { if (proved) { session.close(); f.machine.release(); f.profile.close(); foreign.close(); } }
 });
 
 it("retains a real competing shared owner and surfaces exclusive reacquisition refusal before backup or migration", async () => {
-  const f = priorSeven(), before = digest(f.profile.path);
+  const f = priorEight(), before = digest(f.profile.path);
   const actual = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
   let held: RuntimeAdmission | undefined, starts = 0;
   const start = vi.spyOn(http, "startDashboardHttpServer").mockImplementation(async input => {
@@ -621,7 +622,7 @@ it("retains a real competing shared owner and surfaces exclusive reacquisition r
     await assert.rejects(application.stop(), error => error === failure);
     assert.ok(held); held.assertLive();
     assert.equal(starts, 1); assert.equal(digest(f.profile.path), before);
-    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 7);
+    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
     assert.equal(existsSync(join(f.profile.stateRoot, "backups", "authority")), false);
     assert.equal(runtimeProcessLockIsActive(join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot), "server"), false);
     proved = true;
@@ -629,7 +630,7 @@ it("retains a real competing shared owner and surfaces exclusive reacquisition r
 });
 
 it("refuses replacement of the exact encrypted v4 source across admission turnover and restores only its owned fixture bytes", () => {
-  const f = priorSeven();
+  const f = priorEight();
   const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot });
   const path = join(f.profile.stateRoot, "credentials", "protected.json"), retained = join(f.profile.workspace, ".retained-protected-source");
   const before = digest(path), original = lstatSync(path);
@@ -642,7 +643,7 @@ it("refuses replacement of the exact encrypted v4 source across admission turnov
     const exclusive = owner;
     assert.throws(() => consumeAuthenticatedProfileUpgrade(result.upgrade, exclusive), { message: "profile-upgrade-handoff-credential-changed" });
     assert.equal(digest(path), before); assert.equal(digest(retained), before);
-    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 7);
+    assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
     proved = true;
   } finally {
     if (proved) {
@@ -656,7 +657,7 @@ it("refuses replacement of the exact encrypted v4 source across admission turnov
 });
 
 for (const control of ["key", "erasure-head"] as const) it(`retains exact ${control} identity across release and refuses any substituted authority`, () => {
-  const f = priorSeven();
+  const f = priorEight();
   const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot });
   const journalDirectory = join(f.machine.stateRoot, "machine", "erasures");
   const path = control === "key" ? join(f.machine.stateRoot, "machine", "credential-keys", `${f.binding.profileId}.json`)
@@ -710,7 +711,7 @@ for (const control of ["key", "erasure-head"] as const) it(`retains exact ${cont
 });
 
 for (const control of ["verifier", "key", "source"] as const) it(`releases the acquired exclusive owner after HTTP ${control} revalidation refusal`, async () => {
-  const f = priorSeven(), before = digest(f.profile.path);
+  const f = priorEight(), before = digest(f.profile.path);
   const actualAdmission = await vi.importActual<typeof admissionOwner>("../../../../../src/backend/storage/admission/admission.js");
   const actualHttp = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
   let exclusive: RuntimeAdmission | undefined, acquisitions = 0, starts = 0;
@@ -754,7 +755,7 @@ for (const control of ["verifier", "key", "source"] as const) it(`releases the a
     const acquired = exclusive; assert.ok(acquired); assert.throws(() => acquired.assertLive(), { message: "runtime-admission: missing or released admission" });
     await assert.rejects(application.stop(), error => error === failure);
     assert.equal(acquisitions, 1); assert.equal(starts, 1);
-    assert.equal(digest(f.profile.path), before); assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 7);
+    assert.equal(digest(f.profile.path), before); assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
     assert.equal(runtimeProcessLockIsActive(join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot), "server"), false);
     restore?.(); restore = undefined;
     const fresh = actualAdmission.acquireExclusiveRuntimeAdmission(f.profile.workspace);
@@ -767,7 +768,7 @@ for (const control of ["verifier", "key", "source"] as const) it(`releases the a
 });
 
 for (const stage of ["service-inspection", "binding-consume"] as const) it(`retains exact exclusive custody after genuine ${stage} snapshot disposal uncertainty`, async () => {
-  const f = priorSeven(), before = digest(f.profile.path);
+  const f = priorEight(), before = digest(f.profile.path);
   const actualAdmission = await vi.importActual<typeof admissionOwner>("../../../../../src/backend/storage/admission/admission.js");
   const actualLocks = await vi.importActual<typeof runtimeLocks>("../../../../../src/backend/storage/sqlite/runtime-process-locks.js");
   const actualHttp = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
@@ -832,7 +833,7 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
     } else assert.equal(heldRestore, undefined);
     assert.equal(disposalAttempts, 1); assert.equal(acquisitions, 1); assert.equal(starts, 1);
     assert.ok(snapshotPath); assert.equal(existsSync(snapshotPath), true);
-    assert.equal(digest(f.profile.path), before); assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 7);
+    assert.equal(digest(f.profile.path), before); assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
     assert.ok(dispose); dispose(); dispose = undefined;
     assert.equal(existsSync(snapshotPath), false);
     heldRestore?.release(); exclusive.release();
@@ -844,7 +845,7 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
 });
 
 for (const fault of ["unproved-close", "closed-link-refusal"] as const) it(`retains actual restore creation evidence for ${fault}`, async () => {
-  const f = priorSeven(), before = digest(f.profile.path);
+  const f = priorEight(), before = digest(f.profile.path);
   const actualAdmission = await vi.importActual<typeof admissionOwner>("../../../../../src/backend/storage/admission/admission.js");
   const actualLocks = await vi.importActual<typeof runtimeLocks>("../../../../../src/backend/storage/sqlite/runtime-process-locks.js");
   const actualHttp = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
@@ -925,7 +926,7 @@ for (const fault of ["unproved-close", "closed-link-refusal"] as const) it(`reta
     assert.equal(retained.uid, evidence.identity.uid); assert.equal(retained.nlink, evidence.identity.nlink);
     assert.equal(retained.size, evidence.identity.size); assert.equal(retained.mtimeMs, evidence.identity.mtimeMs); assert.equal(retained.ctimeMs, evidence.identity.ctimeMs);
     assert.equal(retainedDigest, evidence.digest);
-    assert.equal(digest(f.profile.path), before); assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 7);
+    assert.equal(digest(f.profile.path), before); assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
     acquire.mockRestore(); restore.mockRestore(); write.mockRestore(); syncBuiltinESMExports(); close.mockRestore(); syncBuiltinESMExports(); unlink.mockRestore(); syncBuiltinESMExports(); link.mockRestore(); syncBuiltinESMExports(); start.mockRestore();
     const heldDescriptor = heldFD;
     if (fault === "unproved-close") {

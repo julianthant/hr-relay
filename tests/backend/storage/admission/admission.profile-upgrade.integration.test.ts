@@ -37,7 +37,7 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
     assert.throws(() => AuthorityDatabase.open(setup, { path, busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
     const raw = new DatabaseSync(path);
     try {
-      raw.exec("DROP TABLE assistant_actions; DROP TABLE assistant_chats; DROP TABLE assistant_grants");
+      raw.exec("DROP TABLE assistant_model_preference; DROP TABLE assistant_actions; DROP TABLE assistant_chats; DROP TABLE assistant_grants");
       if (version === 6) {
         raw.exec("DROP TRIGGER database_states_binding_immutable; ALTER TABLE database_states RENAME TO database_states_bound");
         const original = SQLITE_MIGRATIONS[0]?.statements[0]?.split("CREATE TABLE database_upgrades")[0];

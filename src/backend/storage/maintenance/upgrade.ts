@@ -160,8 +160,8 @@ function assertReadyUpgradeInventory(before: ReadyUpgradeInventory, after: Ready
     const added = nextUpgrades.at(-1);
     if (backup === undefined || nextUpgrades.length !== priorUpgrades.length + 1
       || canonicalJsonStringify(nextUpgrades.slice(0, -1)) !== canonicalJsonStringify(priorUpgrades)
-      || added?.phase !== "settled" || added.fromSchemaVersion !== 7 || added.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
-      || added.upgradeId !== publication.sourceFingerprint || added.planDigest !== deriveAuthorityUpgradePlanDigest(7, publication.sourceFingerprint)
+      || added?.phase !== "settled" || added.fromSchemaVersion !== 8 || added.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+      || added.upgradeId !== publication.sourceFingerprint || added.planDigest !== deriveAuthorityUpgradePlanDigest(8, publication.sourceFingerprint)
       || added.backup.manifestPath !== backup.manifestPath || added.backup.sha256 !== backup.manifest.sha256
       || added.backup.authorityGeneration !== backup.manifest.authorityGeneration) throw new Error("profile-stopped-upgrade-publication-unproved");
   }
