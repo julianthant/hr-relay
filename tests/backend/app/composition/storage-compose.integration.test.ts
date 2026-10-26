@@ -405,8 +405,11 @@ afterEach(_afterEachFixture0);
     const database = new DatabaseSync(p.authorityPath, { readOnly: true });
     try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); }
     finally { database.close(); }
-    assert.equal(boundProfileCredentials(admission).read().revision, 1);
     assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), false);
+    const profile = profiles.find(value => value.workspace === p.repoRoot); assert.ok(profile);
+    profile.finish();
+    admissions.set(p.repoRoot, profile.admission);
+    assert.equal(boundProfileCredentials(profile.admission).read().revision, 1);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
     for (const value of values) {
@@ -490,26 +493,32 @@ afterEach(_afterEachFixture0);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json"));
     assert.ok(manifest);
     const credentialPath = join_m0(p.stateRoot, "credentials", "protected.json");
-    rmSync(join_m0(p.stateRoot, "credentials"), { recursive: true });
+    const admission = admissions.get(p.repoRoot); assert.ok(admission);
+    assert.equal(boundProfileCredentials(admission).read().revision, 1);
+    assert.ok(existsSync(credentialPath));
+    const profile = profiles.find(value => value.workspace === p.repoRoot); assert.ok(profile);
+    const keyPath = join_m0(profile.machine.stateRoot, "machine", "credential-keys", `${admission.profileBinding.profileId}.json`);
+    const keyBytes = readFileSync(keyPath);
+    rmSync(credentialPath);
     if (credentialState === "malformed") {
-      mkdirSync(join_m0(p.stateRoot, "credentials"), { mode: 0o700 });
       writeFileSync(credentialPath, "synthetic-malformed-credential-canary", { mode: 0o600 });
     }
-    const admission = admissions.get(p.repoRoot); assert.ok(admission);
     const fileBytes = (path: string) => existsSync(path) ? readFileSync(path) : undefined;
     const before = [p.authorityPath, `${p.authorityPath}-wal`, `${p.authorityPath}-shm`,
         join_m0(p.repoRoot, ".tracker/control/profile-registry.json"), credentialPath].map(fileBytes);
     const entries = readdirSync(p.stateRoot).sort();
     const backupBytes = Object.fromEntries(readdirSync(p.backupDirectory).map(name => [name, readFileSync(join_m0(p.backupDirectory, name))]));
     if (credentialState === "missing") {
-      await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation,
-        ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot), /^credential-established-document-required$/u);
+      const restored = await composeStorageCommand(rebuildRuntimeIsolation,
+        ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
+      assert.equal(restored.exitCode, 1);
+      assert.match(restored.output, /authority restore REFUSED — credential-established-document-required/u);
       const after = [p.authorityPath, `${p.authorityPath}-wal`, `${p.authorityPath}-shm`,
       join_m0(p.repoRoot, ".tracker/control/profile-registry.json"), credentialPath].map(fileBytes);
       assert.equal(after.every((bytes, index) => bytes === undefined ? before[index] === undefined : before[index] !== undefined && bytes.equals(before[index])), true);
       assert.deepEqual(readdirSync(p.stateRoot).sort(), entries);
       assert.equal(existsSync(credentialPath), false);
-      assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), false);
+      assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), true);
       assert.doesNotThrow(() => admission.assertLive());
       assert.equal(existsSync(join_m0(p.repoRoot, ".tracker/control/journal.json")), false);
       const raw = new DatabaseSync(p.authorityPath, { readOnly: true });
@@ -527,6 +536,7 @@ afterEach(_afterEachFixture0);
       assert.equal(existsSync(join_m0(p.repoRoot, ".tracker/control/journal.json")), false);
       assert.equal(readFileSync(credentialPath, "utf8"), "synthetic-malformed-credential-canary");
     }
+    assert.deepEqual(readFileSync(keyPath), keyBytes);
     for (const [name, bytes] of Object.entries(backupBytes)) assert.deepEqual(readFileSync(join_m0(p.backupDirectory, name)), bytes);
     assert.deepEqual(readdirSync(p.backupDirectory).sort(), Object.keys(backupBytes).sort());
   });
@@ -556,7 +566,9 @@ try {
   const parkedAttempt = WriteAttemptRecordSchema.parse(harness.database.authority.writeAttempts.get(intent.currentAttemptId));
   assert.equal(parkedAttempt.writeAttemptId, intent.currentAttemptId);
   assert.equal(parkedAttempt.runId, parked.envelope.runId);
-  assert.equal(parkedAttempt.outcome.state, "unknown");
+  assert.equal(parkedAttempt.outcome.state, "parked");
+  if (parkedAttempt.outcome.state !== "parked") throw new Error("parked-write-fixture-attempt-required");
+  assert.equal(parkedAttempt.outcome.code, "unknown");
   assert.equal(intent.parkedCode, "unknown");
   const proofValue = WriteFixtureProofSchema.parse({ transactionId: "T654321" });
   const node = descriptorRuntimeNodes(writeFixtureDescriptor).find(node => node.id === WRITE_FIXTURE_NODE_ID);
@@ -574,12 +586,12 @@ try {
     const attempt = WriteAttemptRecordSchema.parse(nativeOrdinaryRecordFromRow("write_attempts", db.prepare("SELECT * FROM write_attempts WHERE id=?").get(intent.currentAttemptId)));
     const operation = WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", db.prepare("SELECT * FROM write_intents WHERE id=?").get(intent.writeIntentId)));
     return { runId: run.envelope.runId, version: run.version, lifecycle: run.lifecycle.state, claimGeneration: run.claimGeneration,
-      attemptId: attempt.writeAttemptId, outcome: attempt.outcome.state, operationStatus: operation.status,
+      attempt, attemptId: attempt.writeAttemptId, outcome: attempt.outcome.state, outcomeCode: attempt.outcome.state === "parked" ? attempt.outcome.code : undefined, operationStatus: operation.status,
       checkpoint: db.prepare("SELECT 1 FROM run_checkpoints WHERE id=?").get(checkpointLookupKey(settlement.checkpoint.workflowId, settlement.checkpoint.itemId, settlement.checkpoint.nodeId, settlement.checkpoint.attempt, settlement.checkpoint.claimGeneration)) !== undefined,
       events: db.prepare("SELECT * FROM timeline_events ORDER BY cursor").all().map(timelineEventFromRow).map(record => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind) };
   }, 500);
   const before = inspect(p.authorityPath);
-  assert.equal(before.lifecycle, "parked-write"); assert.equal(before.outcome, "unknown");
+  assert.equal(before.lifecycle, "parked-write"); assert.equal(before.outcome, "parked"); assert.equal(before.outcomeCode, "unknown");
   let backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], clock, p.repoRoot);
   assert.equal(backup.exitCode, 0, backup.output);
   let manifest = readdirSync(p.backupDirectory).find(name => name.endsWith(".manifest.json")); assert.ok(manifest);
@@ -618,7 +630,10 @@ try {
   } finally { releaseSeededWriteOwners(newer, clock.now().toISOString()); newer.close(); }
   const committed = inspect(p.authorityPath);
   assert.equal(committed.version, before.version + 1); assert.equal(committed.attemptId, before.attemptId);
-  assert.equal(committed.outcome, "committed"); assert.equal(committed.checkpoint, true);
+  assert.equal(committed.operationStatus, "committed");
+  assert.deepEqual(committed.attempt, parkedAttempt);
+  assert.equal(committed.outcome, before.outcome); assert.equal(committed.outcomeCode, "unknown");
+  assert.equal(committed.checkpoint, true);
   if (backupAfterCommit) {
     backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], clock, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
@@ -653,7 +668,7 @@ try {
   const afterSweep = inspect(p.authorityPath);
   assert.equal(afterSweep.version, before.version);
   assert.equal(afterSweep.lifecycle, "parked-write");
-  assert.equal(afterSweep.outcome, "unknown"); assert.equal(afterSweep.checkpoint, false);
+  assert.equal(afterSweep.outcome, "parked"); assert.equal(afterSweep.outcomeCode, "unknown"); assert.equal(afterSweep.checkpoint, false);
   const doctorAfter = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, p.repoRoot);
   assert.equal(doctorAfter.exitCode, 1, doctorAfter.output);
   const afterReport = z.object({ spanAuthority: SpanAuthorityReconciliationWireSchema }).parse(JSON.parse(doctorAfter.output));
