@@ -1,3 +1,4 @@
+import { WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
 import { childUnawaitedModules } from "../../../support/fixtures/child-execution-workflows.js";
@@ -302,8 +303,9 @@ describe("reset preserves fenced durable write outcomes", () => {
       }
       let restoreParkedBinding = false, restoreIntentRunAttempt = false;
       const undamagedRun = database.authority.runs.get(run.envelope.runId);
-      const undamagedIntent = database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId);
-      if (undamagedRun === undefined || undamagedIntent === undefined) throw new Error("missing undamaged write fixture");
+      const undamagedIntent = WriteIntentRecordSchema.parse(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId));
+      if (undamagedRun === undefined) throw new Error("missing undamaged write fixture");
+      if (undamagedIntent.status === "observed-present") throw new Error("corruption probe requires an attempt-bearing intent");
       if (outcome === "unknown-generation" || outcome === "unknown-intent") {
         restoreParkedBinding = true;
         const parked = database.authority.runs.get(run.envelope.runId);
@@ -328,7 +330,22 @@ describe("reset preserves fenced durable write outcomes", () => {
       const lifecycle = new RunRecordService({ database, clock: h.authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => undefined });
       const settle = createWorkerResetControl({ database, workerId, leaseGeneration: lease.leaseGeneration, clock: h.authority.clock, lifecycle });
       if (outcome.startsWith("unknown-")) {
-        try {
+        await using _restoration = { async [Symbol.asyncDispose]() {
+          if (restoreParkedBinding) {
+            const current = database.authority.runs.get(run.envelope.runId);
+            if (current === undefined) throw new Error("missing corrupt write fixture");
+            expect(database.authority.runs.transition({ runId: current.envelope.runId, expectedVersion: current.version,
+              lifecycle: undamagedRun.lifecycle, now: h.authority.clock.now().toISOString() }).state).toBe("applied");
+          }
+          if (restoreIntentRunAttempt) {
+            using raw = new DatabaseSync(h.authority.path);
+            const repaired = raw.prepare("UPDATE write_intents SET payload_json=json_set(payload_json,'$.runAttempt',?) WHERE id=?")
+                .run(undamagedIntent.runAttempt, undamagedIntent.writeIntentId);
+            expect(repaired.changes).toBe(1);
+          }
+          expect(database.authority.writeIntents.get(undamagedIntent.writeIntentId)).toEqual(undamagedIntent);
+          await settle(manager, record.reset);
+        } };
         await expect(settle(manager, record.reset)).rejects.toThrow("parked-write-authority-unavailable");
         const proof = await manager.closeForReset(record.reset);
         const generation = database.getMeta().authorityGeneration;
@@ -338,24 +355,6 @@ describe("reset preserves fenced durable write outcomes", () => {
         expect(database.authority.commandAudits.findByCommand(record.commandId)).toBeUndefined();
         expect(retained()).toEqual(before);
         return;
-        } finally {
-          if (restoreParkedBinding) {
-            const current = database.authority.runs.get(run.envelope.runId);
-            if (current === undefined) throw new Error("missing corrupt write fixture");
-            expect(database.authority.runs.transition({ runId: current.envelope.runId, expectedVersion: current.version,
-              lifecycle: undamagedRun.lifecycle, now: h.authority.clock.now().toISOString() }).state).toBe("applied");
-          }
-          if (restoreIntentRunAttempt) {
-            const raw = new DatabaseSync(h.authority.path);
-            try {
-              const repaired = raw.prepare("UPDATE write_intents SET payload_json=json_set(payload_json,'$.runAttempt',?) WHERE id=?")
-                .run(undamagedIntent.runAttempt, undamagedIntent.writeIntentId);
-              expect(repaired.changes).toBe(1);
-            } finally { raw.close(); }
-          }
-          expect(database.authority.writeIntents.get(undamagedIntent.writeIntentId)).toEqual(undamagedIntent);
-          await settle(manager, record.reset);
-        }
       }
       await settle(manager, record.reset);
       expect(retained()).toEqual(before);
@@ -426,7 +425,10 @@ it("exposes no raw success setter and atomically cancels a safe queued cascade b
   if (node === undefined || node.kind !== "child-run") throw new Error("missing canonical reset child node");
   let current = database.authority.runs.get(parent.envelope.runId);
   if (current === undefined) throw new Error("missing canonical reset parent");
-  const claim = { workerId, claimGeneration: current.claimGeneration };
+  const held = runClaim(current);
+  if (held === undefined) throw new Error("canonical reset parent claim required");
+  expect(held.workerId).toBe(workerId);
+  const claim = { workerId: held.workerId, claimGeneration: held.claimGeneration };
   const now = h.authority.clock.now().toISOString();
   for (const state of ["validating", "running"] as const) {
     const transition = execution.lifecycle.workerTransition({ commandId: randomUUID(), runId: parent.envelope.runId, claim,
