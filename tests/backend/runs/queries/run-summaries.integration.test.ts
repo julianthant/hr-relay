@@ -1,8 +1,7 @@
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
-import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { default as assert } from 'node:assert/strict';
-import { join as join_m0 } from "node:path";
 import { it } from "vitest";
 import { createOperatorProjection, createOperatorRunDetail } from '../../../../src/backend/app/composition/dashboard/operator.js';
 import { RunRecordService } from '../../../../src/backend/runs/lifecycle/run-record-service.js';
@@ -10,7 +9,6 @@ import { buildRunDetail } from '../../../../src/backend/runs/queries/run-detail.
 import { queryActivitySummaries, queryQueueSummaries } from '../../../../src/backend/runs/queries/run-summaries.js';
 import { createTimelineEmitter } from '../../../../src/backend/storage/events/timeline-emitter.js';
 import { createTransactionHistory } from '../../../../src/backend/storage/sqlite/transaction-history.js';
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { RunRecordSchema } from '../../../../src/models/run/record.js';
 import { SearchPersonOrgOutputSchema } from '../../../../src/models/systems/ucpath/search-person-org.js';
 import { deriveSchemaHash } from '../../../../src/models/validation/schema-bound-value.js';
@@ -60,29 +58,25 @@ try {
       parsed: { ...f.run.input.parsed, value: { emplId: '10000000', keepNonHdh: false, includeCrmDates: false }, protectedBindings: [] } },
     lifecycle: { state: 'queued' }, claimGeneration: 0, version: 1, createdAt: NOW, updatedAt: NOW,
   }));
-  const workerId=f.db.withAuthorityTransaction(repositories=>{
-    const pool=repositories.workerPools.get("person-lookup");assert.ok(pool);
-    const slot=admitDirectWorker(repositories,{commandId:id(717),workflow:"person-lookup",poolIndex:2,
-      expectedPoolVersion:pool.version,processId:process.pid,processAcquisitionId:id(718),authorityPath:f.path,
-      processLockRoot:join_m0(f.root,"locks"),now:NOW},id(719));
-    assert.equal(repositories.workerLeases.start({workerId:slot.workerId,workflow:"person-lookup",
-      browserSystems:workflowProjections(personLookupDescriptor).systems,processId:process.pid,requestedBy:"local-operator",now:NOW}).state,"started");
-    return slot.workerId;
-  });
+  const pool = f.db.authority.workerPools.get("person-lookup"); assert.ok(pool);
+  const worker = testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 2,
+    browserSystems: workflowProjections(personLookupDescriptor).systems });
+  assert.equal(worker.started?.state, "started");
+  const { workerId, workerLifetime } = worker;
   const claimMember1 = f.db.authority.workerSlots.get(workerId);
   if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-  const claim = f.db.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.db, 'person-lookup', claimMember1.poolIndex).workerLifetime, workflow: 'person-lookup', workerId, now: NOW });
+  const claim = f.db.authority.runs.claimNext({ workerLifetime, workflow: 'person-lookup', workerId, now: NOW });
   assert.equal(claim.state, 'claimed');
   if (claim.state !== 'claimed') throw new Error('fixture-not-claimed');
   assert.equal(claim.run.envelope.runId, runId);
   const validating = f.db.authority.runs.transition({ runId, expectedVersion: claim.run.version,
     claim: { workerId, claimGeneration: 1 },
-    lifecycle: { state: 'validating', workerId, claimedAt: NOW, heartbeatAt: NOW }, now: NOW });
+    lifecycle: { state: 'validating', workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW }, now: NOW });
   assert.equal(validating.state, 'applied');
   if (validating.state !== 'applied') throw new Error('fixture-not-validating');
   const running = f.db.authority.runs.transition({ runId, expectedVersion: validating.run.version,
     claim: { workerId, claimGeneration: 1 },
-    lifecycle: { state: 'running', workerId, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: 'searching' }, now: NOW });
+    lifecycle: { state: 'running', workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: 'searching' }, now: NOW });
   assert.equal(running.state, 'applied');
   if (running.state !== 'applied') throw new Error('fixture-not-running');
   const e = running.run.envelope;
@@ -281,6 +275,7 @@ it("keeps deterministic cursor ties, day/status/workflow/system membership and c
 
 it("reads current heartbeats and publishes creation and presentation atomically",()=>{
   const f=foundationFixture();try {
+    testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 2, browserSystems: workflowProjections(personLookupDescriptor).systems });
     const before=f.db.readRunSummaries();
     if(f.run.lifecycle.state!=="running")throw new Error("fixture-state");
     const renewed=f.db.authority.runs.renewClaim({runId:f.run.envelope.runId,claim:{workerId:f.run.lifecycle.workerId,claimGeneration:f.run.claimGeneration},now:"2026-09-09T12:00:01.000Z"});
@@ -505,6 +500,7 @@ describe("native summary snapshots and transaction hooks", () => {
   it("derives new runs atomically and rolls failed mutations back", () => {
     const fixture = foundationFixture();
     try {
+      testAdmittedWorker(fixture.db, fixture.clock, { path: fixture.path, workflow: "person-lookup", poolIndex: 2, browserSystems: workflowProjections(personLookupDescriptor).systems });
       assert.equal(fixture.db.readRunSummaries().length,1);
       const before = fixture.db.readRunSummaries();
       const generation=fixture.db.getMeta().authorityGeneration;
@@ -555,14 +551,20 @@ it("reads a consistent admitted snapshot across an independent writer and refuse
     assert.equal(f.db.readRunSummaries()[0].title,"Concurrent title");
     assert.ok(f.db.readRunSummaries()[0].sourceGeneration>before[0].sourceGeneration);
     peer.close();peer=undefined;
-    const raw=new DatabaseSync(f.path);try{raw.prepare("UPDATE runs SET version=version+1 WHERE id=?").run(f.run.envelope.runId);}finally{raw.close();}
-    assert.throws(()=>AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"summary-restart"},f.clock),/run row version does not match its whole-record JSON/u);
+    const original = f.db.authority.runs.get(f.run.envelope.runId); assert.ok(original);
+    {
+      using raw = new DatabaseSync(f.path);
+      using _restore = { [Symbol.dispose]() { raw.prepare("UPDATE runs SET version=? WHERE id=?").run(original.version, original.envelope.runId); } };
+      raw.prepare("UPDATE runs SET version=version+1 WHERE id=?").run(f.run.envelope.runId);
+      assert.throws(()=>AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"summary-restart"},f.clock),/run row version does not match its whole-record JSON/u);
+    }
   }finally{peer?.close();f.dispose();}
 });
 
 it("keeps unrelated source facts unchanged, rolls nested mutations back and pages through the real query port",()=>{
   const f=foundationFixture();
   try {
+    testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 2, browserSystems: workflowProjections(personLookupDescriptor).systems });
     const before=f.db.readRunSummaries(),pool=f.db.authority.workerPools.get("person-lookup");assert.ok(pool);
     const beforeGeneration=f.db.getMeta().authorityGeneration;
     const planned=f.db.authority.workerPools.plan({workflow:"person-lookup",expectedVersion:pool.version,desiredWorkers:pool.desiredWorkers,requestedBy:"local-operator",now:NOW});
