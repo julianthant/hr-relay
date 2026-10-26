@@ -176,7 +176,13 @@ it("refuses missing retained confirmation publication instead of returning small
     for (const trigger of triggers) raw.exec(`DROP TRIGGER "${String(trigger.name)}"`);
     using _restorePublication = { [Symbol.dispose]() { raw.prepare("UPDATE write_intents SET publication_json=? WHERE id=?").run(publication, fixture.commit.transaction.writeIntentId); } };
     assert.equal(raw.prepare("UPDATE write_intents SET publication_json=NULL WHERE id=?").run(fixture.commit.transaction.writeIntentId).changes, 1);
-    assert.throws(() => w.history.query(range), /authority table write_intents failed native record validation:[\s\S]*expected string, received null/u);
+    assert.throws(() => w.history.query(range), error => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /run-search-index-rebuild-required/u);
+      assert.ok(error.cause instanceof Error);
+      assert.match(error.cause.message, /authority table write_intents failed native record validation:[\s\S]*expected string, received null/u);
+      return true;
+    });
   } finally { w.dispose(); }
 });
 
