@@ -25,7 +25,7 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { requireSecret } from "../../../../src/models/config/secrets.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { AuthorityDatabase as AuthorityDatabase_m0, createCredentialStore as createCredentialStore_m0 } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase as AuthorityDatabase_m0 } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService, sweepWorkerClaims, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -396,7 +396,7 @@ afterEach(_afterEachFixture0);
     const database = new DatabaseSync(p.authorityPath, { readOnly: true });
     try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); }
     finally { database.close(); }
-    assert.equal(createCredentialStore_m0({ stateRoot: p.stateRoot }).read().revision, 1);
+    assert.equal(boundProfileCredentials(admission).read().revision, 1);
     assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), false);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
