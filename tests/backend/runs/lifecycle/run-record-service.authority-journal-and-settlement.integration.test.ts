@@ -52,7 +52,7 @@ describe("canonical run-record service", () => {
   it("preserves unrelated worker cleanup failure and custody until a successful stop", () => {
     const f = fixture(), path = syntheticDatabasePath(f.database);
     const failure = new Error("injected-worker-cleanup-failure");
-    const release = f.database.assertWorkerLifecycleRelease;
+    const release = f.database.assertWorkerLifecycleRelease.bind(f.database);
     assert.equal(boundFixtureWorker(f.database, path, WORKER_ID), true);
     f.database.assertWorkerLifecycleRelease = () => { throw failure; };
     try {
@@ -114,7 +114,7 @@ describe("canonical run-record service", () => {
       assert.ok(error instanceof AggregateError);
       assert.equal(error.message, "fixture-worker-closure-unproved");
       assert.equal(error.errors.length, 1);
-      const [failure] = error.errors;
+      const failure: unknown = error.errors[0];
       assert.ok(failure instanceof Error);
       assert.equal(failure.message, "authority table command_audits failed native record validation: command-audit-settlement-mismatch");
       assert.ok(failure.cause instanceof Error);
