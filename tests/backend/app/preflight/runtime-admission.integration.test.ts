@@ -362,7 +362,11 @@ function harness(beforeCrmEndpoint?: () => Promise<void>) {
   const f = runtimeFixture(["executor.run", "system.ucpath.prod", "system.crm.prod"]);
   const {root:repoRoot, clock}=f;
   const database=AuthorityDatabase.open({path:f.databasePath,busyTimeoutMs:250,migrationOwner:"setup-admission"},clock);
-  cleanup.push(()=>{database.close();f.close();});
+  cleanup.push(() => {
+    releaseSeededWriteOwners(database, clock.now().toISOString());
+    database.close();
+    f.close();
+  });
   const resolved = {...resolveConfigWithProvenance({},hostConfigFacts({}),clock),config:f.input.config,fingerprint:sha256Hex(canonicalJsonStringify(f.input.config))};
   const identity = { configSnapshotId: "66666666-6666-4666-8666-666666666666", configFingerprint: resolved.fingerprint };
   database.authority.runtimeConfig.initialize({ configSnapshotId: identity.configSnapshotId, fingerprint: resolved.fingerprint,
