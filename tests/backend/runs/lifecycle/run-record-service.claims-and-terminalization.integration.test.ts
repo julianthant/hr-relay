@@ -1,15 +1,22 @@
-import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { randomUUID } from "node:crypto";
+import { childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
+import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
+import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
+import { testAdmittedWorker, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { deriveTerminalFailureDigest } from "../../../../src/models/run/result.js";
-import { CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, LATER, NOW, UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const {fixture, created, runningRun, parkedWriteIntent, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
 
+const executorWorld = createRunExecutorTestWorld();
 afterEach(cleanup);
+afterEach(executorWorld.cleanup);
 
 describe("canonical run-record service", () => {
 
@@ -60,65 +67,40 @@ describe("canonical run-record service", () => {
       { state: "refused", refusal: { reason: "worker-busy", runId: run.envelope.runId } });
   });
 
-  it("#4 claims the first eligible row after dependency filtering and total ordering", () => {
-    const { service, request, runtimeConfig, database } = fixture();
-    const blocked = created(service, {
-      ...request,
-      commandId: "51000000-0000-4000-8000-000000000001",
-      matchKey: "claim-blocked-parent",
-      priority: "interactive",
-    });
-    const child = created(service, {
-      ...request,
-      commandId: "51000000-0000-4000-8000-000000000002",
-      matchKey: "claim-blocking-child",
-    });
-    const childTerminal = service.transition({
-      commandId: "51000000-0000-4000-8000-000000000003",
-      runId: child.envelope.runId,
-      expectedVersion: child.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
-    });
-    if (childTerminal.state !== "applied") throw new Error("dependency child setup refused");
-    const policy = {
-      onChildFailed: "fail-parent" as const,
-      cascadeCancel: "cascade" as const,
-      afterChildRetry: "resume-parent" as const,
-      visibility: "inline" as const,
-    };
-    const manifestId = "51000000-0000-4000-8000-000000000004";
-    const dependencyId = "51000000-0000-4000-8000-000000000005";
-    database.authority.delegationManifests.insert({
-      manifestId,
-      parentRunId: blocked.envelope.runId,
-      edgeId: "claim-dependency",
-      inputSchemaHash: HASH_A,
-      resultSchemaHash: HASH_C,
-      cardinality: "one",
-      join: "one",
-      policy,
-      children: [{
-        dependencyId,
-        childRunId: child.envelope.runId,
-        childItemId: child.envelope.itemId,
-        canonicalInputFingerprint: HASH_A,
-      }],
-      createdAt: NOW,
-      manifestFingerprint: HASH_C,
-    });
-    database.authority.dependencies.insert({
-      dependencyId,
-      manifestId,
-      edgeId: "claim-dependency",
-      parentRunId: blocked.envelope.runId,
-      childRunId: child.envelope.runId,
-      childItemId: child.envelope.itemId,
-      policy,
-      state: "active",
-      version: 1,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
+  it("#4 claims the first eligible row after dependency filtering and total ordering", async () => {
+    const { root: compiled, modules } = childPolicyModules("cascade");
+    const h = executorWorld.executorHarness({ descriptor: compiled.descriptor, stores: plan1Stores });
+    const { database, clock, path } = h.authority;
+    const execution = canonicalChildExecution(h.deps, database, path,
+      id => modules.find(module => module.descriptor.id === id)?.descriptor);
+    const service = execution.lifecycle;
+    const blocked = execution.start(compiled.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+    assert.equal((await execution.step(blocked, executorWorld.SIGNAL)).outcome.state, "yielded-delegation");
+    const children = database.authority.runs.listChildren(blocked.envelope.runId);
+    assert.equal(children.length, 1);
+    const child = children[0]; assert.ok(child);
+    assert.equal(database.authority.dependencies.readiness(blocked.envelope.runId, "join").state, "waiting");
+    const parent = database.authority.runs.get(blocked.envelope.runId); assert.ok(parent);
+    assert.equal(parent.lifecycle.state, "queued");
+    assert.equal(parent.envelope.priority, "interactive");
+    const active = database.authority.runtimeConfig.get(); assert.ok(active);
+    const runtimeConfig = { generation: active.generation, settingsRevision: active.settingsRevision,
+      settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint };
+    const firstOwner = testWorkerLifetime(database, compiled.descriptor.id, 1);
+    const childClaim = service.claimNext({ commandId: randomUUID(), workflow: compiled.descriptor.id,
+      workerId: firstOwner.workerId, workerLifetime: firstOwner.workerLifetime, runtimeConfig });
+    assert.equal(childClaim.state, "applied");
+    assert.ok("run" in childClaim);
+    assert.equal(childClaim.run.envelope.runId, child.envelope.runId);
+    assert.equal(childClaim.run.lifecycle.state, "claimed");
+    assert.ok("workerLifetime" in childClaim.run.lifecycle);
+    assert.deepEqual(childClaim.run.lifecycle.workerLifetime, firstOwner.workerLifetime);
+    const request = { commandId: randomUUID(), code: compiled.descriptor.code, matchKey: "claim-order",
+      workflow: compiled.descriptor.id, descriptorVersion: compiled.descriptor.version,
+      contractFingerprint: compiled.descriptor.contractFingerprint, configFingerprint: blocked.envelope.configFingerprint,
+      configSnapshotId: blocked.envelope.configSnapshotId, resolvedInstance: blocked.envelope.resolvedInstance,
+      priority: blocked.envelope.priority, shape: blocked.envelope.shape, dryRun: false,
+      input: blocked.input, runtimeConfig };
     const olderBulk = created(service, {
       ...request,
       commandId: "51000000-0000-4000-8000-000000000006",
@@ -132,11 +114,13 @@ describe("canonical run-record service", () => {
       priority: "interactive",
     });
 
+    const owner = testAdmittedWorker(database, clock, { path, workflow: compiled.descriptor.id, poolIndex: 2, browserSystems: [] });
+    const generation = database.getMeta().authorityGeneration;
     const claim = service.claimNext({
       commandId: "51000000-0000-4000-8000-000000000008",
-      workflow: WORKFLOW_ID,
-      workerId: WORKER_ID,
-      workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime,
+      workflow: compiled.descriptor.id,
+      workerId: owner.workerId,
+      workerLifetime: owner.workerLifetime,
       runtimeConfig,
     });
     assert.equal(claim.state, "applied");
@@ -144,6 +128,21 @@ describe("canonical run-record service", () => {
     assert.equal(claim.run.envelope.runId, newerInteractive.envelope.runId);
     assert.equal(service.read(blocked.envelope.runId).state, "present");
     assert.equal(service.read(olderBulk.envelope.runId).state, "present");
+    assert.deepEqual(database.authority.runs.get(blocked.envelope.runId), parent);
+    assert.deepEqual(database.authority.runs.get(olderBulk.envelope.runId), olderBulk);
+    assert.equal(database.getMeta().authorityGeneration, generation + 1);
+    assert.equal(execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard",
+      requestedBy: "local-operator", requestedAt: clock.now().toISOString(),
+      target: { runId: child.envelope.runId, expectedVersion: childClaim.run.version },
+    }).state, "applied");
+    const requestedChild = database.authority.runs.get(child.envelope.runId); assert.ok(requestedChild);
+    assert.equal(requestedChild.cancelRequested, true);
+    const childDescriptor = modules.find(module => module.descriptor.id === child.envelope.workflow)?.descriptor;
+    assert.ok(childDescriptor);
+    assert.equal(service.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: child.envelope.runId,
+      expectedVersion: requestedChild.version, claim: { workerId: firstOwner.workerId, claimGeneration: childClaim.run.claimGeneration },
+      endedAt: clock.now().toISOString() }, childDescriptor).state, "applied");
+    assert.equal(database.authority.dependencies.readiness(blocked.envelope.runId, "join").state, "ready");
   });
 
   it("#25 preserves spent attempt and run number after deleting the highest row", () => {

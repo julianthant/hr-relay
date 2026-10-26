@@ -433,6 +433,12 @@ afterEach(_afterEachFixture0);
   it("reconstructs every current confirmation field and retains authenticated proof beyond pruning and deletion", () => {
     const { database, run } = committed();
     try {
+      const before = database.authority.timelineEvents.page({});
+      expect(before.map(row => row.payload.kind)).toEqual(["checkpoint-recorded", "operation-confirmed", "span"]);
+      expect(before[2]?.payload).toMatchObject({ kind: "span", event: {
+        t: "span.ended", kind: "run", runId: run.envelope.runId, outcome: "cancelled",
+      } });
+      expect(database.authority.timelineEvents.pruneBefore("2027-01-01")).toBe(1);
       expect(database.authority.timelineEvents.pruneBefore("2027-01-01")).toBe(0);
       const rows = database.authority.timelineEvents.page({});
       expect(rows.map(row => row.payload.kind)).toEqual(["checkpoint-recorded", "operation-confirmed"]);
