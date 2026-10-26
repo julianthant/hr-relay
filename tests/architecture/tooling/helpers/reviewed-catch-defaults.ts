@@ -13,7 +13,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
-    "sha256": "19fe28b0e30dd5cbfe357a1cfd00561bdb7378bfc5c27d743f4b2e1c2b25a94a",
+    "sha256": "5f03e5b9265314336fa45661abe73da27a86294cbc19f13f2b35d64c0500314f",
     "reason": "Rejected authority activation clears only the same failed promise and rethrows its error; no account authority or availability is substituted. Other catches publish explicit errors or unconfirmed revocation."
   },
   {
@@ -58,7 +58,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "137cf154e86eabdc3b9429f406dc6728cc810a58a62ad83ae5aec9a92be16d70",
+      "sha256": "ab4ca1c327d4cc7e5b71d787915c65bac4267db3be5de1bbe9787b6e38bac0ee",
     "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate."
   },
   {
