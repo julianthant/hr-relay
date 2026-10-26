@@ -14,7 +14,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
     "sha256": "5f03e5b9265314336fa45661abe73da27a86294cbc19f13f2b35d64c0500314f",
-    "reason": "Rejected authority activation clears only the same failed promise and rethrows its error; no account authority or availability is substituted. Other catches publish explicit errors or unconfirmed revocation."
+    "reason": "The empty catch drains only the rejection of an invalid Promise-valued synchronous authority check; assertAssistantCurrent immediately throws CHATGPT_ASSISTANT_REFUSED unless the result is exactly true. No account authority or availability is substituted. Other catches publish explicit errors or unconfirmed revocation."
   },
   {
       "path": "src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
