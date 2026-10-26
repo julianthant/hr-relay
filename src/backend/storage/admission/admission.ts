@@ -413,8 +413,11 @@ export class RuntimeAdmission {
     (this.#authority as InstallationLease).commitProfileDuoIntent(transaction);
   }
   readProfileRegistry(): ProfileRegistryDocument {
-    this.assertLive();
-    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    if (!(#released in this) || this.#released) throw new Error("runtime-admission: missing or released admission");
+    if (this.#scope !== "installation") {
+      this.assertLive();
+      throw new Error("profile-machine-authority-required");
+    }
     return (this.#authority as InstallationLease).readProfileRegistry();
   }
   publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void {
