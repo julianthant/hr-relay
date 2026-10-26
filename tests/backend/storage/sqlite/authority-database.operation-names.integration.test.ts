@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
 import { fixtureUuid } from "../../../support/fixtures/ledger-projection-fixtures.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { historyClock,historyWorld } from "../../../support/helpers/storage/transaction-history-fixture.js";
 import { AuthorityDatabase,inspectAuthorityBackupReadOnly } from "../../../support/helpers/synthetic-storage-admission.js";
 
@@ -76,7 +77,11 @@ describe("current operation authority",()=>{
   it("validates current operation scalar mirrors independently from strict payloads",()=>{
     const world=historyWorld();
     try {
-      world.commit(82);world.database.close();
+      world.commit(82);releaseSeededWriteOwners(world.database,historyClock.now().toISOString());
+      using saved=new DatabaseSync(world.path);
+      const attempt=saved.prepare("SELECT id,generation FROM write_attempts").get();assert.ok(attempt);
+      const generation=attempt.generation;assert.ok(typeof generation==="number");
+      using _restore={ [Symbol.dispose]() { fault(world.path,["write_attempts_immutable"],raw=>{raw.prepare("UPDATE write_attempts SET generation=? WHERE id=?").run(generation,attempt.id);}); } };
       fault(world.path,["write_attempts_immutable"],raw=>assert.equal(raw.exec("UPDATE write_attempts SET generation=8"),undefined));
       const before=readFileSync(world.path);
       assert.throws(()=>inspectAuthorityBackupReadOnly(world.path),/write-attempt|record|generation/u);
@@ -88,7 +93,11 @@ describe("current operation authority",()=>{
   it.each(["write_intents","write_attempts"] as const)("refuses extra fields in the current %s whole payload before read or reopen",table=>{
     const world=historyWorld();
     try {
-      world.commit(83);world.database.close();
+      world.commit(83);releaseSeededWriteOwners(world.database,historyClock.now().toISOString());
+      using saved=new DatabaseSync(world.path);
+      const row=saved.prepare(`SELECT id,payload_json FROM ${table}`).get();assert.ok(row);
+      const payload=row.payload_json;assert.ok(typeof payload==="string");
+      using _restore={ [Symbol.dispose]() { fault(world.path,table==="write_attempts"?["write_attempts_immutable"]:[],raw=>{raw.prepare(`UPDATE ${table} SET payload_json=? WHERE id=?`).run(payload,row.id);}); } };
       fault(world.path,table==="write_attempts"?["write_attempts_immutable"]:[],raw=>{
         assert.equal(raw.prepare(`UPDATE ${table} SET payload_json=json_set(payload_json,?,true)`).run("$.unexpectedField").changes,1);
       });
