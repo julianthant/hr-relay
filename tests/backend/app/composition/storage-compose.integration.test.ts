@@ -1,3 +1,4 @@
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
@@ -43,7 +44,7 @@ import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../s
 
 import { ATOMIC_WRITE_COMMIT, CONFIG_SNAPSHOT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { atomicWriteCheckpoint, currentAtomicWriteFixture, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
+import { atomicWriteCheckpoint, currentAtomicWriteFixture, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 
 import { copyFileSync, existsSync, symlinkSync, truncateSync } from "node:fs";
 
@@ -244,15 +245,54 @@ afterEach(_afterEachFixture0);
       if (run === undefined) throw new Error("missing owner");
       createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
         runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Retained restore owner" }));
-    } finally { initial.close(); }
+    } finally { releaseSeededWriteOwners(initial, CLOCK.now().toISOString()); initial.close(); }
     assert.equal((await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot)).exitCode, 0);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
     const newer = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "newer-write" }, CLOCK);
-    try { fenceWriteFixture(newer, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); }
-    finally { newer.close(); }
+    try {
+      const worker = testAdmittedWorker(newer, CLOCK, { path: p.authorityPath, workflow: ATOMIC_WRITE_COMMIT.transaction.workflowId,
+        poolIndex: 2, browserSystems: [ATOMIC_WRITE_COMMIT.transaction.system] });
+      const claimed = newer.authority.runs.claimNext({ workflow: worker.member.workflow, workerId: worker.workerId,
+        workerLifetime: worker.workerLifetime, now: CLOCK.now().toISOString() });
+      assert.equal(claimed.state, "claimed");
+      if (claimed.state !== "claimed") throw new Error("restored-write fixture owner could not claim");
+      assert.equal(claimed.run.envelope.runId, WRITE_INTENT_ATTEMPTING.runId);
+      fenceWriteFixture(newer, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    }
+    finally { releaseSeededWriteOwners(newer, CLOCK.now().toISOString()); newer.close(); }
     const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
     assert.equal(restore.exitCode, 0, restore.output);
     p.renewAfterRestore();
+    const restoreReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
+    const preserved = AuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!,
+      join_m0(p.stateRoot, "backups", "suspects", restoreReport.suspectFileName), 500, true)
+      .recoveryEvidence?.runs.find(run => run.runId === WRITE_INTENT_ATTEMPTING.runId);
+    assert.ok(preserved);
+    assert.deepEqual(preserved.attemptIds, [WRITE_ATTEMPT.writeAttemptId]);
+    const current = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "same-version-restore-control" }, CLOCK);
+    try {
+      const worker = testAdmittedWorker(current, CLOCK, { path: p.authorityPath, workflow: ATOMIC_WRITE_COMMIT.transaction.workflowId,
+        poolIndex: 2, browserSystems: [ATOMIC_WRITE_COMMIT.transaction.system] });
+      const claimed = current.authority.runs.claimNext({ workflow: worker.member.workflow, workerId: worker.workerId,
+        workerLifetime: worker.workerLifetime, now: CLOCK.now().toISOString() });
+      assert.equal(claimed.state, "claimed");
+      if (claimed.state !== "claimed") throw new Error("same-version fixture owner could not claim");
+      assert.equal(claimed.run.envelope.runId, WRITE_INTENT_ATTEMPTING.runId);
+      const service = new RunRecordService({ database: current, clock: CLOCK, ids: { uuid: randomUUID },
+        publishQueued: () => { throw new Error("same-version control must not enqueue"); } });
+      const claim = { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration };
+      for (const state of ["validating", "running"] as const) {
+        const transition = service.workerTransition({ commandId: randomUUID(), runId: claimed.run.envelope.runId, claim,
+          lifecycle: { state, workerId: worker.workerId, workerLifetime: worker.workerLifetime,
+            claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString() } });
+        assert.equal(transition.state, "applied");
+      }
+    } finally { releaseSeededWriteOwners(current, CLOCK.now().toISOString()); current.close(); }
+    const restored = AuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!, p.authorityPath, 500, true)
+      .recoveryEvidence?.runs.find(run => run.runId === WRITE_INTENT_ATTEMPTING.runId);
+    assert.ok(restored);
+    assert.equal(restored.version, preserved.version);
+    assert.deepEqual(restored.attemptIds, []);
     const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
     assert.equal(doctor.exitCode, 1, doctor.output);
     const report = z.object({ spanAuthority: z.object({ state: z.literal("degraded"), problems: z.array(z.object({
