@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
 import { it } from "vitest";
 import { ZodError } from "zod";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -61,7 +61,7 @@ it("retains exact same-clock confirmed operations through authenticated deletion
     w.reopen();assert.deepEqual(w.history.query(range),deleted);assert.equal(permanent(w.path),before);
     for (const fault of ["wrong-deletion-command", "missing-deletion-owner"] as const) {
       using raw = new DatabaseSync(w.path);
-      const saved = raw.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(owner.envelope.runId);assert.ok(saved);
+      const saved: Record<string, SQLOutputValue> | undefined = raw.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(owner.envelope.runId);assert.ok(saved);
       const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='deleted_runs' ORDER BY name").all();
       using _restore = { [Symbol.dispose]() {
         for (const trigger of triggers) raw.exec(`DROP TRIGGER ${String(trigger.name)}`);

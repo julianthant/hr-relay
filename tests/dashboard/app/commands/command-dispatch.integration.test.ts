@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
-import { singleAppliedRunId } from "../../../support/helpers/synthetic-flow-fixture.js";
+import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";

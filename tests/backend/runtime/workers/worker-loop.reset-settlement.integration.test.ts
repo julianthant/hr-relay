@@ -324,6 +324,7 @@ describe("reset preserves fenced durable write outcomes", () => {
         attempt: database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), publication: database.authority.writeIntents.getPublication(WRITE_INTENT_ATTEMPTING.writeIntentId) });
       const before = retained();
       if (record.reset === undefined) throw new Error("missing reset");
+      const reset = record.reset;
       const manager = new WorkerSessionManager({ workerId: slot.workerId, workflowId: slot.workflow, stores: h.deps.stores, factory: h.deps.sessionFactory,
         clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony,
         resetOwner: { member: record.reset.member, lifetime: record.reset.lifetime } });
@@ -344,7 +345,7 @@ describe("reset preserves fenced durable write outcomes", () => {
             expect(repaired.changes).toBe(1);
           }
           expect(database.authority.writeIntents.get(undamagedIntent.writeIntentId)).toEqual(undamagedIntent);
-          await settle(manager, record.reset);
+          await settle(manager, reset);
         } };
         await expect(settle(manager, record.reset)).rejects.toThrow("parked-write-authority-unavailable");
         const proof = await manager.closeForReset(record.reset);
