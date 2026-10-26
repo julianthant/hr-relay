@@ -26,8 +26,9 @@ import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
 import { StorageDoctorWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -40,7 +41,7 @@ afterEach(() => { vi.restoreAllMocks(); for (const close of closers.splice(0).re
 function fixture(){
  const profile=createBoundProfileFixture({ pending: true }); closers.push(() => profile.close());
  const root=profile.stateRoot,path=profile.path,input={stateRoot:root,processLockRoot:join(profile.workspace,rebuildRuntimeIsolation.processLockRoot),plan:false};
- return {get admission(){return profile.admission;},profileId:profile.admission.profileBinding.profileId,machine:profile.machine,root,path,input,run:(plan=false)=>upgradeStorage(profile.admission,{...input,plan},clock)};
+ return {get admission(){return profile.admission;},profileId:profile.admission.profileBinding.profileId,machine:profile.machine,finish:()=>profile.finish(),root,path,input,run:(plan=false)=>upgradeStorage(profile.admission,{...input,plan},clock)};
 }
 function liveFixture(){
  const profile=createBoundProfileFixture();closers.push(()=>profile.close());
@@ -148,7 +149,7 @@ describe("stopped native upgrade admission",()=>{
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");
    const migrations=SQLITE_MIGRATIONS.filter(migration=>migration.version>version);
-   assert.deepEqual(migrations.map(migration=>migration.version),SQLITE_MIGRATIONS.filter(migration=>migration.version>version).map(migration=>migration.version));
+   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9]:[5,6,7,8,9]);
    assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,
     sourceContentFingerprint:source.authorityContentFingerprint,statements:migrations.flatMap(migration=>migration.statements)})).digest("hex"));
   }finally{stored.close();}
@@ -505,6 +506,22 @@ describe("stopped native upgrade admission",()=>{
   assert.equal((await verifyBackupManifestAtPath(f.admission,manifestPath)).manifest.schemaVersion,1);
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/profile-bound-authority-required/u);
   await f.run();
+  f.finish();
+  const credentials=boundProfileCredentials(f.admission);
+  const sourceDatabaseIdentity=AuthorityDatabase.sourceDatabaseIdentity(f.path);
+  const proofs=new RecoveryStopProofStore({processLockRoot:f.input.processLockRoot,maxProofAgeMs:60_000},clock);
+  proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot:f.input.processLockRoot,sourceDatabaseIdentity},clock));
+  const stoppedSystemProof=proofs.issue({observedBy:"local-operator",sourceDatabaseIdentity});
+  const restore=new OfflineAuthorityRestoreService(f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
+   busyTimeoutMs:250,processLockRoot:f.input.processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>{throw new Error("unexpected projection rebuild");},clock,undefined,undefined,credentials);
+  const before=storageTree(f.root);
+  await assert.rejects(restore.restore({manifestPath,stoppedSystemProof}),{
+   message:`authority-schema-mismatch { schemaVersion: 1, supported: ${CURRENT_AUTHORITY_SCHEMA_VERSION} }`,
+  });
+  assert.deepEqual(storageTree(f.root),before);
+ });
+ it("refuses constructing restore for a pending profile",()=>{
+  const f=fixture();
   const before=storageTree(f.root);
   assert.throws(()=>new OfflineAuthorityRestoreService(f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
    busyTimeoutMs:250,processLockRoot:f.input.processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>{throw new Error("unexpected projection rebuild");},clock),/profile-bound-authority-required/u);
