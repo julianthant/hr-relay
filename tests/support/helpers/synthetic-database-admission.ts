@@ -60,10 +60,9 @@ const failures: unknown[] = [];
 for (const owner of retained) {
     try {
       const lease = owner.database.authority.workerLeases.get(owner.workerId);
-      if (owner.generation === undefined ? lease !== undefined
-      : lease === undefined || lease.leaseGeneration !== owner.generation || lease.processId !== owner.processId) {
-        throw new Error("fixture-worker-lifetime-replaced");
-      }
+      if (owner.generation === undefined && lease !== undefined) throw new Error("fixture-worker-lifetime-replaced");
+      // A newer birth replaced this registration. Closing the connection must not stop that lifetime.
+      if (owner.generation !== undefined && (lease === undefined || lease.leaseGeneration !== owner.generation || lease.processId !== owner.processId)) continue;
       owner.database.assertWorkerLifecycleRelease(owner.workerId);
       if (owner.database.authority.workerControls.browsers(owner.workerId).some(browser => browser.health !== "closed")) {
         throw new Error("fixture-worker-browser-closure-unproved");
