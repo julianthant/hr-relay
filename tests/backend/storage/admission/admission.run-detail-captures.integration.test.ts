@@ -83,7 +83,7 @@ function bundleOf(bundleSeed: number, origin: BundleInput["origin"], options: {
   });
 }
 
-function harness() {
+async function harness() {
   const world = makeWorld();
   cleanups.push(() => world.dispose());
   queuedEventOf(world, { seed: 1, enqueuedAt: NOW });
@@ -113,6 +113,7 @@ function harness() {
       if (kind === "source-read") sourceReads.push(bytes);
     },
   });
+  await artifactReader.ready;
   const captures = { authority: database.authority.diagnosticBundles, artifactReader };
   const deps: RunDetailQueryDeps = { runReader: sqliteRunReader(database, world.clock),
     stateRoot: profile.stateRoot, timeline: database.authority.timelineEvents, projection: world.projection,
@@ -170,7 +171,7 @@ function recordFailure(database: AuthorityDatabase): void {
 
 describe("run capture authority", () => {
   it("requires a live membership for generic bytes while preserving shared artifacts across terminal deletion", async () => {
-    const h = harness();
+    const h = await harness();
     const queued = h.database.authority.runs.get(uuidOf(1)); assert.ok(queued);
     h.database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope,
       runId: uuidOf(2), itemId: uuidOf(6002), traceId: "pl-010101-0002" } });
@@ -211,7 +212,7 @@ describe("run capture authority", () => {
   });
 
   it("serves captures, failure and receipt without a fold, then refuses foreign failure identity", async () => {
-    const h = harness(); recordFailure(h.database);
+    const h = await harness(); recordFailure(h.database);
     const id = uuidOf(1);
     h.database.authority.diagnosticBundles.insert(bundleOf(50, { kind: "failure", failureId: uuidOf(40) }));
     vi.spyOn(h.world.projection, "runFold").mockReturnValue(undefined);
@@ -231,7 +232,7 @@ describe("run capture authority", () => {
 
   for (const boundary of ["verification", "attachment preparation", "generic preparation"] as const) {
     it(`refuses deletion during ${boundary} and closes its prepared lease`, async () => {
-      const h = harness(); recordFailure(h.database);
+      const h = await harness(); recordFailure(h.database);
       const id = uuidOf(1);
       const bundle = bundleOf(51, { kind: "operator-request", requestedBy: "local-operator" });
       h.database.authority.diagnosticBundles.insert(bundle);
@@ -273,7 +274,7 @@ describe("run capture authority", () => {
   }
 
   it("states indexed absence without opening bytes or advertising a lazy list", async () => {
-    const h = harness();
+    const h = await harness();
     const detail = await readRunDetail(h.deps, uuidOf(1));
     assert.deepEqual(detail.captures, { state: "absent", reason: "this run has no indexed diagnostic capture artifacts" });
     assert.equal(detail.availableSections.includes("captures"), false);
@@ -282,13 +283,13 @@ describe("run capture authority", () => {
   });
 
   it("names an uncomposed capture authority instead of claiming an empty index", async () => {
-    const { captures: _captures, ...deps } = harness().deps;
+    const { captures: _captures, ...deps } = (await harness()).deps;
     assert.deepEqual((await readRunDetail(deps, uuidOf(1))).captures,
       { state: "absent", reason: "this composition wires no diagnostic capture authority" });
   });
 
   it("states absence for a verified bundle with no attachments", async () => {
-    const h = harness();
+    const h = await harness();
     h.database.authority.diagnosticBundles.insert(bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" }, { attachments: [] }));
     assert.deepEqual((await readRunDetail(h.deps, uuidOf(1))).captures,
       { state: "absent", reason: "this run has no indexed diagnostic capture artifacts" });
@@ -296,7 +297,7 @@ describe("run capture authority", () => {
   });
 
   it("excludes another run's real bundle even when it shares this artifact", async () => {
-    const h = harness();
+    const h = await harness();
     queuedEventOf(h.world, { seed: 2 });
     const otherRun = h.world.authority.getRun(uuidOf(2));
     assert.ok(otherRun);
@@ -312,7 +313,7 @@ describe("run capture authority", () => {
   });
 
   it("serves one artifact with every verified mixed-origin membership from this run", async () => {
-    const h = harness();
+    const h = await harness();
     recordFailure(h.database);
     h.database.authority.diagnosticBundles.insert(bundleOf(32, { kind: "failure", failureId: uuidOf(40) }));
     h.database.authority.diagnosticBundles.insert(bundleOf(33, { kind: "operator-request", requestedBy: "local-operator" }));
@@ -333,7 +334,7 @@ describe("run capture authority", () => {
   });
 
   it("serves every ordered origin from many same-run bundles sharing one artifact exactly once", async () => {
-    const h = harness();
+    const h = await harness();
     recordFailure(h.database);
     const failureId = uuidOf(40);
     const bundles: readonly Readonly<{ seed: number; origin: BundleInput["origin"] }>[] = [
@@ -394,7 +395,7 @@ describe("run capture authority", () => {
 
   it.each(["failure", "unexpected-state", "subject-mismatch", "recovery-park", "operator-request"] as const)(
     "preserves the literal %s origin without failure details or actor data", async (kind) => {
-      const h = harness();
+      const h = await harness();
       recordFailure(h.database);
       const bundle = bundleOf(32, kind === "operator-request"
         ? { kind, requestedBy: "local-operator" } : { kind, failureId: uuidOf(40) });
@@ -410,7 +411,7 @@ describe("run capture authority", () => {
   );
 
   it("keeps capture refs lazy while serving verified availability", async () => {
-    const h = harness();
+    const h = await harness();
     h.database.authority.diagnosticBundles.insert(bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" }));
     const detail = await readRunDetail(h.deps, uuidOf(1));
     assert.deepEqual(detail.captures, { state: "available", artifactCount: 1 });
@@ -420,7 +421,7 @@ describe("run capture authority", () => {
   });
 
   it.each(["missing", "digest", "size"] as const)("keeps %s bytes visibly corrupt on both public reads", async (fault) => {
-    const h = harness();
+    const h = await harness();
     h.database.authority.diagnosticBundles.insert(bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" }));
     const ref = refOf(ATTACHMENT);
     if (fault === "missing") h.removeArtifact(ref);
@@ -441,7 +442,7 @@ describe("run capture authority", () => {
 
   it.each(["foreign", "duplicate", "conflicting-origin", "malformed", "missing-origin"] as const)(
     "refuses a %s run index before any exact readback or byte open", async (fault) => {
-      const h = harness();
+      const h = await harness();
       const bundle = bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" });
       const other = fault === "foreign" ? { ...bundle, runId: RunIdSchema.parse(uuidOf(2)) }
         : fault === "malformed" ? { ...bundle, untrusted: "PRIVATE_PATH" }
@@ -463,7 +464,7 @@ describe("run capture authority", () => {
   );
 
   it("refuses a valid re-digested exact readback whose origin differs from the run index", async () => {
-    const h = harness();
+    const h = await harness();
     recordFailure(h.database);
     const listed = bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" });
     const stored = bundleOf(32, { kind: "failure", failureId: uuidOf(40) });
@@ -476,7 +477,7 @@ describe("run capture authority", () => {
 
   it.each(["missing-bundle", "foreign-bundle", "changed-origin", "missing-index", "changed-index"] as const)(
     "refuses %s exact verification instead of serving a plausible capture", async (fault) => {
-      const h = harness();
+      const h = await harness();
       const bundle = bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" });
       h.database.authority.diagnosticBundles.insert(bundle);
       const real = h.captures.authority;
@@ -499,7 +500,7 @@ describe("run capture authority", () => {
   );
 
   it("refuses individually verified bundles that disagree on a shared artifact's dimensions", async () => {
-    const h = harness();
+    const h = await harness();
     const png = Buffer.from(RGBA_PNG_BASE64, "base64");
     const image = { ...ATTACHMENT, kind: "screenshot" as const, mediaType: "image/png" as const,
       digest: createHash("sha256").update(png).digest("hex"), byteLength: png.byteLength, width: 16, height: 12 };
@@ -520,7 +521,7 @@ describe("run capture authority", () => {
   });
 
   it.each(["not-an-id", uuidOf(999)])("refuses unavailable run %s before capture authority", async (runId) => {
-    const h = harness();
+    const h = await harness();
     const listByRun = vi.fn(h.captures.authority.listByRun);
     const deps = { ...h.deps, captures: { ...h.captures, authority: { ...h.captures.authority, listByRun } } };
     const expected = runId === "not-an-id" ? /uuid|invalid/iu : TargetNotFoundError;
