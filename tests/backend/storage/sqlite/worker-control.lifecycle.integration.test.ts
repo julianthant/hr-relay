@@ -456,7 +456,7 @@ describe("exact lifecycle reservation", () => {
     const proof = await owner.removeWorker(record.lifecycle, WorkerStopDirectiveContextSchema.parse({ commandId: record.commandId, requestedAt: record.admittedAt, requestedBy: "local-operator" }));
     expect(owner.supervisor.memberEvidence(record.lifecycle.member)).toMatchObject({ state: "exited", reportedBy: "os" });
     expect(h.database.authority.workerControls.get(record.commandId)?.closure).toBeDefined();
-    h.database.close();
+    h.authority.closeDatabase();
     const reopened = AuthorityDatabase.open({ path: h.authority.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, h.authority.clock);
     try {
       expect(reopened.authority.workerSlots.get(h.deps.workerId)?.retiredAt).toBeNull();

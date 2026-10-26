@@ -59,6 +59,7 @@ export interface AuthorityHarness {
 
   readonly path: string;
   readonly stateRoot: string;
+  readonly closeDatabase: () => void;
   readonly dispose: () => void;
 }
 
@@ -79,18 +80,28 @@ export function openAuthorityHarness(): AuthorityHarness {
   assert.equal(config.configSnapshotId, QUEUED_RUN.envelope.configSnapshotId);
   assert.equal(config.configFingerprint, QUEUED_RUN.envelope.configFingerprint);
   let closeAttempted = false, closeFailure: Error | undefined;
+  const closeDatabase = (): void => {
+    if (closeAttempted) { if (closeFailure !== undefined) throw closeFailure; return; }
+    closeAttempted = true;
+    try {
+      releaseSeededWriteOwners(database, clock.now().toISOString());
+      database.close();
+    } catch (error) {
+      held.primary = { error }; closeFailure = retainAuthoritySourceClosure([error], { admission: held }); throw closeFailure;
+    }
+  };
+  let disposed = false;
   return {
     database,
     clock,
     profile: fixture,
     path,
     stateRoot: root,
+    closeDatabase,
     dispose: (): void => {
-      if (closeAttempted) { if (closeFailure !== undefined) throw closeFailure; return; }
-      closeAttempted = true;
+      if (disposed) return;
       try {
-        releaseSeededWriteOwners(database, clock.now().toISOString());
-        database.close(); fixture.close(); retainedAuthorityHarnessOwners.delete(held);
+        closeDatabase(); fixture.close(); retainedAuthorityHarnessOwners.delete(held); disposed = true;
       }
       catch (error) { held.primary = { error }; closeFailure = retainAuthoritySourceClosure([error], { admission: held }); throw closeFailure; }
     },

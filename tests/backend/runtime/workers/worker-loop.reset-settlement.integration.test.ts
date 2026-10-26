@@ -1,3 +1,10 @@
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
+import { childUnawaitedModules } from "../../../support/fixtures/child-execution-workflows.js";
+import { Plan1Input, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { WorkerResetBindingSchema } from "../../../../src/models/run/worker-control.js";
 import { seedAtomicWriteOwner, atomicWriteCheckpoint } from "../../../support/helpers/timeline-write-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
@@ -293,7 +300,12 @@ describe("reset preserves fenced durable write outcomes", () => {
             parkedAt: h.authority.clock.now().toISOString(), code: "unknown", message: "controlled unknown callback" }, now: h.authority.clock.now().toISOString() });
         expect(result.state).toBe("applied");
       }
+      let restoreParkedBinding = false, restoreIntentRunAttempt = false;
+      const undamagedRun = database.authority.runs.get(run.envelope.runId);
+      const undamagedIntent = database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId);
+      if (undamagedRun === undefined || undamagedIntent === undefined) throw new Error("missing undamaged write fixture");
       if (outcome === "unknown-generation" || outcome === "unknown-intent") {
+        restoreParkedBinding = true;
         const parked = database.authority.runs.get(run.envelope.runId);
         if (parked?.lifecycle.state !== "parked-write") throw new Error("missing parked fixture");
         expect(database.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: parked.version,
@@ -301,6 +313,7 @@ describe("reset preserves fenced durable write outcomes", () => {
           now: h.authority.clock.now().toISOString() }).state).toBe("applied");
       }
       if (outcome === "unknown-attempt") {
+        restoreIntentRunAttempt = true;
         const raw = new DatabaseSync(h.authority.path);
         try { raw.prepare("UPDATE write_intents SET payload_json=json_set(payload_json,'$.runAttempt',2) WHERE id=?").run(WRITE_INTENT_ATTEMPTING.writeIntentId); }
         finally { raw.close(); }
@@ -315,6 +328,7 @@ describe("reset preserves fenced durable write outcomes", () => {
       const lifecycle = new RunRecordService({ database, clock: h.authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => undefined });
       const settle = createWorkerResetControl({ database, workerId, leaseGeneration: lease.leaseGeneration, clock: h.authority.clock, lifecycle });
       if (outcome.startsWith("unknown-")) {
+        try {
         await expect(settle(manager, record.reset)).rejects.toThrow("parked-write-authority-unavailable");
         const proof = await manager.closeForReset(record.reset);
         const generation = database.getMeta().authorityGeneration;
@@ -324,6 +338,24 @@ describe("reset preserves fenced durable write outcomes", () => {
         expect(database.authority.commandAudits.findByCommand(record.commandId)).toBeUndefined();
         expect(retained()).toEqual(before);
         return;
+        } finally {
+          if (restoreParkedBinding) {
+            const current = database.authority.runs.get(run.envelope.runId);
+            if (current === undefined) throw new Error("missing corrupt write fixture");
+            expect(database.authority.runs.transition({ runId: current.envelope.runId, expectedVersion: current.version,
+              lifecycle: undamagedRun.lifecycle, now: h.authority.clock.now().toISOString() }).state).toBe("applied");
+          }
+          if (restoreIntentRunAttempt) {
+            const raw = new DatabaseSync(h.authority.path);
+            try {
+              const repaired = raw.prepare("UPDATE write_intents SET payload_json=json_set(payload_json,'$.runAttempt',?) WHERE id=?")
+                .run(undamagedIntent.runAttempt, undamagedIntent.writeIntentId);
+              expect(repaired.changes).toBe(1);
+            } finally { raw.close(); }
+          }
+          expect(database.authority.writeIntents.get(undamagedIntent.writeIntentId)).toEqual(undamagedIntent);
+          await settle(manager, record.reset);
+        }
       }
       await settle(manager, record.reset);
       expect(retained()).toEqual(before);
@@ -377,19 +409,43 @@ it("marks held actual browser close uncertain at its scheduled expiry without re
 });
 
 it("exposes no raw success setter and atomically cancels a safe queued cascade before idle", async () => {
-  const h = world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
-  const parent = RunRecordSchema.parse(personLookupQueuedRun()); database.authority.runs.enqueue(parent);
+  const { root, modules } = childUnawaitedModules("cascade");
+  const base = world.loopHarness(), database = base.authority.database;
+  const worker = testAdmittedWorker(database, base.authority.clock, { path: base.authority.path, workflow: root.descriptor.id,
+    poolIndex: 1, browserSystems: [] });
+  const workerId = worker.workerId;
+  const h = { ...base, deps: { ...base.deps, workerId, workflowId: root.descriptor.id, descriptor: root.descriptor, stores: plan1Stores } };
+  const sessions = new WorkerSessionManager({ workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
+    factory: h.deps.sessionFactory, clock: h.authority.clock, scheduler: h.scheduler,
+    acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony });
+  const resolve = (id: string) => modules.find(module => module.descriptor.id === id)?.descriptor;
+  const execution = canonicalChildExecution({ ...h.deps, sessions, buildManifest: childExecutionBuildManifest }, database, h.authority.path, resolve);
+  const parent = execution.start(root.descriptor, { emplId: "10000000", text: "Reset fixture", mode: Plan1Input.shape.mode.options[0] }, { dryRun: false });
   expect(database.authority.runs.claimNext({ workerId, workflow: h.deps.workflowId, workerLifetime: { membershipRevision: database.authority.workerSlots.get(workerId)?.membershipRevision, leaseGeneration: database.authority.workerLeases.get(workerId)?.leaseGeneration }, now: h.authority.clock.now().toISOString() }).state).toBe("claimed");
-  const childId = randomUUID(), manifestId = randomUUID(), dependencyId = randomUUID();
-  database.authority.runs.enqueue({ ...parent, envelope: { ...parent.envelope, runId: childId, itemId: childId,
-    parent: { runId: parent.envelope.runId, tracePrefix: "pl-090000-2222", edgeId: "reset-child" } } });
-  const policy = { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" };
+  const node = descriptorRuntimeNodes(root.descriptor).find(node => node.kind === "child-run");
+  if (node === undefined || node.kind !== "child-run") throw new Error("missing canonical reset child node");
+  let current = database.authority.runs.get(parent.envelope.runId);
+  if (current === undefined) throw new Error("missing canonical reset parent");
+  const claim = { workerId, claimGeneration: current.claimGeneration };
   const now = h.authority.clock.now().toISOString();
-  database.authority.delegationManifests.insert({ manifestId, parentRunId: parent.envelope.runId, edgeId: "reset-child",
-    inputSchemaHash: "a".repeat(64), resultSchemaHash: "b".repeat(64), cardinality: "one", join: "one", policy,
-    children: [{ dependencyId, childRunId: childId, childItemId: childId, canonicalInputFingerprint: "a".repeat(64) }], createdAt: now, manifestFingerprint: "a".repeat(64) });
-  database.authority.dependencies.insert({ dependencyId, manifestId, edgeId: "reset-child", parentRunId: parent.envelope.runId,
-    childRunId: childId, childItemId: childId, policy, state: "active", version: 1, createdAt: now, updatedAt: now });
+  for (const state of ["validating", "running"] as const) {
+    const transition = execution.lifecycle.workerTransition({ commandId: randomUUID(), runId: parent.envelope.runId, claim,
+      lifecycle: { state, workerId, workerLifetime: worker.workerLifetime, claimedAt: now, heartbeatAt: now,
+        ...(state === "running" ? { currentNodeId: node.id } : {}) } });
+    expect(transition.state).toBe("applied");
+  }
+  current = database.authority.runs.get(parent.envelope.runId);
+  if (current === undefined) throw new Error("missing running reset parent");
+  await createDurableChildRunExecutor({ authority: database,
+    admission: { admitAndRelease: (context, plan) => execution.lifecycle.admitDelegation(context, plan) },
+    resolveTarget: id => { const descriptor = resolve(id); if (descriptor === undefined) throw new Error("missing reset child descriptor"); return descriptor; },
+  }).executeChildRun({ descriptor: root.descriptor, node, run: current, claim,
+    scope: { input: parent.input.parsed.value, outputs: {} }, signal: new AbortController().signal });
+  const child = database.authority.runs.listChildren(parent.envelope.runId)[0];
+  expect(child).toBeDefined();
+  if (child === undefined) throw new Error("canonical reset child was not admitted");
+  const childId = child.envelope.runId;
+  await sessions.closeAll("worker-stop");
   const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
   if (slot === undefined || lease === undefined) throw new Error("missing owner");
   const record = database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
@@ -410,7 +466,7 @@ it("exposes no raw success setter and atomically cancels a safe queued cascade b
   expect(() => database.authority.workerControls.transition(record.commandId, "executing", { state: "succeeded", startedAt: now, completedAt: now,
     acknowledgement: { kind: "reset", commandId: record.commandId, leaseGeneration: lease.leaseGeneration, controlRevision: record.reset?.reservedControlRevision,
       membershipRevision: slot.membershipRevision, idleAt: now, closedSessionIds: [], browsersClosed: true, duoReleased: true } })).toThrow();
-  const lifecycle = new RunRecordService({ database, clock: h.authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => undefined });
+  const lifecycle = execution.lifecycle;
   lifecycle.settleResetWork(record.reset);
   expect(database.authority.runs.get(childId)?.lifecycle).toMatchObject({ state: "terminal", outcome: "cancelled" });
   expect(database.authority.runs.get(parent.envelope.runId)?.lifecycle).toMatchObject({ state: "terminal", outcome: "cancelled" });
@@ -445,7 +501,7 @@ for (const succeeded of [false, true]) {
     observer.stop();
     expect(timer?.cancelled()).toBe(true);
     expect(h.scheduler.pending()).toEqual([]);
-    database.close();
+    h.authority.closeDatabase();
     h.authority.clock.advanceWall(120_000);
     expect(() => timer?.fire()).toThrow("no longer pending");
     expect(failures).toEqual([]);
@@ -467,7 +523,7 @@ it("surfaces timer authority failure through the worker failure seam and retains
     onFailure: error => { failures.push(error); h.stop.abort(error); } });
   observer();
   const timer = h.scheduler.pending()[0]; expect(timer).toBeDefined();
-  database.close();
+  h.authority.closeDatabase();
   expect(() => timer?.fire()).not.toThrow();
   expect(failures).toHaveLength(1);
   expect(observer.failure()).toBe(failures[0]);
