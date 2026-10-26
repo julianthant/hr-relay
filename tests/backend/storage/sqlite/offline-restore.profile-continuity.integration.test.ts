@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
 import fs from "node:fs";
@@ -21,7 +22,7 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync, readdirSync, lstatSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, vi } from "vitest";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, readAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCredentialStore, captureCredentialErasureHead, verifyCredentialErasureHead } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
@@ -40,13 +41,14 @@ function world(clock: Clock = systemClock) {
   const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
   let admission = fixture.admission;
   const renew = () => { admission = fixture.machine.admitProfile(createProfileRegistry(fixture.machine).storageClaim(profileId)); return admission; };
-  const store = () => createCredentialStore({ admission, stateRoot: fixture.stateRoot, erasureJournalAdmission: fixture.machine, erasureJournalPath: journalPath });
   const credentialInventories = {
     repairInventory: (child: RuntimeAdmission, ...args: Parameters<ReturnType<typeof composeProfileCredentialRepairInventory>>) =>
       composeProfileCredentialRepairInventory({ machine: fixture.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(...args),
     initializationInventory: (child: RuntimeAdmission, ...args: Parameters<ReturnType<typeof composeProfileCredentialInitializationInventory>>) =>
       composeProfileCredentialInitializationInventory({ machine: fixture.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(...args),
   };
+  const store = () => createCredentialStore({ admission, stateRoot: fixture.stateRoot, erasureJournalAdmission: fixture.machine, erasureJournalPath: journalPath,
+    repairInventory: (...args) => credentialInventories.repairInventory(admission, ...args) });
   const newSession = () => createProfileSession({ admission: fixture.machine, machineRoot: fixture.machine.stateRoot, ...credentialInventories,
     activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
   let currentSession = newSession();
@@ -223,7 +225,8 @@ describe("profile restore continuity", () => {
       assert.throws(() => f.store().read());
       assert.equal(f.session().resumeLogout(operation.operationId).state, "wiped");
       assert.equal(existsSync(intentPath), false);
-      const document = JSON.parse(readFileSync(join(f.stateRoot, "credentials", "protected.json"), "utf8")) as { history: { receipt: { commandId: string; writeId: string } }[] };
+      const document = z.object({ history: z.array(z.object({ receipt: z.object({ commandId: z.string(), writeId: z.string() }) })) })
+        .parse(readAuthenticatedCredentialFixture(f.machine.stateRoot, f.profileId));
       assert.equal(document.history.filter(entry => entry.receipt.commandId === operation.commandId).length, 1);
       assert.equal(document.history.at(-1)?.receipt.writeId, operation.writeId);
       assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).includes(Buffer.from("disposable-fixture-password")), false);
