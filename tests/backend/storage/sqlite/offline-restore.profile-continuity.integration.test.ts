@@ -48,7 +48,7 @@ function world(clock: Clock = systemClock) {
       composeProfileCredentialInitializationInventory({ machine: fixture.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(...args),
   };
   const store = () => createCredentialStore({ admission, stateRoot: fixture.stateRoot, erasureJournalAdmission: fixture.machine, erasureJournalPath: journalPath,
-    repairInventory: (...args) => credentialInventories.repairInventory(admission, ...args) });
+    repairInventory: composeProfileCredentialRepairInventory({ machine: fixture.machine, admission, clock, hostFacts: { primaryDisplay: null } }) });
   const newSession = () => createProfileSession({ admission: fixture.machine, machineRoot: fixture.machine.stateRoot, ...credentialInventories,
     activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
   let currentSession = newSession();
