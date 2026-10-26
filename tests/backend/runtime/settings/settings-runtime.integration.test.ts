@@ -32,7 +32,7 @@ import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "../../../../src/models/confi
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { credentialTrap, storageTree, storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, readAuthenticatedCredentialFixture, rewriteAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
 
 {
 
@@ -81,7 +81,7 @@ function fixture(probe: () => void = () => {}) {
   };
   const protectedCommand = (value: string | null) => ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
     target: { expectedRevision: store.read().revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: value === null ? { clear: true } : { set: value } } } });
-  return { root, database, databasePath, clock, store, initial, active, reader, execute, apply, protectedCommand, reads: () => reads,
+  return { root, profile, database, databasePath, clock, store, initial, active, reader, execute, apply, protectedCommand, reads: () => reads,
     protectedReader: createProtectedSettingsRuntimeReader(store) };
 }
 
@@ -185,15 +185,18 @@ afterEach(_afterEachFixture0);
     const f = fixture(); const revision = f.store.read().revision; f.execute(f.protectedCommand("synthetic-owned-value")); f.database.close();
     assert.equal(f.protectedReader.read().readback.revision, revision + 1);
     const path = join_m0(f.root, "credentials", "protected.json");
-    const document = z.looseObject({ record: z.looseObject({ entries: z.looseObject({
-      ucpathPassword: z.looseObject({ value: z.string() }),
-    }) }) }).parse(JSON.parse(readFileSync(path, "utf8")));
-    const originalValue = document.record.entries.ucpathPassword.value;
-    assert.equal(originalValue === "synthetic-owned-value", true);
-    document.record.entries.ucpathPassword.value = "synthetic-altered-value";
-    assert.equal(document.record.entries.ucpathPassword.value === originalValue, false);
-    writeFileSync(path, JSON.stringify(document));
-    assert.throws(() => f.protectedReader.read(), /disagrees with its identity history/u);
+    const originalBytes = readFileSync(path);
+    try {
+      const document = z.looseObject({ record: z.looseObject({ entries: z.looseObject({
+        ucpathPassword: z.looseObject({ value: z.string() }),
+      }) }) }).parse(readAuthenticatedCredentialFixture(f.profile.machine.stateRoot, f.profile.admission.profileBinding.profileId));
+      const originalValue = document.record.entries.ucpathPassword.value;
+      assert.equal(originalValue === "synthetic-owned-value", true);
+      document.record.entries.ucpathPassword.value = "synthetic-altered-value";
+      assert.equal(document.record.entries.ucpathPassword.value === originalValue, false);
+      rewriteAuthenticatedCredentialFixture(f.profile.machine.stateRoot, f.profile.admission.profileBinding.profileId, () => document);
+      assert.throws(() => f.protectedReader.read(), /disagrees with its identity history/u);
+    } finally { writeFileSync(path, originalBytes); }
   });
 });
 

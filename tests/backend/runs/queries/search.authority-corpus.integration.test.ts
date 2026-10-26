@@ -309,6 +309,7 @@ describe("cross-date search authority read", () => {
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     const raw = new DatabaseSync(databasePath);
+    let restoreFinalCorruption: (() => void) | undefined;
     try {
       const run = insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 88, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const search = (input: unknown): unknown => database.authority.runs.search(input);
@@ -352,13 +353,21 @@ describe("cross-date search authority read", () => {
       database.rebuildRunSearchIndex({ restart: true });
       assert.equal(database.authority.runs.search({ q: "separations", scope: "workflow", facets: {}, limit: 1 }).totalMatches, 1);
 
+      const preimage = z.object({ envelope_json: z.string() }).parse(raw.prepare("SELECT envelope_json FROM runs WHERE id = ?").get(run.envelope.runId));
+      restoreFinalCorruption = () => corruptRunSource(raw, "UPDATE runs SET envelope_json = ? WHERE id = ?", preimage.envelope_json, run.envelope.runId);
       corruptRunSource(raw, "UPDATE runs SET envelope_json = json_set(envelope_json, '$.traceId', ?) WHERE id = ?",
         "sp-sensitive-10873698-fragment", run.envelope.runId);
       let nonMatchMessage = "";
       assert.throws(
         () => search({ q: "does-not-match-any-run", scope: "trace", facets: {}, limit: 1 }),
         (error) => {
-          nonMatchMessage = error instanceof Error ? error.message : String(error);
+          assert.ok(error instanceof Error);
+          nonMatchMessage = error.message;
+          assert.equal(nonMatchMessage, "run-search-index-rebuild-required");
+          assert.ok(error.cause instanceof Error);
+          assert.match(error.cause.message, /^authority table runs failed native record validation: /u);
+          assert.ok(error.cause.cause instanceof z.ZodError);
+          assert.deepEqual(error.cause.cause.issues.map(issue => issue.path), [["envelope", "traceId"]]);
           return /run-search-index-rebuild-required/.test(nonMatchMessage);
         },
       );
@@ -368,6 +377,7 @@ describe("cross-date search authority read", () => {
         "a sensitive raw trace substring must not change the corruption refusal",
       );
     } finally {
+      restoreFinalCorruption?.();
       raw.close();
       database.close();
       profile.close();
@@ -382,6 +392,7 @@ describe("cross-date search authority read", () => {
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     const raw = new DatabaseSync(databasePath);
+    let restoreFinalCorruption: (() => void) | undefined;
     try {
       const run = insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const searchExactRun = (facets: unknown): unknown => database.authority.runs.search({
@@ -409,12 +420,23 @@ describe("cross-date search authority read", () => {
       database.rebuildRunSearchIndex({ restart: true });
       assert.equal(database.authority.runs.search({ q: "separations", scope: "workflow", facets: {}, limit: 1 }).totalMatches, 1);
 
+      const preimage = z.object({ priority: z.string() }).parse(raw.prepare("SELECT priority FROM runs WHERE id = ?").get(run.envelope.runId));
+      restoreFinalCorruption = () => corruptRunSource(raw, "UPDATE runs SET priority = ? WHERE id = ?", preimage.priority, run.envelope.runId);
       corruptRunSource(raw, "UPDATE runs SET priority = ? WHERE id = ?", "bulk", run.envelope.runId);
       assert.throws(
         () => searchExactRun({}),
-        /run-search-index-rebuild-required/,
+        error => {
+          assert.ok(error instanceof Error);
+          assert.equal(error.message, "run-search-index-rebuild-required");
+          assert.ok(error.cause instanceof Error);
+          assert.equal(error.cause.message, "authority table runs failed native record validation: run row priority does not match its whole-record JSON");
+          assert.ok(error.cause.cause instanceof Error);
+          assert.equal(error.cause.cause.message, "run row priority does not match its whole-record JSON");
+          return /run-search-index-rebuild-required/.test(error.message);
+        },
       );
     } finally {
+      restoreFinalCorruption?.();
       raw.close();
       database.close();
       profile.close();
