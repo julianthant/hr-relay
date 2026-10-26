@@ -58,7 +58,8 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     const registry = assistantCostRegistryObservation(), snapshot = assistantCostSnapshotObservation();
     assert.ok(Number.isSafeInteger(registry.registryCalls) && Number.isSafeInteger(registry.registryNs)
       && Number.isSafeInteger(snapshot.snapshotCalls) && Number.isSafeInteger(snapshot.snapshotNs));
-    process.stderr.write(`[DEBUG-assistant-timeout-20261026] ${stage} ${Number(process.hrtime.bigint() - traceStart) / 1_000_000}ms registryCalls=${registry.registryCalls} registryNs=${registry.registryNs} snapshotCalls=${snapshot.snapshotCalls} snapshotNs=${snapshot.snapshotNs}\n`);
+    assert.equal(Object.values(registry.registryCallsites).reduce((sum, count) => sum + count, 0), Math.floor(registry.registryCalls / 97));
+    process.stderr.write(`[DEBUG-assistant-timeout-20261026] ${stage} ${Number(process.hrtime.bigint() - traceStart) / 1_000_000}ms registryCalls=${registry.registryCalls} registryNs=${registry.registryNs} snapshotCalls=${snapshot.snapshotCalls} snapshotNs=${snapshot.snapshotNs} registryCallsites=${JSON.stringify(registry.registryCallsites)}\n`);
   };
   trace('fixture-start');
   let ready = false;

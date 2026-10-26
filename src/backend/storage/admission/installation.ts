@@ -1606,8 +1606,15 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
 
 let assistantCostRegistryCalls = 0;
 let assistantCostRegistryNs = 0n;
+const assistantCostCallsiteNames = new Set([
+  "assertLive", "stateRoot", "artifactRoot", "profileBinding", "locator", "readProfileRegistry",
+  "assertProfileRuntime", "assertCredentialRead", "assertWritable", "assertStateRoot",
+  "assertStorageRootsSafe", "assertAuthorityDatabase", "assertReadOnlyAuthorityDatabase", "assertArtifactRoot",
+]);
+const assistantCostCallsites = new Map<string, number>();
 export function assistantCostRegistryObservation() {
-  return { registryCalls: assistantCostRegistryCalls, registryNs: Number(assistantCostRegistryNs) };
+  return { registryCalls: assistantCostRegistryCalls, registryNs: Number(assistantCostRegistryNs),
+    registryCallsites: Object.fromEntries(assistantCostCallsites) };
 }
 
 function initializeMachineRegistry(control: string, locator: RuntimeLocator): void {
@@ -1963,6 +1970,16 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       } finally {
         assistantCostRegistryCalls++;
         assistantCostRegistryNs += process.hrtime.bigint() - assistantCostStart;
+        if (assistantCostRegistryCalls % 97 === 0) {
+          const sequence: string[] = [];
+          const stack = new Error().stack;
+          if (stack !== undefined) for (const line of stack.split("\n")) {
+            const name = /\bat RuntimeAdmission\.(?:get )?([A-Za-z][A-Za-z0-9]*)\b/u.exec(line)?.[1];
+            if (name !== undefined && assistantCostCallsiteNames.has(name)) sequence.push(name);
+          }
+          const bucket = sequence.length === 0 ? "UNKNOWN" : sequence.join(">");
+          assistantCostCallsites.set(bucket, (assistantCostCallsites.get(bucket) ?? 0) + 1);
+        }
       }
     },
     commitProfileDuo(transaction: IssuedDuoTransaction) { publishIssuedDuo(transaction, "settle"); },
