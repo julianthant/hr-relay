@@ -1,6 +1,5 @@
-import { assistantCostRegistryObservation } from "../../../../../src/backend/storage/admission/installation.js";
 import { AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
-import { assistantCostSnapshotObservation, withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import configuredSources from "../../../../../config/dashboard-workflow-sources.json";
 import { z } from "zod";
 import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
@@ -53,24 +52,13 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
   }
   const owner: ServedAssistantOwner = { unsettled: new Error('Predecessor assistant fixture is unsettled'), failures: [] };
   servedAssistantOwner = owner;
-  const traceStart = process.hrtime.bigint();
-  const trace = (stage: string) => {
-    const registry = assistantCostRegistryObservation(), snapshot = assistantCostSnapshotObservation();
-    assert.ok(Number.isSafeInteger(registry.registryCalls) && Number.isSafeInteger(registry.registryNs)
-      && Number.isSafeInteger(snapshot.snapshotCalls) && Number.isSafeInteger(snapshot.snapshotNs));
-    assert.equal(Object.values(registry.registryCallsites).reduce((sum, count) => sum + count, 0), Math.floor(registry.registryCalls / 97));
-    process.stderr.write(`[DEBUG-assistant-timeout-20261026] ${stage} ${Number(process.hrtime.bigint() - traceStart) / 1_000_000}ms registryCalls=${registry.registryCalls} registryNs=${registry.registryNs} snapshotCalls=${snapshot.snapshotCalls} snapshotNs=${snapshot.snapshotNs} registryCallsites=${JSON.stringify(registry.registryCallsites)}\n`);
-  };
-  trace('fixture-start');
   let ready = false;
   let primary: { error: unknown } | undefined;
   try {
     const f = createBoundProfileFixture();
     owner.profile = f;
-    trace('profile-created');
     const transport = chatGptFixture(f.admission);
     owner.transport = transport;
-    trace('transport-created');
     const originalFetch = globalThis.fetch;
     const fetchProbe = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
@@ -81,7 +69,6 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     const clock = transport.clock;
     const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
     owner.runtime = runtime;
-    trace('runtime-created');
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
     const sources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredSources);
     const knowledge = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => sources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
@@ -92,30 +79,19 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("selected fixture required");
     const context = runtime.selectedContext(active.token);
-    trace('context-created');
     const authorization = await context.account.signIn({ usePlan: true }); await transport.callback(authorization); await authorization.completion;
-    trace('account-connected');
     const dashboard = await composeDashboardRuntime({ admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
       clock, isolation: rebuildRuntimeIsolation, env: {}, backendPortOverride: 0, frontendPortOverride: 0, preflightRunnerFactory: healthyRuntimePreflightRunners,
        });
     owner.dashboard = dashboard;
-    trace('dashboard-created');
     const origin = `http://127.0.0.1:${String(dashboard.port)}`;
-    let requestCount = 0;
     const post = async (path: string, value: unknown): Promise<unknown> => {
-      const request = ++requestCount;
-      trace(`request-${request}-start`);
       const response = await originalFetch(`${origin}/api/v1/${path}`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(value) });
-      trace(`request-${request}-response`);
-      const body: unknown = await response.json();
-      trace(`request-${request}-complete`);
-      return body;
+      const body: unknown = await response.json(); return body;
     };
 
     ready = true;
-    trace('body-start');
     await body({ context, transport, clock, originalFetch, origin, post });
-    trace('body-complete');
   } catch (error) { primary = { error }; owner.primary = primary; }
   if (!ready) {
     const error = primary?.error;
@@ -127,15 +103,10 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     assert.ok(owner.transport);
     assert.ok(owner.fetchProbe);
     assert.ok(owner.profile);
-    trace('runtime-cleanup-start');
     if (owner.dashboard !== undefined) await owner.dashboard.stop(); else await owner.runtime.close();
-    trace('runtime-cleanup-complete');
     await owner.transport.cleanup();
-    trace('transport-cleanup-complete');
     owner.fetchProbe.mockRestore();
-    trace('fetch-restored');
     owner.profile.close();
-    trace('profile-closed');
     servedAssistantOwner = undefined;
   } catch (error) { owner.failures.push(error); owner.primary ??= { error }; }
   if (primary !== undefined || owner.failures.length > 0) throw new AggregateError(

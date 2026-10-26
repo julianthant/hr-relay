@@ -1604,19 +1604,6 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
   return canonicalJsonStringify({ document, observation: before, files, directories });
 }
 
-let assistantCostRegistryCalls = 0;
-let assistantCostRegistryNs = 0n;
-const assistantCostCallsiteNames = new Set([
-  "assertLive", "stateRoot", "artifactRoot", "profileBinding", "locator", "readProfileRegistry",
-  "assertProfileRuntime", "assertCredentialRead", "assertWritable", "assertStateRoot",
-  "assertStorageRootsSafe", "assertAuthorityDatabase", "assertReadOnlyAuthorityDatabase", "assertArtifactRoot",
-]);
-const assistantCostCallsites = new Map<string, number>();
-export function assistantCostRegistryObservation() {
-  return { registryCalls: assistantCostRegistryCalls, registryNs: Number(assistantCostRegistryNs),
-    registryCallsites: Object.fromEntries(assistantCostCallsites) };
-}
-
 function initializeMachineRegistry(control: string, locator: RuntimeLocator): void {
   const directory = join(locator.stateRoot, "machine");
   mkdirSync(directory, { mode: 0o700 }); syncDir(locator.stateRoot);
@@ -1947,8 +1934,6 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       return readReceiptChain(control, workspace, locator.installationId);
     },
     readProfileRegistry() {
-      const assistantCostStart = process.hrtime.bigint();
-      try {
       assertHeld();
       if (lstatMaybe(join(control, "profile-publication.json"))) {
         return mutex(control, () => {
@@ -1967,20 +1952,6 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (before !== after || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
       return document;
-      } finally {
-        assistantCostRegistryCalls++;
-        assistantCostRegistryNs += process.hrtime.bigint() - assistantCostStart;
-        if (assistantCostRegistryCalls % 97 === 0) {
-          const sequence: string[] = [];
-          const stack = new Error().stack;
-          if (stack !== undefined) for (const line of stack.split("\n")) {
-            const name = /\bat RuntimeAdmission\.(?:get )?([A-Za-z][A-Za-z0-9]*)\b/u.exec(line)?.[1];
-            if (name !== undefined && assistantCostCallsiteNames.has(name)) sequence.push(name);
-          }
-          const bucket = sequence.length === 0 ? "UNKNOWN" : sequence.join(">");
-          assistantCostCallsites.set(bucket, (assistantCostCallsites.get(bucket) ?? 0) + 1);
-        }
-      }
     },
     commitProfileDuo(transaction: IssuedDuoTransaction) { publishIssuedDuo(transaction, "settle"); },
     commitProfileDuoIntent(transaction: IssuedDuoTransaction) { publishIssuedDuo(transaction, "durable-intent"); },
