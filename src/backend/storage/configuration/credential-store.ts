@@ -1747,22 +1747,6 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     return second ?? missing();
   }
 
-  // shortcut: a replacement that keeps device, inode, mtime, and size stays cached until restart
-  let ownedCommandIds: { readonly identity: string; readonly ids: ReadonlySet<string> } | undefined;
-
-  function ownedCommandIdsForCurrentFile(): ReadonlySet<string> {
-    const status = lstatSync(protectedPath, { throwIfNoEntry: false });
-    if (status === undefined || !status.isFile() || status.isSymbolicLink()) {
-      ownedCommandIds = undefined;
-      return new Set(observeCurrent().document.history.map(({ receipt }) => receipt.commandId));
-    }
-    const identity = `${String(status.dev)}:${String(status.ino)}:${String(status.mtimeMs)}:${String(status.size)}`;
-    if (ownedCommandIds?.identity === identity) return ownedCommandIds.ids;
-    const ids = new Set(observeCurrent().document.history.map(({ receipt }) => receipt.commandId));
-    ownedCommandIds = { identity, ids };
-    return ids;
-  }
-
   function divergent(): CredentialStoreApplyOutcome {
     return frozenRefusal(
       "command-divergent",
@@ -1907,7 +1891,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     ownsCommandId(commandId: string): boolean {
       admission.assertLive();
       const id = z.uuid().parse(commandId);
-      return ownedCommandIdsForCurrentFile().has(id);
+      return observeCurrent().document.history.some(({ receipt }) => receipt.commandId === id);
     },
     acceptedAt(commandId: string): string | undefined {
       admission.assertLive();

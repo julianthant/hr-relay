@@ -1570,26 +1570,6 @@ function profileObservation(control: string, locator: RuntimeLocator): string {
   return canonicalJsonStringify({ files, operations });
 }
 
-// shortcut: a byte replacement that keeps device, inode, mtime, size, and mode stays cached until one of those changes
-const profileRegistryReads = new Map<string, { readonly stamp: string; readonly document: ProfileRegistryDocument }>();
-
-function profileFileStamp(path: string): string {
-  const info = lstatSync(path, { throwIfNoEntry: false });
-  if (info === undefined || !info.isFile() || info.isSymbolicLink()) fail("profile-registry-evidence-missing");
-  return `${String(info.dev)}:${String(info.ino)}:${String(info.mtimeMs)}:${String(info.size)}:${String(info.mode)}`;
-}
-
-function profileStamp(control: string, locator: RuntimeLocator): string {
-  const files = profileEvidencePaths(control, locator).map(path => profileFileStamp(path));
-  const directory = join(locator.stateRoot, "machine", "operations");
-  const directoryInfo = lstatSync(directory, { throwIfNoEntry: false });
-  if (directoryInfo === undefined) return `${files.join("|")}|dir:absent`;
-  if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) fail("profile-registry-evidence-missing");
-  const operations = readdirSync(directory).filter(name => name.endsWith(".json")).sort()
-    .map(name => `${name}:${profileFileStamp(join(directory, name))}`);
-  return `${files.join("|")}|dir:${String(directoryInfo.dev)}:${String(directoryInfo.ino)}:${String(directoryInfo.mtimeMs)}:${String(directoryInfo.mode)}:${String(directoryInfo.uid)}|${operations.join("|")}`;
-}
-
 function readProfileUpgradeAuthority(control: string, workspace: string, locator: RuntimeLocator, id: string, assertHeld: () => void): string {
   assertHeld();
   if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-stopped-upgrade-locator-changed");
@@ -1956,7 +1936,6 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     readProfileRegistry() {
       assertHeld();
       if (lstatMaybe(join(control, "profile-publication.json"))) {
-        profileRegistryReads.delete(control);
         return mutex(control, () => {
           assertHeld();
           if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
@@ -1965,15 +1944,6 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       }
       assertLiveObservationMutex(control);
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
-      const stamp = profileStamp(control, locator);
-      const cached = profileRegistryReads.get(control);
-      if (cached?.stamp === stamp) {
-        assertHeld();
-        assertLiveObservationMutex(control);
-        if (profileStamp(control, locator) !== stamp || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
-        if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
-        return cached.document;
-      }
       const before = profileObservation(control, locator);
       const document = readMachineRegistry(control, locator, false);
       const after = profileObservation(control, locator);
@@ -1981,8 +1951,6 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       assertLiveObservationMutex(control);
       if (before !== after || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
-      if (profileStamp(control, locator) !== stamp) fail("profile-registry-observation-changed");
-      profileRegistryReads.set(control, { stamp, document });
       return document;
     },
     commitProfileDuo(transaction: IssuedDuoTransaction) { publishIssuedDuo(transaction, "settle"); },
