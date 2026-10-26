@@ -81,7 +81,7 @@ it("retains exact same-clock confirmed operations through authenticated deletion
         } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
       }
       assertHistoryRefusal(() => w.history.query({ ...range, system: "kuali" }), fault === "wrong-deletion-command" ? /confirmed-publication-deletion-settlement-mismatch/u : /^confirmed-history-checkpoint-missing$/u);
-      if (fault === "missing-delete-receipt") {
+      if (fault === "missing-deletion-owner") {
         assert.equal(raw.prepare("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?").get(owner.envelope.runId)?.count,0);
       }
       assert.equal(raw.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()?.authority_generation,generation);
