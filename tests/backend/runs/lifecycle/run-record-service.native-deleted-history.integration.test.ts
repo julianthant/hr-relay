@@ -4,17 +4,28 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { exportTransactions } from "../../../../src/backend/storage/maintenance/transaction-export.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { HISTORY_NOW,historyWorld } from "../../../support/helpers/storage/transaction-history-fixture.js";
 const range = { from: "2026-07-01", to: "2026-09-09" };
 function permanent(path:string) {
   const raw=new DatabaseSync(path,{readOnly:true});
   try{return canonicalJsonStringify(["write_intents","write_attempts"].map(table=>raw.prepare(`SELECT * FROM ${table} ORDER BY id`).all()));}
   finally{raw.close();}
+}
+function assertHistoryRefusal(read: () => unknown, causePattern: RegExp): void {
+  assert.throws(read,error=>{
+    assert.ok(error instanceof Error);
+    assert.match(error.message,/run-search-index-rebuild-required/u);
+    assert.ok(error.cause instanceof Error);
+    assert.match(error.cause.message,causePattern);
+    return true;
+  });
 }
 it("retains exact same-clock confirmed operations through authenticated deletion and reopen without inventing delivery or disclosure",()=>{
   const w=historyWorld();try{
@@ -44,17 +55,25 @@ it("retains exact same-clock confirmed operations through authenticated deletion
     assert.deepEqual(deleted.rows.find(entry=>entry.operationId===second.commit.writeIntentId),live.rows.find(entry=>entry.operationId===second.commit.writeIntentId));
     w.reopen();assert.deepEqual(w.history.query(range),deleted);assert.equal(permanent(w.path),before);
     for (const fault of ["wrong-deletion-command", "missing-deletion-owner"] as const) {
-      const raw = new DatabaseSync(w.path);
-      try {
-        const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='deleted_runs' ORDER BY name").all();
+      using raw = new DatabaseSync(w.path);
+      const saved = raw.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(owner.envelope.runId);assert.ok(saved);
+      const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='deleted_runs' ORDER BY name").all();
+      using _restore = { [Symbol.dispose]() {
+        for (const trigger of triggers) raw.exec(`DROP TRIGGER ${String(trigger.name)}`);
+        if (fault === "missing-deletion-owner") {
+          const columns=Object.keys(saved);raw.prepare(`INSERT INTO deleted_runs (${columns.join(",")}) VALUES (${columns.map(()=>"?").join(",")})`).run(...Object.values(saved));
+        } else raw.prepare("UPDATE deleted_runs SET command_id=?,receipt_json=? WHERE run_id=?").run(saved.command_id,saved.receipt_json,owner.envelope.runId);
+        for (const trigger of triggers) raw.exec(String(trigger.sql));
+      } };
+      {
         for (const trigger of triggers) raw.exec(`DROP TRIGGER ${String(trigger.name)}`);
         try {
           if (fault === "wrong-deletion-command") raw.prepare("UPDATE deleted_runs SET command_id=?,receipt_json=json_set(receipt_json,'$.commandId',?) WHERE run_id=?")
             .run("50000000-0000-4000-8000-000000000001", "50000000-0000-4000-8000-000000000001",owner.envelope.runId);
           else raw.prepare("DELETE FROM deleted_runs WHERE run_id=?").run(owner.envelope.runId);
         } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
-      } finally { raw.close(); }
-      assert.throws(() => w.history.query({ ...range, system: "kuali" }), /run-search-index-rebuild-required/u);
+      }
+      assertHistoryRefusal(() => w.history.query({ ...range, system: "kuali" }), fault === "wrong-deletion-command" ? /confirmed-publication-deletion-settlement-mismatch/u : /confirmed-publication-timeline-missing/u);
       assert.equal(permanent(w.path), before);
     }
 
@@ -63,20 +82,36 @@ it("retains exact same-clock confirmed operations through authenticated deletion
 
 it.each(["missing-live-delivery", "publication-proof", "attempt-owner"] as const)("refuses %s before a nonmatching history filter without read effects", fault => {
   const w=historyWorld();try{
-    const fixture=w.commit(511);const raw=new DatabaseSync(w.path);
-    try {
-      const table=fault === "missing-live-delivery" ? "timeline_events" : fault === "publication-proof" ? "write_intents" : "write_attempts";
-      const triggers=raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=? ORDER BY name").all(table);
+    const fixture=w.commit(511);
+    const generation=w.database.getMeta().authorityGeneration;
+    const eventId=w.history.query(range).rows[0].eventId;
+    using raw=new DatabaseSync(w.path);
+    const table=fault === "missing-live-delivery" ? "timeline_events" : fault === "publication-proof" ? "write_intents" : "write_attempts";
+    const id=fault === "missing-live-delivery" ? eventId : fault === "publication-proof" ? fixture.commit.writeIntentId : String(fixture.intent.currentAttemptId);
+    const saved=raw.prepare(`SELECT * FROM ${table} WHERE id=?`).get(id);assert.ok(saved);
+    const triggers=raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=? ORDER BY name").all(table);
+    using _restore={ [Symbol.dispose]() {
       for(const trigger of triggers)raw.exec(`DROP TRIGGER ${String(trigger.name)}`);
-      try {
-        if(fault === "missing-live-delivery")raw.prepare("DELETE FROM timeline_events WHERE id=?").run(w.history.query(range).rows[0].eventId);
-        else if(fault === "publication-proof")raw.prepare("UPDATE write_intents SET publication_json=json_set(publication_json,'$.ledger.operator','forged-actor') WHERE id=?").run(fixture.commit.writeIntentId);
-        else raw.prepare("UPDATE write_attempts SET payload_json=json_set(payload_json,'$.runId','50000000-0000-4000-8000-000000009999') WHERE id=?").run(String(fixture.intent.currentAttemptId));
-      }finally{for(const trigger of triggers)raw.exec(String(trigger.sql));}
-    }finally{raw.close();}
-    const before=permanent(w.path);const generation=w.database.getMeta().authorityGeneration;
-    assert.throws(()=>w.history.query({...range,system:"kuali"}),/run-search-index-rebuild-required/u);
-    assert.equal(permanent(w.path),before);assert.equal(w.database.getMeta().authorityGeneration,generation);
+      if(fault === "missing-live-delivery") {
+        const columns=Object.keys(saved);raw.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(()=>"?").join(",")})`).run(...Object.values(saved));
+      } else {
+        const column=fault === "publication-proof" ? "publication_json" : "payload_json";
+        raw.prepare(`UPDATE ${table} SET ${column}=? WHERE id=?`).run(saved[column],id);
+      }
+      for(const trigger of triggers)raw.exec(String(trigger.sql));
+    } };
+    for(const trigger of triggers)raw.exec(`DROP TRIGGER ${String(trigger.name)}`);
+    try {
+      if(fault === "missing-live-delivery")raw.prepare("DELETE FROM timeline_events WHERE id=?").run(eventId);
+      else if(fault === "publication-proof")raw.prepare("UPDATE write_intents SET publication_json=json_set(publication_json,'$.ledger.operator','forged-actor') WHERE id=?").run(fixture.commit.writeIntentId);
+      else raw.prepare("UPDATE write_attempts SET payload_json=json_set(payload_json,'$.runId','50000000-0000-4000-8000-000000009999') WHERE id=?").run(String(fixture.intent.currentAttemptId));
+    }finally{for(const trigger of triggers)raw.exec(String(trigger.sql));}
+    const before=permanent(w.path);
+    const causePattern=fault === "missing-live-delivery" ? /confirmed-publication-timeline-missing/u
+      : fault === "publication-proof" ? /authority table write_intents failed native record validation:[\s\S]*invalid_type/u
+        : /write_attempts-row-run_id-mismatch/u;
+    assertHistoryRefusal(()=>w.history.query({...range,system:"kuali"}),causePattern);
+    assert.equal(permanent(w.path),before);assert.equal(raw.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()?.authority_generation,generation);
   }finally{w.dispose();}
 });
 
@@ -103,9 +138,18 @@ it.each(["live-owner-overlap", "forged-deletion-owner"] as const)("refuses %s gl
     assert.ok(savedRun);
     assert.equal(service.delete({commandId:"50000000-0000-4000-8000-000000000013",runId:owner.envelope.runId,expectedVersion:terminal.run.version}).state,"deleted");
     assert.equal(w.history.query(range).rows.length,2);
-    const raw = new DatabaseSync(w.path);
-    try {
-      const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' ORDER BY name").all();
+    const generation = w.database.getMeta().authorityGeneration;
+    const survivingRun = w.database.authority.runs.get(surviving.commit.transaction.runId);assert.ok(survivingRun);
+    using raw = new DatabaseSync(w.path);
+    const savedDeletion=raw.prepare("SELECT command_id,receipt_json FROM deleted_runs WHERE run_id=?").get(owner.envelope.runId);assert.ok(savedDeletion);
+    const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' ORDER BY name").all();
+    using _restore={ [Symbol.dispose]() {
+      for(const trigger of triggers)raw.exec(`DROP TRIGGER ${String(trigger.name)}`);
+      if(fault === "live-owner-overlap") raw.prepare("DELETE FROM runs WHERE id=?").run(owner.envelope.runId);
+      else raw.prepare("UPDATE deleted_runs SET command_id=?,receipt_json=? WHERE run_id=?").run(savedDeletion.command_id,savedDeletion.receipt_json,owner.envelope.runId);
+      for(const trigger of triggers)raw.exec(String(trigger.sql));
+    } };
+    {
       for (const trigger of triggers) raw.exec(`DROP TRIGGER ${String(trigger.name)}`);
       try {
         if (fault === "live-owner-overlap") {
@@ -115,20 +159,18 @@ it.each(["live-owner-overlap", "forged-deletion-owner"] as const)("refuses %s gl
         } else raw.prepare("UPDATE deleted_runs SET command_id=?,receipt_json=json_set(receipt_json,'$.commandId',?) WHERE run_id=?")
           .run("50000000-0000-4000-8000-000000000011","50000000-0000-4000-8000-000000000011",owner.envelope.runId);
       } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
-    } finally { raw.close(); }
+    }
     const bytes = permanent(w.path);
-    const generation = w.database.getMeta().authorityGeneration;
     const output = join(w.root,"must-not-export.json");
-    const survivingRun = w.database.authority.runs.get(surviving.commit.transaction.runId);
-    assert.ok(survivingRun);
-    assert.throws(()=>w.history.query({...range,system:"kuali"}),/run-search-index-rebuild-required/u);
-    assert.throws(()=>exportTransactions(w.history,{...range,system:"kuali",output}),/run-search-index-rebuild-required/u);
+    const causePattern=fault === "live-owner-overlap" ? /confirmed-publication-owner-ambiguous/u : /confirmed-publication-deletion-settlement-mismatch/u;
+    assertHistoryRefusal(()=>w.history.query({...range,system:"kuali"}),causePattern);
+    assertHistoryRefusal(()=>exportTransactions(w.history,{...range,system:"kuali",output}),causePattern);
     assert.equal(existsSync(output),false);
     assert.throws(()=>w.database.authority.runs.updatePresentation({runId:survivingRun.envelope.runId,expectedVersion:survivingRun.version,displayName:"Must not mutate",now:HISTORY_NOW}),/confirmed-publication-(?:owner-ambiguous|deletion-settlement-mismatch)/u);
-    assert.deepEqual(w.database.authority.runs.get(survivingRun.envelope.runId),survivingRun);
+    assert.deepEqual(runRecordFromRow(raw.prepare("SELECT * FROM runs WHERE id=?").get(survivingRun.envelope.runId)),survivingRun);
     assert.equal(permanent(w.path),bytes);
-    assert.equal(w.database.getMeta().authorityGeneration,generation);
-    assert.throws(()=>w.reopen(),fault === "live-owner-overlap" ? /confirmed-publication-owner-ambiguous/u : /confirmed-publication-deletion-settlement-mismatch/u);
+    assert.equal(raw.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()?.authority_generation,generation);
+    assert.throws(()=>AuthorityDatabase.open({path:w.path,busyTimeoutMs:250,migrationOwner:"corrupt-history-reader"},capturedInstantClock(HISTORY_NOW)),fault === "live-owner-overlap" ? /confirmed-publication-owner-ambiguous/u : /confirmed-publication-deletion-settlement-mismatch/u);
     assert.equal(permanent(w.path),bytes);
   } finally { w.dispose(); }
 });

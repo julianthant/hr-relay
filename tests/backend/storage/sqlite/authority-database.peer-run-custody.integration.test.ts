@@ -50,13 +50,16 @@ describe("current peer run custody",()=>{
     const f=peers();
     try{
       const retry=f.world.database.authority.runs.get(f.retry.envelope.runId);assert.ok(retry);
-      const raw=new DatabaseSync(f.world.path);
-      try{
+      const generation=f.world.database.getMeta().authorityGeneration;
+      using raw=new DatabaseSync(f.world.path);
+      const original=raw.prepare("SELECT lifecycle_json FROM runs WHERE id=?").get(f.source.envelope.runId)?.lifecycle_json;
+      assert.ok(typeof original==="string");
+      using _restore={ [Symbol.dispose]() { raw.prepare("UPDATE runs SET lifecycle_json=? WHERE id=?").run(original,f.source.envelope.runId); } };
+      {
         const corrupt=JSON.stringify({...f.source.input,unexpectedField:true});
         assert.equal(raw.prepare("UPDATE runs SET lifecycle_json=json_set(lifecycle_json,?,json(?)) WHERE id=?")
           .run("$.input",corrupt,f.source.envelope.runId).changes,1);
-      }finally{raw.close();}
-      const generation=f.world.database.getMeta().authorityGeneration;
+      }
       assert.throws(()=>f.service.delete({runId:retry.envelope.runId,expectedVersion:retry.version,commandId:fixtureUuid("corrupt-peer-delete")}),/record|invalid|authority/u);
       const checked=new DatabaseSync(f.world.path,{readOnly:true});
       try{
