@@ -179,7 +179,16 @@ describe("operational isolation", () => {
       write(root, "src/backend/storage/sqlite/runtime-process-locks.ts", "export interface RuntimeProcessLockHandle { release(): void; }\n");
       write(root, "src/cli.ts", custody);
       assert.deepEqual(fixtureViolations(root), []);
+      const dashboard = custody.replace('RuntimeProcessLockHandle | undefined', 'RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void');
+      write(root, "src/cli.ts", dashboard);
+      assert.deepEqual(fixtureViolations(root), []);
       for (const invalid of [
+        dashboard.replace('acceptDashboardAdmission?', 'otherAdmission?'),
+        dashboard.replace('acceptDashboardAdmission?:', 'acceptDashboardAdmission:'),
+        dashboard.replace('acceptDashboardAdmission?: () => void', 'acceptDashboardAdmission?: (value: unknown) => void'),
+        dashboard.replace('acceptDashboardAdmission?: () => void', 'acceptDashboardAdmission?: () => unknown'),
+        dashboard.replace('takeInitialCustody?', 'otherCustody?'),
+        dashboard.replace('acceptDashboardAdmission?: () => void', 'acceptDashboardAdmission?: () => void, extra?: unknown'),
         custody.replace('takeInitialCustody?', 'otherCustody?'),
         custody.replace('RuntimeProcessLockHandle | undefined', 'unknown'),
         custody.replace('./backend/storage/sqlite/runtime-process-locks.js', './wrong-locks.js'),
