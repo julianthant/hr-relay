@@ -3,7 +3,7 @@ import { boundProfileCredentials, createBoundProfileFixture } from '../../../sup
 import { storageTree } from '../../../support/helpers/integration/storage-recovery-fixture.js';
 import { createInstallationControlTestWorld } from "../../../support/helpers/backend/installation-control-world.js";
 import { randomUUID } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 
 import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -14,6 +14,7 @@ import { createStorageRelocationPlanReader } from "../../../../src/backend/stora
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 import { storageRelocationDesiredDigest } from "../../../../src/rules/commands/commands.js";
+import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { NonNegativeIntSchema } from "../../../../src/rules/identity/ids.js";
 
 
@@ -62,6 +63,16 @@ it.each(["credential key", "erasure journal", "Duo membership"] as const)(
   (change) => {
     const profile = createBoundProfileFixture();
     try {
+      if (change === "erasure journal") {
+        const credentials = boundProfileCredentials(profile.admission);
+        for (const entries of [{ ucpathPassword: { set: "synthetic-erasure-value" } }, { ucpathPassword: { clear: true } }] as const) {
+          expect(credentials.apply(ProtectedSettingsApplyInputSchema.parse({
+            commandId: randomUUID(), commandFingerprint: "a".repeat(64), writeId: randomUUID(),
+            expectedRevision: credentials.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+            entries, updatedAt: "2026-10-01T12:01:00.000Z",
+          })).state).toBe("applied");
+        }
+      }
       const registry = profile.machine.readProfileRegistry();
       expect(profile.machine.readProfileRegistry()).toEqual(registry);
       const id = profile.admission.profileBinding.profileId;
@@ -72,21 +83,18 @@ it.each(["credential key", "erasure journal", "Duo membership"] as const)(
       const duoDirectory = join(machine, "duo-credentials");
       const companion = join(duoDirectory, "unexpected-profile.json");
       const hadDuoDirectory = existsSync(duoDirectory);
-      const mode = change === "Duo membership" ? undefined : statSync(target).mode & 0o777;
+      const authority = change === "Duo membership" ? undefined : { path: target, mode: statSync(target).mode & 0o777 };
       try {
         if (change === "Duo membership") {
           mkdirSync(duoDirectory, { recursive: true, mode: 0o700 });
           writeFileSync(companion, "{}", { mode: 0o600 });
-        } else chmodSync(target, 0o644);
+        } else if (authority !== undefined) chmodSync(authority.path, 0o644);
         expect(() => profile.machine.readProfileRegistry()).toThrow();
       } finally {
         if (change === "Duo membership") {
           unlinkSync(companion);
-          if (!hadDuoDirectory) rmSync(duoDirectory);
-        } else {
-          if (mode === undefined) throw new Error("missing original authority mode");
-          chmodSync(target, mode);
-        }
+          if (!hadDuoDirectory) rmdirSync(duoDirectory);
+        } else if (authority !== undefined) chmodSync(authority.path, authority.mode);
       }
       expect(profile.machine.readProfileRegistry()).toEqual(registry);
     } finally { profile.close(); }
@@ -123,7 +131,7 @@ it("freezes issued leases and refuses a changed on-disk lease mode", () => {
   expect(Reflect.set(first, "assertHeld", () => {})).toBe(false);
   const firstAdmission = RuntimeAdmission.fromInstallationLease(first);
   const lockRoot = join(workspace, ".tracker/data", "locks");
-  mkdirSync(lockRoot, { mode: 0o700 });
+  expect(statSync(lockRoot).isDirectory()).toBe(true);
   firstAdmission.assertFixedProcessLockRoot(workspace, lockRoot);
   expect(() => firstAdmission.assertFixedProcessLockRoot(workspace, join(dirname(workspace), "other-locks"))).toThrow(/does not match installation/u);
   const installedPath = join(workspace, ".tracker/control", "installation.json");
