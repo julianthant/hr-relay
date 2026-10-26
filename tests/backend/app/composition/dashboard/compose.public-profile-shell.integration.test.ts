@@ -6,7 +6,7 @@ import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/
 import { DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
@@ -22,6 +22,7 @@ import { composeDashboardApplication } from "../../../../../src/backend/app/comp
 import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
+import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 
 function fixture() {
@@ -146,11 +147,36 @@ it("serves public profile state without minting a selected profile, actor or aut
 });
 
 it("uses a real verifier and selected session cookie, rejects foreign browser captures and performs canonical logout", async () => {
+  const temporary = mkdtempSync(join(realpathSync(tmpdir()), "public-profile-temp-alias-"));
+  using _temporary = { [Symbol.dispose]() { rmSync(temporary, { recursive: true }); } };
+  const priorEnvironment = { TMPDIR: process.env.TMPDIR, TMP: process.env.TMP, TEMP: process.env.TEMP };
+  using _environment = { [Symbol.dispose]() {
+    for (const key of ["TMPDIR", "TMP", "TEMP"] as const) {
+      const value = priorEnvironment[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  } };
+  const physicalTemp = join(temporary, "physical"), aliasedTemp = join(temporary, "alias");
+  mkdirSync(physicalTemp, { mode: 0o700 });
+  symlinkSync(physicalTemp, aliasedTemp, "dir");
+  for (const key of ["TMPDIR", "TMP", "TEMP"] as const) process.env[key] = aliasedTemp;
+  const reservation = createServer();
+  let backendPort: number;
+  try {
+    await new Promise<void>((resolve, reject) => { reservation.once("error", reject); reservation.listen(0, "127.0.0.1", resolve); });
+    const address = reservation.address(); assert.ok(address !== null && typeof address !== "string");
+    backendPort = address.port;
+  } finally {
+    if (reservation.listening) await new Promise<void>((resolve, reject) => reservation.close(error => error === undefined ? resolve() : reject(error)));
+  }
+  assert.ok(backendPort > 0);
   const f = fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
     runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+      backendPortOverride: backendPort, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    assert.equal(runtime.port, backendPort);
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
       headers: { origin: base, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
@@ -160,6 +186,9 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const header = signup.headers.get("set-cookie"); assert.ok(header); assert.match(header, /HttpOnly/u); assert.match(header, /SameSite=Strict/u);
     const cookie = header.split(";", 1)[0]; assert.ok(cookie);
     assert.equal(JSON.stringify(active).includes(cookie.slice(cookie.indexOf("=") + 1)), false);
+    const bootstrap = await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie, origin: base } });
+    assert.equal(bootstrap.status, 200);
+    FrontendBootstrapWireSchema.parse(await bootstrap.json());
     assert.equal((await fetch(`${base}/api/v1/bootstrap`)).status, 401);
     for (const path of ["/api/v1/bootstrap", "/events", "/artifacts/foreign"]) {
       assert.equal((await fetch(`${base}${path}`, { headers: { cookie: "relay-profile-session=foreign" } })).status, 401);

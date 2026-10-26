@@ -640,6 +640,7 @@ async function composeDashboardRuntimeStartup(
       processId: lease.processId,
     })),
   });
+  if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
   const preflightAuthority = createPreflightAuthority({
     configFingerprint: resolved.fingerprint,
     descriptorFingerprint: setHash,
