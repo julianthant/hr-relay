@@ -86,7 +86,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     await page.goto(`${server.url}/?settings=general`);
     await page.getByRole("link", { name: "Credentials", exact: true }).click();
     const password = page.getByLabel("UCPath password", { exact: true });
-    await expect(password).toHaveAttribute("type", "password"); await expect(password).toHaveValue("");
+    await expect(password).toHaveAttribute("type", "password"); await expect(password).toHaveValue("disposable-fixture-password");
     await password.fill(secret);
     const attempts: unknown[] = [];
     await page.route("**/api/v1/commands", async route => {

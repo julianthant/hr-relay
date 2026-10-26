@@ -819,13 +819,19 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
           outcome = { kind: "value", value: result };
         } catch (error) { outcome = { kind: "error", error: error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError
           ? error : fault(cancelled() ? "CHATGPT_OCR_CANCELLED" : "CHATGPT_OCR_INCOMPLETE") }; }
+        const provedCancellation = (cause: unknown): boolean => outcome.kind === "error"
+          && outcome.error instanceof ChatGptAccountError && outcome.error.code === "CHATGPT_OCR_CANCELLED"
+          && cause instanceof ChatGptAccountError && cause.code === "CHATGPT_OCR_CANCELLED";
         const failedClosure = (cause: unknown): void => {
           const error = new ChatGptResourceClosureUnprovedError(outcome.kind === "value" ? cause
             : new AggregateError([outcome.error, cause], "ChatGPT response and closure failed"));
           retainResponseClosure(error, reader, response, operation); outcome = { kind: "error", error };
         };
-        try { await reader.cancel(); } catch (cause) { failedClosure(cause); }
-        try { reader.releaseLock(); } catch (cause) { failedClosure(cause); }
+        let readerReleased = false;
+        try { await reader.cancel(); readerReleased = true; }
+        catch (cause) { if (provedCancellation(cause)) readerReleased = true; else failedClosure(cause); }
+        try { reader.releaseLock(); readerReleased = true; }
+        catch (cause) { if (!readerReleased) failedClosure(cause); }
         if (outcome.kind === "error") throw outcome.error;
         operation.assertCurrent();
         return outcome.value;

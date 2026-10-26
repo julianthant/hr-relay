@@ -75,7 +75,7 @@ export async function storageRecoveryTarget() {
         process.send({root, authorityPath: path, manifestPath, stagedPath: source, operationId: journal.restore.operationId, sourceDatabaseIdentity});
         const wait = new Int32Array(new SharedArrayBuffer(4));
         for (;;) Atomics.wait(wait, 0, 0, 1000);
-      }});
+      }}, undefined, credentials);
     await restore.restore({manifestPath, stoppedSystemProof});
   `;
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, repoRoot, profileId],
