@@ -75,7 +75,7 @@ it.each(["credential key", "erasure journal", "Duo membership"] as const)(
           entries: { ucpathPassword: { set: "synthetic-erasure-value" } },
         })).state).toBe("applied");
         expect(erasure.erase(CredentialEraseInputSchema.parse({
-          commandId: randomUUID(), commandFingerprint: "a".repeat(64), writeId: randomUUID(),
+          commandId: randomUUID(), commandFingerprint: "b".repeat(64), writeId: randomUUID(),
           expectedRevision: erasure.store.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
           updatedAt: "2026-10-01T12:02:00.000Z",
         })).state).toBe("applied");
