@@ -98,7 +98,7 @@ it("retains an UNKNOWN child write as parked without retry, parent settlement or
   stopSyntheticDatabaseWorkers({ database: f.database, path: f.path });
   assert.equal(f.database.getMeta().authorityGeneration, afterOwnedWorkerStop);
   const generation = f.database.getMeta().authorityGeneration;
-  f.database.close();
+  f.closeDatabase();
   const reopened = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "child-write-reopen-test" }, f.clock);
   try {
     assert.equal(reopened.getMeta().authorityGeneration, generation);

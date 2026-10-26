@@ -303,7 +303,7 @@ afterEach_m0(_afterEachFixture0);
       descriptors: { resolve: workflow => workflow === personLookupDescriptor_m0.id ? personLookupDescriptor_m0 : undefined },
       clock: harness.clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: LOCAL_OPERATOR_ACTOR_ID,
       configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId });
-    const plan = planner.plan({ workflowId: personLookupDescriptor_m0.id, submissions: [QUEUED_RUN_m0.input.raw], dryRun: true,
+    const plan = planner.plan({ workflowId: personLookupDescriptor_m0.id, submissions: [QUEUED_RUN_m0.input.raw], dryRun: false,
       selectedStepKeys: personLookupDescriptor_m0.timeline.map(step => step.key) });
     assert_m0.equal(plan.planned.length, 1);
     assert_m0.equal(plan.refused.length, 0);

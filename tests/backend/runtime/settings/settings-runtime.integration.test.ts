@@ -188,12 +188,14 @@ afterEach(_afterEachFixture0);
     const originalBytes = readFileSync(path);
     try {
       const document = z.looseObject({ record: z.looseObject({ entries: z.looseObject({
-        ucpathPassword: z.looseObject({ value: z.string() }),
+        ucpathPassword: z.looseObject({ value: z.string(), valueId: z.uuid() }),
       }) }) }).parse(readAuthenticatedCredentialFixture(f.profile.machine.stateRoot, f.profile.admission.profileBinding.profileId));
       const originalValue = document.record.entries.ucpathPassword.value;
       assert.equal(originalValue === "synthetic-owned-value", true);
-      document.record.entries.ucpathPassword.value = "synthetic-altered-value";
-      assert.equal(document.record.entries.ucpathPassword.value === originalValue, false);
+      const originalValueId = document.record.entries.ucpathPassword.valueId;
+      document.record.entries.ucpathPassword.valueId = randomUUID();
+      assert.notEqual(document.record.entries.ucpathPassword.valueId, originalValueId);
+      assert.equal(document.record.entries.ucpathPassword.value, originalValue);
       rewriteAuthenticatedCredentialFixture(f.profile.machine.stateRoot, f.profile.admission.profileBinding.profileId, () => document);
       assert.throws(() => f.protectedReader.read(), /disagrees with its identity history/u);
     } finally { writeFileSync(path, originalBytes); }

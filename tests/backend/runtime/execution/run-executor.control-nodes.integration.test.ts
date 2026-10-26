@@ -1,3 +1,5 @@
+import { plan1Contract, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 import { randomUUID } from "node:crypto";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -132,7 +134,10 @@ const settledParallelDescriptor = defineWorkflowDescriptor({
 const childResult = z.strictObject({ ok: z.boolean() });
 const childLeafDescriptor = defineWorkflowDescriptor({
   ...descriptorMeta("control-child-leaf", "cl"),
-  flow: flow(ControlInput).build({ schema: childResult, dependsOn: [], derive: () => ({ ok: true }) }),
+  flow: flow(ControlInput)
+    .step("observe", plan1Contract, { dependsOn: [], replay: "checkpoint",
+      bind: ({ input }) => ({ emplId: "10800000", text: input.name, mode: "ok" as const }) })
+    .build({ schema: childResult, dependsOn: ["observe"], derive: () => ({ ok: true }) }),
 });
 const childTarget = {
   id: childLeafDescriptor.id,
@@ -750,10 +755,10 @@ describe("parallel and seam arms", () => {
     assert.equal(children.length, 1);
     assert.ok(children[0]);
     testWorkerPorts(database, wired.authority.clock, { path, descriptor: childLeafDescriptor, poolIndex: 1 });
-    wired.deps.sessions.configureExecution(childLeafDescriptor.id, wired.deps.stores);
+    wired.deps.sessions.configureExecution(childLeafDescriptor.id, plan1Stores);
     const childClaim = claim(database, childLeafDescriptor);
     assert.equal(childClaim.run.envelope.runId, children[0].envelope.runId);
-    const childDone = await executeClaimedRun({ ...wired.deps, descriptor: childLeafDescriptor }, { ...childClaim, signal: SIGNAL });
+    const childDone = await executeClaimedRun({ ...wired.deps, descriptor: childLeafDescriptor, stores: plan1Stores, buildManifest: childExecutionBuildManifest }, { ...childClaim, signal: SIGNAL });
     assert.deepEqual(childDone, { state: "done", runId: children[0].envelope.runId });
     wired.deps.sessions.configureExecution(childRunDescriptor.id, wired.deps.stores);
     const resumed = claim(database, childRunDescriptor);
