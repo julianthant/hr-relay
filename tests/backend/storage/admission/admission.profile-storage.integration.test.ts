@@ -78,6 +78,7 @@ it("does not mint a new child from a ready claim after logout starts while retai
     assert.throws(() => f.machine.admitProfile(claim), /profile-storage-claim-generation-changed/u);
     child.assertLive();
     assert.throws(() => child.assertCredentialRead(), /profile-storage-claim-generation-changed/u);
+    assert.throws(() => child.assertWritable(), /profile-storage-claim-generation-changed/u);
     assert.throws(() => AuthorityDatabase.open(child, { path: join(child.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-storage-claim-generation-changed/u);
     const refused = f.session.readFile(active.token, "absent");
     assert.ok("state" in refused && refused.state === "refused");

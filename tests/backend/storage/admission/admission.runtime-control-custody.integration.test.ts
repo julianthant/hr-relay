@@ -63,13 +63,21 @@ it("rechecks root shape after a capability was issued", () => {
   const admission = RuntimeAdmission.syntheticRoots(stateRoot, artifactRoot);
   expect(() => admission.assertStorageRootsSafe()).not.toThrow();
   expect(() => admission.assertStateRoot(stateRoot)).not.toThrow();
+  expect(() => admission.assertReadOnlyAuthorityDatabase(":memory:")).not.toThrow();
+  expect(() => admission.assertArtifactRoot(artifactRoot)).not.toThrow();
+  expect(() => admission.assertWritable()).not.toThrow();
   rmSync(artifactRoot, { recursive: true });
   symlinkSync(external, artifactRoot);
   expect(() => admission.assertStorageRootsSafe()).toThrow(/unsafe synthetic fixture ancestor/u);
   expect(() => admission.assertStateRoot(stateRoot)).toThrow(/unsafe synthetic fixture ancestor/u);
+  expect(() => admission.assertReadOnlyAuthorityDatabase(":memory:")).toThrow(/unsafe synthetic fixture ancestor/u);
+  expect(() => admission.assertArtifactRoot(artifactRoot)).toThrow(/unsafe synthetic fixture ancestor/u);
   admission.release();
   expect(() => admission.assertStateRoot("relative")).toThrow(/released admission/u);
   expect(() => admission.assertCredentialRead()).toThrow(/released admission/u);
+  expect(() => admission.assertWritable()).toThrow(/released admission/u);
+  expect(() => admission.assertReadOnlyAuthorityDatabase("relative")).toThrow(/released admission/u);
+  expect(() => admission.assertArtifactRoot("relative")).toThrow(/released admission/u);
 });
 
 it("limits first-adoption verification to read-only inspection", () => {

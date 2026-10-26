@@ -831,7 +831,7 @@ export class RuntimeAdmission {
     if (this.#scope === "stopped-control-inventory") throw new Error("profile-control-upgrade-write-refused");
     if (this.#readyUpgrade !== undefined) throw new Error("profile-stopped-upgrade-runtime-refused");
     if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") throw new Error("profile-settlement-runtime-refused");
-    if (this.#scope === "profile") this.assertProfileRuntime();
+    if (this.#scope === "profile") this.#assertProfileRuntime();
     if (this.#scope === "profile-initialization") assertCanonicalProfileBinding(join(this.#stateRoot, "state.db"), this.profileBinding);
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection is read-only");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization has database-only write authority");
@@ -862,9 +862,7 @@ export class RuntimeAdmission {
     if (this.#scope === "relocation-source-verification" || this.#scope === "adoption-initialization") {
       throw new Error("runtime-admission: inspection database authority unavailable");
     }
-    if (this.#scope === "profile-pending-logout-inventory" && this.#pendingLogout !== undefined && this.#pendingLogout.copyPath === undefined) {
-      this.#assertPhysicalStorageRootsSafe();
-    } else this.assertStorageRootsSafe();
+    this.#assertPhysicalStorageRootsSafe();
     if (path === ":memory:" && this.#scope !== "relocation-destination"
       && this.#scope !== "profile" && this.#scope !== "profile-restore" && this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade") return;
     const checked = resolve(path);
@@ -949,7 +947,7 @@ export class RuntimeAdmission {
     if (this.#scope === "stopped-control-inventory") throw new Error("profile-control-upgrade-artifact-refused");
     if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot write artifacts");
-    this.assertStorageRootsSafe();
+    this.#assertPhysicalStorageRootsSafe();
     if (!within(this.#artifactRoot, resolve(path))) throw new Error("runtime-admission: artifact path is outside admission");
   }
   release(): void {
