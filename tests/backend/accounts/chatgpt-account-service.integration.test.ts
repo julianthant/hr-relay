@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
+import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/credential-store.js";
@@ -563,4 +564,32 @@ for (const status of [401, 403] as const) it(`refuses issued authority after C1 
     assert.equal((await f.service.readAuthority()).availability, status === 401 ? "expired" : "unavailable");
     assert.ok(readFileSync(join(f.root, "credentials/chatgpt-account.json"), "utf8").includes("synthetic-access-1"));
   } finally { await f.cleanup(); }
+});
+
+
+it("requires both account authority admissions to remain live and bound to the same root", async () => {
+  const profile = createBoundProfileFixture(), foreign = createBoundProfileFixture();
+  const f = chatGptFixture(profile.admission);
+  const claim = createProfileRegistry(profile.machine).storageClaim(profile.admission.profileBinding.profileId);
+  const delegated = profile.machine.admitProfile(claim), retained = profile.machine.admitProfile(claim);
+  try {
+    await seedAuthorityAccount(f);
+    const captured = await f.service.readAuthority();
+    assert.equal(f.service.revalidateAuthority(captured), true);
+    assert.equal((await f.service.readAuthority(delegated)).availability, "available");
+    assert.equal(f.service.revalidateAuthority(captured, delegated), true);
+    await assert.rejects(f.service.readAuthority(foreign.admission), /state path is outside admission/u);
+    assert.throws(() => f.service.revalidateAuthority(captured, foreign.admission), /state path is outside admission/u);
+    delegated.release();
+    await assert.rejects(f.service.readAuthority(delegated), /released admission/u);
+    assert.throws(() => f.service.revalidateAuthority(captured, delegated), /released admission/u);
+    assert.equal(f.service.revalidateAuthority(captured, retained), true);
+    profile.admission.release();
+    await assert.rejects(f.service.readAuthority(), /released admission/u);
+    await assert.rejects(f.service.readAuthority(retained), /released admission/u);
+    assert.throws(() => f.service.revalidateAuthority(captured, retained), /released admission/u);
+  } finally {
+    await f.cleanup();
+    delegated.release(); retained.release(); foreign.close(); profile.close();
+  }
 });

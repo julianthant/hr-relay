@@ -203,9 +203,9 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   }
   const authorityViews = new WeakSet<ChatGptAccountAuthority>();
   function assertAuthorityAdmission(expectedAdmission: RuntimeAdmission): void {
-    requireRuntimeAdmission(expectedAdmission).assertLive();
+    requireRuntimeAdmission(expectedAdmission);
     expectedAdmission.assertStateRoot(options.stateRoot);
-    if (expectedAdmission.stateRoot !== options.stateRoot || options.admission.stateRoot !== options.stateRoot) throw fault("CHATGPT_AUTH_INVALID");
+    if (expectedAdmission.stateRoot !== options.stateRoot || expectedAdmission !== options.admission && options.admission.stateRoot !== options.stateRoot) throw fault("CHATGPT_AUTH_INVALID");
   }
   function currentAuthority(expectedAdmission: RuntimeAdmission): ChatGptAccountAuthority {
     assertAuthorityAdmission(expectedAdmission);
