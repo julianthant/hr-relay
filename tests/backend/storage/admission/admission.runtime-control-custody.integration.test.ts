@@ -8,6 +8,7 @@ import { afterEach,expect,it } from "vitest";
 import { RuntimeAdmission, acquireInitialRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../../../src/backend/storage/admission/admission-identity.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 
 const roots: string[] = [];
 function fixture(): string {
@@ -118,7 +119,7 @@ it("initializes only one canonical pending profile before real ready publication
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
       expect(raw.prepare("SELECT schema_version,installation_id,profile_id FROM database_states WHERE id=1").get()).toMatchObject({
-        schema_version: 7, installation_id: profile.machine.locator.installationId, profile_id: profile.admission.profileBinding.profileId,
+        schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION, installation_id: profile.machine.locator.installationId, profile_id: profile.admission.profileBinding.profileId,
       });
     } finally { raw.close(); }
     const setup = profile.admission;
