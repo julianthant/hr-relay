@@ -390,6 +390,9 @@ export class RuntimeAdmission {
   }
   assertProfileRuntime(): void {
     this.assertLive();
+    this.#assertProfileRuntime();
+  }
+  #assertProfileRuntime(): void {
     if (this.#scope !== "profile") throw new Error("profile-bound-authority-required");
     if (this.#authority.assertProfileRuntime === undefined) throw new Error("profile-runtime-authority-unavailable");
     this.#authority.assertProfileRuntime();
@@ -655,7 +658,7 @@ export class RuntimeAdmission {
     if (this.#scope === "stopped-control-inventory") throw new Error("profile-control-upgrade-credential-read-refused");
     if (this.#readyUpgrade !== undefined) throw new Error("profile-stopped-upgrade-credential-read-refused");
     if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") throw new Error("profile-settlement-credential-read-refused");
-    if (this.#scope === "profile") this.assertProfileRuntime();
+    if (this.#scope === "profile") this.#assertProfileRuntime();
   }
   assertCredentialErasureObservation(operationId: string): void {
     this.assertLive();
@@ -885,9 +888,7 @@ export class RuntimeAdmission {
     if (this.#scope === "profile-settlement" && resolve(path) !== this.#stateRoot && !within(join(this.#stateRoot, "credentials"), resolve(path))) throw new Error("profile-settlement-path-refused");
     if (this.#scope === "profile-upgrade" && resolve(path) !== this.#stateRoot && resolve(path) !== join(this.#stateRoot, "state.db")
       && !within(join(this.#stateRoot, "backups", "authority"), resolve(path))) throw new Error("profile-stopped-upgrade-path-refused");
-    if (this.#scope === "profile-pending-logout-inventory" && this.#pendingLogout !== undefined && this.#pendingLogout.copyPath === undefined) {
-      this.#assertPhysicalStorageRootsSafe();
-    } else this.assertStorageRootsSafe();
+    this.#assertPhysicalStorageRootsSafe();
     if (this.#scope === "adoption-initialization" && ![this.#stateRoot, join(this.#stateRoot, "state.db")].includes(resolve(path))) {
       throw new Error("runtime-admission: fresh initialization path is outside database authority");
     }

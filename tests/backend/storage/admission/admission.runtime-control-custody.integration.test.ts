@@ -62,9 +62,14 @@ it("rechecks root shape after a capability was issued", () => {
   mkdirSync(artifactRoot);
   const admission = RuntimeAdmission.syntheticRoots(stateRoot, artifactRoot);
   expect(() => admission.assertStorageRootsSafe()).not.toThrow();
+  expect(() => admission.assertStateRoot(stateRoot)).not.toThrow();
   rmSync(artifactRoot, { recursive: true });
   symlinkSync(external, artifactRoot);
   expect(() => admission.assertStorageRootsSafe()).toThrow(/unsafe synthetic fixture ancestor/u);
+  expect(() => admission.assertStateRoot(stateRoot)).toThrow(/unsafe synthetic fixture ancestor/u);
+  admission.release();
+  expect(() => admission.assertStateRoot("relative")).toThrow(/released admission/u);
+  expect(() => admission.assertCredentialRead()).toThrow(/released admission/u);
 });
 
 it("limits first-adoption verification to read-only inspection", () => {
