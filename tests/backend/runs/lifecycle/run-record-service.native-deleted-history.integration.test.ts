@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
+import { ZodError } from "zod";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { exportTransactions } from "../../../../src/backend/storage/maintenance/transaction-export.js";
@@ -18,14 +19,18 @@ function permanent(path:string) {
   try{return canonicalJsonStringify(["write_intents","write_attempts"].map(table=>raw.prepare(`SELECT * FROM ${table} ORDER BY id`).all()));}
   finally{raw.close();}
 }
-function assertHistoryRefusal(read: () => unknown, causePattern: RegExp): void {
+function assertHistoryRefusal(read: () => unknown, causePattern: RegExp): Error {
+  let cause: Error | undefined;
   assert.throws(read,error=>{
     assert.ok(error instanceof Error);
     assert.match(error.message,/run-search-index-rebuild-required/u);
     assert.ok(error.cause instanceof Error);
     assert.match(error.cause.message,causePattern);
+    cause=error.cause;
     return true;
   });
+  assert.ok(cause);
+  return cause;
 }
 it("retains exact same-clock confirmed operations through authenticated deletion and reopen without inventing delivery or disclosure",()=>{
   const w=historyWorld();try{
@@ -108,9 +113,14 @@ it.each(["missing-live-delivery", "publication-proof", "attempt-owner"] as const
     }finally{for(const trigger of triggers)raw.exec(String(trigger.sql));}
     const before=permanent(w.path);
     const causePattern=fault === "missing-live-delivery" ? /confirmed-publication-timeline-missing/u
-      : fault === "publication-proof" ? /authority table write_intents failed native record validation:[\s\S]*invalid_type/u
+      : fault === "publication-proof" ? /authority table write_intents failed native record validation:[\s\S]*confirmation publication must preserve its exact native timeline/u
         : /write_attempts-row-run_id-mismatch/u;
-    assertHistoryRefusal(()=>w.history.query({...range,system:"kuali"}),causePattern);
+    const refusal=assertHistoryRefusal(()=>w.history.query({...range,system:"kuali"}),causePattern);
+    if(fault === "publication-proof") {
+      assert.ok(refusal.cause instanceof ZodError);
+      assert.ok(refusal.cause.issues.some(issue=>issue.code === "custom"
+        && issue.message === "confirmation publication must preserve its exact native timeline"));
+    }
     assert.equal(permanent(w.path),before);assert.equal(raw.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()?.authority_generation,generation);
   }finally{w.dispose();}
 });
