@@ -1107,9 +1107,9 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     }
   })();
   const app = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
-  type Selection = { cookie: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
+  type Selection = { sessionId: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
   let selection: Selection | undefined;
-  let pending: { cookie: string; operationId: string; profileId: string; runtime: DashboardRuntime } | undefined;
+  let pending: { sessionId: string; operationId: string; profileId: string; runtime: DashboardRuntime } | undefined;
   let transitioning = false;
   let upgradePending = false;
   const retainedFailures: unknown[] = [];
@@ -1130,7 +1130,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       && (request.headers.get("origin") === null || request.headers.get("origin") === url.origin);
   };
   const current = (request: Request): Selection => {
-    if (!loopback(request) || transitioning || selection === undefined || cookieOf(request) !== selection.cookie) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    if (!loopback(request) || transitioning || selection === undefined || cookieOf(request) !== selection.sessionId) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     profile.assertCurrent(selection.token);
     return selection;
   };
@@ -1152,7 +1152,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     return next();
   });
   app.get("/api/v1/profile/state", c => {
-    if (selection === undefined) return c.json(PublicProfileStateSchema.parse(pending !== undefined && cookieOf(c.req.raw) === pending.cookie
+    if (selection === undefined) return c.json(PublicProfileStateSchema.parse(pending !== undefined && cookieOf(c.req.raw) === pending.sessionId
       ? { state: "cancelling", operationId: pending.operationId } : { state: "signed-out" }));
     const active = current(c.req.raw);
     return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,
@@ -1191,7 +1191,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return selectedApp.fetch(c.req.raw); });
       const runtime = await composeDashboardRuntime({ ...input, profile: { runtime: profile, token: result.token },
         applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } });
-      selection = { cookie: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
+      selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
       const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
       if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
       return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
@@ -1200,21 +1200,21 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   for (const [path, signup] of [["sign-in", false], ["sign-up", true]] as const) app.post(`/api/v1/profile/${path}`, async c => {
     const activated = await activate(c.req.raw, signup);
     const result = PublicProfileStateSchema.parse(activated.state === "refused" ? { state: activated.state, code: activated.code } : activated);
-    if (result.state === "active" && selection !== undefined) c.header("set-cookie", `${cookieName}=${selection.cookie}; HttpOnly; SameSite=Strict; Path=/`);
+    if (result.state === "active" && selection !== undefined) c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
     const response = c.json(result);
     if (activated.state === "refused" && "upgrade" in activated) scheduleUpgrade(activated.upgrade, listener.committedResponse(response));
     return response;
   });
   app.post("/api/v1/profile/logout", async c => {
     const active = selection === undefined ? undefined : current(c.req.raw);
-    if (active === undefined && (pending === undefined || cookieOf(c.req.raw) !== pending.cookie)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    if (active === undefined && (pending === undefined || cookieOf(c.req.raw) !== pending.sessionId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     if (transitioning) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
     transitioning = true;
     try {
       if (active !== undefined) {
         const result = profile.session.logOut(active.token, { at: clock.now().toISOString() });
         if (result.state !== "cancelling" || result.operationId === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
-        pending = { cookie: active.cookie, operationId: result.operationId, profileId: active.profileId, runtime: active.runtime };
+        pending = { sessionId: active.sessionId, operationId: result.operationId, profileId: active.profileId, runtime: active.runtime };
         selection = undefined;
       }
       const operation = pending;

@@ -18,6 +18,7 @@ import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { LedgerEntrySchema } from "../../../src/rules/runs/ledger.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { LEDGER_OUTBOX_PAYLOAD, NOW, UUID_1, UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { EXIT_RUN_ID, seedPersonLookupExitRun } from "../../support/fixtures/receipt-run-fixtures.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
@@ -143,6 +144,10 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/assistant|proposal.stopBefore.afterPrepareTaskId|repository-authored",
       "wire/assistant|proposal.stopBefore.commitTaskId|repository-authored",
       "wire/assistant|proposal.subject.displayName|captured-hr-value",
+      "wire/assistant|proposal.label|repository-authored",
+      "wire/assistant|proposal.targetLabel|repository-authored",
+      "wire/assistant|action.label|repository-authored",
+      "wire/assistant|action.targetLabel|repository-authored",
       "wire/assistant|candidates[].displayName|captured-hr-value",
       "wire/chatgpt-ocr-test|model|external-text",
       "wire/chatgpt-ocr-test|message|repository-authored",
@@ -671,20 +676,22 @@ const TRIGGER_EVENTS: readonly Record<string, unknown>[] = [
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+const profileFixtures: ReturnType<typeof createBoundProfileFixture>[] = [];
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
+  for (const fixture of profileFixtures.splice(0)) fixture.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-redaction-scan-"));
-  roots.push(root);
+  const fixture = createBoundProfileFixture();
+  profileFixtures.push(fixture);
   const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path: fixture.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     manualClock(new Date(NOW)),
   );
-  testWorkerPorts(database, manualClock(new Date(NOW)), { path: join(root, "authority.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+  testWorkerPorts(database, manualClock(new Date(NOW)), { path: fixture.path, descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   return database;
 }

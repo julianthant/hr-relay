@@ -81,6 +81,7 @@ const DEFERRED_CAPABILITIES = [
 ] as const;
 const PROCESS_ENTRYPOINTS = [
   { file: 'child-execution-crash-worker.ts', consumers: ['tests/backend/app/composition/worker-compose.child-crash.integration.test.ts'] },
+  { file: 'duo-credential-store-worker.ts', consumers: ['tests/backend/storage/configuration/duo-credential-store.integration.test.ts'] },
   { file: 'storage-restore-attempt-worker.ts', consumers: ['tests/support/helpers/backend/storage-restore-world.ts'] },
   { file: "worker-composition-child.ts", consumers: ["tests/support/helpers/backend/worker-composition-world.ts"] },
   { file: "worker-browser-control-cli.ts", consumers: ["tests/backend/runtime/workers/worker-supervisor.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts", "tests/backend/app/composition/storage-compose.profile-activity.integration.test.ts"] },

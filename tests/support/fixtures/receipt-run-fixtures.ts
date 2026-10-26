@@ -152,7 +152,9 @@ export function seedPersonLookupExitRun(
   const active = database.authority.runtimeConfig.get();
   if (active === undefined) throw new Error("exit fixture requires admitted current settings");
   const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(record => record.poolIndex === 1 && record.retiredAt === null);
-  if (slot === undefined || database.authority.workerLeases.get(slot.workerId) === undefined) throw new Error("exit fixture requires an admitted leased worker");
+  const lease = slot === undefined ? undefined : database.authority.workerLeases.get(slot.workerId);
+  if (slot === undefined || lease === undefined) throw new Error("exit fixture requires an admitted leased worker");
+  const workerLifetime = { membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration };
   database.authority.runs.enqueue({
     envelope: {
       runId: EXIT_RUN_ID,
@@ -190,6 +192,7 @@ export function seedPersonLookupExitRun(
   const firstClaim = database.authority.runs.claimNext({
     workflow: personLookupDescriptor.id,
     workerId,
+    workerLifetime,
     now: ENQUEUED_AT,
   });
   if (firstClaim.state !== "claimed")
@@ -207,6 +210,7 @@ export function seedPersonLookupExitRun(
       lifecycle: {
         state,
         workerId,
+        workerLifetime,
         claimedAt: ENQUEUED_AT,
         heartbeatAt: ENQUEUED_AT,
         ...(state === "running" ? { currentNodeId: "searching" } : {}),
@@ -253,6 +257,7 @@ export function seedPersonLookupExitRun(
   const claimed = database.authority.runs.claimNext({
     workflow: personLookupDescriptor.id,
     workerId,
+    workerLifetime,
     now: ATTEMPT_2_AT,
   });
   if (claimed.state !== "claimed")
@@ -260,6 +265,7 @@ export function seedPersonLookupExitRun(
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
   const claimFields = {
     workerId,
+    workerLifetime,
     claimedAt: ATTEMPT_2_AT,
     heartbeatAt: ATTEMPT_2_AT,
   };

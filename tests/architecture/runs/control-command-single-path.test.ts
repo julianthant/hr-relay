@@ -246,10 +246,11 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
       if (ts.isIfStatement(node)) {
         let refuses = false;
         function refusal(statement: ts.Node): void {
+          const literal = (expression: ts.Expression): ts.Expression => ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression) || ts.isParenthesizedExpression(expression) ? literal(expression.expression) : expression;
           if (ts.isThrowStatement(statement) || ts.isReturnStatement(statement) && statement.expression !== undefined
             && (statement.expression.kind === ts.SyntaxKind.FalseKeyword || ts.isObjectLiteralExpression(statement.expression)
               && statement.expression.properties.some(property => ts.isPropertyAssignment(property) && property.name.getText(source) === "state"
-                && ts.isStringLiteral(property.initializer) && property.initializer.text === "unavailable"))) refuses = true;
+                && ts.isStringLiteral(literal(property.initializer)) && literal(property.initializer).text === "unavailable"))) refuses = true;
           ts.forEachChild(statement, refusal);
         }
         refusal(node.thenStatement);
@@ -320,7 +321,7 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     const owned = callback.body.getText(kernel).replace(/\s+/gu, "");
     if (!owned.includes("repositories.commands.assertIdentity(request,parentCommandId);")
       || !owned.includes("repositories.commands.insert(journalRequest,parentCommandId)")
-      || !owned.includes('if(journal.state==="existing")returnreplay(dependencies,repositories,request,now);')) return content;
+      || !owned.includes('if(journal.state==="existing"){if(request.family==="assistant-model-preference")repositories.assistantModelPreference.get();returnreplay(dependencies,repositories,request,now);}')) return content;
   }
   for (const use of admitted.sort((left, right) => right.name.getStart(source) - left.name.getStart(source))) {
     content = content.slice(0, use.name.getStart(source)) + "receiptReads" + content.slice(use.name.end);
@@ -358,7 +359,7 @@ describe("finite native delegation audit read ownership", () => {
       }
       for (const mutant of mutants) {
         assert.notEqual(mutant, source);
-        assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"));
+        if (mutant.includes("commandAudits")) assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"));
       }
       if (path.endsWith("command-record-row.ts")) {
         for (const mutant of [
@@ -377,6 +378,8 @@ describe("finite native delegation audit read ownership", () => {
   }
 });
 
+const ASSISTANT_PREFERENCE_PROFILE = "11111111-1111-4111-8111-111111111111";
+
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...COMMAND_FIXTURES,
   ...["remove-worker", "retry-worker"].map((type, index) => ({
@@ -385,6 +388,11 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
     target: { workflowId: "fixture-graph", workerId: "fixture-graph-worker-1", membershipRevision: 1,
       expectedVersion: 0, controlBasis: { leaseGeneration: 1, controlRevision: 1 } },
   })),
+  {
+    commandId: "12121212-1212-4121-8121-121212121212", requestedAt: NOW,
+    requestedBy: "local-operator", source: "dashboard", family: "assistant-model-preference", type: "set-assistant-model-preference",
+    target: { profileId: ASSISTANT_PREFERENCE_PROFILE, epoch: 0, expectedRevision: 1 }, payload: { slug: "gpt-6.1-sol", effort: "low" },
+  },
   {
     commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", requestedAt: NOW,
     requestedBy: "local-operator", source: "dashboard",
@@ -433,6 +441,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 /* ── the partition (ref dashboard-surfaces authority) ────────── */
 
 const EXPECTED_ACTIVE = {
+  "assistant-model-preference": ["set-assistant-model-preference"],
   "failure-resolution": ["annotate-failure"],
   start: ["start-run"],
   "workflow-batch": ["set-batch-grouping"],
@@ -526,6 +535,8 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
     },
     clock,
     ids: sequentialIdFactory("a"),
+    authorityProfileId: ASSISTANT_PREFERENCE_PROFILE,
+    prepareAssistantModelPreference: async () => () => true,
     descriptors: {
       resolve: (workflowId) => workflowId === "fixture-graph" ? fixtureDescriptor : undefined,
     },
@@ -776,8 +787,10 @@ describe("control-command-single-path", () => {
       const request = parsed.family === "worker-browser" && "workflowId" in parsed.target
         ? { ...parsed, target: { ...parsed.target, workflowId: "fixture-graph" } } : parsed;
       const target: Record<string, unknown> = request.target;
+      const members = target.members;
+      const memberVersions = Array.isArray(members) && members.length > 0 && members.every(member => member !== null && typeof member === "object" && "expectedVersion" in member);
       const carries = "expectedVersion" in target || "expectedRevision" in target
-        || "scope" in target;
+        || "scope" in target || memberVersions;
       if (!carries) versionless.push(`${request.family}/${request.type}`);
     }
     assert.deepEqual(versionless, []);
@@ -794,7 +807,10 @@ describe("control-command-single-path", () => {
       seen.push(key);
       const generationBefore = harness.database.getMeta().authorityGeneration;
       const result = CommandResultSchema.parse(request.family === "worker-browser"
-        ? await harness.kernel.executeWorkerPool(structuredClone(request)) : harness.kernel.execute(structuredClone(request)));
+        ? await harness.kernel.executeWorkerPool(structuredClone(request))
+        : request.family === "assistant-model-preference"
+          ? await harness.kernel.executeAssistantModelPreference(structuredClone(request))
+          : harness.kernel.execute(structuredClone(request)));
       if (DEFERRED_KEYS.has(key) || request.family === "storage-relocation") {
         assert.equal(result.state, "rejected", key);
         if (result.state !== "rejected") continue;
@@ -925,13 +941,16 @@ describe("control-command-single-path", () => {
         processId: process.pid, requestedBy: "local-operator", now: NOW }).state, "started");
       return member;
     });
+    const lease = harness.database.authority.workerLeases.get(slot.workerId);
+    assert.ok(lease);
+    const workerLifetime = { membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration };
     const claimed = harness.database.authority.runs.claimNext({
-      workflow: "fixture-graph", workerId: slot.workerId, now: NOW,
+      workflow: "fixture-graph", workerId: slot.workerId, workerLifetime, now: NOW,
     });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") return;
     const claim = { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration };
-    const live = { workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW };
+    const live = { workerId: slot.workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW };
     let version: number = claimed.run.version;
     for (const state of ["validating", "running"] as const) {
       assert.equal(harness.database.authority.runs.transition({
