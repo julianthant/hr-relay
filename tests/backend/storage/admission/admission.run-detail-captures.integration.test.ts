@@ -139,13 +139,14 @@ function recordFailure(database: AuthorityDatabase): void {
   const workerId = slot.workerId;
   const claimMember1 = database.authority.workerSlots.get(workerId);
   if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-  const claimed = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, "person-lookup", claimMember1.poolIndex).workerLifetime, workflow: "person-lookup", workerId, now: NOW });
+  const workerLifetime = testWorkerLifetime(database, "person-lookup", claimMember1.poolIndex).workerLifetime;
+  const claimed = database.authority.runs.claimNext({ workerLifetime, workflow: "person-lookup", workerId, now: NOW });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed") throw new Error("capture fixture was not claimed");
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
   const validating = database.authority.runs.transition({
     runId: uuidOf(1), expectedVersion: claimed.run.version, claim, now: NOW,
-    lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
+    lifecycle: { state: "validating", workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
   });
   assert.equal(validating.state, "applied");
   if (validating.state !== "applied") throw new Error("capture fixture did not validate");
