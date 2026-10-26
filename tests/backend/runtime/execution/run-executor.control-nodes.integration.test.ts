@@ -1,3 +1,4 @@
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { testRunLifecycle,testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -22,7 +23,6 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/prese
 import {
 DelegationEdgeIdSchema,
 GateIdSchema,
-ItemIdSchema,
 RunIdSchema,
 TraceIdSchema,
 WorkflowIdSchema,
@@ -128,10 +128,15 @@ const settledParallelDescriptor = defineWorkflowDescriptor({
   flow: settledParallelFlow,
 });
 
+const childResult = z.strictObject({ ok: z.boolean() });
+const childLeafDescriptor = defineWorkflowDescriptor({
+  ...descriptorMeta("control-child-leaf", "cl"),
+  flow: flow(ControlInput).build({ schema: childResult, dependsOn: [], derive: () => ({ ok: true }) }),
+});
 const childTarget = {
-  id: WorkflowIdSchema.parse("person-lookup"),
-  input: z.strictObject({ emplId: z.string().min(1) }),
-  result: z.strictObject({ ok: z.boolean() }),
+  id: childLeafDescriptor.id,
+  input: ControlInput,
+  result: childResult,
 };
 
 const childRunFlow = flow(ControlInput)
@@ -139,8 +144,8 @@ const childRunFlow = flow(ControlInput)
     dependsOn: [],
     edgeId: DelegationEdgeIdSchema.parse("control-delegate"),
     cardinality: "one",
-    bind: () => ({ emplId: "10873698" }),
-    deriveChildItemId: () => ItemIdSchema.parse(UUID_7),
+    bind: ({ input }) => input,
+    deriveChildItemId: (_input, identity) => identity.canonicalItemId,
     await: "terminal",
     join: "one",
     policy: {
@@ -720,21 +725,34 @@ describe("parallel and seam arms", () => {
 
     // With a seam wired, the arm parses the typed child outcome.
     const contexts: string[] = [];
-    const wired = controlHarness(childRunDescriptor, {
-      executeChildRun: (context) => {
+    const wired = controlHarness(childRunDescriptor);
+    const { database, path } = wired.authority;
+    const resolve = (id: string) => [childRunDescriptor, childLeafDescriptor].find(descriptor => descriptor.id === id);
+    const canonical = canonicalChildExecution(wired.deps, database, path, resolve);
+    const childRuns: ChildRunExecutor = {
+      executeChildRun: context => {
         contexts.push(String(context.node.id));
-        return Promise.resolve({
-          state: "done",
-          runId: UUID_7,
-          itemId: UUID_7,
-          output: { ok: true },
-        });
+        return canonical.childRuns.executeChildRun(context);
       },
-    });
-    wired.authority.database.authority.runs.enqueue(controlQueuedRun(childRunDescriptor, "left"));
-    const reclaimed = claim(wired.authority.database, childRunDescriptor);
-    const done = await executeClaimedRun(wired.deps, { ...reclaimed, signal: SIGNAL });
-    assert.deepEqual(done, { state: "done", runId: RUN_ID });
+    };
+    const queued = controlQueuedRun(childRunDescriptor, "left");
+    database.authority.runs.enqueue(queued);
+    const reclaimed = claim(database, childRunDescriptor);
+    const pending = await executeClaimedRun({ ...wired.deps, childRuns }, { ...reclaimed, signal: SIGNAL });
+    assert.equal(pending.state, "yielded-delegation");
     assert.deepEqual(contexts, ["delegate"]);
+    const children = database.authority.runs.listChildren(RUN_ID);
+    assert.equal(children.length, 1);
+    assert.ok(children[0]);
+    testWorkerPorts(database, wired.authority.clock, { path, descriptor: childLeafDescriptor, poolIndex: 1 });
+    wired.deps.sessions.configureExecution(childLeafDescriptor.id, wired.deps.stores);
+    const childClaim = claim(database, childLeafDescriptor);
+    assert.equal(childClaim.run.envelope.runId, children[0].envelope.runId);
+    const childDone = await executeClaimedRun({ ...wired.deps, descriptor: childLeafDescriptor }, { ...childClaim, signal: SIGNAL });
+    assert.deepEqual(childDone, { state: "done", runId: children[0].envelope.runId });
+    wired.deps.sessions.configureExecution(childRunDescriptor.id, wired.deps.stores);
+    const resumed = claim(database, childRunDescriptor);
+    const done = await executeClaimedRun({ ...wired.deps, childRuns }, { ...resumed, signal: SIGNAL });
+    assert.deepEqual(done, { state: "done", runId: RUN_ID });
   });
 });

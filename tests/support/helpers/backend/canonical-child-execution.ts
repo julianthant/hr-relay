@@ -93,7 +93,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     }
   }
   return {
-    kernel, lifecycle, step,
+    kernel, lifecycle, childRuns, step,
     start(descriptor: AnyWorkflowDescriptor, input: unknown, options: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[] }>) {
       const active = database.authority.runtimeConfig.get();
       assert.ok(active);
