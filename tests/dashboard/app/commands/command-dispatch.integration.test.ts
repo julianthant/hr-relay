@@ -1,11 +1,11 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { PositiveIntSchema as positiveIntSchemaForReset } from "../../../../src/rules/identity/ids.js";
 
 import assert_m0 from "node:assert/strict";
-import { mkdtempSync as mkdtempSync_m0,realpathSync as realpathSync_m0,rmSync as rmSync_m0 } from "node:fs";
-import { tmpdir as tmpdir_m0 } from "node:os";
-import { join as join_m0 } from "node:path";
+import { rmSync as rmSync_m0 } from "node:fs";
 import { afterEach as afterEach_m0,describe as describe_m0,it as it_m0 } from "vitest";
 
 import {
@@ -49,12 +49,10 @@ import { CommandRequestSchema as CommandRequestSchema_m1 } from "../../../../src
 {
 
 
-const roots: string[] = [];
-const openDatabases: AuthorityDatabase_m0[] = [];
+const cleanup: (() => void)[] = [];
 
 const _afterEachFixture0 = () => {
-  for (const db of openDatabases.splice(0)) db.close();
-  for (const root of roots.splice(0)) rmSync_m0(root, { recursive: true, force: true });
+  for (const close of cleanup.splice(0).reverse()) close();
 };
 
 function createHarness(): {
@@ -63,15 +61,18 @@ function createHarness(): {
   clock: ReturnType<typeof manualClock_m0>;
   lifecycle: RunRecordService_m0;
 } {
-  const root = realpathSync_m0(mkdtempSync_m0(join_m0(tmpdir_m0(), "queue-lifecycle-test-")));
-  roots.push(root);
-  const path = join_m0(root, "authority.sqlite");
+  const profile = createBoundProfileFixture();
+  const path = profile.path;
   const clock = manualClock_m0(new Date(NOW_m0));
   const database = AuthorityDatabase_m0.open(
     { path, busyTimeoutMs: 250, migrationOwner: "queue-lifecycle-proof" },
     clock,
   );
-  openDatabases.push(database);
+  cleanup.push(() => {
+    releaseSeededWriteOwners(database, clock.now().toISOString());
+    database.close();
+    profile.close();
+  });
   seedSyntheticRuntimeConfig_m0(database);
 
   const ids = sequentialIdFactory_m0("d");

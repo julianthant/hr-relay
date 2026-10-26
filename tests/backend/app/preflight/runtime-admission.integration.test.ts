@@ -1,3 +1,4 @@
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { default as assert } from "node:assert/strict";
@@ -51,7 +52,11 @@ function harness(configureRunners?: (runners: readonly PreflightRunner[]) => rea
   const repoRoot = profile.workspace, stateRoot = profile.stateRoot;
   const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
   const database = AuthorityDatabase.open({ path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "preflight-test" }, clock);
-  cleanup.push(() => { database.close(); profile.close(); });
+  cleanup.push(() => {
+    releaseSeededWriteOwners(database, clock.now().toISOString());
+    database.close();
+    profile.close();
+  });
   const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock,
     { stateRoot, artifactRoot: profile.admission.artifactRoot });
   const identity = { configSnapshotId: "66666666-6666-4666-8666-666666666666", configFingerprint: resolved.fingerprint };
