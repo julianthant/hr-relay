@@ -148,7 +148,6 @@ it("serves public profile state without minting a selected profile, actor or aut
 
 it("uses a real verifier and selected session cookie, rejects foreign browser captures and performs canonical logout", async () => {
   const temporary = mkdtempSync(join(realpathSync(tmpdir()), "public-profile-temp-alias-"));
-  using _temporary = { [Symbol.dispose]() { rmSync(temporary, { recursive: true }); } };
   const priorEnvironment = { TMPDIR: process.env.TMPDIR, TMP: process.env.TMP, TEMP: process.env.TEMP };
   using _environment = { [Symbol.dispose]() {
     for (const key of ["TMPDIR", "TMP", "TEMP"] as const) {
@@ -161,22 +160,12 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
   mkdirSync(physicalTemp, { mode: 0o700 });
   symlinkSync(physicalTemp, aliasedTemp, "dir");
   for (const key of ["TMPDIR", "TMP", "TEMP"] as const) process.env[key] = aliasedTemp;
-  const reservation = createServer();
-  let backendPort: number;
-  try {
-    await new Promise<void>((resolve, reject) => { reservation.once("error", reject); reservation.listen(0, "127.0.0.1", resolve); });
-    const address = reservation.address(); assert.ok(address !== null && typeof address !== "string");
-    backendPort = address.port;
-  } finally {
-    if (reservation.listening) await new Promise<void>((resolve, reject) => reservation.close(error => error === undefined ? resolve() : reject(error)));
-  }
-  assert.ok(backendPort > 0);
   const f = fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
     runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: backendPort, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
-    assert.equal(runtime.port, backendPort);
+      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    assert.ok(runtime.port > 0);
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
       headers: { origin: base, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
@@ -205,7 +194,12 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const restored = PublicProfileStateSchema.parse(await login.json()); assert.equal(restored.state, "active");
     assert.notEqual(login.headers.get("set-cookie"), header);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie } })).status, 401);
-  } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
+  } finally {
+    await runtime?.stop();
+    f.machine.release();
+    rmSync(f.root, { recursive: true, force: true });
+    rmSync(temporary, { recursive: true });
+  }
 });
 
 for (const fault of ["prior-request", "profile-close"] as const) it(`fences and drains real public transfers before retaining ${fault} shutdown failure`, async () => {

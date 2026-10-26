@@ -621,7 +621,7 @@ async function composeDashboardRuntimeStartup(
     config: resolved.config,
     stateRoot,
     artifactRoot,
-    backendPort: input.backendPortOverride ?? input.isolation.backendPort,
+    backendPort: input.applicationTransport?.listener.port ?? input.backendPortOverride ?? input.isolation.backendPort,
     frontendPort: input.frontendPortOverride ?? input.isolation.frontendPort,
     ...(env[DASHBOARD_LAUNCH_NONCE_ENV] === undefined
       ? {}
