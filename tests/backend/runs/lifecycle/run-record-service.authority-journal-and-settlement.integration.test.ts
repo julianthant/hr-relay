@@ -1,5 +1,5 @@
 import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
+import { boundFixtureWorker, stopSyntheticDatabaseWorkers, syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
@@ -49,6 +49,24 @@ function lifecycleCommand(
 
 describe("canonical run-record service", () => {
 
+  it("preserves unrelated worker cleanup failure and custody until a successful stop", () => {
+    const f = fixture(), path = syntheticDatabasePath(f.database);
+    const failure = new Error("injected-worker-cleanup-failure");
+    const release = f.database.assertWorkerLifecycleRelease;
+    assert.equal(boundFixtureWorker(f.database, path, WORKER_ID), true);
+    f.database.assertWorkerLifecycleRelease = () => { throw failure; };
+    try {
+      assert.throws(() => f.database.close(), error => {
+        assert.ok(error instanceof AggregateError);
+        assert.equal(error.message, "fixture-worker-closure-unproved");
+        assert.deepEqual(error.errors, [failure]);
+        return true;
+      });
+      assert.equal(boundFixtureWorker(f.database, path, WORKER_ID), true);
+    } finally { f.database.assertWorkerLifecycleRelease = release; }
+    stopSyntheticDatabaseWorkers({ database: f.database, path });
+  });
+
   it("refuses cross-kind ids and fails loud for every partial or mismatched journal pair", () => {
     const crossKind = fixture();
     crossKind.database.withAuthorityTransaction(({ commands }) => {
@@ -92,6 +110,29 @@ describe("canonical run-record service", () => {
     const auditOnlyGeneration = auditOnly.database.getMeta().authorityGeneration;
     assert.throws(() => auditOnly.service.create(auditOnly.request), /command-audit-settlement-mismatch/u);
     assert.equal(auditOnly.database.getMeta().authorityGeneration, auditOnlyGeneration);
+    assert.throws(() => auditOnly.database.close(), error => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(error.message, "fixture-worker-closure-unproved");
+      assert.equal(error.errors.length, 1);
+      const [failure] = error.errors;
+      assert.ok(failure instanceof Error);
+      assert.equal(failure.message, "authority table command_audits failed native record validation: command-audit-settlement-mismatch");
+      assert.ok(failure.cause instanceof Error);
+      assert.equal(failure.cause.message, "command-audit-settlement-mismatch");
+      assert.equal(failure.cause.cause, undefined);
+      return true;
+    });
+    const repair = new DatabaseSync(join(auditOnly.root, "state.db"));
+    try {
+      const trigger = repair.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='command_audits_retained'").get();
+      assert.ok(trigger);
+      repair.exec("BEGIN EXCLUSIVE; DROP TRIGGER command_audits_retained");
+      assert.equal(repair.prepare("DELETE FROM command_audits WHERE id=? AND command_id=? AND payload_json=?")
+        .run(audit.auditId, audit.request.commandId, canonicalJsonStringify(audit)).changes, 1);
+      repair.exec(String(trigger.sql));
+      repair.exec("COMMIT");
+    } finally { repair.close(); }
+    stopSyntheticDatabaseWorkers({ database: auditOnly.database, path: syntheticDatabasePath(auditOnly.database) });
 
     const mismatched = fixture();
     const matchedCommand = lifecycleCommand(mismatched.request, "create");

@@ -95,8 +95,6 @@ for (const owner of retained) {
         if (stopped.state !== "applied") throw new Error("fixture-worker-stop-conflict");
       }
     } catch (error) {
-      const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : "";
-      if (error instanceof Error && `${error.message} ${cause}`.includes("command-audit-settlement-mismatch")) continue;
       failures.push(error);
     }
   }
