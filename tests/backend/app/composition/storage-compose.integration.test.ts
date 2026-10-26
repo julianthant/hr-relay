@@ -48,7 +48,7 @@ import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/tim
 import { SpanAuthorityReconciliationWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
-import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
 
 import { ATOMIC_WRITE_COMMIT, CONFIG_SNAPSHOT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -551,8 +551,13 @@ try {
   const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
   const intent = rehearsal.parkedIntent(harness.database);
   assert.ok(parked && parked.lifecycle.state === "parked-write");
-  assert.ok(intent.status === "unknown");
-  if (intent.status !== "unknown") throw new Error("rehearsal must retain UNKNOWN write");
+  assert.ok(intent.status === "parked");
+  if (intent.status !== "parked") throw new Error("rehearsal must retain parked write intent");
+  const parkedAttempt = WriteAttemptRecordSchema.parse(harness.database.authority.writeAttempts.get(intent.currentAttemptId));
+  assert.equal(parkedAttempt.writeAttemptId, intent.currentAttemptId);
+  assert.equal(parkedAttempt.runId, parked.envelope.runId);
+  assert.equal(parkedAttempt.outcome.state, "unknown");
+  assert.equal(intent.parkedCode, "unknown");
   const proofValue = WriteFixtureProofSchema.parse({ transactionId: "T654321" });
   const node = descriptorRuntimeNodes(writeFixtureDescriptor).find(node => node.id === WRITE_FIXTURE_NODE_ID);
   if (node?.kind !== "transaction") throw new Error("resolution transaction fixture required");
@@ -595,7 +600,7 @@ try {
   const newer = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "known-present-resolution" }, clock);
   try {
     const service = new RunRecordService({ database: newer, clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("test must not enqueue"); } });
-    const claim = { workerId: WRITE_FIXTURE_WORKER_ID, claimGeneration: PositiveIntSchema.parse(before.claimGeneration) };
+    const claim = { workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID), claimGeneration: PositiveIntSchema.parse(before.claimGeneration) };
     const generation = newer.getMeta().authorityGeneration;
     assert.deepEqual(service.retry({ commandId: randomUUID(), runId: before.runId, expectedVersion: before.version,
       runtimeConfig: selectRunRuntime(newer.authority) }, writeFixtureDescriptor), { state: "refused", refusal: { reason: "invalid-state" } });
