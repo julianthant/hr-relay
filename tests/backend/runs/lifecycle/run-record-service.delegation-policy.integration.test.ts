@@ -150,7 +150,7 @@ it("requests cancellation on both a claimed anchor and claimed member without se
   const parent = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
     workerId: parentOwner.workerId, workerLifetime: parentOwner.workerLifetime, runtimeConfig });
   assert.ok(parent.state === "applied" && "run" in parent);
-  await executeClaimedParent(f, parent.run, () => {
+  const outcome = await executeClaimedParent(f, parent.run, () => {
     const member = f.child();
     const claimed = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
       workerId: childOwner.workerId, workerLifetime: childOwner.workerLifetime, runtimeConfig });
@@ -164,7 +164,17 @@ it("requests cancellation on both a claimed anchor and claimed member without se
       assert.equal(current.cancelRequested, true);
       assert.notEqual(current.lifecycle.state, "terminal");
     }
+    const requested = f.child();
+    const childModule = f.modules.find(module => module.descriptor.id === requested.envelope.workflow);
+    assert.ok(childModule);
+    assert.equal(f.execution.lifecycle.terminalize({ kind: "cancelled", commandId: randomUUID(),
+      runId: requested.envelope.runId, expectedVersion: requested.version,
+      claim: { workerId: childOwner.workerId, claimGeneration: claimed.run.claimGeneration },
+      endedAt: f.clock.now().toISOString() }, childModule.descriptor).state, "applied");
+    terminal(f.child(), "cancelled");
   });
+  assert.deepEqual(outcome, { state: "abandoned", runId: f.root.envelope.runId, reason: "cancelled" });
+  terminal(f.currentRoot(), "cancelled");
 });
 
 it("freshly claims an independent queued child after its other physical parent's reset", async () => {
