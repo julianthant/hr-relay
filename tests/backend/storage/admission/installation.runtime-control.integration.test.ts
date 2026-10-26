@@ -14,7 +14,9 @@ import { createStorageRelocationPlanReader } from "../../../../src/backend/stora
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 import { storageRelocationDesiredDigest } from "../../../../src/rules/commands/commands.js";
-import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
+import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
+import { createCredentialPersistenceFixtures } from "../../../support/helpers/credential-persistence-fixtures.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { NonNegativeIntSchema } from "../../../../src/rules/identity/ids.js";
 
 
@@ -61,17 +63,22 @@ function settledMove(workspace: string, destination: RuntimePair): { operationId
 it.each(["credential key", "erasure journal", "Duo membership"] as const)(
   "revalidates cached profile registry authority after %s changes",
   (change) => {
-    const profile = createBoundProfileFixture();
+    const persistence = createCredentialPersistenceFixtures([], randomUUID(), "2026-10-01T12:01:00.000Z");
+    const erasure = change === "erasure journal" ? persistence.registeredFixture() : undefined;
+    const profile = erasure === undefined ? createBoundProfileFixture() : {
+      machine: erasure.machine, admission: erasure.admission, close: persistence.releaseFixtures,
+    };
     try {
-      if (change === "erasure journal") {
-        const credentials = boundProfileCredentials(profile.admission);
-        for (const entries of [{ ucpathPassword: { set: "synthetic-erasure-value" } }, { ucpathPassword: { clear: true } }] as const) {
-          expect(credentials.apply(ProtectedSettingsApplyInputSchema.parse({
-            commandId: randomUUID(), commandFingerprint: "a".repeat(64), writeId: randomUUID(),
-            expectedRevision: credentials.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-            entries, updatedAt: "2026-10-01T12:01:00.000Z",
-          })).state).toBe("applied");
-        }
+      if (erasure !== undefined) {
+        expect(erasure.store.apply(persistence.request({
+          commandId: randomUUID(), writeId: randomUUID(), expectedRevision: erasure.store.read().revision,
+          entries: { ucpathPassword: { set: "synthetic-erasure-value" } },
+        })).state).toBe("applied");
+        expect(erasure.erase(CredentialEraseInputSchema.parse({
+          commandId: randomUUID(), commandFingerprint: "a".repeat(64), writeId: randomUUID(),
+          expectedRevision: erasure.store.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+          updatedAt: "2026-10-01T12:02:00.000Z",
+        })).state).toBe("applied");
       }
       const registry = profile.machine.readProfileRegistry();
       expect(profile.machine.readProfileRegistry()).toEqual(registry);
