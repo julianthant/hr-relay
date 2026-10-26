@@ -130,7 +130,7 @@ it("initializes only one canonical pending profile before real ready publication
     expect(existsSync(join(profile.workspace, ".tracker/control", "profile-publication.json"))).toBe(false);
     expect(existsSync(join(machineRoot, "state.db"))).toBe(false);
     const database = AuthorityDatabase.open(profile.admission, { path, busyTimeoutMs: 250, migrationOwner: "test" });
-    try { expect(database.getMeta().schemaVersion).toBe(7); } finally { database.close(); }
+    try { expect(database.getMeta().schemaVersion).toBe(CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { database.close(); }
   } finally { profile.close(); }
 });
 
