@@ -12,6 +12,7 @@ import { type AuthorityTableName } from "../../../models/config/authority.js";
 
 const RowSchema = z.record(z.string(), z.union([z.string(),z.number(),z.null()]));
 const fields = {
+  assistant_model_preference: {id:"id",profile_id:"profileId",revision:"revision",command_id:"commandId",audit_id:"auditId",updated_at:"updatedAt"},
   assistant_grants: {id:"id",profile_id:"profileId",revision:"policy.revision",command_id:"commandId",updated_at:"updatedAt"},
   assistant_chats: {id:"id",profile_id:"profileId",epoch:"epoch",created_at:"createdAt",expires_at:"expiresAt"},
   assistant_actions: {id:"id",chat_id:"chatId",command_id:"command.commandId",revision:"revision",state:"state",created_at:"createdAt",expires_at:"expiresAt"},

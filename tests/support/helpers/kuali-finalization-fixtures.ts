@@ -1,3 +1,4 @@
+import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import { ProtectedStoreRecordSchema } from "../../../src/models/config/protected-settings.js";
 import { ProtectedInputBindingSchema } from "../../../src/models/write-safety/protected-input.js";
 import { protectedSecretSource } from "./protected-secret-source.js";
@@ -363,6 +364,8 @@ export interface FinalizationHarness {
   readonly dispose: () => void;
 }
 
+const retainedFinalizationOwners = new Set<object>();
+
 export function finalizationHarness(
   options: Readonly<{
     /** Seed the document as ALREADY finalized with exactly these ten values. */
@@ -377,8 +380,11 @@ export function finalizationHarness(
     departmentOptions?: readonly string[];
   }> = {},
 ): FinalizationHarness {
+  const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; manager?: WorkerSessionManager; primary?: { error: unknown }; failure?: Error } = {};
+  retainedFinalizationOwners.add(held);
+  try {
   const clock = manualClock(new Date(FINALIZATION_NOW));
-  const profile = createBoundProfileFixture();
+  const profile = createBoundProfileFixture(); held.profile = profile;
   const database = AuthorityDatabase.open(
     {
       path: profile.path,
@@ -387,6 +393,7 @@ export function finalizationHarness(
     },
     clock,
   );
+  held.database = database;
   testWorkerPorts(database, clock, { path: profile.path, descriptor: separationsKualiFinalizationDescriptor, poolIndex: 1 });
   const world = createKualiFakeWorld({
     actionId: FINALIZATION_ACTION_ID,
@@ -451,6 +458,7 @@ export function finalizationHarness(
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
     duoCeremony: duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)),
   });
+  held.manager = manager;
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("b");
   const sequencer = createWriteSequencer({
@@ -467,6 +475,7 @@ export function finalizationHarness(
     log: recordingLogger().log,
     resolveImplFingerprint: () => FINALIZATION_IMPL_FINGERPRINT,
   });
+  let closeAttempted = false;
   return {
     path: profile.path,
     world,
@@ -484,10 +493,14 @@ export function finalizationHarness(
         work,
       ),
     dispose: (): void => {
-      database.close();
-      profile.close();
+      if (held.failure !== undefined) throw held.failure;
+      if (closeAttempted) return;
+      closeAttempted = true;
+      try { database.close(); profile.close(); retainedFinalizationOwners.delete(held); }
+      catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
     },
   };
+  } catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
 }
 
 export function finalizationClaimRunning(
@@ -510,7 +523,8 @@ export function finalizationClaimRunning(
   if (claimed.state !== "claimed")
     throw new Error(`claim outcome was ${claimed.state}`);
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  const base = { workerId, claimedAt: now, heartbeatAt: now };
+  const workerLifetime = testWorkerLifetime(database, FINALIZATION_WORKFLOW_ID, claimMember1.poolIndex).workerLifetime;
+  const base = { workerId, workerLifetime, claimedAt: now, heartbeatAt: now };
   const validating = database.authority.runs.transition({
     runId: claimed.run.envelope.runId,
     expectedVersion: claimed.run.version,

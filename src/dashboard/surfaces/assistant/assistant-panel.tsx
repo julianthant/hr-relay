@@ -7,10 +7,10 @@ import { dsFocus, dsIcon, dsLayer } from '../../ds/theme/tokens.js';
 import { ASSISTANT_STARTERS, assistantConfirmRefusal, type AssistantAction, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
 import './assistant.css';
 
-export function AssistantPanel({ state, revision, accountAvailable, onAction, onMockConfirm, defaultOpen = false, confirmRefusal, statusText = 'Mock preview', footnote = 'Scripted preview · Synthetic data · No runs start', onOpenSettings, launcherBottom, accountHeading = 'ChatGPT not connected', accountNotice = 'Review the connection in Settings. This mock cannot sign in.' }: {
+export function AssistantPanel({ state, revision, accountAvailable, canCompose = accountAvailable, onAction, onMockConfirm, defaultOpen = false, confirmRefusal, statusText = 'Mock preview', footnote = 'Scripted preview · Synthetic data · No runs start', onOpenSettings, launcherBottom, accountHeading = 'ChatGPT not connected', accountNotice = 'Review the connection in Settings. This mock cannot sign in.' }: {
   state: AssistantState;
   revision: string;
-  accountAvailable: boolean;
+  accountAvailable: boolean; canCompose?: boolean;
   onAction: (action: AssistantAction) => void;
   onMockConfirm?: (proposal: AssistantMockProposal) => void;
   confirmRefusal?: string;
@@ -124,7 +124,7 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
               <Textarea ref={composer} className="assistant-compose-input" aria-label="Message" placeholder="Send a message…" rows={2} value={state.draft} onChange={event => onAction({ type: 'edit', value: event.target.value })} onKeyDown={event => {
                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
               }} />
-              <div className="assistant-send"><span>Enter to send · Shift+Enter for a new line</span>{waiting ? <IconButton key="stop" ref={preserveActionFocus} label="Stop reply" className="assistant-send-button" icon={<Square aria-hidden size={13} fill="currentColor" />} onClick={() => dispatchAndFocus('cancel')} /> : <IconButton key="send" type="submit" label="Send" className="assistant-send-button" icon={<ArrowUp aria-hidden size={17} />} disabled={!accountAvailable || uncertain || !state.draft.trim()} />}</div>
+              <div className="assistant-send"><span>Enter to send · Shift+Enter for a new line</span>{waiting ? <IconButton key="stop" ref={preserveActionFocus} label="Stop reply" className="assistant-send-button" icon={<Square aria-hidden size={13} fill="currentColor" />} onClick={() => dispatchAndFocus('cancel')} /> : <IconButton key="send" type="submit" label="Send" className="assistant-send-button" icon={<ArrowUp aria-hidden size={17} />} disabled={!canCompose || uncertain || !state.draft.trim()} />}</div>
             </div>
             <p className="assistant-footnote">{footnote}{onOpenSettings !== undefined && <> <Button size="sm" variant="ghost" onClick={() => { setOpen(false); onOpenSettings(); }}>Open Settings</Button></>}</p>
           </form>

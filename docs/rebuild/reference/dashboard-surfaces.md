@@ -59,7 +59,7 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup is `served` and the other configured values
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup and Separations are `served` and the other configured values
 are `mock`. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the
@@ -302,15 +302,35 @@ from an empty open-session list. Actual worker-service wiring replaces both prod
 ## Assistant
 
 The HUB shell is the single mounted assistant. Product chats retain C1 controller state per chat and
-send through the typed assistant client. Account changes and authority refreshes invalidate pending
-replies and proposals; switching chats cancels a pending reply while preserving each draft and transcript.
-Answers retain source quotations and revisions. Proposals show their subject, fingerprints, expiry,
-effects and stop point. Confirmation remains unavailable and starts no run.
+send through the typed assistant client. Account, selected-profile and authority changes invalidate
+pending replies and proposals; switching chats cancels a pending reply while preserving each draft and
+transcript. Answers retain source quotations and revisions. Proposals show their subject, fingerprints,
+expiry, effects and stop point.
 
-Chat files retains its composer and uses version-bound workbook registration and reads. Model, effort,
-approval and voice controls have no served capability and remain unavailable. The explicit parity
-composition supplies approved mock conversations and sample workflow scenes; product failures never
-select those producers. Chat titles and drafts are local to the mounted shell.
+Send `/assistant-model` to read the selected profile's served model and effort. Send
+`/assistant-model SLUG EFFORT` to choose them through the normal operator command. The command uses
+that read's profile, epoch and expected revision; confirmed readback must match the next revision and
+choice. Unknown settlement stays visible without automatic retry. A saved choice invalidates earlier
+verification and in-flight inference; it does not establish account eligibility or permission.
+
+Send `/verify-assistant` explicitly to verify the current choice. The account owner performs its fixed
+public two-turn namespaced probe and a fresh public model-catalog read. It sends no HR subject,
+operator prose, artifact or private context. Sign-in, model selection, catalog reads, OCR and startup
+never run that probe automatically. The account's private proof lasts at most 15 minutes and remains
+bound to current account, selected profile, epoch and saved preference authority.
+
+Both setup commands are text-only. Recognized setup forms refuse attachments before file reading,
+registration or sending. A served `CHATGPT_USAGE_UNAVAILABLE` account resource permits composing a
+setup command while showing verification guidance; it does not make `accountAvailable` true. Confirm
+still requires the real signed-in account with available plan use and the existing issued-action,
+permission and currentness checks. After explicit verification settles, the current binding refreshes
+the served account once. Superseded requests cannot publish into another conversation.
+
+Chat files retains its composer and uses version-bound workbook registration and reads. The model,
+effort, approval and voice controls remain unavailable; setup uses the existing composer, with no new
+component. The explicit parity composition supplies approved mock conversations and sample workflow
+scenes; product failures never select those producers. Chat titles and drafts are local to the mounted
+shell.
 
 ## Settings
 
@@ -336,8 +356,8 @@ renderer. Archive and UI catalog requests show removal notices, with a guarded r
 
 ### General and ChatGPT account
 
-Assistant permission remains unavailable in product until the settings authority supplies it. Browser
-dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
+Assistant permission uses the canonical Settings/grant authority; a grant alone does not verify
+account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
 draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
 
 General composes appearance, ordinary General fields, annual dates, and ChatGPT account.

@@ -1,3 +1,4 @@
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 import { CreateRunRequestSchema } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -43,7 +44,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
             sourceId: "10000000-0000-4000-8000-000000000001" }] } } };
       assert.equal(h.database.authority.runs.enqueue({ ...source, lifecycle: { state: "queued" } }).state, "inserted");
       const claimed = h.database.authority.runs.claimNext({ workflow: source.envelope.workflow,
-        workerId: h.database.authority.workerSlots.list(h.descriptor.id)[0].workerId, now: h.clock.now().toISOString() });
+        workerId: h.database.authority.workerSlots.list(h.descriptor.id)[0].workerId, workerLifetime: testWorkerLifetime(h.database, h.descriptor.id, h.database.authority.workerSlots.list(h.descriptor.id)[0].poolIndex).workerLifetime, now: h.clock.now().toISOString() });
       assert.ok(claimed.state === "claimed");
       assert.equal(h.database.authority.runs.transition({ runId: source.envelope.runId, expectedVersion: claimed.run.version,
         claim: { workerId: h.database.authority.workerSlots.list(h.descriptor.id)[0].workerId, claimGeneration: claimed.run.claimGeneration },

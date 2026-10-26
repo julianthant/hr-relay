@@ -87,4 +87,4 @@ export { StartPlanRefusalError } from "./commands/start-commands.js";
 export type { WorkbookLibraryQueries } from "./queries/workbook-library-queries.js";
 
 export type { AssistantQueries } from "./queries/assistant-queries.js";
-export type { AssistantRequest, AssistantResult, AssistantSubject } from "../../models/dashboard/assistant.js";
+export type { AssistantModelPreferenceView, AssistantRequest, AssistantResult, AssistantSubject } from "../../models/dashboard/assistant.js";

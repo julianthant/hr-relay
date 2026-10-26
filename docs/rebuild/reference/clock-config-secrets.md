@@ -205,6 +205,34 @@ and `configFingerprint`. Activation advances `generation`; credential edits do n
 identity with the authenticated active identity. The latter state reports a saved-versus-active
 mismatch, not a requirement on every ordinary save.
 
+### Assistant choice and private verification
+
+The schema 9 `assistant_model_preference` singleton is separate from Settings, grants and account
+credentials. Its repository authenticates the current row against command/audit history. Only a
+history-free absence resolves the canonical default model and effort at revision zero. Missing,
+corrupt, substituted or rolled-back authority refuses; it never resets to a default.
+
+The operator-only preference command uses request-local preparation by the selected profile and
+account owners, then exact revision CAS and authenticated command/audit settlement. Selection may
+read the public catalog through the real consented/scoped account before verification; this proves
+availability only and issues no inference proof. Same-command replay returns its historical result
+without reapplying or rewinding a newer choice. A committed result followed by lost currentness stays
+unknown; it is not rolled back or reported as a zero-effect refusal.
+
+`chatgpt-account-service.ts` owns the private verification witness. Only an explicit composer
+`/verify-assistant` request performs the fixed public two-turn probe and fresh catalog read. The witness
+is issued after response/resource settlement, lasts at most 15 minutes and rechecks the actual account,
+selected context/profile/epoch and complete saved preference identity. A changed choice, foreign
+credential revision, an aborted verification binding, revocation, expiry or uncertain resource closure
+cannot preserve inference authority. Settings, grants, sign-in, OCR and catalog availability do not substitute for it.
+The production composition captures this account witness; it accepts no constructor policy override.
+
+Before an effect, an actual account/source closure failure keeps its named failure rather than being
+masked by cancellation. An already-entered canonical action retains UNKNOWN priority. Account closure
+uncertainty stays private and retained: later policy capture is absent/unverified, while another
+verification or selection refuses the named sticky uncertainty before more I/O. No private resource
+owner or credential enters the dashboard response.
+
 ### Paths and validation
 
 `runtime-paths.ts` resolves defaults against the process working directory and memoizes the default
@@ -279,13 +307,39 @@ retain issued-admission liveness and pinned credential ancestry, including trust
 external machine/profile journals and credential writes retain strict storage admission. Missing
 established erasure authority refuses rather than becoming an empty journal.
 
-`<stateRoot>/credentials/` is the one home for credentials: protected settings, the ChatGPT account
-and the Duo key (`duo-webauthn.json`, read through `paths.duoCredential`).
-`src/backend/storage/configuration/` owns the two private records there.
+`<stateRoot>/credentials/` is the home for protected settings, the ChatGPT account, and the retained
+active-engine Duo key (`duo-webauthn.json`, read through `paths.duoCredential`).
+`src/backend/storage/configuration/` owns those private records.
 `credential-store.ts` exposes the protected-settings store and the ChatGPT account repository.
 Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 directories,
 0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
 Each record retains its own transaction and recovery contract.
+
+The new-purpose Duo document is separate. `duo-credential-store.ts` stores one encrypted document per
+profile at `<machineRoot>/machine/duo-credentials/<profileId>.json`. Installation control owns its
+continuity row, physical witness, and publication. The profile credential key seals it. A count is
+reserved in that document before any later signature use; failed, crashed, and UNKNOWN attempts stay
+burned. Ordinary registry reads fail closed on a pending publication and do not finish it. The same
+process can resume only the claim that started the publication. After that process exits,
+`storage recover-duo-publication` acquires stopped maintenance admission and finishes that one
+durable publication: it checks the pending intent, continuity, binding, purpose, revision, physical
+file, and source, then settles the existing publication. It does not reserve another count, sign, or
+retry UNKNOWN. Erase walks the machine and profile roots, including credentials, backups, artifacts,
+and `machine/duo-purpose-backups`. It refuses a symlink, hard link, same-digest copy, or another
+authenticated envelope for that profile and purpose. Explicit purpose backups live only under
+`machine/duo-purpose-backups/<profileId>/<revision>.json`. The purpose decrypt owner freshly binds the
+actual runtime profile, current continuity and canonical document's physical witness before returning
+credential material. The current authenticated retired identities keep erased credentials revoked even
+after a different valid enrollment; fresh and earlier genuine purposes cannot decrypt those managed
+backups. A missing or corrupt current witness refuses instead of supplying an empty retired set.
+Same-enrollment backups remain readable, and restore still refuses a backup that would lower a burned
+counter. Decrypt refuses during pending publication; that check does not change the separate
+same-issued or stopped publication settlement. Erase does not delete or import `duo-webauthn.json`.
+`storage upgrade --machine-control` acquires the same stopped maintenance admission, which does not
+require marker 3, and converts only continuity schema 1 plus registry marker 2 into continuity schema
+2 plus marker 3. It backs up those two control files before mutation and reads them back. A failed
+snapshot close keeps that restore admission. The control backup is not a profile SQLite backup or a
+Duo-key backup. Marker or continuity versions outside that pair fail as an unsupported hold.
 
 The selected ChatGPT account owner fetches its current model catalog in server order and returns only
 list-visible slugs and display names. Assistant requests use that catalog, explicit trusted model
@@ -452,7 +506,12 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 8` and
+The current schema is 9. Its additive `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+
+The finite bound-profile upgrade predecessor is schema 8. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
+
+
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 9` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
@@ -498,14 +557,14 @@ The record's `backup_digest` matches the backup SHA-256. A failed migration roll
 changes. For pending diagnostic stages it reclaims through `diagnostic-maintenance` and verifies
 unchanged authority generation and content fingerprint. Only the explicit stopped upgrade converts a
 prior schema.
-`upgradeReadyProfileStorage` separately handles an already READY, saved, bound schema7 profile.
+`upgradeReadyProfileStorage` separately handles an already READY, saved, bound schema8 profile.
 It acquires the actual machine workspace's restore admission before privately issuing a stopped
 purpose from that same exclusive machine and registered runtime claim. Issuance verifies native
 source binding, anchored key/erasure-head evidence, fixed control and physical ancestry, and the
 shared all-stopped process/resource/copy inventory. The READY-only issuer defers its two exact
 storage readers and revalidates custody after each await; the setup issuer remains synchronous.
 This purpose admits original-source inspection, its own verified authority backups, and the finite
-7→8 migration only. It cannot initialize a profile, read credentials, open ordinary runtime storage,
+8→9 migration only. It cannot initialize a profile, read credentials, open ordinary runtime storage,
 grant generic writes/exclusive authority, delegate nested copies, or admit an in-memory database.
 Its source fingerprint is privately bound before issuance and checked again inside the migration
 transaction with the actual verified backup. Readback preserves prior business rows, Settings and
@@ -606,19 +665,23 @@ A READY, saved native7 profile can request its backed-up upgrade only through ge
 The authorization retains only identity evidence: exact installation/workspace/locator, registry/control/verifier/operation observation, anchored key and erasure head, canonical source and sidecar identities/digests, and strict encrypted v4 envelope metadata. It contains no password, decrypted value or ordinary authority. Its identity evidence survives intentional old shared-admission release only for comparison against a fresh genuine exclusive installation; any other drift or reuse refuses. The existing stopped service still owns actual restore, all-stopped resources, verified backup, migration and readback.
 
 
-Fresh machine bootstrap owns the registry, verifier and installation-control evidence without a root database or selected profile. Established version-one or unbound flat state is quarantined for explicit stopped conversion; normal boot never assigns a default profile. Canonical schema7 database metadata binds immutable installation and profile UUIDs before writable configuration or repository construction. A control-authenticated pending sign-up issues exact database-only setup; ready storage claims require canonical binding. Normal registry publication cannot add profiles: the credential owner captures exact canonical committed replay in an opaque value-free witness, and installation control revalidates its bounded document/journal/anchor evidence when publishing the ready row.
+Fresh machine bootstrap owns the registry, verifier and installation-control evidence without a root database or selected profile. Established version-one or unbound flat state is quarantined for explicit stopped conversion; normal boot never assigns a default profile. Canonical bound database metadata binds immutable installation and profile UUIDs before writable configuration or repository construction. A control-authenticated pending sign-up issues exact database-only setup; ready storage claims require canonical binding. Normal registry publication cannot add profiles: the credential owner captures exact canonical committed replay in an opaque value-free witness, and installation control revalidates its bounded document/journal/anchor evidence when publishing the ready row.
 
 Admission identity has one owner in `storage/admission/admission-identity.ts`; only the token-protected `RuntimeAdmission` constructor registers identities. Profile children remain dependent on the current installation lease and authenticated durable intent or membership. New runtime opens and writes recheck readiness. Cancelling profiles retain only settlement custody; restart can reissue it from the exact pending logout and cancelling row. The settlement entry accepts the original authenticated erase command and cannot open ordinary databases or apply credentials. Generic credential reads refuse; the actual credential owner exposes an exact pending-operation observation for erasure revision and inventory without tombstone repair or writes. Replayed erasure strips restored plaintext before a repaired read. Flat runtime callers remain held with `profile-bound-authority-required`. The dashboard composition requires an existing server-owned active profile token and the exact parent-owned profile runtime; ready/saved registry state alone cannot resume login. The CLI currently supplies no such token and refuses dashboard startup until the approved onboarding/login surfaces receive their profile HTTP wiring.
+
+Stopped control credential inventory uses the same registered derived admission for credential attestation. That admission privately retains its exact original opaque inventory claim. Its gateway checks the registered receiver, existing stopped-control inventory purpose, exact claim identity and current liveness before invoking the original private claim validator or inspecting protected keys. A structural claim, a distinct genuine claim for the same profile, a wrong-purpose admission or a released receiver cannot substitute. Credential storage reaches this validator through the admission, keeping its installation dependency type-only without introducing another issuer.
 
 An already-open authority database retains storage custody for accepted drain and UNKNOWN settlement. Its physical binding and parent liveness still revalidate. Current runtime issue authority gates fresh opens; selected-session producers must separately reject new ordinary work after revocation through retained handles. Production composition must bind that distinction before profiles are mounted; a global readiness check on all database reads and transactions would also prevent accepted terminal observations.
 
 The selected storage composition captures the authenticated profile and session generation from machine control, opens that child's exact canonical database, and uses its actual protected store for command identity ownership. An inspection open without that store refuses command ownership checks with `CREDENTIAL_CONTEXT_REQUIRED`; it never creates a local-journal substitute. Lazy Settings reads preserve existing active identity and report saved-only changes as restart-required. Only an absent first-boot active record is initialized.
 
+Fresh machine initialization creates the fixed private process-lock directory before publishing its installation locator. The dashboard validates that directory before profile composition. An existing installation with a missing, symlinked, wrongly owned or non-private directory refuses without recreation or permission changes.
+
 Worker bootstrap acquires machine admission, captures durable selection, and takes exact profile-database process custody before issuing a child or opening SQLite. Ordinary worker admission, claims, protected reads and browser acquisition revalidate that selection. Failed admission closes SQLite and releases child custody before its process record. Unproved closure propagates `RUNTIME_CUSTODY_UNCERTAIN`, retaining parent admission and remaining process custody. Profile runtime composition retains one ordinary/settlement resource entry, schedules actual account and canonical resource closure through session activity, and closes SQLite before child release after erasure inventory. Closing synchronously refuses new ordinary work. Dashboard shutdown and startup unwind drain their transport, timers and notification observer before account closure and strict credential inventory. Failed producer closure prevents source closure and retains custody. Dashboard startup binds its actual supervisor once at the construction boundary. With a configured supervisor, a stopped historical worker can close without in-memory child evidence only when exact lifetime authentication proves its original process is gone and its process claim is released, and native release checks pass. A released claim on a live process still refuses closure. Public profile mounting, complete supported inventory coverage and actual process/browser closure acceptance remain required.
 
 A stopped cancelling profile uses a privately issued pending-logout inventory child, bound to its exact current operation, registry generation, parent lease and physical source. Its canonical database binding is parsed once from a descriptor-isolated snapshot retained only for that child. Every liveness check revalidates the exact unchanged main, WAL, SHM and journal identities and absences, plus current parent and operation custody; any change permanently revokes that child. Native resource inventories still take fresh strict snapshots. Disposal precedes child and parent release, and a failed snapshot cleanup retains custody. It admits descriptor-isolated inspection of canonical copies before an erasure CAS exists; it cannot grant ordinary credential reads, database writes, artifacts, workers or selection. The constructor-owned credential inventory authenticates key, external head and all recognized ciphertext copies before assessment, with complete profile and process-root membership revalidation. Cold closure requires terminal runs and closed leases, browsers, controls and write custody. A matching late erasure observes only its original request and pending publication head; incomplete capture remains a refusal when surviving copies cannot be certified.
 
-Logout inventory certifies independent backup and credential-stage copies only when both canonical UCPath identity and password were available for capture before that erase. When a prior erase leaves capture incomplete, even a clean-shaped existing copy remains uncertain; repeated resumes and restart cannot publish wiped until those copies are absent. No captured plaintext is persisted. Credential copy scans use the exact authenticated source-schema table registry for verified stopped backups, including supported pre-assistant copies. Their native schema, metadata, digest and physical custody must validate before scanning; ordinary runtime admission remains current-schema-only. Ordinary logout may retain a bound schema7 backup only when its authenticated profile/installation binding and exact source bytes match one immutable settled 7→current upgrade receipt, including canonical plan digest, under current stopped-resource and copy custody. Unbound schema1–6 backups retain a named binding refusal; path identity alone does not assign them to a profile.
+Logout inventory certifies independent backup and credential-stage copies only when both canonical UCPath identity and password were available for capture before that erase. When a prior erase leaves capture incomplete, even a clean-shaped existing copy remains uncertain; repeated resumes and restart cannot publish wiped until those copies are absent. No captured plaintext is persisted. Credential copy scans use the exact authenticated source-schema table registry for verified stopped backups, including supported pre-assistant copies. Their native schema, metadata, digest and physical custody must validate before scanning; ordinary runtime admission remains current-schema-only. Ordinary logout may retain noncurrent bound backups only for three exact settled transitions: historical 7→8, canonical pending-setup 7→9, and predecessor 8→9. Each copy requires its own authenticated profile/installation binding, exact source bytes and matching immutable receipt. The historical 7→8 case uses the canonical plan bounded at target8; 7→9 and 8→9 use their source version and the current target9 plan. All three cases require full stopped-process, resource and copy custody before and after inventory; missing, duplicate, foreign or mismatched evidence refuses. Historical receipts and backup bytes remain unchanged. Schema7 archival inspection grants no ordinary runtime, credential write or READY schema7 upgrade authority under schema9; the existing generic pending-setup conversion remains separate. Unbound schema1–6 backups retain a named binding refusal; path identity alone does not assign them to a profile.
 
 Settled worker reservation IDs retain allocation provenance. Closure authenticates the exact origin,
 revision and canonical retirement command. Remove-worker retirement requires

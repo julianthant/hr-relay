@@ -1,3 +1,5 @@
+import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from '../../../../src/models/dashboard/assistant.js';
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { checkedCommandResult } from "../../../../src/dashboard/client/commands/shared-commands.js";
@@ -17,4 +19,21 @@ it("binds explicit no-change readback to its actual zero-match collection only",
   ]) assert.throws(() => checkedCommandResult(CommandRequestSchema.parse(candidate), result));
   assert.throws(() => checkedCommandResult(request, { state: "applied", commandId: UUID_1, affectedTargets: [] }));
   assert.throws(() => checkedCommandResult(request, { ...result, affectedTargets: [{ family: "notification", notificationId: UUID_2 }] }));
+});
+
+it('binds assistant preference receipts to the exact profile and next revision', () => {
+  const request = CommandRequestSchema.parse({ commandId: UUID_1, requestedAt: NOW, requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+    source: 'dashboard-assistant-model-preference', family: "assistant-model-preference", type: "set-assistant-model-preference",
+    target: { profileId: UUID_2, epoch: 2, expectedRevision: 4 }, payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } });
+  const target = { family: "assistant-model-preference", profileId: UUID_2, revision: 5 };
+  const result = { state: 'applied', commandId: UUID_1, affectedTargets: [target] };
+  assert.deepEqual(checkedCommandResult(request, result), result);
+  assert.deepEqual(checkedCommandResult(request, { ...result, state: 'already-applied' }), { ...result, state: 'already-applied' });
+  for (const invalid of [
+    { ...result, affectedTargets: [] }, { ...result, affectedTargets: [target, target] },
+    { ...result, affectedTargets: [{ ...target, profileId: UUID_1 }] },
+    { ...result, affectedTargets: [{ ...target, revision: 4 }] },
+    { ...result, affectedTargets: [{ ...target, revision: 6 }] },
+    { ...result, affectedTargets: [{ ...target, epoch: 2 }] }, { ...result, commandId: UUID_2 },
+  ]) assert.throws(() => checkedCommandResult(request, invalid));
 });

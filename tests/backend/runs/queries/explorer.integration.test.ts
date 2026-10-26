@@ -1,3 +1,4 @@
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
@@ -8,6 +9,8 @@ import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../../src/workflow-kit/validation/generated-build-manifest.js";
 import { explorerAuthorityFixture } from "../../../support/fixtures/explorer-authority.js";
 import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
+
+const retainedExplorerCases = new Set<object>();
 
 const FIRST = "11111111-1111-4111-8111-111111111111";
 const SECOND = "22222222-2222-4222-8222-222222222222";
@@ -35,6 +38,8 @@ describe("Explorer registered graph and service acceptance", () => {
 
   it("distinguishes an empty registry and an unregistered target from an impossible zero-node workflow", () => {
     const f = explorerAuthorityFixture();
+    const held: { f: typeof f; primary?: { error: unknown } } = { f };
+    retainedExplorerCases.add(held);
     try {
       const query = explorerQueryDeps(f.clock, FingerprintSchema.parse("b".repeat(64)));
       assert.deepEqual(buildWorkflowExplorer({ ...query, modules: [] }).workflows, []);
@@ -42,11 +47,15 @@ describe("Explorer registered graph and service acceptance", () => {
       assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...f.read().workflows[0], nodes: [] }).success, false);
       untouched(f);
       validControl(f);
-    } finally { f.dispose(); }
+    } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
+    f.dispose();
+    retainedExplorerCases.delete(held);
   });
 
   it("refuses manifest source drift before effects, then accepts the unchanged registered control", () => {
     const f = explorerAuthorityFixture();
+    const held: { f: typeof f; primary?: { error: unknown } } = { f };
+    retainedExplorerCases.add(held);
     try {
       const query = explorerQueryDeps(f.clock, FingerprintSchema.parse("b".repeat(64)));
       const broken = { ...query, buildManifest: { ...GENERATED_BUILD_MANIFEST, workflows: GENERATED_BUILD_MANIFEST.workflows.map(w => ({ ...w, sources: [{ path: "src/missing-workflow.ts" }] })) } };
@@ -56,11 +65,15 @@ describe("Explorer registered graph and service acceptance", () => {
       assert.throws(() => service.validate(draft(f)), /compile attestation.*source.*unresolved/u);
       untouched(f);
       validControl(f);
-    } finally { f.dispose(); }
+    } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
+    f.dispose();
+    retainedExplorerCases.delete(held);
   });
 
   it("refuses served scenario registration drift before effects while accepting absent physical scenario sources", () => {
     const f = explorerAuthorityFixture();
+    const held: { f: typeof f; primary?: { error: unknown } } = { f };
+    retainedExplorerCases.add(held);
     try {
       const query = explorerQueryDeps(f.clock, FingerprintSchema.parse("b".repeat(64)));
       const workflow = buildWorkflowExplorer(query).workflows.find(w => w.id === f.descriptor.id);
@@ -69,18 +82,24 @@ describe("Explorer registered graph and service acceptance", () => {
       assert.throws(() => buildExplorerCompileAttestation(query, { ...workflow, scenarios: [] }), /served scenario registrations differ/u);
       untouched(f);
       validControl(f);
-    } finally { f.dispose(); }
+    } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
+    f.dispose();
+    retainedExplorerCases.delete(held);
   });
 
   it.each(["graph", "selector", "schema", "timeline-label", "notification-preferences"])("rejects forbidden %s drafts and commands without successful records", kind => {
     const f = explorerAuthorityFixture();
+    const held: { f: typeof f; primary?: { error: unknown } } = { f };
+    retainedExplorerCases.add(held);
     try {
       const changes = [{ kind, value: "unapproved" }];
       assert.throws(() => f.service.validate(draft(f, changes)));
       assert.throws(() => f.kernel.execute({ ...f.command(FIRST), payload: { changes } }));
       untouched(f);
       validControl(f);
-    } finally { f.dispose(); }
+    } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
+    f.dispose();
+    retainedExplorerCases.delete(held);
   });
 
   it.each([
@@ -91,6 +110,8 @@ describe("Explorer registered graph and service acceptance", () => {
     { changes: [{ kind: "edit-data-fields", fields: [{ ...SOURCE_FIELD, fieldPath: "not.allowlisted" }] }], category: "edit-data-field-allowlist" },
   ])("refuses $category without effects and preserves a reachable valid command", ({ changes, category }) => {
     const f = explorerAuthorityFixture();
+    const held: { f: typeof f; primary?: { error: unknown } } = { f };
+    retainedExplorerCases.add(held);
     try {
       const result = f.service.validate(draft(f, changes));
       assert.equal(result.state, "refused");
@@ -99,11 +120,15 @@ describe("Explorer registered graph and service acceptance", () => {
       assert.equal(f.kernel.execute({ ...f.command(FIRST), payload: { changes } }).state, "rejected");
       untouched(f);
       validControl(f);
-    } finally { f.dispose(); }
+    } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
+    f.dispose();
+    retainedExplorerCases.delete(held);
   });
 
   it("refuses all stale bases, replays exactly and restores appearance at a new revision after reopening SQLite", () => {
     const f = explorerAuthorityFixture();
+    const held: { f: typeof f; primary?: { error: unknown } } = { f };
+    retainedExplorerCases.add(held);
     try {
       for (const basis of [{ baseDescriptorVersion: f.descriptor.version + 1 }, { baseContractFingerprint: "0".repeat(64) }, { baseOverrideRevision: 9 }]) {
         assert.equal(f.service.validate({ ...draft(f), ...basis }).state, "conflict");
@@ -124,6 +149,8 @@ describe("Explorer registered graph and service acceptance", () => {
       assert.equal(f.database.authority.explorerOverrides.read("person-lookup")?.revision, 2);
       assert.equal(f.kernel.execute(command).state, "already-applied");
       assert.equal(f.database.authority.commandAudits.findByCommand(THIRD)?.result.state, "applied");
-    } finally { f.dispose(); }
+    } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
+    f.dispose();
+    retainedExplorerCases.delete(held);
   });
 });

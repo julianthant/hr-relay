@@ -1,12 +1,16 @@
+import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 
 import { expect, test } from "@playwright/test";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { startRunRerunServer } from "./helpers/run-rerun-server.js";
 
+const retainedParityFixtureFailures = new Set<object>();
+
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`approved Rerun proportions and source-bound flow @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     const server = await startRunRerunServer();
+    let parityBodyFailure: { error: unknown } | undefined;
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 });
       await installTheme(page, theme);
@@ -50,13 +54,26 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0); await expect(launcher).toBeFocused();
       expect(JSON.stringify(server.h.fresh(server.source))).toBe(source); expect(errors).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-    } finally { await page.close(); await server.close(); }
+    } catch (error) { parityBodyFailure = { error }; }
+    if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
+      retainedParityFixtureFailures.add({ owners: [page, server], primary: parityBodyFailure.error });
+      throw parityBodyFailure.error;
+    }
+    let parityCleanupFailure: { error: unknown } | undefined;
+    try { await page.close(); await server.close(); } catch (error) { parityCleanupFailure = { error }; }
+    if (parityCleanupFailure !== undefined) {
+      retainedParityFixtureFailures.add({ owners: [page, server], primary: parityBodyFailure?.error, cleanup: parityCleanupFailure.error });
+      if (parityBodyFailure !== undefined) throw new AggregateError([parityBodyFailure.error, parityCleanupFailure.error], 'parity-body-and-cleanup-failed', { cause: parityBodyFailure.error });
+      throw parityCleanupFailure.error;
+    }
+    if (parityBodyFailure !== undefined) throw parityBodyFailure.error;
   });
 }
 
 test("Rerun waits for the omitted step's required values before Options", async ({ page }) => {
   const server = await startRunRerunServer();
-  try {
+  let parityBodyFailure: { error: unknown } | undefined;
+    try {
     await gotoAppState(page, server.baseUrl, { day: server.day });
     await page.getByRole("button", { name: "Rerun", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Rerun", exact: true });
@@ -70,5 +87,17 @@ test("Rerun waits for the omitted step's required values before Options", async 
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
     expect(server.commands).toHaveLength(0); expect(server.h.queueRoots).toHaveLength(1);
-  } finally { await page.close(); await server.close(); }
+  } catch (error) { parityBodyFailure = { error }; }
+    if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
+      retainedParityFixtureFailures.add({ owners: [page, server], primary: parityBodyFailure.error });
+      throw parityBodyFailure.error;
+    }
+    let parityCleanupFailure: { error: unknown } | undefined;
+    try { await page.close(); await server.close(); } catch (error) { parityCleanupFailure = { error }; }
+    if (parityCleanupFailure !== undefined) {
+      retainedParityFixtureFailures.add({ owners: [page, server], primary: parityBodyFailure?.error, cleanup: parityCleanupFailure.error });
+      if (parityBodyFailure !== undefined) throw new AggregateError([parityBodyFailure.error, parityCleanupFailure.error], 'parity-body-and-cleanup-failed', { cause: parityBodyFailure.error });
+      throw parityCleanupFailure.error;
+    }
+    if (parityBodyFailure !== undefined) throw parityBodyFailure.error;
 });

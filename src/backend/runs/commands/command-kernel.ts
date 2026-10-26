@@ -1,3 +1,4 @@
+import { AssistantModelPreferenceCommandRequestSchema } from "../../../rules/commands/commands.js";
 import { notificationMatchesCollection, type NotificationRecord, type NotificationCollectionOperation } from "../../../models/notifications/notifications.js";
 import { assistantKnowledgeArtifact, ASSISTANT_INPUT_PROJECTION_VERSION } from "../../assistant/context.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -64,6 +65,7 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsReadbackSchema, type P
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
+  'assistant-model-preference': ['set-assistant-model-preference'],
   "failure-resolution": ["annotate-failure"],
   "workflow-batch": ["set-batch-grouping"],
   start: ["start-run"],
@@ -287,6 +289,7 @@ export interface CommandKernelDependencies {
   /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
   readonly settings?: SettingsApplicationExecutor;
   readonly authorityProfileId?: string;
+  readonly prepareAssistantModelPreference?: (request: z.infer<typeof AssistantModelPreferenceCommandRequestSchema>) => Promise<() => true>;
   readonly assistantSurface?: () => readonly Readonly<{ method: string; path: string }>[];
   readonly workflowSources?: Readonly<Record<string, "mock" | "served">>;
   readonly assistantRevalidate?: (command: CommandRequest) => void;
@@ -303,6 +306,7 @@ export interface CommandKernel {
   execute(input: unknown, parentCommandId?: string): CommandResult;
 
   executeWorkerPool(input: unknown): Promise<CommandResult>;
+  executeAssistantModelPreference(input: unknown): Promise<CommandResult>;
 }
 
 /* ── internals ───────────────────────────────────────────────────────────── */
@@ -2362,6 +2366,20 @@ function dispatchActive(
   auditId: string,
 ): CommandApplication {
   switch (request.family) {
+    case "assistant-model-preference": {
+      if (request.requestedBy !== "local-operator" || request.source.startsWith("assistant")
+        || repositories.assistantAuthorization.actionByCommand(request.commandId) !== undefined
+        || dependencies.authorityProfileId !== request.target.profileId) reject(request, "invalid-state", "assistant-preference-operator-only");
+      const prior = repositories.assistantModelPreference.get();
+      const revision = prior?.revision ?? 0;
+      if (revision !== request.target.expectedRevision) conflict(request, revision, "assistant-preference-cas-conflict");
+      const nextRevision = revision + 1;
+      const target = { family: "assistant-model-preference" as const, profileId: request.target.profileId, revision: nextRevision };
+      return { ...applied(request, [target], [{ target, before: revision, after: nextRevision }]), afterAudit: () => {
+        repositories.assistantModelPreference.setByCommand({ format: 1, id: "current", profileId: request.target.profileId,
+          revision: nextRevision, preference: request.payload, commandId: request.commandId, auditId, updatedAt: now });
+      } };
+    }
     case "failure-resolution": return (dependencies.failureResolution?.execute ?? executeFailureResolution)(repositories, request, now);
     case "workflow-batch": {
       const batch = repositories.runSessions.get(request.target.batchId);
@@ -2622,6 +2640,7 @@ export function executeSettingsCommand(
 
 export function createCommandKernel(dependencies: CommandKernelDependencies): CommandKernel {
   const availability = () => commandAssistantAvailability((family, action) => {
+    if (family === "assistant-model-preference") return false;
     if (DEFERRED_ARM_KEYS.has(`${family}/${action}`)) return false;
     if (family === "settings") return dependencies.settings !== undefined;
     if (family === "storage-relocation") return dependencies.storageRelocationPlans !== undefined;
@@ -2656,7 +2675,10 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       release();
     }
   };
-  const executeSync = (request: CommandRequest, parentCommandId?: string): CommandResult => {
+  const executeSync = (request: CommandRequest, parentCommandId?: string, preferenceCurrent?: () => true): CommandResult => {
+      if (request.family === "assistant-model-preference" && preferenceCurrent === undefined) return CommandResultSchema.parse({
+        state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: "assistant-preference-unavailable",
+      });
       if (parentCommandId !== undefined && request.family !== "run") throw new Error("command-group children must be run commands");
       if (request.family === "settings") return executeSettingsCommand(dependencies, request);
       if (request.family === "storage-relocation") {
@@ -2680,11 +2702,20 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       let commit: (() => void) | undefined;
       try {
         const result = dependencies.authority.withAuthorityTransaction((repositories) => {
+          preferenceCurrent?.();
+          if (request.family === "assistant-model-preference" && (request.requestedBy !== "local-operator"
+            || request.source.startsWith("assistant") || dependencies.authorityProfileId !== request.target.profileId
+            || repositories.assistantAuthorization.actionByCommand(request.commandId) !== undefined)) {
+            reject(request, "invalid-state", "assistant-preference-operator-only");
+          }
           repositories.commands.assertIdentity(request, parentCommandId);
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
           const journalRequest = request;
           const journal = repositories.commands.insert(journalRequest, parentCommandId);
-          if (journal.state === "existing") return replay(dependencies, repositories, request, now);
+          if (journal.state === "existing") {
+            if (request.family === "assistant-model-preference") repositories.assistantModelPreference.get();
+            return replay(dependencies, repositories, request, now);
+          }
           const auditId = dependencies.ids.uuid();
           const application = request.family === "run" && (request.type === "retry" || request.type === "cancel")
             ? withCanonicalRunCommandScope(repositories, request,
@@ -2701,6 +2732,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             affectedDependencyIds: application.affectedDependencyIds,
             ...(application.writeResolution === undefined ? {} : {writeResolution:application.writeResolution}),
           });
+          preferenceCurrent?.();
           application.afterAudit?.();
           if (application.settingsCurrent !== undefined) {
             repositories.settingsCurrent.advance({
@@ -2758,12 +2790,41 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
     },
     execute(input: unknown, parentCommandId?: string): CommandResult {
       const request = CommandRequestSchema.parse(input);
+      if (request.family === "assistant-model-preference") {
+        if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("Command request exceeds 256 KiB");
+        return executeSync(request, parentCommandId);
+      }
       dependencies.assistantRevalidate?.(request);
   if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
       if (request.family === "failure-resolution" && (dependencies.failureResolution?.capability ?? failureResolutionCapability)().state === "unavailable") {
         return {state:"rejected",commandId:request.commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."};
       }
       return executeSync(request, parentCommandId);
+    },
+    async executeAssistantModelPreference(input: unknown): Promise<CommandResult> {
+      const request = AssistantModelPreferenceCommandRequestSchema.parse(input);
+      if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("Command request exceeds 256 KiB");
+      if (request.requestedBy !== "local-operator" || request.source.startsWith("assistant")
+        || dependencies.authorityProfileId !== request.target.profileId || dependencies.prepareAssistantModelPreference === undefined) return CommandResultSchema.parse({
+          state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: "assistant-preference-unavailable",
+        });
+      const current = await dependencies.prepareAssistantModelPreference(request);
+      const assertCurrent = (): true => {
+        const value: unknown = current();
+        if (value instanceof Promise) void value.catch(() => {});
+        if (value !== true) throw new Error("assistant-model-preference-authority-not-current");
+        return true;
+      };
+      assertCurrent();
+      const result = executeSync(request, undefined, assertCurrent);
+      try { assertCurrent(); }
+      catch (error) {
+        if (result.state === "applied" || result.state === "already-applied") {
+          throw new Error("assistant-model-preference-committed-currentness-unproved", { cause: error });
+        }
+        throw error;
+      }
+      return result;
     },
     async executeWorkerPool(input: unknown): Promise<CommandResult> {
       const request = CommandRequestSchema.parse(input);

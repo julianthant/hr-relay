@@ -1,3 +1,5 @@
+import nativeFirstBootFs from "node:fs";
+import { retainAuthoritySourceClosure as retainFirstBootSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
@@ -586,4 +588,69 @@ it.each(["malformed", "foreign"] as const)("refuses %s machine registry before p
     assert.equal(readFileSync(registryPath).equals(before), true);
     assert.equal(existsSync(join(control, "admission-mutex")), false);
   } finally { rmSync(workspace, { recursive: true, force: true }); }
+});
+
+const retainedFirstBootLockOwners = new Set<object>();
+
+it("fresh machine admission creates its private fixed lock root before profile composition", () => {
+  const workspace = nativeFirstBootFs.mkdtempSync(join(nativeFirstBootFs.realpathSync(tmpdir()), "relay-first-boot-locks-"));
+  const held: { workspace: string; admission?: ReturnType<typeof acquireEntrypointAdmission>; primary?: { error: unknown } } = { workspace };
+  retainedFirstBootLockOwners.add(held);
+  try {
+    const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
+    assert.equal(nativeFirstBootFs.existsSync(processLockRoot), false);
+    const machine = acquireEntrypointAdmission(workspace, "exclusive"); held.admission = machine;
+    machine.assertFixedProcessLockRoot(workspace, processLockRoot);
+    const lock = nativeFirstBootFs.lstatSync(processLockRoot);
+    assert.ok(lock.isDirectory() && !lock.isSymbolicLink());
+    assert.equal(lock.mode & 0o777, 0o700);
+    if (process.getuid) assert.equal(lock.uid, process.getuid());
+    assert.deepEqual(nativeFirstBootFs.readdirSync(processLockRoot), []);
+    assert.equal(nativeFirstBootFs.existsSync(join(machine.stateRoot, "state.db")), false);
+    const context = machine.readInstallationContext(); assert.ok(context);
+    const registry = machine.readProfileRegistry(); assert.deepEqual(registry.profiles, []);
+    machine.release();
+    const reopened = acquireEntrypointAdmission(workspace, "exclusive"); held.admission = reopened;
+    reopened.assertFixedProcessLockRoot(workspace, processLockRoot);
+    assert.equal(reopened.readInstallationContext()?.locator.installationId, context.locator.installationId);
+    assert.deepEqual(reopened.readProfileRegistry(), registry);
+    const sameLock = nativeFirstBootFs.lstatSync(processLockRoot);
+    assert.deepEqual({ device: sameLock.dev, inode: sameLock.ino, mode: sameLock.mode }, { device: lock.dev, inode: lock.ino, mode: lock.mode });
+    reopened.release();
+    nativeFirstBootFs.rmSync(workspace, { recursive: true, force: true });
+    retainedFirstBootLockOwners.delete(held);
+  } catch (error) { held.primary = { error }; throw retainFirstBootSourceClosure([error], { admission: held }); }
+});
+
+it.each(["missing", "permissions"] as const)("ordinary admission refuses an existing %s lock root without repair", kind => {
+  const workspace = nativeFirstBootFs.mkdtempSync(join(nativeFirstBootFs.realpathSync(tmpdir()), "relay-existing-locks-"));
+  const held: { workspace: string; admission?: ReturnType<typeof acquireEntrypointAdmission>; primary?: { error: unknown } } = { workspace };
+  retainedFirstBootLockOwners.add(held);
+  try {
+    const machine = acquireEntrypointAdmission(workspace, "exclusive"); held.admission = machine;
+    const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
+    machine.assertFixedProcessLockRoot(workspace, processLockRoot);
+    const context = machine.readInstallationContext(); assert.ok(context);
+    const registry = machine.readProfileRegistry();
+    machine.release();
+    if (kind === "missing") nativeFirstBootFs.rmdirSync(processLockRoot);
+    else nativeFirstBootFs.chmodSync(processLockRoot, 0o755);
+    const before = kind === "missing" ? undefined : nativeFirstBootFs.lstatSync(processLockRoot);
+    const reopened = acquireEntrypointAdmission(workspace, "exclusive"); held.admission = reopened;
+    reopened.assertLive();
+    assert.equal(reopened.readInstallationContext()?.locator.installationId, context.locator.installationId);
+    assert.throws(() => reopened.assertFixedProcessLockRoot(workspace, processLockRoot), (error: unknown) => error instanceof Error
+      && (kind === "missing" ? Reflect.get(error, "code") === "ENOENT" : error.message === `unsafe directory ${processLockRoot}`));
+    assert.deepEqual(reopened.readProfileRegistry(), registry);
+    if (kind === "missing") assert.equal(nativeFirstBootFs.existsSync(processLockRoot), false);
+    else {
+      assert.ok(before);
+      const after = nativeFirstBootFs.lstatSync(processLockRoot);
+      assert.deepEqual({ device: after.dev, inode: after.ino, mode: after.mode }, { device: before.dev, inode: before.ino, mode: before.mode });
+      assert.equal(after.mode & 0o777, 0o755);
+    }
+    reopened.release();
+    nativeFirstBootFs.rmSync(workspace, { recursive: true, force: true });
+    retainedFirstBootLockOwners.delete(held);
+  } catch (error) { held.primary = { error }; throw retainFirstBootSourceClosure([error], { admission: held }); }
 });

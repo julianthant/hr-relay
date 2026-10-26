@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
+import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -47,4 +50,28 @@ describe('assistant port settlements', () => {
     expect(model.conversation.files.map(file => file.status)).toEqual(['Attached', 'Updated']);
     expect(model.error).toBe('Library registration failed');
   });
+});
+
+it('blocks every setup attachment before panel registration and both local file ports', async () => {
+  let controller!: ReturnType<typeof useAssistantController>, registrations = 0, attachments = 0, opens = 0, requests = 0;
+  const ports: AssistantPorts = { async onRegisterSpreadsheet() { registrations++; },
+    async onAttachFile() { attachments++; return file; }, async onOpenChatFile() { opens++; return file; } };
+  const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected', citations: [] }; } };
+  const producer = createAssistantMockProducer();
+  function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ producer, accountClient, ports, served: controller }); return null; }
+  host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(Harness)));
+  for (const text of [ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND]) {
+    await act(async () => controller.onAction({ type: "edit", value: text }));
+    await act(async () => {
+      expect(await model.attachFile(new File(['fixture'], 'fixture.txt'))).toBeNull();
+      expect(await model.openChatFile()).toBeNull();
+      expect(await model.send({ text, files: [file], model: 'ignored', effort: 'ignored', approval: 'ignored' })).toBe(false);
+    });
+    expect(model.error).toContain('text only');
+  }
+  expect(registrations).toBe(0); expect(attachments).toBe(0); expect(opens).toBe(0); expect(requests).toBe(0);
+  await act(async () => controller.onAction({ type: "edit", value: 'ordinary attachment' }));
+  await act(async () => { expect(await model.attachFile()).toBe(file); });
+  expect(attachments).toBe(1);
 });

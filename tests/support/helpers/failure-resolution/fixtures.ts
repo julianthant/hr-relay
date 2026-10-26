@@ -1,6 +1,7 @@
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { testAdmittedWorker } from '../../fixtures/run-lifecycle-fixtures.js';
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
@@ -27,11 +28,16 @@ export function resolutionKernel(db: AuthorityDatabase, clock: ReturnType<typeof
 }
 export function resolutionFixture(runId: string = failure().runId, failureId: string = failure().failureId,
   options: { sharedMachine?: true } = {}) {
-  const f = diagnosticFoundation(options);
-  const run = runId === f.run.envelope.runId ? f.run : f.createRun(runId);
-  const record = { ...failure(), runId: RunIdSchema.parse(runId), failureId: FailureIdSchema.parse(failureId), traceId: run.envelope.traceId };
-  terminalizeFixtureFailure(f, run, record);
-  return { ...f, record, kernel: resolutionKernel(f.db, f.clock) };
+ const f = diagnosticFoundation(options);
+ const held: { foundation: typeof f; primary?: unknown } = { foundation: f };
+ retainedResolutionOwners.add(held);
+ try {
+ const run = runId === f.run.envelope.runId ? f.run : f.createRun(runId);
+const record = { ...failure(), runId: RunIdSchema.parse(runId), failureId: FailureIdSchema.parse(failureId), traceId: run.envelope.traceId };
+terminalizeFixtureFailure(f, run, record);
+const result = { ...f, record, kernel: resolutionKernel(f.db, f.clock) };
+ retainedResolutionOwners.delete(held); return result;
+ } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 export function resolutionCommand(overrides: Record<string, unknown> = {}) {
   const record = failure();
@@ -70,7 +76,7 @@ import { createReceiptService } from "../../../../src/backend/runs/trust/receipt
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 
 import assert from "node:assert/strict";
-import { join } from "node:path";
+
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ConfigSchema } from "../../../../src/models/config/schema.js";
@@ -82,37 +88,45 @@ import { QUEUED_RUN, RUN_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { id } from "../database-foundation/fixtures.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
+const retainedResolutionOwners = new Set<object>();
 function diagnosticFoundation(options: { sharedMachine?: true }){
- const profile=createBoundProfileFixture(options);const root=profile.stateRoot;const path=profile.path;const clock=manualClock(new Date(NOW));
- const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
+ const held: { profile?: ReturnType<typeof createBoundProfileFixture>; db?: AuthorityDatabase; primary?: unknown } = {};
+ retainedResolutionOwners.add(held);
+ try {
+ const profile=createBoundProfileFixture(options); held.profile = profile;const root=profile.stateRoot;const path=profile.path;const clock=manualClock(new Date(NOW));
+ const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock); held.db = db;
  const config=ConfigSchema.parse({paths:defaultRuntimePaths()});
  const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
  db.authority.runtimeConfig.initialize(snapshot);
- let admissionIdentity=10000;
+
  const createRun=(runId:string)=>{
- const workerId=db.withAuthorityTransaction(repositories=>{
+ const repositories = db.authority;
   const slots=repositories.workerSlots.list("person-lookup").filter(slot=>slot.retiredAt===null);
-  const free=slots.find(slot=>!repositories.runs.listByWorker(slot.workerId).some(run=>["claimed","validating","running"].includes(run.lifecycle.state)));
-  const poolIndex=free?.poolIndex??[1,2,3].find(index=>!slots.some(slot=>slot.poolIndex===index));
-  assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
-  const slot=admitDirectWorker(repositories,{commandId:id(admissionIdentity++),workflow:"person-lookup",poolIndex,
-    expectedPoolVersion:repositories.workerPools.get("person-lookup")?.version??0,processId:process.pid,
-    processAcquisitionId:id(admissionIdentity++),authorityPath:path,processLockRoot:join(root,"locks"),now:NOW},id(admissionIdentity++));
-  if(repositories.workerLeases.get(slot.workerId)===undefined)assert.equal(repositories.workerLeases.start({workerId:slot.workerId,
-    workflow:"person-lookup",browserSystems:workflowProjections(personLookupDescriptor).systems,processId:process.pid,
-    requestedBy:"local-operator",now:NOW}).state,"started");
-  return slot.workerId;
- });
+const free=slots.find(slot=>!repositories.runs.listByWorker(slot.workerId).some(run=>["claimed","validating","running"].includes(run.lifecycle.state)));
+const poolIndex=free?.poolIndex??[1,2,3].find(index=>!slots.some(slot=>slot.poolIndex===index));
+assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
+  const admitted = testAdmittedWorker(db, clock, { path, workflow: personLookupDescriptor.id, poolIndex,
+    browserSystems: workflowProjections(personLookupDescriptor).systems });
+  if (admitted.started !== undefined) assert.equal(admitted.started.state, "started");
+  const workerId = admitted.workerId, workerLifetime = admitted.workerLifetime;
  db.authority.runs.enqueue({...QUEUED_RUN,input: { ...QUEUED_RUN.input, parsed: {
  schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"), value: { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
  protectedBindings: [{kind:"test-data-local",inputPath:"emplId",name:"personLookupCanaryEid",sourceId:id(89)}] } },envelope:{...QUEUED_RUN.envelope,runId, itemId:runId, descriptorVersion:personLookupDescriptor.version, contractFingerprint:personLookupDescriptor.contractFingerprint,configFingerprint:snapshot.fingerprint,configSnapshotId:snapshot.configSnapshotId}});
- const claim=db.authority.runs.claimNext({workflow:"person-lookup",workerId,now:NOW});assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("fixture claim failed");
- const validating=db.authority.runs.transition({runId,expectedVersion:claim.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"validating",workerId,claimedAt:NOW,heartbeatAt:NOW},now:NOW});assert.equal(validating.state,"applied");if(validating.state!=="applied")throw new Error("fixture validation failed");
- const running=db.authority.runs.transition({runId,expectedVersion:validating.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"running",workerId,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"searching"},now:NOW});assert.equal(running.state,"applied");if(running.state!=="applied")throw new Error("fixture run failed");
+ const claim=db.authority.runs.claimNext({workflow:"person-lookup",workerId,now:NOW,workerLifetime});assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("fixture claim failed");
+ const validating=db.authority.runs.transition({runId,expectedVersion:claim.run.version,claim:{workerId,claimGeneration:1},lifecycle:{workerLifetime,state:"validating",workerId,claimedAt:NOW,heartbeatAt:NOW},now:NOW});assert.equal(validating.state,"applied");if(validating.state!=="applied")throw new Error("fixture validation failed");
+ const running=db.authority.runs.transition({runId,expectedVersion:validating.run.version,claim:{workerId,claimGeneration:1},lifecycle:{workerLifetime,state:"running",workerId,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"searching"},now:NOW});assert.equal(running.state,"applied");if(running.state!=="applied")throw new Error("fixture run failed");
  return running.run;
  };
  const run=createRun(RUN_ID);
- return {root,path,clock,db,snapshot,run,createRun,profile,dispose:()=>{db.close();profile.close();}};
+ let disposeAttempted = false, disposeFailure: Error | undefined;
+  retainedResolutionOwners.delete(held);
+  return {root,path,clock,db,snapshot,run,createRun,profile,dispose:()=>{
+    if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
+    disposeAttempted = true;
+    try { db.close(); profile.close(); }
+    catch (error) { held.primary = error; disposeFailure = retainAuthoritySourceClosure([error], { admission: held }); retainedResolutionOwners.add(held); throw disposeFailure; }
+  }};
+} catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";

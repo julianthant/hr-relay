@@ -1,3 +1,5 @@
+import { retainAuthoritySourceClosure } from "../../../src/backend/storage/source-closure.js";
+import { testWorkerLifetime } from '../fixtures/run-lifecycle-fixtures.js';
 import { boundProfileAdmission } from "./admission-fixture.js";
 import assert from "node:assert/strict";
 import type { DatabaseSync as DatabaseSyncInstance } from "node:sqlite";
@@ -30,8 +32,10 @@ export function writeFenceFixtureInput(database: AuthorityDatabase, input: unkno
     const worker = database.authority.workerSlots.list(run.envelope.workflow).find(slot => slot.retiredAt === null
       && !database.authority.runs.listByWorker(slot.workerId).some(owned => runClaim(owned) !== undefined));
     assert.ok(worker);
+    const lifetime = testWorkerLifetime(database, run.envelope.workflow, worker.poolIndex);
+    assert.equal(lifetime.workerId, worker.workerId);
     const claimed = database.authority.runs.claimNext({ workflow: run.envelope.workflow,
-      workerId: worker.workerId, now: intent.fencedAt });
+      workerId: worker.workerId, now: intent.fencedAt, workerLifetime: lifetime.workerLifetime });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") throw new Error("fixture claim failed");
     assert.equal(claimed.run.envelope.runId, intent.runId);
@@ -66,8 +70,9 @@ export function seedCorruptWriteFenceFixture(database: AuthorityDatabase, input:
   const { intent, attempt } = WriteFenceRecordsSchema.parse(input);
   if (intent.status !== "attempting") throw new Error("corruption fixture intent is not attempting");
   const databasePath = syntheticDatabasePath(database);
-  boundProfileAdmission(databasePath);
+  const admission = boundProfileAdmission(databasePath);
   const raw = new DatabaseSync(databasePath);
+  let primary: { error: unknown } | undefined;
   try {
     raw.prepare(`INSERT INTO write_intents (id, system, idempotency_key, idempotency_key_digest, status,
       generation, run_id, payload_json, publication_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`)
@@ -76,5 +81,9 @@ export function seedCorruptWriteFenceFixture(database: AuthorityDatabase, input:
     raw.prepare(`INSERT INTO write_attempts (id, intent_id, generation, run_id, payload_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?)`).run(attempt.writeAttemptId, attempt.writeIntentId,
         attempt.generation, attempt.runId, canonicalJsonStringify(attempt), attempt.recordedAt);
-  } finally { raw.close(); }
+  } catch (error) { primary = { error }; }
+  let closeFailure: { error: unknown } | undefined;
+  try { raw.close(); } catch (error) { closeFailure = { error }; }
+  if (closeFailure !== undefined) throw retainAuthoritySourceClosure(primary === undefined ? [closeFailure.error] : [primary.error, closeFailure.error], { admission: { admission, database, raw } });
+  if (primary !== undefined) throw primary.error;
 }

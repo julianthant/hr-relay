@@ -1,6 +1,7 @@
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
-import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json";
-import { createAssistantService, type AssistantModelPolicy } from "../../../assistant/service.js";
+import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
+import { createAssistantService } from "../../../assistant/service.js";
 import { assistantSurfaceCoverage, createProductionAssistantTools } from "../../../assistant/tools.js";
 import { assistantKnowledgeArtifact, loadProductionAssistantContext } from "../../../assistant/context.js";
 import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
@@ -120,7 +121,6 @@ export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
   readonly admission?: RuntimeAdmission;
-  readonly assistantModelPolicy?: Readonly<{ policy: AssistantModelPolicy; isCurrent(): boolean }>;
   readonly profile?: Readonly<{ runtime: ReturnType<typeof composeProfileRuntime>; token: string }>;
   readonly isolation: RuntimeIsolation;
   readonly env?: NodeJS.ProcessEnv;
@@ -482,6 +482,31 @@ async function composeDashboardRuntimeStartup(
     catch (error) { if (error instanceof RuntimeCustodyUncertainError) databaseClosed = false; throw error; }
   })();
   const { database, admission, account: chatGptAccount } = context;
+  const selectedModelProfileId = admission.profileBinding.profileId, selectedModelEpoch = context.profileEpoch;
+  const assertSelectedModelContext = (): true => {
+    assertCurrent();
+    if (profile.runtime.selectedContext(profile.token) !== context || context.profileEpoch !== selectedModelEpoch
+      || admission.profileBinding.profileId !== selectedModelProfileId) throw new Error('assistant-model-context-changed');
+    context.assertCurrent();
+    return true;
+  };
+  const captureSelectedModel = () => {
+    assertSelectedModelContext();
+    const record = database.authority.assistantModelPreference.get();
+    const identity = record === undefined ? undefined : canonicalJsonStringify(record);
+    const view = AssistantModelPreferenceViewSchema.parse({ profileId: selectedModelProfileId, epoch: selectedModelEpoch,
+      revision: record?.revision ?? 0, preference: record === undefined
+        ? { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } : record.preference });
+    const assertPreferenceCurrent = (): true => {
+      assertSelectedModelContext();
+      const current = database.authority.assistantModelPreference.get();
+      if ((current === undefined ? undefined : canonicalJsonStringify(current)) !== identity) throw new Error('assistant-model-preference-changed');
+      return true;
+    };
+    assertPreferenceCurrent();
+    return { view, assertPreferenceCurrent };
+  };
+
   custody.revoke = profile.runtime.beginClose;
   databaseClosed = false;
   const prepareRuntimeClosure = (): Promise<void> => {
@@ -765,6 +790,24 @@ async function composeDashboardRuntimeStartup(
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     settings: settingsBoundary.executor,
     authorityProfileId: admission.profileBinding.profileId,
+    prepareAssistantModelPreference: async request => {
+      assertCurrent();
+      if (request.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || request.target.profileId !== selectedModelProfileId
+        || request.target.epoch !== selectedModelEpoch) throw new Error('assistant-model-selection-refused');
+      const choice = Object.freeze(AssistantModelPreferenceSchema.parse(request.payload)), identity = canonicalJsonStringify(choice);
+      const assertSelectionCurrent = (): true => {
+        assertSelectedModelContext();
+        if (request.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || request.target.profileId !== selectedModelProfileId
+          || request.target.epoch !== selectedModelEpoch || canonicalJsonStringify(request.payload) !== identity) {
+          throw new Error('assistant-model-selection-changed');
+        }
+        return true;
+      };
+      const prepared = await chatGptAccount.prepareAssistantModelPreference(choice, assertSelectionCurrent);
+      assertSelectionCurrent();
+      return prepared;
+    },
+
     assistantRevalidate: command => {
       if (database.authority.assistantAuthorization.actionByCommand(command.commandId) === undefined) return;
         assistantAuthorization.assertEffect(command.commandId, command);
@@ -774,15 +817,19 @@ async function composeDashboardRuntimeStartup(
   });
 
   const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
-  const assistantPolicy = input.assistantModelPolicy;
   const knowledge = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
   const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
     actorId: resolved.config.actor.id, clock, assertCurrent });
   const assistant = createAssistantService({ account: { ...chatGptAccount, ...context.accountAuthority },
     context: () => loadProductionAssistantContext(repoRoot, knowledge),
     runtime: () => { assertCurrent(); return knowledge.policy; },
-    modelPolicy: assistantPolicy?.policy,
-    isModelPolicyCurrent: () => { assertCurrent(); return assistantPolicy !== undefined && assistantPolicy.isCurrent(); },
+    modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
+    readModelPreference: () => captureSelectedModel().view,
+    verifySelectedModel: async signal => {
+      const captured = captureSelectedModel();
+      await chatGptAccount.verifyAssistantCapability(captured.view.preference, captured.assertPreferenceCurrent, signal);
+      captured.assertPreferenceCurrent();
+    },
     clock, ...assistantTools,
   });
 
@@ -986,7 +1033,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       try {
         const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
         const report = await upgradeReadyProfileStorage(exclusive, claim, { plan: false, hostFacts: facts }, clock);
-        if (report.state !== "upgraded" || report.fromSchemaVersion !== 7 || report.toSchemaVersion !== 8) throw new Error("profile-upgrade-readback-unproved");
+        if (report.state !== "upgraded" || report.fromSchemaVersion !== 8 || report.toSchemaVersion !== 9) throw new Error("profile-upgrade-readback-unproved");
       } catch (error) {
         if (!(error instanceof AuthoritySourceClosureUnprovedError)) {
           try { exclusive.release(); exclusiveOwner = undefined; }

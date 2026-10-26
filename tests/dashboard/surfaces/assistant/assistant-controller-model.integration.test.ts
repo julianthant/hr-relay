@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
+import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
+import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
+import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
+import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { AssistantPanel as ShellAssistantPanel } from '../../../../src/dashboard/surfaces/shell/assistant-panel.js';
+import { createAssistantMockProducer as createSetupAssistantProducer, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
+
 import assert from 'node:assert/strict';
-import { afterEach, it } from 'vitest';
+import { afterEach, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
-import { ChatGptAccountContext, createPreviewChatGptAccountPort } from '../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js';
-import { useComposer } from '../../../../src/dashboard/surfaces/shell/composer-model.js';
-import type { AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { ChatGptAccountContext, createPreviewChatGptAccountPort, createServedChatGptAccountPort } from '../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js';
+import { type ComposerDraft, useComposer } from '../../../../src/dashboard/surfaces/shell/composer-model.js';
+
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); });
@@ -35,6 +42,13 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
   await render('a', 2); assert.equal(pending[2].signal?.aborted, true);
   await act(async () => { pending[2].settle({ state: 'answered', text: 'Stale authority', citations: [] }); });
   assert.equal(current.state.messages.some(message => message.text === 'Stale authority'), false);
+  assert.equal(current.state.turn.state, 'unknown');
+  const unknownBeforeAccountChange = current.onAction, beforeAccountDispatch = pending.length, nextAccountDraft = current.state.draft;
+  await act(async () => unknownBeforeAccountChange({ type: 'send' }));
+  assert.equal(pending.length, beforeAccountDispatch);
+  assert.equal(current.state.turn.state, 'unknown');
+  await render('new-chat-after-authority-loss', 1);
+  await act(async () => current.onAction({ type: 'edit', value: nextAccountDraft }));
   await act(async () => { current.onAction({ type: 'send' }); });
   await act(async () => { await account.signOut(); }); assert.equal(pending[3].signal?.aborted, true); assert.equal(current.accountAvailable, false);
   await act(async () => { pending[3].settle({ state: 'answered', text: 'Stale account', citations: [] }); });
@@ -108,11 +122,32 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await send('Edit then revert'); await act(async () => composer.setText('Changed')); await act(async () => composer.setText('Edit then revert'));
   await act(async () => replies[3].resolve({ state: 'answered', text: 'Answer', citations: [] })); assert.equal(composer.text, 'Edit then revert');
   await send('Failed'); await act(async () => replies[4].reject(new Error('Synthetic transport failure'))); assert.equal(composer.text, 'Failed');
+  assert.equal(controller.state.turn.state, 'unknown');
+  const unknownBeforeCancel = controller.onAction, beforeCancelDispatch = replies.length, nextCancelFiles = composer.files;
+  await act(async () => unknownBeforeCancel({ type: 'send' }));
+  assert.equal(replies.length, beforeCancelDispatch);
+  assert.equal(controller.state.turn.state, 'unknown');
+  await render('new-chat-after-transport-uncertainty');
+  await act(async () => composer.setFiles(nextCancelFiles));
   await send('Cancelled'); await act(async () => controller.onAction({ type: 'cancel' }));
   await act(async () => replies[5].resolve({ state: 'answered', text: 'Late', citations: [] })); assert.equal(composer.text, 'Cancelled');
-  await send('Old authority'); await render('a', 2);
+  assert.equal(controller.state.turn.state, 'unknown');
+  const beforeAuthorityDispatch = replies.length, authorityFiles = composer.files;
+  await act(async () => controller.onAction({ type: 'send' }));
+  assert.equal(replies.length, beforeAuthorityDispatch);
+  assert.equal(controller.state.turn.state, 'unknown');
+  await render('authority-change-case');
+  await act(async () => composer.setFiles(authorityFiles));
+  await send('Old authority'); await render("authority-change-case", 2);
   await act(async () => replies[6].resolve({ state: 'answered', text: 'Late authority', citations: [] })); assert.equal(composer.text, 'Old authority');
-  await send('Old chat'); await render('b', 2); await act(async () => composer.setText('Other chat draft'));
+  assert.equal(controller.state.turn.state, 'unknown');
+  const beforeTypedDispatch = replies.length, typedFiles = composer.files;
+  await act(async () => controller.onAction({ type: 'send' }));
+  assert.equal(replies.length, beforeTypedDispatch);
+  assert.equal(controller.state.turn.state, 'unknown');
+  await render('typed-authority-change-case');
+  await act(async () => composer.setFiles(typedFiles));
+  await send('Old chat'); await render("typed-authority-change-case", 2); await act(async () => composer.setText('Other chat draft'));
   await act(async () => replies[7].resolve({ state: 'answered', text: 'Late chat', citations: [] })); assert.equal(composer.text, 'Other chat draft');
 });
 
@@ -123,8 +158,9 @@ it('renders the existing served action card with truthful local facts and confir
   const account = { ...preview, mode: 'live' as const };
   let current!: ReturnType<typeof useAssistantController>, confirmations = 0;
   const identity = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1 };
+  const actionLabel = 'Mark a notification read';
   const client = { async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal: { ...identity,
-    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', subject: 'none', effect: 'local-write' } }; },
+    expiresAt: '2099-01-01T00:00:00Z', label: actionLabel, targetLabel: 'Local notification', subject: 'none', effect: 'local-write' } }; },
     async assistantDecide(input: { chatId: string; actionId: string; revision: number; decision: 'confirm' | 'cancel' }) {
       assert.deepEqual(input, { ...identity, decision: 'confirm' }); confirmations++;
       return { state: 'applied' as const, actionId: input.actionId };
@@ -138,7 +174,9 @@ it('renders the existing served action card with truthful local facts and confir
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
   await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
   const card = host.querySelector('[aria-label="Proposed action details"]'); assert.ok(card);
-  assert.match(card.textContent ?? '', /Proposed action · Local change/u);
+  const cardLabel = card.getAttribute('aria-label'); assert.ok(cardLabel !== null);
+  assert.equal(cardLabel, "Proposed action details");
+  assert.ok(card.textContent?.includes(actionLabel));
   assert.match(host.textContent ?? '', /Model, effort, permission-mode and voice controls are unavailable/u);
   assert.match(host.textContent ?? '', /Review and confirm issued local actions/u);
   assert.match(card.textContent ?? '', /SubjectNone/u); assert.match(card.textContent ?? '', /Local notification/u);
@@ -147,4 +185,66 @@ it('renders the existing served action card with truthful local facts and confir
   await act(async () => { confirm.click(); confirm.click(); });
   assert.equal(confirmations, 1); assert.match(host.textContent ?? '', /Action completed/u);
   assert.equal(confirm.disabled, true);
+});
+
+function setupAccount() {
+  let verified = false, reads = 0;
+  const unavailable = ChatGptAccountStateSchema.parse({ state: "unavailable", code: 'CHATGPT_USAGE_UNAVAILABLE',
+    message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text });
+  const signedIn = ChatGptAccountStateSchema.parse({ state: "connected", name: 'Fixture Operator', email: 'operator@example.test',
+    expiresAt: new Date(Date.now() + 60000).toISOString(), planUsage: "enabled" });
+  const client = createDashboardClient({ baseUrl: 'http://relay.test', fetchImpl: async () => {
+    reads++; return Response.json(verified ? signedIn : unavailable);
+  } });
+  const port = createServedChatGptAccountPort(client);
+  return { port, verify: () => { verified = true; }, get reads() { return reads; } };
+}
+it('opens only the composer for the actual unverified account resource, then refreshes once after explicit verification', async () => {
+  const account = setupAccount(); let calls = 0, current!: ReturnType<typeof useAssistantController>;
+  const client = { async assistantRespond(): Promise<AssistantResult> { calls++; account.verify(); return { state: 'answered', text: 'Verified', citations: [] }; } };
+  function Harness() { current = useAssistantController(client, 'profile', undefined, false); return null; }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  try {
+    await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account.port, children: createElement(Harness) })));
+    await vi.waitFor(() => { assert.equal(current.canCompose, true); assert.equal(current.accountAvailable, false); });
+    assert.equal(account.reads, 1); assert.equal(calls, 0);
+    const resource = account.port.getResource(); assert.ok('code' in resource); assert.equal(resource.code, 'CHATGPT_USAGE_UNAVAILABLE');
+    assert.equal(current.accountNotice, ERROR_CATALOG.ASSISTANT_MODEL_UNVERIFIED.text);
+    await act(async () => { current.onAction({ type: "edit", value: ASSISTANT_VERIFY_COMMAND }); current.onAction({ type: "send" }); });
+    await vi.waitFor(() => assert.equal(current.accountAvailable, true));
+    assert.equal(current.canCompose, true); assert.equal(account.reads, 2); assert.equal(calls, 1);
+    await act(async () => { await Promise.resolve(); }); assert.equal(account.reads, 2);
+  } finally { account.port.dispose(); }
+});
+it('refuses setup attachments before send callbacks, file readers and registration through the existing composer', async () => {
+  for (const text of [ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_MODEL_COMMAND + ' fixture-selected ' + ASSISTANT_DEFAULT_EFFORT]) {
+    const account = setupAccount(); let requests = 0, sends = 0, registrations = 0, reads = 0, attachments = 0;
+    let current!: ReturnType<typeof useAssistantController>;
+    const file: AssistantFile = { id: 'fixture-file', name: 'fixture.txt', status: "Attached" };
+    Object.defineProperty(file, 'workbook', { get() { reads++; throw new Error('unexpected-file-read'); } });
+    let retained: ComposerDraft = { text, files: [file] };
+    const draft = { read: () => retained, retain(value: ComposerDraft) { retained = value; } };
+    const producer = createSetupAssistantProducer();
+    const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected', citations: [] }; } };
+    function Harness() {
+      current = useAssistantController(client, 'profile', undefined, false);
+      return createElement(ShellAssistantPanel, { producer, served: current, draft,
+        accountClient: { async chatGptAccount() { return ChatGptAccountStateSchema.parse({ state: "signed-out" }); } },
+        async onSendMessage() { sends++; }, async onRegisterSpreadsheet() { registrations++; },
+        async onAttachFile() { attachments++; return null; } });
+    }
+    const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+    try {
+      await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account.port, children: createElement(Harness) })));
+      await vi.waitFor(() => assert.equal(current.canCompose, true));
+      await act(async () => current.onAction({ type: "edit", value: text }));
+      const input = host.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+      Object.defineProperty(input, 'files', { configurable: true, value: [new File(['fixture'], 'fixture.txt')] });
+      await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await Promise.resolve(); });
+      const send = host.querySelector<HTMLButtonElement>('button[type="submit"]'); assert.ok(send); assert.equal(send.disabled, false);
+      await act(async () => { send.click(); await Promise.resolve(); });
+      assert.equal(sends, 0); assert.equal(registrations, 0); assert.equal(requests, 0); assert.equal(reads, 0); assert.equal(attachments, 0);
+      assert.ok(host.textContent?.includes('text only'));
+    } finally { await act(async () => root?.unmount()); root = undefined; host.remove(); account.port.dispose(); }
+  }
 });

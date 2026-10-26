@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 
 import { test, expect, type Page } from "@playwright/test";
 import { startRunRerunServer, type RunRerunServer } from "./helpers/run-rerun-server.js";
@@ -5,6 +6,8 @@ import { gotoAppState } from "./helpers/app-driver.js";
 import { absentProbeEvidence } from "../support/fixtures/write-sequencer-fixtures.js";
 import { EidSchema } from "../../src/rules/identity/ids.js";
 import { deriveIdempotencyKeyDigest } from "../../src/rules/write-safety/write-safety.js";
+
+const retainedParityFixtureFailures = new Set<object>();
 
 
 async function reviewRerun(page: Page, server: RunRerunServer) {
@@ -26,7 +29,8 @@ void 0;
 
 test("ordinary batch dry run enqueues one reviewed vector and no work before final submit", async ({ page }) => {
   const server = await startRunRerunServer();
-  try {
+  let parityBodyFailure: { error: unknown } | undefined;
+    try {
     await gotoAppState(page, server.baseUrl, { day: server.day, start: true });
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await dialog.getByPlaceholder("Employee ID").fill("10812346\n10812347");
@@ -51,12 +55,25 @@ test("ordinary batch dry run enqueues one reviewed vector and no work before fin
       const executed = await server.h.execute(run);
       expect(executed.state, JSON.stringify(executed.state === "failed" ? server.h.database.authority.failures.get(executed.failureId) : executed)).toBe("done");
     }
-  } finally { await page.close(); await server.close(); }
+  } catch (error) { parityBodyFailure = { error }; }
+    if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
+      retainedParityFixtureFailures.add({ owners: [page, server], primary: parityBodyFailure.error });
+      throw parityBodyFailure.error;
+    }
+    let parityCleanupFailure: { error: unknown } | undefined;
+    try { await page.close(); await server.close(); } catch (error) { parityCleanupFailure = { error }; }
+    if (parityCleanupFailure !== undefined) {
+      retainedParityFixtureFailures.add({ owners: [page, server], primary: parityBodyFailure?.error, cleanup: parityCleanupFailure.error });
+      if (parityBodyFailure !== undefined) throw new AggregateError([parityBodyFailure.error, parityCleanupFailure.error], 'parity-body-and-cleanup-failed', { cause: parityBodyFailure.error });
+      throw parityCleanupFailure.error;
+    }
+    if (parityBodyFailure !== undefined) throw parityBodyFailure.error;
 });
 
 test("settings save invalidates unconsumed review; new work selects saved settings and accepted replay stays exact", async ({ page }) => {
   const server = await startRunRerunServer();
-  try {
+  let parityBodyFailure: { error: unknown } | undefined;
+    try {
     const dialog = await reviewRerun(page, server); const original = JSON.stringify(server.h.fresh(server.source));
     expect(server.saveSettings({ "timeouts.taskMs": { set: 90_000 } }).state).toBe("applied");
     await dialog.getByRole("button", { name: "Start dry run", exact: true }).click();
@@ -75,5 +92,17 @@ test("settings save invalidates unconsumed review; new work selects saved settin
     await expect(page.getByRole("status", { name: "Run submission confirmed", exact: true })).toBeVisible();
     expect(server.h.queueRoots).toHaveLength(2); expect(server.h.database.authority.runs.get(root.runId)).toEqual(run);
     expect(JSON.stringify(server.h.fresh(server.source))).toBe(original);
-  } finally { await page.close(); await server.close(); }
+  } catch (error) { parityBodyFailure = { error }; }
+    if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
+      retainedParityFixtureFailures.add({ owners: [page, server], primary: parityBodyFailure.error });
+      throw parityBodyFailure.error;
+    }
+    let parityCleanupFailure: { error: unknown } | undefined;
+    try { await page.close(); await server.close(); } catch (error) { parityCleanupFailure = { error }; }
+    if (parityCleanupFailure !== undefined) {
+      retainedParityFixtureFailures.add({ owners: [page, server], primary: parityBodyFailure?.error, cleanup: parityCleanupFailure.error });
+      if (parityBodyFailure !== undefined) throw new AggregateError([parityBodyFailure.error, parityCleanupFailure.error], 'parity-body-and-cleanup-failed', { cause: parityBodyFailure.error });
+      throw parityCleanupFailure.error;
+    }
+    if (parityBodyFailure !== undefined) throw parityBodyFailure.error;
 });

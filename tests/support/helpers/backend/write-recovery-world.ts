@@ -1,12 +1,13 @@
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import assert from "node:assert/strict";
-import { join } from "node:path";
+
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService,runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { type WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWriteRecoveryService,createWriteResolutionExecutor,type WriteRecoveryService } from "../../../../src/backend/runtime/writes/write-recovery.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+
 import { type RunRecord } from "../../../../src/models/run/record.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
@@ -15,14 +16,16 @@ import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safet
 import { NO_INTAKE_PROJECTIONS,UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { CONFIG_SNAPSHOT,UUID_5,UUID_6,UUID_7,UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { testRunContinuation } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testRunContinuation, testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 import { WRITE_FIXTURE_IMPL_FINGERPRINT,WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_KEY_DIGEST,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_OBSERVATION,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_STAGED_STATE,WRITE_FIXTURE_WORKER_ID,WRITE_FIXTURE_WORKFLOW_ID,buildWriteFixtureRegistry,createWriteFixtureWorld,writeFixtureDescriptor,writeFixtureQueuedRun,writeFixtureSessionManager,writeFixtureSessions,type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
 import { ManualScheduler,recordingLogger,type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import { boundFixtureWorker } from "../synthetic-database-admission.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 
 interface Harness {
   readonly world: WriteFixtureWorld;
+  readonly workerId: string;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly manager: WorkerSessionManager;
@@ -35,32 +38,42 @@ interface Harness {
 
 
 
+const retainedWriteRecoveryOwners = new Set<object>();
+
 export function createWriteRecoveryTestWorld() {
   const disposers: (() => void)[] = [];
 
   const SIGNAL = new AbortController().signal;
 
   function harness(refuseContinuation = false): Harness {
+    const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; manager?: WorkerSessionManager; world?: WriteFixtureWorld; recovery?: WriteRecoveryService; primary?: unknown; failure?: Error } = {};
+    retainedWriteRecoveryOwners.add(held);
+    try {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const profile = createBoundProfileFixture();
-    const root = profile.stateRoot;
+    const profile = createBoundProfileFixture(); held.profile = profile;
+
     const open=()=>AuthorityDatabase.open({path:profile.path,busyTimeoutMs:250,migrationOwner:"write-recovery-test"},clock);
-    let database=open();
+    let database=open(); held.database = database;
+    let disposeAttempted = false, disposeFailure: Error | undefined;
     disposers.push(() => {
-      database.close();
-      profile.close();
+      if (held.failure !== undefined) throw held.failure;
+      if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
+      disposeAttempted = true;
+      try { database.close(); profile.close(); }
+      catch (error) { held.primary = error; disposeFailure = retainAuthoritySourceClosure([error], { admission: held }); held.failure = disposeFailure; retainedWriteRecoveryOwners.add(held); throw disposeFailure; }
     });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-    database.withAuthorityTransaction(repositories => {
-      const slot = admitDirectWorker(repositories, {commandId: "10000000-0000-4000-8000-000000000001",
-        workflow: WRITE_FIXTURE_WORKFLOW_ID, poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
-        processAcquisitionId: "10000000-0000-4000-8000-000000000002", authorityPath: profile.path,
-        processLockRoot: join(root,"locks"), now: WRITE_FIXTURE_NOW}, "10000000-0000-4000-8000-000000000003");
-      assert.equal(slot.workerId, WRITE_FIXTURE_WORKER_ID);
-      assert.equal(repositories.workerLeases.start({workerId: slot.workerId,workflow: WRITE_FIXTURE_WORKFLOW_ID,
-        browserSystems: ["ucpath"],processId: process.pid,requestedBy:"local-operator",now: WRITE_FIXTURE_NOW}).state,"started");
-    });
-    const world = createWriteFixtureWorld();
+    const admitted = testAdmittedWorker(database, clock, { path: profile.path, workflow: WRITE_FIXTURE_WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath"] });
+    held.worker = admitted;
+    const slot = admitted.member;
+    assert.equal(slot.workerId, WRITE_FIXTURE_WORKER_ID);
+    assert.ok(boundFixtureWorker(database, profile.path, slot.workerId));
+    assert.equal(slot.workflow, WRITE_FIXTURE_WORKFLOW_ID);
+    assert.equal(slot.poolIndex, 1);
+    assert.equal(slot.ordinal, 1);
+    assert.ok(admitted.started);
+    assert.equal(admitted.started.state, "started");
+    const world = createWriteFixtureWorld(); held.world = world;
     const registry = buildWriteFixtureRegistry(world);
     const inner = writeFixtureSessions(world);
     // Record the session-open fingerprint to prove recovery leases the target run snapshot.
@@ -77,7 +90,7 @@ export function createWriteRecoveryTestWorld() {
     const scheduler = new ManualScheduler(clock);
     const manager = writeFixtureSessionManager(spied, registry, clock, {
       openGate: input => duoCeremonyGatesOver(database, clock, scheduler).openGate(input),
-    });
+    }); held.manager = manager;
     const ids = sequentialIdFactory("c");
     const recovery = createWriteRecoveryService({
       continuation: { transition: (input) => {
@@ -97,12 +110,14 @@ export function createWriteRecoveryTestWorld() {
       operator: "local-operator",
       log: recordingLogger().log,
       resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
-    });
+    }); held.recovery = recovery;
+    retainedWriteRecoveryOwners.delete(held);
     return {
-      world, get database(){return database;}, clock, manager, ids, recovery,
-      restart:()=>{database.close();database=open();},
+      world, workerId: slot.workerId, get database(){return database;}, clock, manager, ids, recovery,
+      restart:()=>{try { database.close(); database=open(); held.database=database; } catch(error) { held.primary=error; retainedWriteRecoveryOwners.add(held); held.failure=retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }},
       openedFingerprints: () => Object.freeze([...opened]),
     };
+  } catch(error) { held.primary=error; held.failure=retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
   }
 
   function ownBindingProof() {
@@ -130,14 +145,15 @@ export function createWriteRecoveryTestWorld() {
   } {
     const now = h.clock.now().toISOString();
     assert.equal(h.database.authority.runs.enqueue(queued).state, "inserted");
+    const lifetime = testWorkerLifetime(h.database, WRITE_FIXTURE_WORKFLOW_ID, 1);
+    assert.equal(lifetime.workerId, WRITE_FIXTURE_WORKER_ID);
     const claimed = h.database.authority.runs.claimNext({
       workflow: WRITE_FIXTURE_WORKFLOW_ID,
-      workerId: WRITE_FIXTURE_WORKER_ID,
-      now,
-    });
+      workerId: h.workerId,
+      now, workerLifetime: lifetime.workerLifetime });
     if (claimed.state !== "claimed") throw new Error("claim failed");
-    const claim = { workerId: WRITE_FIXTURE_WORKER_ID, claimGeneration: claimed.run.claimGeneration };
-    const base = { workerId: WRITE_FIXTURE_WORKER_ID, claimedAt: now, heartbeatAt: now };
+    const claim = { workerId: h.workerId, claimGeneration: claimed.run.claimGeneration };
+    const base = { workerLifetime: lifetime.workerLifetime,  workerId: h.workerId, claimedAt: now, heartbeatAt: now };
     assert.equal(h.database.authority.runs.transition({
       runId: WRITE_FIXTURE_RUN_ID, expectedVersion: claimed.run.version, claim,
       lifecycle: { state: "validating", ...base }, now,
@@ -249,7 +265,9 @@ export function createWriteRecoveryTestWorld() {
   }
 
   const cleanup = () => {
-    for (const dispose of disposers.splice(0)) dispose();
+    const failures: unknown[] = [];
+    for (const dispose of disposers.splice(0)) { try { dispose(); } catch (error) { failures.push(error); } }
+    if (failures.length > 0) throw new AggregateError(failures, 'Write recovery fixture cleanup failed', { cause: failures[0] });
   };
   return { disposers, SIGNAL, harness, ownBindingProof, parkedAttemptingWrite, resolutionHarness, commandFor, cleanup };
 }

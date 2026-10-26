@@ -1,3 +1,4 @@
+import type { createBoundProfileFixture } from "../admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { explorerEditCommandFingerprint } from "../../../../src/models/dashboard/explorer-override.js";
@@ -37,6 +38,8 @@ type AuthorityTransactionWrap = <Result>(
 ) => Result;
 
 interface HarnessOptions {
+  readonly profile?: ReturnType<typeof createBoundProfileFixture>;
+  readonly prepareAssistantModelPreference?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["prepareAssistantModelPreference"];
   readonly failureResolution?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["failureResolution"];
   readonly explorerEdits?: ExplorerEditExecutor;
   readonly afterAuthorityCommit?: () => void;
@@ -178,14 +181,14 @@ export function createCommandKernelTestWorld() {
     const settingsOverride = settingsInputOrOptions !== undefined && "applyOrdinary" in settingsInputOrOptions
       ? settingsInputOrOptions : undefined;
     const clock = manualClock(new Date(NOW));
-    const path = databasePath("kernel.sqlite");
+    const path = options.profile?.path ?? databasePath("kernel.sqlite");
     const stateRoot = dirname(path);
     const database = AuthorityDatabase.open(
       { path, busyTimeoutMs: 250, migrationOwner: "kernel-test" },
       clock,
     );
     openDatabases.push(database);
-    seedInitialSettingsRuntimeConfig(database, clock);
+    if (options.profile === undefined) seedInitialSettingsRuntimeConfig(database, clock);
     if (wrap !== undefined) {
       const transaction = database.withAuthorityTransaction.bind(database);
       database.withAuthorityTransaction = (work) => transaction((repositories) => work(wrap(repositories)));
@@ -196,6 +199,8 @@ export function createCommandKernelTestWorld() {
     const credentials = createCredentialStore({ stateRoot });
     const explorerCalls: unknown[] = [];
     const kernel = createCommandKernel({
+      ...(options.profile === undefined ? {} : { authorityProfileId: options.profile.admission.profileBinding.profileId }),
+      ...(options.prepareAssistantModelPreference === undefined ? {} : { prepareAssistantModelPreference: options.prepareAssistantModelPreference }),
       ...(options.failureResolution === undefined ? {} : { failureResolution: options.failureResolution }),
       lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
       appVersion: "0.1.0",

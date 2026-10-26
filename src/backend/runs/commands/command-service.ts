@@ -2,6 +2,7 @@ import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../rules
 
 import { z } from "zod";
 import {
+  AssistantModelPreferenceCommandRequestSchema,
   BulkRunCommandRequestSchema,
   BulkRunCommandResponseSchema,
   CommandRequestSchema,
@@ -67,6 +68,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
 
   const startTails = new Map<string, Promise<void>>();
   async function submit(input: unknown): Promise<CommandResult> {
+    if (AssistantModelPreferenceCommandRequestSchema.safeParse(input).success) return deps.kernel.executeAssistantModelPreference(input);
     if (WorkerBrowserSniffSchema.safeParse(input).success) {
       return deps.kernel.executeWorkerPool(input);
     }

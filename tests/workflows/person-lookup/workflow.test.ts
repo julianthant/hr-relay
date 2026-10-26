@@ -325,7 +325,7 @@ describe("workflow definition public equivalence characterization", () => {
   },
   "module": {
     "role": {
-      "kind": "standalone"
+      "kind": "composition"
     },
     "stores": [
       {

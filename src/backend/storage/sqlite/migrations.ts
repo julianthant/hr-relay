@@ -5,9 +5,9 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 8;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 9;
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -728,22 +728,39 @@ WHEN NEW.id IS NOT OLD.id OR NEW.chat_id IS NOT OLD.chat_id OR NEW.command_id IS
  OR (OLD.state='approved' AND NEW.state IN ('claimed','cancelled'))
  OR (OLD.state='claimed' AND NEW.state IN ('settled','unknown')) OR (OLD.state='unknown' AND NEW.state='settled'))
 BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
+  { version: 9, statements: [
+    `CREATE TABLE assistant_model_preference (
+      id TEXT PRIMARY KEY CHECK(id='current'), profile_id TEXT NOT NULL,
+      revision INTEGER NOT NULL CHECK(revision>0), command_id TEXT NOT NULL UNIQUE REFERENCES commands(id),
+      audit_id TEXT NOT NULL UNIQUE REFERENCES command_audits(id), payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),
+      updated_at TEXT NOT NULL
+    ) STRICT`,
+    `CREATE TRIGGER assistant_model_preference_monotonic BEFORE UPDATE ON assistant_model_preference
+      WHEN NEW.id IS NOT OLD.id OR NEW.profile_id IS NOT OLD.profile_id OR NEW.revision != OLD.revision+1
+        OR NEW.command_id=OLD.command_id OR NEW.audit_id=OLD.audit_id
+      BEGIN SELECT RAISE(ABORT,'assistant-preference-revision-conflict'); END`,
+    `CREATE TRIGGER assistant_model_preference_no_delete BEFORE DELETE ON assistant_model_preference
+      BEGIN SELECT RAISE(ABORT,'assistant-preference-delete-refused'); END`,
+  ] },
 ]);
 
-export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string): string {
-  const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion).flatMap(migration => migration.statements);
+export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
+  toSchemaVersion: 8 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && !(fromSchemaVersion === 7 && toSchemaVersion === 8)) throw new Error('authority-upgrade-plan-target-unsupported');
+  const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
-    toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, sourceContentFingerprint, statements })).digest("hex");
+    toSchemaVersion, sourceContentFingerprint, statements })).digest("hex");
 }
 
 export function migrationTableNames(version: number): readonly AuthorityTableName[] {
   return AuthorityTableNameSchema.options.filter(name => (version >= 4
     || (name !== "workbook_library" && name !== "workbook_library_history"))
-    && (version >= 8 || !name.startsWith("assistant_")));
+    && (version >= 8 || !name.startsWith("assistant_"))
+    && (version >= 9 || name !== "assistant_model_preference"));
 }
 
 export function auditMigrationTableCoverage(): readonly string[] {
-  const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements, ...SQLITE_MIGRATIONS.filter(migration => migration.version === 8).flatMap(migration => migration.statements)];
+  const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements, ...SQLITE_MIGRATIONS.filter(migration => migration.version >= 8).flatMap(migration => migration.statements)];
   const names = statements.flatMap(statement => [...statement.matchAll(/CREATE TABLE ([a-z_]+)/gu)].map(match => match[1]));
   const registered = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
   return [

@@ -27,8 +27,8 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await fixture.close();
-  await seeded.close();
+  if (fixture !== undefined) await fixture.close();
+  if (seeded !== undefined) await seeded.close();
 });
 
 

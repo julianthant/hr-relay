@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../source-closure.js';
 import type { CredentialInventory } from "../../profiles/credential-inventory.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { CredentialInitializationSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, LogoutOperationSchema, type LogoutOperation, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
@@ -45,6 +46,9 @@ import {
 } from "../sqlite/runtime-process-locks.js";
 import type { RuntimeAdmission, RegisteredProfileStorageClaim } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import type { StoppedControlProfileInventory } from "../admission/installation.js";
+import { DuoCredentialDocumentSchema, DuoDocumentEnvelopeSchema, type DuoCredentialDocument } from "../../../models/config/duo-credential-store.js";
+
 
 const MAX_PRIVATE_REQUEST_BYTES = 64_000;
 const MAX_CREDENTIAL_DOCUMENT_BYTES = 16 * 1024 * 1024;
@@ -157,6 +161,106 @@ function decryptCredentialDocument(input: unknown, key: CredentialKeyDocument, b
   if (plaintext.length > MAX_CREDENTIAL_DOCUMENT_BYTES) throw new Error("credential-document-too-large");
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(plaintext)) as unknown; }
   catch { throw new Error("credential-document-invalid"); }
+}
+
+export interface DuoCredentialPurpose { readonly profileId: string }
+
+const duoPurposes = new WeakMap<DuoCredentialPurpose, {
+  custody: ReturnType<RuntimeAdmission["captureDuoCredentialCustody"]>; keyPath: string; witness: CredentialKeyWitness; ancestry: Map<string, DirectoryIdentity>; documentPath: string; assertReadable(): void;
+}>();
+
+export function issueDuoCredentialPurpose(profile: RuntimeAdmission, machine: RuntimeAdmission): DuoCredentialPurpose {
+  const custody = machine.captureDuoCredentialCustody(profile), binding = custody.binding;
+  const keyPath = join(machine.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`);
+  const witness = captureKeyFile(keyPath, binding);
+  machine.assertProfileCredentialKeyAnchor(profile, witness.keyId);
+  const purpose = Object.freeze({ profileId: binding.profileId }), ancestry = new Map<string, DirectoryIdentity>();
+  if (!noSymlinkAncestry(dirname(keyPath), ancestry)) throw new Error("credential-key-required");
+  duoPurposes.set(purpose, { custody, keyPath, witness, ancestry,
+    documentPath: join(machine.stateRoot, 'machine', 'duo-credentials', `${binding.profileId}.json`),
+    assertReadable: () => profile.assertProfileRuntime() });
+  return purpose;
+}
+
+function duoPurposeKey(purpose: DuoCredentialPurpose) {
+  const issued = duoPurposes.get(purpose);
+  if (issued === undefined) throw new Error("duo-purpose-unissued");
+  issued.custody.assertHeld();
+  if (!noSymlinkAncestry(dirname(issued.keyPath), issued.ancestry)) throw new Error("credential-key-required");
+  assertCredentialKeyWitness(issued.keyPath, issued.witness, issued.custody.binding);
+  const file = readPrivateFile(issued.keyPath, { label: "lock", maxBytes: 4096 });
+  if (file === undefined) throw new Error("credential-key-required");
+  if (canonicalJsonStringify({ device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") })
+    !== canonicalJsonStringify(issued.witness.file)) throw new Error("credential-key-custody-changed");
+  const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(file.bytes));
+  return { ...issued, key };
+}
+
+export function duoCredentialPurposeBinding(purpose: DuoCredentialPurpose): Readonly<{ binding: ProfileDatabaseBinding; generation: number }> {
+  const issued = duoPurposeKey(purpose);
+  return { binding: issued.custody.binding, generation: issued.custody.generation };
+}
+
+function duoAad(metadata: Omit<z.infer<typeof DuoDocumentEnvelopeSchema>, "tag" | "ciphertext">): Buffer {
+  return Buffer.from(canonicalJsonStringify(metadata), "utf8");
+}
+
+export function sealDuoCredentialDocument(purpose: DuoCredentialPurpose, input: DuoCredentialDocument): Uint8Array {
+  const { key, custody } = duoPurposeKey(purpose), document = DuoCredentialDocumentSchema.parse(input);
+  if (document.installationId !== custody.binding.installationId || document.profileId !== custody.binding.profileId) throw new Error("duo-document-binding-mismatch");
+  const plaintext = encodePrivate(document);
+  if (plaintext.byteLength > MAX_CREDENTIAL_DOCUMENT_BYTES) throw new Error("duo-document-too-large");
+  const nonce = randomBytes(12), metadata = { schemaVersion: 1 as const, purpose: "relay:duo-credential:v1" as const,
+    algorithm: "aes-256-gcm" as const, ...custody.binding, keyId: key.keyId, revision: document.revision, nonce: nonce.toString("base64") };
+  const cipher = createCipheriv("aes-256-gcm", credentialKeyBytes(key, custody.binding), nonce, { authTagLength: 16 });
+  cipher.setAAD(duoAad(metadata));
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  return encodePrivate(DuoDocumentEnvelopeSchema.parse({ ...metadata, tag: cipher.getAuthTag().toString("base64"), ciphertext: ciphertext.toString("base64") }));
+}
+
+function decryptDuoCredentialDocument(issued: ReturnType<typeof duoPurposeKey>, bytes: Uint8Array, revision: number): DuoCredentialDocument {
+  const { key, custody } = issued, envelope = DuoDocumentEnvelopeSchema.parse(parseCredentialJson(bytes));
+  const { tag, ciphertext, ...metadata } = envelope;
+  if (metadata.installationId !== custody.binding.installationId || metadata.profileId !== custody.binding.profileId || metadata.keyId !== key.keyId
+    || metadata.revision !== revision) throw new Error("duo-envelope-binding-mismatch");
+  for (const value of [metadata.nonce, tag, ciphertext]) if (Buffer.from(value, "base64").toString("base64") !== value) throw new Error("duo-envelope-invalid");
+  let plaintext: Buffer;
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", credentialKeyBytes(key, custody.binding), Buffer.from(metadata.nonce, "base64"), { authTagLength: 16 });
+    decipher.setAAD(duoAad(metadata)); decipher.setAuthTag(Buffer.from(tag, "base64"));
+    plaintext = Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64")), decipher.final()]);
+  } catch { throw new Error("duo-document-authentication-failed"); }
+  if (plaintext.byteLength > MAX_CREDENTIAL_DOCUMENT_BYTES) throw new Error("duo-document-too-large");
+  const document = DuoCredentialDocumentSchema.parse(parseCredentialJson(plaintext));
+  if (document.installationId !== metadata.installationId || document.profileId !== metadata.profileId || document.revision !== revision) throw new Error("duo-document-binding-mismatch");
+  return document;
+}
+
+export function openDuoCredentialDocument(purpose: DuoCredentialPurpose, bytes: Uint8Array, revision: number): DuoCredentialDocument {
+  const issued = duoPurposeKey(purpose);
+  issued.assertReadable();
+  const continuity = issued.custody.readDuoContinuity();
+  if (continuity.state === "never-initialized" || revision > continuity.revision) throw new Error("duo-envelope-binding-mismatch");
+  const readCurrent = () => {
+    if (!noSymlinkAncestry(dirname(issued.documentPath), issued.ancestry)) throw new Error("duo-directory-required");
+    const file = readPrivateFile(issued.documentPath, { label: "Duo credential", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
+    if (file === undefined) throw new Error("duo-document-required");
+    const identity = { device: file.identity.device, inode: file.identity.inode, digest: createHash('sha256').update(file.bytes).digest('hex') };
+    if (canonicalJsonStringify(identity) !== canonicalJsonStringify(continuity.document)) throw new Error("duo-document-custody-changed");
+    return file;
+  };
+  const currentFile = readCurrent();
+  const current = decryptDuoCredentialDocument(issued, currentFile.bytes, continuity.revision);
+  if ((current.credentials.length === 0) !== (continuity.state === 'erased')) throw new Error("duo-envelope-binding-mismatch");
+  const document = decryptDuoCredentialDocument(issued, bytes, revision);
+  if (continuity.state === 'erased' && document.credentials.length > 0) throw new Error("duo-erased-key-material-refused");
+  if (document.credentials.some(row => current.retired.some(retired => retired.credentialId === row.credentialId))) throw new Error("duo-erased-key-material-refused");
+  duoPurposeKey(purpose);
+  const after = readCurrent();
+  if (!after.bytes.equals(currentFile.bytes)) throw new Error("duo-document-custody-changed");
+  issued.assertReadable();
+  if (canonicalJsonStringify(issued.custody.readDuoContinuity()) !== canonicalJsonStringify(continuity)) throw new Error("duo-document-custody-changed");
+  return document;
 }
 
 const CredentialHistoryEntryV2Schema = z.strictObject({
@@ -620,6 +724,103 @@ function captureKeyFile(keyPath: string, binding: ProfileDatabaseBinding): Crede
   return CredentialKeyWitnessSchema.parse({ keyId: key.keyId, binding, file: { device: file.identity.device, inode: file.identity.inode,
     digest: createHash("sha256").update(file.bytes).digest("hex") } });
 }
+function captureProfileCredentialsForControlUpgrade(machineRoot: string, binding: ProfileDatabaseBinding,
+  keyWitness: CredentialKeyWitness, head: CredentialErasureHead) {
+  const keyPath = join(machineRoot, "machine", "credential-keys", `${binding.profileId}.json`);
+  const journalPath = join(machineRoot, "machine", "erasures", `${binding.profileId}.json`);
+  assertCredentialKeyWitness(keyPath, keyWitness, binding);
+  assertCredentialErasureHeadFiles(journalPath, head);
+  const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
+  if (keyFile === undefined) throw new Error("credential-key-required");
+  if (canonicalJsonStringify({ device: keyFile.identity.device, inode: keyFile.identity.inode,
+    digest: createHash("sha256").update(keyFile.bytes).digest("hex") }) !== canonicalJsonStringify(keyWitness.file)) throw new Error("credential-key-custody-changed");
+  const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes));
+  let journal: ErasureJournal;
+  if (head.state === "never-erased") journal = EMPTY_JOURNAL;
+  else {
+    const file = readPrivateFile(journalPath, { label: "erasure journal", maxBytes: 64_000 });
+    if (file === undefined) throw new Error("credential-erasure-head-missing");
+    journal = ErasureJournalSchema.parse(parseCredentialJson(file.bytes));
+    if (journal.epoch !== head.epoch) throw new Error("credential-erasure-head-changed");
+  }
+  const path = join(machineRoot, "profiles", binding.profileId, "credentials", "protected.json");
+  noSymlinkAncestry(dirname(path), new Map());
+  const file = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
+  if (file === undefined) throw new Error("credential-document-required");
+  const document = authenticateDocument(decryptCredentialDocument(parseCredentialJson(file.bytes), key, binding), journal);
+  assertCredentialKeyWitness(keyPath, keyWitness, binding);
+  assertCredentialErasureHeadFiles(journalPath, head);
+  return { key, document, witness: { device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") } };
+}
+
+export function inspectProfileCredentialsForControlUpgrade(machineRoot: string, binding: ProfileDatabaseBinding,
+  keyWitness: CredentialKeyWitness, head: CredentialErasureHead): Readonly<{ device: number; inode: number; digest: string }> {
+  return captureProfileCredentialsForControlUpgrade(machineRoot, binding, keyWitness, head).witness;
+}
+
+function credentialKeyMatcher(key: z.infer<typeof CredentialKeyDocumentSchema>, binding: ProfileDatabaseBinding, bytes: Uint8Array): (value: unknown) => boolean {
+  const little = Buffer.from(key.key, "utf16le");
+  const patterns = [credentialKeyBytes(key, binding), Buffer.from(key.key, "utf8"), little, Buffer.from(little).swap16(), Buffer.from(bytes)];
+  const inspect = (value: unknown): boolean => {
+    if (value instanceof Uint8Array) return patterns.some(pattern => Buffer.from(value.buffer, value.byteOffset, value.byteLength).includes(pattern));
+    if (typeof value === "string") return inspect(Buffer.from(value, "utf8"));
+    if (Array.isArray(value)) return value.some(inspect);
+    return typeof value === "object" && value !== null && Object.entries(value).some(([name, child]) => inspect(name) || inspect(child));
+  };
+  return inspect;
+}
+
+export interface StoppedControlCredentialAttestation { readonly profileId: string }
+
+const stoppedControlAttestations = new WeakMap<StoppedControlCredentialAttestation, {
+  claim: StoppedControlProfileInventory; used: boolean; revalidate(): () => void;
+}>();
+
+export function attestStoppedControlCredentials(admission: RuntimeAdmission, claim: StoppedControlProfileInventory,
+  assess: (copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(): () => void; revalidateBeforeKeyIntent(): void }>): StoppedControlCredentialAttestation {
+  const source = requireRuntimeAdmission(admission).readStoppedControlCredentialInventorySource(claim);
+  const capture = captureProfileCredentialsForControlUpgrade(source.machineRoot, source.binding, source.key, source.head);
+  const capturedSecrets = SECRET_NAMES.flatMap(name => { const entry = capture.document.record.entries[name]; return entry === undefined ? [] : [entry.value]; });
+  const keyPath = join(source.machineRoot, "machine", "credential-keys", `${claim.profileId}.json`);
+  const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
+  if (keyFile === undefined) throw new Error("credential-key-required");
+  const containsKey = credentialKeyMatcher(capture.key, source.binding, keyFile.bytes);
+  const inventory = assess({ capturedSecrets, capturedSecretsComplete: SECRET_NAMES.every(name => capture.document.record.entries[name] !== undefined), containsKey, keyScanOverlap: 4095,
+    inspectEncrypted: path => {
+      const bytes = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
+      if (bytes === undefined) throw new Error("credential-copy-required");
+      const copy = authenticateDocument(decryptCredentialDocument(parseCredentialJson(bytes.bytes), capture.key, source.binding));
+      const inspected = inspectAuthenticatedCredentialPayload(copy, capturedSecrets);
+      return { ...inspected, containsCaptured: inspected.containsCaptured || containsKey(copy) };
+    } });
+  inventory.revalidateBeforeKeyIntent(); source.assertHeld();
+  const issued = Object.freeze({ profileId: claim.profileId });
+  stoppedControlAttestations.set(issued, { claim, used: false, revalidate: () => {
+    source.assertHeld(); inventory.revalidateBeforeKeyIntent();
+    const physicalCopies = inventory.revalidate();
+    if (canonicalJsonStringify(inspectProfileCredentialsForControlUpgrade(source.machineRoot, source.binding, source.key, source.head)) !== canonicalJsonStringify(capture.witness)) throw new Error("profile-control-upgrade-credential-source-changed");
+    source.assertHeld();
+    return () => {
+      source.revalidateSource(); physicalCopies();
+      if (canonicalJsonStringify(inspectProfileCredentialsForControlUpgrade(source.machineRoot, source.binding, source.key, source.head)) !== canonicalJsonStringify(capture.witness)) throw new Error("profile-control-upgrade-credential-source-changed");
+      source.revalidateSource(); physicalCopies();
+    };
+  } });
+  return issued;
+}
+
+export function verifyStoppedControlCredentialAttestation(proof: StoppedControlCredentialAttestation, claim: StoppedControlProfileInventory, consume: boolean): () => void {
+  const issued = stoppedControlAttestations.get(proof);
+  if (issued === undefined || issued.used || issued.claim !== claim || proof.profileId !== claim.profileId) throw new Error("profile-control-upgrade-attestation-unissued-or-used");
+  const afterPublication = issued.revalidate();
+  if (consume) { issued.used = true; stoppedControlAttestations.delete(proof); }
+  return afterPublication;
+}
+
+export function releaseStoppedControlCredentialAttestation(proof: StoppedControlCredentialAttestation): void {
+  stoppedControlAttestations.delete(proof);
+}
+
 export function assertUnpublishedCredentialKey(keyPath: string, initialization: NonNullable<SignUpOperation["credentialInitialization"]>, binding: ProfileDatabaseBinding): void {
   const captured = captureKeyFile(keyPath, binding);
   if (captured.keyId !== initialization.keyId || initialization.keyDocumentDigest === undefined || captured.file.digest !== initialization.keyDocumentDigest) throw new Error("credential-initialization-key-mismatch");
@@ -949,15 +1150,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   function containsKey(value: unknown): boolean {
     const file = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
     if (file === undefined) return false;
-    const key = readKey(), raw = credentialKeyBytes(key, binding), little = Buffer.from(key.key, "utf16le");
-    const patterns = [raw, Buffer.from(key.key, "utf8"), little, Buffer.from(little).swap16(), file.bytes];
-    const inspect = (member: unknown): boolean => {
-      if (member instanceof Uint8Array) return patterns.some(pattern => Buffer.from(member.buffer, member.byteOffset, member.byteLength).includes(pattern));
-      if (typeof member === "string") return inspect(Buffer.from(member, "utf8"));
-      if (Array.isArray(member)) return member.some(inspect);
-      return typeof member === "object" && member !== null && Object.entries(member).some(([name, child]) => inspect(name) || inspect(child));
-    };
-    return inspect(value);
+    return credentialKeyMatcher(readKey(), binding, file.bytes)(value);
   }
   function readPrivateDocument(path: string): ReadDocument | undefined {
     if (readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES }) === undefined) return undefined;
@@ -1450,14 +1643,22 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       } };
     const inventory = options.repairInventory?.(request, writer, copies);
     if (inventory === undefined) throw new Error("credential-repair-inventory-required");
+    let result: { value: T } | undefined, primary: { error: unknown } | undefined;
     try {
       inventory.revalidate();
       assertCredentialErasureHeadFiles(journalPath, head); assertCredentialKeyWitness(keyPath, key, binding);
       const observed = readPrivateFile(protectedPath, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
       if (observed === undefined || observed.identity.device !== current.identity.device || observed.identity.inode !== current.identity.inode
         || !sameBytes(observed.bytes, current.bytes)) throw new Error("credential-repair-source-changed");
-      return work();
-    } finally { inventory.dispose(); }
+      result = { value: work() };
+    } catch (error) { primary = { error }; }
+    const owners = { admission: { admission: options.admission, inventory } };
+    if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([primary.error], owners);
+    try { inventory.dispose(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], owners); }
+    if (primary !== undefined) throw primary.error;
+    if (result === undefined) throw new Error('credential-repair-result-unproved');
+    return result.value;
   }
 
   function needsTombstoneRepair(document: CredentialDocument, journal: ErasureJournal): boolean {

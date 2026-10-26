@@ -1,3 +1,4 @@
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from "../../../src/models/dashboard/assistant.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
@@ -16,6 +17,9 @@ commandEffectClass,
 import { COMMAND_FIXTURES,HASH_A,NOW,UUID_1,UUID_2,UUID_3 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
+  { commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+    family: "assistant-model-preference", type: "set-assistant-model-preference", target: { profileId: UUID_1, epoch: 1, expectedRevision: 0 },
+    payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } },
   ...COMMAND_FIXTURES,
   ...["remove-worker", "retry-worker"].map(type => ({ commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
     family: "worker-browser", type, target: { workflowId: "person-lookup", workerId: "person-lookup-worker-1", membershipRevision: 1,
@@ -67,6 +71,7 @@ describe("authority classification and command families", () => {
       ["read", "local-write", "destructive", "external-submit"],
     );
     const expected = {
+      "set-assistant-model-preference": "local-write",
       "annotate-failure": "local-write",
       "set-batch-grouping": "local-write",
       "start-run": "external-submit",

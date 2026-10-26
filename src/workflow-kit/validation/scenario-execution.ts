@@ -34,7 +34,7 @@ const SEPARATIONS_KUALI_FINALIZATION_FILE = workflowStructuralScenarioPath("sepa
 const SEPARATIONS_FILE = workflowStructuralScenarioPath("separations", defineWorkflowRole({ kind: "composition" }));
 
 /** The person-lookup workflow — ONE structural scenario file, as §10.3 admits exactly one collected structural scenario per workflow. */
-const PERSON_LOOKUP_FILE = workflowStructuralScenarioPath("person-lookup", defineWorkflowRole({ kind: "standalone" }));
+const PERSON_LOOKUP_FILE = workflowStructuralScenarioPath("person-lookup", defineWorkflowRole({ kind: "composition" }));
 
 export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
   { scenarioId: "person-lookup/s1", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },

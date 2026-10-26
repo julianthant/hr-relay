@@ -1,3 +1,5 @@
+import { canonicalJsonStringify } from '../../../src/rules/validation/canonical-json.js';
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema } from '../../../src/models/dashboard/assistant.js';
 import { projectSyntheticAssistantInput, bindSyntheticAssistantFunctions, completedAssistantStream, type SyntheticAssistantTurn } from "./assistant-function-fixtures.js";
 import { createSettingsApplicationExecutor } from '../../../src/backend/runs/commands/settings-service.js';
 import { executeSettingsCommand } from '../../../src/backend/runs/commands/command-kernel.js';
@@ -23,7 +25,7 @@ import { RunRecordSchema } from '../../../src/models/run/record.js';
 import type { AssistantSubject } from '../../../src/models/dashboard/assistant.js';
 import type { AnyWorkflowDescriptor } from '../../../src/workflow-kit/workflow.js';
 import { AuthorityDatabase } from './synthetic-storage-admission.js';
-import { chatGptFixture } from './chatgpt-account-fixtures.js';
+import { chatGptFixture, publicCapabilityResponses } from './chatgpt-account-fixtures.js';
 import { runRecordOf } from './backend/dashboard-harness.js';
 import { seedInitialSettingsRuntimeConfig } from '../fixtures/operator-command-fixtures.js';
 import { sequentialIdFactory } from '../fixtures/phase1f-run-fixtures.js';
@@ -62,14 +64,32 @@ export async function assistantCoupledWorld() {
   const file = { path: 'docs/rebuild/assistant.md', mode: '100644', text: 'Synthetic public reference.\nDry runs stop before writes.' };
   const bytes = Buffer.from(JSON.stringify({ ...SYNTHETIC_ASSISTANT_SOURCE, files: [file] }));
   const context = createAssistantContext(bytes, { ...SYNTHETIC_ASSISTANT_SOURCE, exportSha256: createHash('sha256').update(bytes).digest('hex') });
-  account.setResponse(() => {
+  const syntheticResponse = () => {
     beforeInference?.();
     return new Response(hold ? new ReadableStream<Uint8Array>({ start(controller) { pendingStream = controller; }, cancel() { pendingStream = undefined; } })
       : completedAssistantStream(reply), { headers: { 'content-type': 'text/event-stream' } });
-  });
+  };
+  account.setResponse(syntheticResponse);
   let runtime = { ...SYNTHETIC_ASSISTANT_SOURCE }, requests = 0, identities = 0;
-  const service = createAssistantService({ projectInput: projectSyntheticAssistantInput, bindFunctions: bindSyntheticAssistantFunctions, ...adapters, account: account.service, context, clock: account.clock, runtime: () => runtime,
-    modelPolicy: { model: 'gpt-6.1-sol', eligible: true, consented: true, billing: 'chatgpt-plan', verifiedUntil: '2026-10-19T00:00:00Z' }, isModelPolicyCurrent: () => currentPolicy });
+  const readModelPreference = () => {
+    profile.admission.assertProfileRuntime();
+    const profileEpoch = profile.machine.readProfileRegistry().sessionGeneration;
+    const record = database.authority.assistantModelPreference.get();
+    return AssistantModelPreferenceViewSchema.parse({ profileId: profile.admission.profileBinding.profileId, epoch: profileEpoch,
+      revision: record?.revision ?? 0, preference: record?.preference ?? { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } });
+  };
+  const service = createAssistantService({ readModelPreference,
+    verifySelectedModel: async signal => {
+      const captured = readModelPreference();
+      const assertPreferenceCurrent = (): true => {
+        if (canonicalJsonStringify(readModelPreference()) !== canonicalJsonStringify(captured)) throw new Error('Synthetic assistant model preference changed');
+        return true;
+      };
+      publicCapabilityResponses(account);
+      try { await account.service.verifyAssistantCapability(captured.preference, assertPreferenceCurrent, signal); assertPreferenceCurrent(); }
+      finally { account.setResponse(syntheticResponse); }
+    }, projectInput: projectSyntheticAssistantInput, bindFunctions: bindSyntheticAssistantFunctions, ...adapters, account: account.service, context, clock: account.clock, runtime: () => runtime,
+    modelPolicy: () => ({ policy: { model: 'gpt-6.1-sol', eligible: true, consented: true, billing: 'chatgpt-plan', verifiedUntil: '2026-10-19T00:00:00Z' }, isCurrent: () => currentPolicy }),  });
   const app: DashboardApp = new Hono();
   const identity = createSoloRequestIdentityCheckpoint({ id: 'local-operator', label: 'Local operator' });
   app.use('*', async (c, next) => { identities++; c.set('requestActorId', identity.identify(c.req.raw)); return next(); });

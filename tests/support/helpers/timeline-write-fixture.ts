@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
+
+
+
+import { testAdmittedWorker } from '../fixtures/run-lifecycle-fixtures.js';
+import { capturedInstantClock } from '../../../src/rules/time/clock.js';
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { TransactionOutcomeSchema } from "../../../src/rules/write-safety/write-safety.js";
@@ -47,26 +48,22 @@ export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown
     lifecycle: { state: "queued" }, claimGeneration: 0, version: 1,
     createdAt: ledger.fencedAt, updatedAt: ledger.fencedAt,
   }));
-  const slot = database.withAuthorityTransaction(repositories => {
-    const currentSlots = repositories.workerSlots.list(ledger.workflowId).filter(slot => slot.retiredAt === null);
-    let admitted = currentSlots.find(slot => (preferredPoolIndex === undefined || slot.poolIndex === preferredPoolIndex)
+  const repositories = database.authority;
+  const currentSlots = repositories.workerSlots.list(ledger.workflowId).filter(slot => slot.retiredAt === null);
+const admitted = currentSlots.find(slot => (preferredPoolIndex === undefined || slot.poolIndex === preferredPoolIndex)
       && !repositories.runs.listByWorker(slot.workerId).some(run =>
       ["claimed", "validating", "running"].includes(run.lifecycle.state)));
-    if (admitted === undefined) {
-      const occupied = new Set(currentSlots.map(slot => slot.poolIndex));
-      const poolIndex = (preferredPoolIndex === undefined ? [1, 2, 3] : [preferredPoolIndex]).find(index => !occupied.has(index));
-      if (poolIndex === undefined) throw new Error("fixture has no unheld worker slot");
-      admitted = admitDirectWorker(repositories, { commandId: randomUUID(), workflow: ledger.workflowId,
-        poolIndex, expectedPoolVersion: repositories.workerPools.get(ledger.workflowId)?.version ?? 0,
-        processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: realpathSync(path),
-        processLockRoot: join(dirname(realpathSync(path)), "locks"), now: ledger.fencedAt }, randomUUID());
-    }
-    if (repositories.workerLeases.get(admitted.workerId) === undefined || repositories.workerLeases.get(admitted.workerId)?.lifecycle.state === "stopped") {
-      assert.equal(repositories.workerLeases.start({ workerId: admitted.workerId, workflow: ledger.workflowId,
-        browserSystems: [ledger.system], processId: process.pid, requestedBy: "local-operator", now: ledger.fencedAt }).state, "started");
-    }
-    return admitted;
-  });
+  let poolIndex = admitted?.poolIndex;
+  if (admitted === undefined) {
+    const occupied = new Set(currentSlots.map(slot => slot.poolIndex));
+poolIndex = (preferredPoolIndex === undefined ? [1, 2, 3] : [preferredPoolIndex]).find(index => !occupied.has(index));
+if (poolIndex === undefined) throw new Error("fixture has no unheld worker slot");
+  }
+  assert.ok(poolIndex !== undefined);
+  const owned = testAdmittedWorker(database, capturedInstantClock(ledger.fencedAt), { path, workflow: ledger.workflowId, poolIndex,
+    browserSystems: [ledger.system] });
+  const slot = owned.member;
+  if (owned.started !== undefined) assert.equal(owned.started.state, "started");
   const lease = database.authority.workerLeases.get(slot.workerId);
   if (lease === undefined) throw new Error("fixture claim lifetime unavailable");
   const claim = database.authority.runs.claimNext({ workflow: ledger.workflowId, workerId: slot.workerId,

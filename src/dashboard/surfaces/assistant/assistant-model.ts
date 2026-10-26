@@ -1,3 +1,4 @@
+import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND } from '../../../models/dashboard/assistant.js';
 import type { AssistantActionIdentity } from "../../../models/dashboard/assistant.js";
 export interface AssistantSource {
   readonly id: string;
@@ -100,5 +101,11 @@ export function assistantConfirmRefusal(state: AssistantState, revision: string,
   if (turn.disposition === 'stale') return 'Plan out of date. Send the request again to refresh it.';
   if (turn.disposition === 'edited' || state.draft !== turn.proposal.prompt) return 'Request edited. Send it again to review a new proposal.';
   if (revision !== turn.proposal.revision) return 'Plan out of date. Send the request again to refresh it.';
+  return undefined;
+}
+
+export function assistantSetupCommand(text: string): 'verify' | 'model' | undefined {
+  if (text === ASSISTANT_VERIFY_COMMAND) return 'verify';
+  if (text === ASSISTANT_MODEL_COMMAND || text.startsWith(ASSISTANT_MODEL_COMMAND + ' ')) return 'model';
   return undefined;
 }

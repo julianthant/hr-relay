@@ -1,13 +1,17 @@
-import { AssistantRequestSchema, AssistantResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema, type AssistantActionDecision, type AssistantActionResult, type AssistantRequest, type AssistantResult } from "../../../models/dashboard/assistant.js";
+import { AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, AssistantRequestSchema, AssistantResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema, type AssistantActionDecision, type AssistantActionResult, type AssistantRequest, type AssistantResult } from "../../../models/dashboard/assistant.js";
 import type { DashboardTransport } from "../transport.js";
 import { parseOrThrow } from "./query-parse.js";
 
 export interface AssistantQueries {
+  assistantModelPreference?(signal?: AbortSignal): Promise<AssistantModelPreferenceView>;
   assistantDecide?(input: AssistantActionDecision, signal?: AbortSignal): Promise<AssistantActionResult>;
   assistantRespond(input: AssistantRequest, signal?: AbortSignal): Promise<AssistantResult>;
 }
 export function createAssistantQueries(transport: DashboardTransport): AssistantQueries {
   return Object.freeze({
+    async assistantModelPreference(signal?: AbortSignal) {
+      return parseOrThrow(AssistantModelPreferenceViewSchema, 'model-preference', await transport.requestJson("/api/v1/assistant/model-preference", signal === undefined ? {} : { signal }));
+    },
     async assistantDecide(input: AssistantActionDecision, signal?: AbortSignal) {
       const path = "/api/v1/assistant/action";
       const result = parseOrThrow(AssistantActionResultSchema, `POST ${path}`, await transport.requestJson(path, {

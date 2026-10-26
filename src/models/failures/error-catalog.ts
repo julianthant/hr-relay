@@ -19,7 +19,7 @@ export const ERROR_CATALOG = Object.freeze({
   CHATGPT_ASSISTANT_REFUSED: catalogEntry("The model refused this assistant request.", EmptyParametersSchema),
   ASSISTANT_MODEL_UNAVAILABLE: catalogEntry("The selected model is not available in the current ChatGPT account catalog.", EmptyParametersSchema),
   ASSISTANT_RESPONSE_REFUSED: catalogEntry("The model refused this assistant request.", EmptyParametersSchema),
-  ASSISTANT_MODEL_UNVERIFIED: catalogEntry("The assistant model and ChatGPT plan permission need verification.", EmptyParametersSchema),
+  ASSISTANT_MODEL_UNVERIFIED: catalogEntry("Send /verify-assistant to verify the selected assistant model.", EmptyParametersSchema),
   ASSISTANT_USAGE_LIMIT: catalogEntry("The ChatGPT plan usage limit was reached.", EmptyParametersSchema),
   ASSISTANT_PLAN_DISABLED: catalogEntry("Enable ChatGPT plan usage before using the assistant.", EmptyParametersSchema),
   ASSISTANT_ACCOUNT_EXPIRED: catalogEntry("Reconnect the ChatGPT account before using the assistant.", EmptyParametersSchema),

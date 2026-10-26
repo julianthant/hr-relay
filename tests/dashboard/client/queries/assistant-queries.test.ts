@@ -1,3 +1,4 @@
+import { AssistantModelPreferenceViewSchema, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from '../../../../src/models/dashboard/assistant.js';
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
@@ -46,4 +47,29 @@ it("preserves the exact issued automatic unknown identity and refuses a mismatch
   assert.deepEqual(result.action, action); mismatch = true;
   await assert.rejects(() => client.assistantRespond({ message: "mark notifications read" }));
   assert.equal(calls, 2);
+});
+
+it('reads the strict selected assistant preference only from the authenticated view endpoint', async () => {
+  const view = AssistantModelPreferenceViewSchema.parse({ profileId: crypto.randomUUID(), epoch: 2, revision: 3,
+    preference: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } });
+  const calls: { url: string; init?: RequestInit }[] = [], abort = new AbortController();
+  const client = createDashboardClient({ baseUrl: 'http://relay.test', fetchImpl: async (url, init) => {
+    calls.push({ url, ...(init === undefined ? {} : { init }) }); return Response.json(view);
+  } });
+  assert.ok(typeof client.assistantModelPreference === 'function');
+  assert.deepEqual(await client.assistantModelPreference(abort.signal), view);
+  assert.equal(calls.length, 1); assert.equal(calls[0]?.url, "http://relay.test/api/v1/assistant/model-preference");
+  assert.equal(calls[0]?.init?.method ?? 'GET', 'GET'); assert.equal(calls[0]?.init?.signal, abort.signal);
+  assert.equal(calls[0]?.init?.body, undefined);
+});
+it('refuses malformed or extra preference authority fields without a local default', async () => {
+  const view = { profileId: crypto.randomUUID(), epoch: 2, revision: 3,
+    preference: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } };
+  for (const invalid of [{ ...view, epoch: -1 }, { ...view, profileId: 'foreign' }, { ...view, revision: undefined }, { ...view, available: true }]) {
+    let reads = 0;
+    const client = createDashboardClient({ baseUrl: 'http://relay.test', fetchImpl: async () => { reads++; return Response.json(invalid); } });
+    const read = client.assistantModelPreference?.bind(client); assert.ok(read);
+    await assert.rejects(() => read());
+    assert.equal(reads, 1);
+  }
 });

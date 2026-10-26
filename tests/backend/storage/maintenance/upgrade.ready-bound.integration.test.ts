@@ -35,7 +35,7 @@ import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-function readyBoundSeven(work: "idle" | "queued" = "idle") {
+function readyBoundEight(work: "idle" | "queued" = "idle") {
   const profile = createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -92,9 +92,9 @@ function readyBoundSeven(work: "idle" | "queued" = "idle") {
   try {
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
-    raw.exec("BEGIN EXCLUSIVE; DROP TABLE assistant_actions; DROP TABLE assistant_chats; DROP TABLE assistant_grants; UPDATE database_states SET schema_version=7 WHERE id=1; PRAGMA user_version=7; COMMIT");
-    const prior = inspectNativeAuthority(raw, 7);
-    assert.equal(prior.schemaVersion, 7);
+    raw.exec('BEGIN EXCLUSIVE; DROP TABLE assistant_model_preference; UPDATE database_states SET schema_version=8 WHERE id=1; PRAGMA user_version=8; COMMIT');
+    const prior = inspectNativeAuthority(raw, 8);
+    assert.equal(prior.schemaVersion, 8);
     assert.equal(prior.installationId, binding.installationId);
     assert.equal(prior.profileId, binding.profileId);
   } finally { raw.close(); }
@@ -104,28 +104,28 @@ function readyBoundSeven(work: "idle" | "queued" = "idle") {
     acquireRestore: () => acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, systemClock) };
 }
 
-function rawSeven(path: string) {
+function rawEight(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
-    return Object.fromEntries(migrationTableNames(7).map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+    return Object.fromEntries(migrationTableNames(8).map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   } finally { raw.close(); }
 }
 
 it("upgrades a genuinely READY bound profile with unchanged historical rows, credentials and replay", async () => {
-  const f = readyBoundSeven();
+  const f = readyBoundEight();
   try {
-    const before = rawSeven(f.path), protectedBefore = digest(join(f.stateRoot, "credentials", "protected.json"));
+    const before = rawEight(f.path), protectedBefore = digest(join(f.stateRoot, "credentials", "protected.json"));
     const machineBefore = storageTree(join(f.machine.stateRoot, "machine"));
     assert.ok((before.commands?.length ?? 0) >= 2);
     assert.ok((before.command_audits?.length ?? 0) >= 2);
     assert.throws(() => f.machine.admitProfile(f.claim), { message: "profile-database-schema-mismatch" });
     assert.equal((await upgradeReadyProfileStorage(f.machine, f.claim, { plan: true, hostFacts }, systemClock)).state, "planned");
-    assert.deepEqual(rawSeven(f.path), before);
+    assert.deepEqual(rawEight(f.path), before);
     const result = await upgradeReadyProfileStorage(f.machine, f.claim, { plan: false, hostFacts }, systemClock);
-    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 7, toSchemaVersion: 8, credentials: "unchanged" });
-    const after = rawSeven(f.path);
+    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 8, toSchemaVersion: 9, credentials: "unchanged" });
+    const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 8 })));
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 9 })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
@@ -138,6 +138,7 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
         erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${f.binding.profileId}.json`) });
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock, undefined, undefined, undefined, credentials);
       try {
+        assert.equal(database.authority.assistantModelPreference.get(), undefined);
         for (const table of ["assistant_grants", "assistant_chats", "assistant_actions"]) {
           const raw = new DatabaseSync(f.path, { readOnly: true });
           try { assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0); } finally { raw.close(); }
@@ -154,7 +155,7 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
 });
 
 it("confines the issued READY purpose and its verified backup copy to their exact doors", async () => {
-  const f = readyBoundSeven(), restore = f.acquireRestore();
+  const f = readyBoundEight(), restore = f.acquireRestore();
   let owner: RuntimeAdmission | undefined;
   try {
     const issued = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
@@ -178,7 +179,7 @@ it("confines the issued READY purpose and its verified backup copy to their exac
     const verified = verifyStoppedBackupManifestAtPath(issued, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
     const copy = issued.verifiedReadOnlyCopy(verified.backupPath, verified.manifest.sha256);
     try {
-      assert.equal(inspectAuthorityBackupReadOnly(copy, verified.backupPath, 7).schemaVersion, 7);
+      assert.equal(inspectAuthorityBackupReadOnly(copy, verified.backupPath, 8).schemaVersion, 8);
       assert.throws(() => copy.assertReadOnlyAuthorityDatabase(f.path), { message: "profile-stopped-upgrade-path-refused" });
       assert.throws(() => copy.assertCredentialRead(), { message: "profile-stopped-upgrade-credential-read-refused" });
       assert.throws(() => copy.verifiedReadOnlyCopy(verified.backupPath, verified.manifest.sha256), { message: "profile-stopped-upgrade-copy-refused" });
@@ -189,7 +190,7 @@ it("confines the issued READY purpose and its verified backup copy to their exac
 });
 
 it("refuses cloned claims, copied or foreign restore handles, and released restore custody without source effects", async () => {
-  const f = readyBoundSeven(), foreign = readyBoundSeven(), restore = f.acquireRestore(), other = foreign.acquireRestore();
+  const f = readyBoundEight(), foreign = readyBoundEight(), restore = f.acquireRestore(), other = foreign.acquireRestore();
   try {
     const before = storageTree(f.stateRoot);
     await assert.rejects(f.machine.forStoppedProfileUpgrade({ ...f.claim }, restore, systemClock, hostFacts), { message: "profile-storage-claim-unissued" });
@@ -203,7 +204,7 @@ it("refuses cloned claims, copied or foreign restore handles, and released resto
 });
 
 it("refuses a genuine live server role and leaves every profile byte unchanged", async () => {
-  const f = readyBoundSeven();
+  const f = readyBoundEight();
   const server = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "server", pid: process.pid }, systemClock);
   try {
     const before = storageTree(f.stateRoot);
@@ -214,19 +215,19 @@ it("refuses a genuine live server role and leaves every profile byte unchanged",
 });
 
 it("refuses a genuine canonical queued run despite stopped global process roles", async () => {
-  const f = readyBoundSeven("queued");
+  const f = readyBoundEight("queued");
   try {
-    const rows = rawSeven(f.path), before = storageTree(f.stateRoot);
+    const rows = rawEight(f.path), before = storageTree(f.stateRoot);
     assert.ok((rows.runs?.length ?? 0) > 0);
     await assert.rejects(upgradeReadyProfileStorage(f.machine, f.claim, { plan: false, hostFacts }, systemClock),
       { message: "credential-maintenance-custody-unproved" });
     assert.deepEqual(storageTree(f.stateRoot), before);
-    assert.deepEqual(rawSeven(f.path), rows);
+    assert.deepEqual(rawEight(f.path), rows);
   } finally { f.close(); }
 });
 
 it("revokes the exact READY purpose on same-byte main-file substitution", async () => {
-  const f = readyBoundSeven(), restore = f.acquireRestore();
+  const f = readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   try {
     const before = readFileSync(f.path), replacement = join(f.stateRoot, "replacement.sqlite");
@@ -237,7 +238,7 @@ it("revokes the exact READY purpose on same-byte main-file substitution", async 
 });
 
 it("requires a real verified own backup before changing the ready source schema", async () => {
-  const f = readyBoundSeven(), restore = f.acquireRestore();
+  const f = readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   try {
     const inspection = AuthorityDatabase.inspectStoppedUpgrade(owner, f.path, f.processLockRoot, systemClock);
@@ -253,19 +254,19 @@ it("requires a real verified own backup before changing the ready source schema"
       inspection.authorityContentFingerprint, { ...verified, manifest: { ...verified.manifest, sha256: FingerprintSchema.parse("0".repeat(64)) } }),
     { message: "profile-stopped-upgrade-backup-changed" });
     assert.deepEqual(storageTree(f.stateRoot), backedBefore);
-    const original = readFileSync(verified.backupPath), sourceBefore = rawSeven(f.path);
+    const original = readFileSync(verified.backupPath), sourceBefore = rawEight(f.path);
     try {
       const changed = Buffer.from(original); changed[0] = (changed[0] ?? 0) ^ 1;
       writeFileSync(verified.backupPath, changed);
       assert.throws(() => verifyStoppedBackupManifestAtPath(owner, verified.manifestPath, AuthorityDatabase.sourceDatabaseIdentity(f.path)),
         { message: "profile-maintenance-backup-digest-mismatch" });
-      assert.deepEqual(rawSeven(f.path), sourceBefore);
+      assert.deepEqual(rawEight(f.path), sourceBefore);
     } finally { writeFileSync(verified.backupPath, original); }
   } finally { owner.release(); restore.release(); f.close(); }
 });
 
 it("refuses changed source content inside the real migration transaction and cannot revive its purpose", async () => {
-  const f = readyBoundSeven(), restore = f.acquireRestore();
+  const f = readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   try {
     const inspection = AuthorityDatabase.inspectStoppedUpgrade(owner, f.path, f.processLockRoot, systemClock);
@@ -289,7 +290,7 @@ it("refuses changed source content inside the real migration transaction and can
 });
 
 it("revokes READY custody on a same-byte key replacement even after exact original custody returns", async () => {
-  const f = readyBoundSeven(), restore = f.acquireRestore();
+  const f = readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   const key = join(f.machine.stateRoot, "machine", "credential-keys", `${f.binding.profileId}.json`);
   const saved = join(f.workspace, "owned-key-preimage");
@@ -309,7 +310,7 @@ it("revokes READY custody on a same-byte key replacement even after exact origin
 });
 
 it("revokes READY custody when the real registry advances its session generation", async () => {
-  const f = readyBoundSeven(), restore = f.acquireRestore();
+  const f = readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   try {
     const before = storageTree(f.stateRoot), registry = f.machine.readProfileRegistry();
@@ -320,7 +321,7 @@ it("revokes READY custody when the real registry advances its session generation
 });
 
 it("refuses loss of the authenticated never-erased head instead of treating it as a default", async () => {
-  const f = readyBoundSeven(), restore = f.acquireRestore();
+  const f = readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   const journal = join(f.machine.stateRoot, "machine", "erasures", `${f.binding.profileId}.json`);
   const existed = existsSync(dirname(journal));
@@ -340,7 +341,7 @@ it("refuses loss of the authenticated never-erased head instead of treating it a
 });
 
 it("revokes READY custody on an actual new machine operation with no native effects", async () => {
-  const f = readyBoundSeven(), restore = f.acquireRestore();
+  const f = readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   try {
     const before = storageTree(f.stateRoot);
@@ -353,7 +354,7 @@ it("revokes READY custody on an actual new machine operation with no native effe
 });
 
 it("cannot recreate a ready source removed after real stopped inspection and before native writable open", async () => {
-  const f = readyBoundSeven(), restore = f.acquireRestore();
+  const f = readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   const saved = join(f.workspace, "owned-source-preimage");
   const inspect = AuthorityDatabase.inspectStoppedUpgrade.bind(AuthorityDatabase);
@@ -361,7 +362,7 @@ it("cannot recreate a ready source removed after real stopped inspection and bef
   const spy = vi.spyOn(AuthorityDatabase, "inspectStoppedUpgrade").mockImplementation((actual, path, root, clock) => {
     assert.equal(actual, owner); assert.equal(path, f.path); assert.equal(root, f.processLockRoot);
     const result = inspect(actual, path, root, clock);
-    assert.equal(result.schemaVersion, 7);
+    assert.equal(result.schemaVersion, 8);
     renameSync(f.path, saved); crossed = true;
     return result;
   });
@@ -382,7 +383,7 @@ it("cannot recreate a ready source removed after real stopped inspection and bef
 });
 
 it("refuses an unowned copy before issuing any READY migration or backup authority", async () => {
-  const f = readyBoundSeven();
+  const f = readyBoundEight();
   try {
     writeFileSync(join(f.stateRoot, "owned-unclassified-copy"), "{}", { mode: 0o600, flag: "wx" });
     const before = storageTree(f.stateRoot);
@@ -394,7 +395,7 @@ it("refuses an unowned copy before issuing any READY migration or backup authori
 });
 
 it("revokes READY custody on exact artifact-root ancestry substitution", async () => {
-  const f = readyBoundSeven(), restore = f.acquireRestore();
+  const f = readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   const artifacts = join(f.stateRoot, "artifacts"), saved = join(f.workspace, "owned-artifacts-preimage");
   let moved = false;

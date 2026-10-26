@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { collectSourceClosure, fingerprintSourceSet } from "../../../scripts/build/workflow-build-manifest.js";
 import { parseBuildManifest } from "../../../src/models/workflow/build-manifest.js";
 
-const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../");
 const require = createRequire(import.meta.url);
 const version = (name: string) => z.object({ version: z.string().min(1) })
   .parse(JSON.parse(readFileSync(require.resolve(`${name}/package.json`), "utf8"))).version;

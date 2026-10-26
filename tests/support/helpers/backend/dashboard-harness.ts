@@ -1,3 +1,4 @@
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../src/models/run/worker-slot.js";
 import type { WorkerControlRecord } from "../../../../src/models/run/worker-control.js";
@@ -208,6 +209,8 @@ export interface DashboardWorld {
   dispose(): void;
 }
 
+const retainedDashboardWorldOwners = new Set<object>();
+
 export function makeWorld(input?: Readonly<{
   reader?: CanonicalRunReader;
   timeline?: TimelineRepository;
@@ -215,11 +218,15 @@ export function makeWorld(input?: Readonly<{
 
   descriptors?: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
 }>): DashboardWorld {
-  const fixture = createBoundProfileFixture();
+  const held: { fixture?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; raws: Set<DatabaseSync>; primary?: { error: unknown }; failure?: Error } = { raws: new Set() };
+  retainedDashboardWorldOwners.add(held);
+  try {
+  const fixture = createBoundProfileFixture(); held.fixture = fixture;
   const stateRoot = fixture.stateRoot;
   const clock = manualClock(AT);
   const authority = authorityFake();
   const database = AuthorityDatabase.open({ path: fixture.path, busyTimeoutMs: 500, migrationOwner: "history-dashboard-fixture" }, clock);
+  held.database = database;
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const synchronizeOwner = (runId: string, visiting = new Set<string>()): void => {
     if(visiting.has(runId))throw new Error("fixture run ownership cycle");
@@ -243,6 +250,8 @@ export function makeWorld(input?: Readonly<{
       ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
     });
     const row = runRecordColumns(owner), columns = Object.keys(row), raw = new DatabaseSync(fixture.path);
+    held.raws.add(raw);
+    let primary: { error: unknown } | undefined, closure: { error: unknown } | undefined;
     try {
       const search = createRunSearchIndex(raw);
       search.installTracking();
@@ -257,7 +266,14 @@ export function makeWorld(input?: Readonly<{
       while (publication.state === "building") publication = search.rebuild({ restart: false, limit: 500 }, database.getMeta().authorityGeneration, clock.now().toISOString());
       raw.exec("COMMIT");
     }
-    finally { raw.close(); }
+    catch (error) { primary = { error }; }
+    try { raw.close(); held.raws.delete(raw); } catch (error) { closure = { error }; }
+    if (closure !== undefined) {
+      held.primary = primary ?? closure;
+      held.failure = retainAuthoritySourceClosure(primary === undefined ? [closure.error] : [primary.error, closure.error], { admission: held });
+      throw held.failure;
+    }
+    if (primary !== undefined) throw primary.error;
     visiting.delete(runId);
   };
   const timeline: TimelineRepository = Object.freeze({ ...database.authority.timelineEvents,
@@ -306,6 +322,7 @@ export function makeWorld(input?: Readonly<{
       projection.ingestFromTimeline();
     },
   });
+  let closeAttempted = false;
   return {
     database,
     timeline,
@@ -318,8 +335,15 @@ export function makeWorld(input?: Readonly<{
     writer,
     changes,
     scheduledRebuilds,
-    dispose: () => { database.close(); fixture.close(); },
+    dispose: () => {
+      if (held.failure !== undefined) throw held.failure;
+      if (closeAttempted) return;
+      closeAttempted = true;
+      try { database.close(); fixture.close(); retainedDashboardWorldOwners.delete(held); }
+      catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
+    },
   };
+  } catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
 }
 
 /* ── seeded rows ─────────────────────────────────────────────────────────── */

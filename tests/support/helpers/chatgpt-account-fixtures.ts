@@ -1,3 +1,5 @@
+import assert from 'node:assert/strict';
+import { z } from 'zod';
 import { generateKeyPairSync, sign } from "node:crypto";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createChatGptAccountService, type ChatGptAuthorization } from "../../../src/backend/accounts/chatgpt-account-service.js";
@@ -25,7 +27,7 @@ export function chatGptFixture(ownedAdmission?: RuntimeAdmission) {
   function idToken() {
     const header = Buffer.from(JSON.stringify({ alg: "RS256", kid: "fixture-key" })).toString("base64url");
     const claims = Buffer.from(JSON.stringify({ iss: "https://auth.openai.com", aud: "oaiapp_fixture", sub: "synthetic-subject", name: "Synthetic Operator",
-      email: "synthetic@example.com", exp: clock.nowMs() / 1000 + 3600, iat: clock.nowMs() / 1000, nonce, ...claimsPatch })).toString("base64url");
+      email: "synthetic@example.com", exp: Math.floor(clock.nowMs() / 1000) + 3600, iat: Math.floor(clock.nowMs() / 1000), nonce, ...claimsPatch })).toString("base64url");
     return `${header}.${claims}.${tamperSignature ? "AAAA" : sign("RSA-SHA256", Buffer.from(`${header}.${claims}`), keys.privateKey).toString("base64url")}`;
   }
   const transport: typeof fetch = async (input, init = {}) => {
@@ -72,4 +74,19 @@ export function chatGptFixture(ownedAdmission?: RuntimeAdmission) {
 
 export function completedOcrStream(text: string, model = "gpt-6.1-sol"): string {
   return `data: ${JSON.stringify({ type: "response.output_text.delta", delta: text, output_index: 0, content_index: 0 })}\n\ndata: ${JSON.stringify({ type: "response.completed", response: { id: "resp_synthetic", model, status: "completed", output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text }] }] } })}\n\n`;
+}
+
+function completedCapabilityStream(output: unknown, model: string) {
+  return `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_synthetic", model, status: "completed", output } })}\n\n`;
+}
+
+export function publicCapabilityResponses(f: ReturnType<typeof chatGptFixture>, value = 'relay-public-capability') {
+  f.setResponse(init => {
+    assert.ok(typeof init.body === 'string');
+    const wire = z.object({ model: z.string(), input: z.array(z.object({ type: z.string().optional() }).passthrough()) }).parse(JSON.parse(init.body));
+    const continuation = wire.input.some(item => item.type === 'function_call_output');
+    return new Response(continuation ? completedOcrStream('Relay public capability verified', wire.model)
+      : completedCapabilityStream([{ type: 'function_call', namespace: 'relay_capability', name: 'echo', call_id: 'public-capability-call', arguments: JSON.stringify({ value }) }], wire.model),
+    { headers: { 'content-type': 'text/event-stream' } });
+  });
 }

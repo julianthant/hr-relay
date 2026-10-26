@@ -326,11 +326,49 @@ function approvedSubjectLeaves(scope: EvidenceValueScope, prefix: string): unkno
   ];
 }
 
+function resolvedIdentityLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return [
+    ...open(scope,
+      at("state"), at("shouldCheckCrm"), at("ucpathFound"), at("crmErrorCode"), at("selected"), at("selected.department"), at("selected.jobTitle"), at("selected.employeeStatus"), at("selected.hdh"),
+      at("selected.hrStatus"), at("selected.startDate"), at("selected.effectiveDate"), at("selected.terminationDate"), at("selected.terminationReason"), at("crmRecord"),
+      at("crmIdentity"), at("crmIdentity.department"), at("crmIdentity.firstDayOfService"), at("crmRecord.recordId"), at("crmRecord.recordUrl"), at("crmRecord.department"), at("crmRecord.firstDayOfService"), at("crmRecord.dateSigned"), at("crmState"), at("method")),
+    ...person(scope, at("selected.emplId"), at("selected.name"), at("crmRecord.emplId"), at("crmRecord.name"), at("crmIdentity.emplId"), at("crmIdentity.name"), at("recoveryEid")),
+    ...population(scope, at("candidateEids"), at("unselectedCrmRecords")),
+  ];
+}
+
+function activeStatusLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return [
+    ...open(scope, at("ucpathSelection"), at("state"), at("reason"), at("code"), at("hdh"), at("details.search"), at("details.department"),
+      at("details.hrStatus"), at("details.ucpath"), at("details.crm"), at("details.startDate"), at("details.endDate"), at("details.terminationReason"), at("details.foundInUcpath")),
+    ...person(scope, at("datesEid"), at("details.name"), at("details.eid"), at("details.matchedEid"), at("details.matchedName")),
+    ...population(scope, at("candidateEids")),
+  ];
+}
+
+function personLookupResultLeaves(scope: EvidenceValueScope): unknown[] {
+  return [
+    ...open(scope, "activeStatus.ucpathSelection", "activeStatus.state", "activeStatus.reason", "activeStatus.code", "activeStatus.hdh",
+      "activeStatus.details.search", "activeStatus.details.department", "activeStatus.details.hrStatus", "activeStatus.details.ucpath", "activeStatus.details.crm",
+      "activeStatus.details.startDate", "activeStatus.details.endDate", "activeStatus.details.terminationReason", "activeStatus.details.foundInUcpath",
+      "crmDates.state", "crmDates.dates.code", "crmDates.dates.state", "crmDates.dates.reason", "crmDates.dates.employmentDate", "crmDates.dates.oathDate"),
+    ...person(scope, "activeStatus.datesEid", "activeStatus.details.name", "activeStatus.details.eid", "activeStatus.details.matchedEid", "activeStatus.details.matchedName"),
+    ...population(scope, "activeStatus.candidateEids"),
+    ...person(scope, "crmDates.dates.emplId"),
+  ];
+}
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
   /* person-lookup ingress */
-  ...person(PERSON_LOOKUP_INPUT, "name", "emplId", "lastName", "firstName", "dob"),
-  { scope: PERSON_LOOKUP_INPUT, path: "ssn", classification: "direct-identifier", transform: "digest" },
-  ...open(PERSON_LOOKUP_INPUT, "mode", "crmCheck", "keepNonHdh", "includeCrmDates"),
+  ...[PERSON_LOOKUP_INPUT,
+    ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates"].map(workflowInput),
+  ].flatMap(scope => [
+    ...person(scope, "name", "emplId", "lastName", "firstName", "dob"),
+    { scope, path: "ssn", classification: "direct-identifier", transform: "digest" },
+    ...open(scope, "mode", "crmCheck", "keepNonHdh", "includeCrmDates"),
+  ]),
 
       /* `selection.selected` is declared twice: as the `null` of the ambiguous arm and as the object the resolved arm carries. */
   ...population(SEARCH, "results", "selection.candidateEids"),
@@ -350,23 +388,15 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(taskOutput("crm/verify-onboarding-record"), "state", "code", "reason"),
   ...population(taskOutput("crm/search-onboarding-records"), "records"),
   ...open(taskOutput("crm/search-onboarding-records"), "state", "code", "reason"),
-  ...open(taskOutput("workflow:person-lookup/read-resolved-identity"),
-    "state", "shouldCheckCrm", "ucpathFound", "crmErrorCode", "selected", "selected.department", "selected.jobTitle", "selected.employeeStatus", "selected.hdh",
-    "selected.hrStatus", "selected.startDate", "selected.effectiveDate", "selected.terminationDate", "selected.terminationReason", "crmRecord",
-    "crmIdentity", "crmIdentity.department", "crmIdentity.firstDayOfService", "crmRecord.recordId", "crmRecord.recordUrl", "crmRecord.department", "crmRecord.firstDayOfService", "crmRecord.dateSigned", "crmState", "method"),
-  ...person(taskOutput("workflow:person-lookup/read-resolved-identity"), "selected.emplId", "selected.name", "crmRecord.emplId", "crmRecord.name", "crmIdentity.emplId", "crmIdentity.name", "recoveryEid"),
-  ...population(taskOutput("workflow:person-lookup/read-resolved-identity"), "candidateEids", "unselectedCrmRecords"),
-  ...open(ACTIVE_STATUS, "ucpathSelection", "state", "reason", "code", "hdh", "details.search", "details.department",
-    "details.hrStatus", "details.ucpath", "details.crm", "details.startDate", "details.endDate", "details.terminationReason", "details.foundInUcpath"),
-  ...person(ACTIVE_STATUS, "datesEid", "details.name", "details.eid", "details.matchedEid", "details.matchedName"),
-  ...population(ACTIVE_STATUS, "candidateEids"),
-  ...open(PERSON_LOOKUP_RESULT, "activeStatus.ucpathSelection", "activeStatus.state", "activeStatus.reason", "activeStatus.code", "activeStatus.hdh",
-    "activeStatus.details.search", "activeStatus.details.department", "activeStatus.details.hrStatus", "activeStatus.details.ucpath", "activeStatus.details.crm",
-    "activeStatus.details.startDate", "activeStatus.details.endDate", "activeStatus.details.terminationReason", "activeStatus.details.foundInUcpath",
-    "crmDates.state", "crmDates.dates.code", "crmDates.dates.state", "crmDates.dates.reason", "crmDates.dates.employmentDate", "crmDates.dates.oathDate"),
-  ...person(PERSON_LOOKUP_RESULT, "activeStatus.datesEid", "activeStatus.details.name", "activeStatus.details.eid", "activeStatus.details.matchedEid", "activeStatus.details.matchedName"),
-  ...population(PERSON_LOOKUP_RESULT, "activeStatus.candidateEids"),
-  ...person(PERSON_LOOKUP_RESULT, "crmDates.dates.emplId"),
+  ...resolvedIdentityLeaves(taskOutput("workflow:person-lookup/read-resolved-identity"), ""),
+  ...activeStatusLeaves(ACTIVE_STATUS, ""),
+  ...personLookupResultLeaves(PERSON_LOOKUP_RESULT),
+  ...resolvedIdentityLeaves(workflowResult("person-lookup-searching"), ""),
+  ...resolvedIdentityLeaves(workflowResult("person-lookup-cross-verify"), "identity"),
+  ...population(workflowResult("person-lookup-cross-verify"), "verifiedCrm.records", "crmResults.records"),
+  ...open(workflowResult("person-lookup-cross-verify"), "verifiedCrm.state", "verifiedCrm.code", "verifiedCrm.reason"),
+  ...activeStatusLeaves(workflowResult("person-lookup-active-status"), ""),
+  ...personLookupResultLeaves(workflowResult("person-lookup-crm-dates")),
 
         /* These describe the READ, not about the person, so they are open. */
   ...person(KRONOS_TIMECARD_INPUT, "emplId", "expectedName"),

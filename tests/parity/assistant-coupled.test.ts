@@ -1,3 +1,4 @@
+import { AssistantModelPreferenceViewSchema } from '../../src/models/dashboard/assistant.js';
 import { expect, test } from '@playwright/test';
 import { startAssistantCoupledServer } from '../support/helpers/assistant-coupled-server.js';
 import { attachShellA11y } from './helpers/shell-proof.js';
@@ -13,6 +14,10 @@ test('coupled synthetic proposal preserves conversation, holds confirmation and 
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/api/')) requests.push(new URL(request.url()).pathname); });
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  const preferenceResponse = await page.request.get(new URL('/api/v1/assistant/model-preference', server.baseUrl).toString());
+  expect(preferenceResponse.status()).toBe(200);
+  const preferenceView = AssistantModelPreferenceViewSchema.parse(await preferenceResponse.json());
+  expect(preferenceView).toEqual(server.world.service.modelPreference());
   await page.goto(server.baseUrl);
   const launcher = page.getByRole('button', { name: 'Assistant', exact: true });
   await launcher.click();
@@ -52,7 +57,12 @@ test('coupled synthetic proposal preserves conversation, holds confirmation and 
   const stop = panel.getByRole('button', { name: 'Stop reply', exact: true }); await expect(stop).toBeVisible(); await stop.focus(); await page.keyboard.press('Enter');
   await expect(panel.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   await expect(composer).toBeFocused(); server.world.releaseReply();
-  await expect(panel).toContainText('Reply cancelled.');
+  await expect(panel).toContainText("Action outcome is unknown. Check the current inbox before starting a new request. Do not retry this request.");
+  await expect(composer).toHaveValue('Explain while held');
+  await expect(panel.getByRole('button', { name: 'Retry reply', exact: true })).toHaveCount(0);
+  const requestsAfterStop = requests.length;
+  await composer.press('Enter');
+  expect(requests).toHaveLength(requestsAfterStop);
   await page.getByRole('button', { name: 'New chat' }).click(); await expect(composer).toHaveValue('');
   await attachShellA11y(page, info, 'assistant-coupled.a11y.yml'); expect(errors).toEqual([]);
   expect(requests).toEqual(['/api/v1/assistant/respond', '/api/v1/assistant/respond']);

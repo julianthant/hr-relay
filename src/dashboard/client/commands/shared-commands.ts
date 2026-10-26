@@ -29,6 +29,8 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
   const targets = result.affectedTargets;
   const matches = (target: typeof targets[number]): boolean => {
     switch (command.family) {
+      case 'assistant-model-preference': return target.family === 'assistant-model-preference'
+        && target.profileId === command.target.profileId && target.revision === command.target.expectedRevision + 1;
       case "run": return target.family === "run" && (target.runId === command.target.runId
         || ["cancel", "delete", "retry", "restart"].includes(command.type));
       case "gate": return (target.family === "gate" && target.runId === command.target.runId && target.gateId === command.target.gateId)

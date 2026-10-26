@@ -60,8 +60,8 @@ shared task-store inventory.
 #### 1.2.1 Module roles
 
 `src/workflow-kit/validation/module-role.ts` defines `standalone`, `composition`, and
-`chunk-harness`. Person Lookup is standalone. Separations is a composition.
-`src/backend/app/registries/step-proof-modules.ts` composes retained Separations proofs separately.
+`chunk-harness`. Person Lookup and Separations are compositions.
+`src/backend/app/registries/step-proof-modules.ts` composes their retained step proofs separately.
 They are absent from the operator registry and do not become startable workflows.
 `auditWorkflowModuleRoles` verifies role ownership.
 
@@ -74,7 +74,12 @@ They are absent from the operator registry and do not become startable workflows
 | `standalone` or `composition` | `src/workflows/<id>/workflow.ts` |
 | `chunk-harness` | `src/workflows/<of>/steps/<step>/step.ts` |
 
-A declared timeline group needs no folder unless it holds a retained harness. Separations retains
+Every workflow folder containing `workflow.ts` has `tasks/` and at least one retained
+`steps/<step>/step.ts` harness, checked by `workflow-structure`. A declared timeline group needs no
+folder unless it holds a retained harness. Person Lookup retains `searching`, `cross-verify`,
+`active-status`, and `crm-dates`. Each harness reuses the composition's input and canonical schemas,
+step/node identities and input defaults, and carries the prerequisite read groups its step needs.
+They remain outside the operator registry. Separations retains
 harnesses for `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-finalization`, and
 `ucpath-transaction`. Its `job-summary` group has no harness folder.
 The `workflow-layout` guard in `tests/architecture/workflow-kit/workflow-layout.test.ts` checks

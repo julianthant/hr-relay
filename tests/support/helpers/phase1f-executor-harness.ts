@@ -1,3 +1,4 @@
+import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import { createBoundProfileFixture } from "./admission-fixture.js";
 import assert from "node:assert/strict";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
@@ -60,17 +61,23 @@ export interface AuthorityHarness {
   readonly dispose: () => void;
 }
 
+const retainedAuthorityHarnessOwners = new Set<object>();
+
 export function openAuthorityHarness(): AuthorityHarness {
+  const held: { fixture?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; primary?: { error: unknown } } = {};
+  retainedAuthorityHarnessOwners.add(held);
+  try {
   const clock = manualClock(new Date(EXECUTOR_NOW));
-  const fixture = createBoundProfileFixture();
+  const fixture = createBoundProfileFixture(); held.fixture = fixture;
   const root = fixture.stateRoot, path = fixture.path;
   const database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
-  );
+  ); held.database = database;
   const config = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   assert.equal(config.configSnapshotId, QUEUED_RUN.envelope.configSnapshotId);
   assert.equal(config.configFingerprint, QUEUED_RUN.envelope.configFingerprint);
+  let closeAttempted = false, closeFailure: Error | undefined;
   return {
     database,
     clock,
@@ -78,10 +85,13 @@ export function openAuthorityHarness(): AuthorityHarness {
     path,
     stateRoot: root,
     dispose: (): void => {
-      database.close();
-      fixture.close();
+      if (closeAttempted) { if (closeFailure !== undefined) throw closeFailure; return; }
+      closeAttempted = true;
+      try { database.close(); fixture.close(); retainedAuthorityHarnessOwners.delete(held); }
+      catch (error) { held.primary = { error }; closeFailure = retainAuthoritySourceClosure([error], { admission: held }); throw closeFailure; }
     },
   };
+} catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 
 /** A queued person-lookup run whose fingerprints match the REAL descriptor. */

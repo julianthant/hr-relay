@@ -154,7 +154,9 @@ producer; missing or ambiguous sources remain unavailable. Branch choices are hy
 `src/workflows/person-lookup/workflow.ts` declares `searching`, `cross-verify`, `active-status` and
 conditional `crm-dates`, without gates or transactions. `crossVerify` references `searching` and
 requires `selection.selected`; the result handles included dates and `not-requested`. Read this
-complete definition for schemas, parser, intake and presentation.
+complete definition for schemas, parser, intake and presentation. Its four retained read-only
+harnesses live under `steps/` and import its shared step/node identities. Each includes the upstream
+read groups needed by its target step and reuses the exact input, canonical schema and input defaults.
 
 ## 6 · Separations: shared steps, gates and transactions
 

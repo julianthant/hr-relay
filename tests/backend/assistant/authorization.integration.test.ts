@@ -357,8 +357,8 @@ it.each(["handler-cancel", "service-cancel", "service-account", "pre-effect", "d
   });
   const service = createAssistantService({ account: account.service, context: createAssistantContext(Buffer.from(knowledge.bytes), knowledge.policy),
     runtime: () => ({ repositoryId: knowledge.policy.repositoryId, revision: knowledge.policy.revision }), clock: f.clock,
-    modelPolicy: { model: "gpt-6.1-sol", effort: "medium", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: new Date(f.clock.nowMs() + 60_000).toISOString() },
-    isModelPolicyCurrent: () => true, projectInput: tools.projectInput,
+    modelPolicy: () => ({ policy: { model: "gpt-6.1-sol", effort: "medium", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: new Date(f.clock.nowMs() + 60_000).toISOString() }, isCurrent: () => true }),
+     projectInput: tools.projectInput,
     async bindFunctions(context, signal) {
       const sets = await tools.bindFunctions(context, signal);
       return sets.map(set => ({ ...set, functions: set.functions.map(fn => ({ ...fn, async invoke(value: Parameters<typeof fn.invoke>[0], signal: AbortSignal, invocationContext: AssistantFunctionContext) {

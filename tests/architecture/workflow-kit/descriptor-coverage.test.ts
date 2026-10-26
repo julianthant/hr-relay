@@ -156,7 +156,7 @@ describe("descriptor coverage", () => {
     );
 
     const harness = STEP_PROOF_MODULES[0];
-    const composition = WORKFLOW_MODULES.find((module) => module.role.kind === "composition");
+    const composition = WORKFLOW_MODULES.find((module) => harness?.role.kind === "chunk-harness" && module.descriptor.id === harness.role.of);
     if (harness === undefined || composition === undefined) {
       throw new Error("the role fixtures require one retained step proof and one composition");
     }
@@ -189,7 +189,7 @@ describe("descriptor coverage", () => {
   it("refuses a chunk harness whose step its composition does not declare", () => {
     const roleSpecimens = [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
     const harness = STEP_PROOF_MODULES[0];
-    const composition = WORKFLOW_MODULES.find((module) => module.role.kind === "composition");
+    const composition = WORKFLOW_MODULES.find((module) => harness?.role.kind === "chunk-harness" && module.descriptor.id === harness.role.of);
     if (harness === undefined || composition === undefined) {
       throw new Error("the role fixtures require one retained step proof and one composition");
     }
@@ -201,9 +201,13 @@ describe("descriptor coverage", () => {
     assert.deepEqual(auditWorkflowModuleRoles(roleSpecimens), []);
     for (const module of roleSpecimens) {
       if (module.role.kind !== "chunk-harness") continue;
+      const role = module.role;
+      const owner = WORKFLOW_MODULES.find(candidate => candidate.descriptor.id === role.of);
+      assert.ok(owner !== undefined, `${String(module.descriptor.id)} requires its registered composition`);
+      assert.equal(owner.role.kind, "composition");
       assert.ok(
-        declaredKeys.includes(module.role.step),
-        `${String(module.descriptor.id)} must name a step ${compositionId} declares`,
+        owner.descriptor.timeline.map(({ key }) => key).includes(role.step),
+        `${String(module.descriptor.id)} must name a step ${String(role.of)} declares`,
       );
     }
 
@@ -221,9 +225,9 @@ describe("descriptor coverage", () => {
     assert.match(unknownStep.join("\n"), new RegExp(declaredKeys[0] ?? "unreachable"));
 
 
-    const originalStandalone = WORKFLOW_MODULES.find((module) => module.role.kind === "standalone");
-    const standalone = originalStandalone === undefined ? undefined : { ...originalStandalone, descriptor: { ...originalStandalone.descriptor, timelineDeclared: false } };
-    if (standalone === undefined) throw new Error("the role fixtures require one standalone workflow");
+    const original = WORKFLOW_MODULES[0];
+    if (original === undefined) throw new Error("the no-timeline fixture requires one registered workflow");
+    const standalone = { ...original, role: defineWorkflowRole({ kind: "standalone" }), descriptor: { ...original.descriptor, timelineDeclared: false } };
     const derivedKey = standalone.descriptor.timeline[0]?.key;
     const standaloneNodeIds = standalone.descriptor.nodes.map((node) => String(node.id));
     assert.ok(

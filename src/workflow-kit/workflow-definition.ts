@@ -1238,7 +1238,7 @@ export function defineStepEntries<const Key extends string>(step: Readonly<{ key
     task<
       const Id extends string,
       Contract extends AnyReadTaskContract,
-      const Identity extends Readonly<{ label: string; replay: "checkpoint" | "always-rerun"; when?: NodeConditionSpec }>,
+      const Identity extends Readonly<{ label?: string; replay: "checkpoint" | "always-rerun"; when?: NodeConditionSpec }>,
     >(
       id: Id,
       contract: Contract,
@@ -1248,7 +1248,7 @@ export function defineStepEntries<const Key extends string>(step: Readonly<{ key
         step: owner,
         id,
         contract,
-        label: identity.label,
+        ...(identity.label === undefined ? {} : { label: identity.label }),
         replay: identity.replay,
         ...(identity.when === undefined ? {} : { when: identity.when }),
       };

@@ -1,3 +1,4 @@
+import { AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
 import { AssistantActionDecisionSchema, AssistantActionResultSchema } from "../../../../../src/models/dashboard/assistant.js";
 import assert from "node:assert/strict";
 import { Hono } from "hono";
@@ -61,4 +62,30 @@ it("returns an issued automatic unknown action unchanged without converting it t
     host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json",
   }, body: JSON.stringify({ message: "mark notifications read" }) });
   assert.equal(response.status, 200); assert.equal(calls, 1); assert.deepEqual(await response.json(), result);
+});
+
+
+it('serves only the strict selected preference with no-store and a coded unavailable boundary', async () => {
+  const view = AssistantModelPreferenceViewSchema.parse({ profileId: '22222222-2222-4222-8222-222222222222', epoch: 3,
+    revision: 2, preference: { slug: 'test-public-model', effort: 'medium' } });
+  const app: DashboardApp = new Hono(); let reads = 0;
+  registerAssistantRoutes(app, { async respond() { throw new Error('unexpected inference'); }, modelPreference() { reads++; return view; } });
+  const response = await app.request("http://127.0.0.1:4310/api/v1/assistant/model-preference");
+  assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(AssistantModelPreferenceViewSchema.parse(await response.json()), view); assert.equal(reads, 1);
+  const bare = await app.request("http://127.0.0.1:4310/assistant/model-preference");
+  assert.equal(bare.status, 404); assert.equal(reads, 1);
+  const unavailable: DashboardApp = new Hono(); registerAssistantRoutes(unavailable, undefined);
+  const absent = await unavailable.request("http://127.0.0.1:4310/api/v1/assistant/model-preference");
+  assert.equal(absent.status, 503); assert.equal(absent.headers.get('cache-control'), 'no-store');
+  assert.equal((await absent.text()).includes('ASSISTANT_UNAVAILABLE'), true);
+});
+it('does not serialize a corrupt preference failure or private details', async () => {
+  const app: DashboardApp = new Hono();
+  registerAssistantRoutes(app, { async respond() { throw new Error('unexpected inference'); },
+    modelPreference() { throw new Error('private preference failure'); } });
+  const response = await app.request("http://127.0.0.1:4310/api/v1/assistant/model-preference");
+  assert.equal(response.status, 503); assert.equal(response.headers.get('cache-control'), 'no-store');
+  const body = await response.text(); assert.equal(body.includes('ASSISTANT_UNAVAILABLE'), true);
+  assert.equal(body.includes('private preference failure'), false);
 });

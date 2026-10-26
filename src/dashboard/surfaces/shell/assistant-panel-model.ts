@@ -1,3 +1,4 @@
+import { assistantSetupCommand } from '../assistant/assistant-model.js';
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { useEffect, useRef, useState } from 'react';
 import type { DashboardClient } from '../../client/index.js';
@@ -113,7 +114,28 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
     finally { pending.current = false; if (identity === generation.current) setBusy(false); }
     return committed;
   }
+  function refuseAttachments(value: Pick<ComposerValue, 'text' | 'files'>) {
+    if (served !== undefined && assistantSetupCommand(value.text) !== undefined && value.files.length > 0) {
+      setError('Assistant setup commands accept text only. Remove attachments before sending.'); return true;
+    }
+    return false;
+  }
+  function refuseAttachmentInput() {
+    if (served !== undefined && assistantSetupCommand(served.state.draft) !== undefined) {
+      setError('Assistant setup commands accept text only. Remove attachments before sending.'); return true;
+    }
+    return false;
+  }
+  async function attachFile(file?: File): Promise<AssistantFile | null> {
+    if (refuseAttachmentInput()) return null;
+    return ports.onAttachFile?.(file) ?? null;
+  }
+  async function openChatFile(file?: AssistantFile, mode?: Parameters<NonNullable<AssistantPorts['onOpenChatFile']>>[1]) {
+    if (refuseAttachmentInput()) return null;
+    return ports.onOpenChatFile?.(file, mode);
+  }
   async function send(value: ComposerValue) {
+    if (refuseAttachments(value)) return false;
     const identity = generation.current, authority = currentAuthority.current;
     let dispatched = false;
     const committed = await perform(async () => {
@@ -145,7 +167,7 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
     });
   }
   function latest() { const element = transcript.current; if (element) element.scrollTop = element.scrollHeight; setShowLatest(false); }
-  return { conversation, account, error, busy, detail, setDetail, transcript, showLatest, latest, send, runWorkflow,
+  return { conversation, account, error, busy, refuseAttachments, attachFile, openChatFile, detail, setDetail, transcript, showLatest, latest, send, runWorkflow,
     onScroll: () => { const el = transcript.current; if (el) setShowLatest(el.scrollHeight - el.clientHeight - el.scrollTop >= 48); },
     finishMockSignIn: () => { setConversation(current => ({ ...current, scene: 'ask-write' })); setDetail(null); },
     act: (action: 'approve' | 'decline' | 'cancel') => perform(() => producer.act(conversation, action)),

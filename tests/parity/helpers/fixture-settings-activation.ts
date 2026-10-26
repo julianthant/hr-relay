@@ -1,8 +1,11 @@
+import { createBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
+import { composeProfileRuntime } from '../../../src/backend/app/composition/storage-compose.js';
+import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import { PARITY_BUILD_COMMAND } from "../../../src/backend/app/composition/dashboard/build-identity.js";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { copyFileSync, cpSync, mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { copyFileSync, cpSync, mkdirSync } from "node:fs";
+
 import { join } from "node:path";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { composeDashboardRuntime } from "../../../src/backend/app/composition/dashboard/compose.js";
@@ -10,10 +13,15 @@ import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime
 import { PARITY_DIST_DIR, PARITY_REPO_ROOT, assertServedBundle } from "./bundle.js";
 
 /** Real composition and command routes on a private, disposable authority. */
+const retainedSettingsParityOwners = new Set<object>();
 export async function startSettingsActivationServer() {
   assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-desktop-"));
-  let admission: RuntimeAdmission | undefined;
+  const clock = manualClock(new Date("2026-09-09T12:00:00.000Z"));
+  const fixture = createBoundProfileFixture({ sharedMachine: true });
+  const root = fixture.workspace;
+  const held: { fixture: typeof fixture; machine?: RuntimeAdmission; profile?: ReturnType<typeof composeProfileRuntime>;
+    runtime?: Awaited<ReturnType<typeof composeDashboardRuntime>>; primary?: unknown } = { fixture };
+  retainedSettingsParityOwners.add(held);
   try {
     for (const name of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "vite.parity.config.ts", "tsconfig.json"])
       copyFileSync(join(PARITY_REPO_ROOT, name), join(root, name));
@@ -22,13 +30,48 @@ export async function startSettingsActivationServer() {
       mkdirSync(join(root, name, ".."), { recursive: true });
       copyFileSync(join(PARITY_REPO_ROOT, name), join(root, name));
     }
-    mkdirSync(join(root, "dist")); cpSync(PARITY_DIST_DIR, join(root, "dist", "dashboard"), { recursive: true });
-    admission = acquireEntrypointAdmission(root, "shared");
-    if (admission.stateRoot !== join(root, ".tracker", "data") || admission.artifactRoot !== join(root, ".tracker", "data", "artifacts")) throw new Error("SETTINGS_FIXTURE_ADMISSION_ROOT_MISMATCH");
-    const runtime = await composeDashboardRuntime({ admission, isolation: rebuildRuntimeIsolation, repoRoot: root,
-      env: { HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" }, clock: manualClock(new Date("2026-09-09T12:00:00.000Z")),
-      backendPortOverride: 0, frontendPortOverride: 0, frontend: "built-bundle", frontendBuildScript: PARITY_BUILD_COMMAND });
-    return { url: `http://127.0.0.1:${String(runtime.port)}`, root,
-      stop: async () => { try { await runtime.stop(); } finally { admission?.release(); rmSync(root, { recursive: true, force: true }); } } };
-  } catch (error) { admission?.release(); rmSync(root, { recursive: true, force: true }); throw error; }
+    mkdirSync(join(root, "dist"));
+    cpSync(PARITY_DIST_DIR, join(root, "dist", "dashboard"), { recursive: true });
+    const machine = acquireEntrypointAdmission(root, "shared");
+    held.machine = machine;
+    const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
+      processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot) });
+    held.profile = profile;
+    const active = profile.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+    if (active.state !== 'active') throw new Error('parity-profile-sign-in-refused');
+    if (active.profileId !== fixture.admission.profileBinding.profileId) throw new Error('parity-profile-binding-mismatch');
+    const runtime = await composeDashboardRuntime({ admission: machine, profile: { runtime: profile, token: active.token }, clock,
+      isolation: rebuildRuntimeIsolation,
+      repoRoot: root,
+      env: { HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" },
+      backendPortOverride: 0,
+      frontendPortOverride: 0,
+      frontend: "built-bundle",
+      frontendBuildScript: PARITY_BUILD_COMMAND });
+    held.runtime = runtime;
+    let stopPromise: Promise<void> | undefined;
+    return { url: `http://127.0.0.1:${runtime.port}`, root, stateRoot: fixture.stateRoot,
+      profileId: active.profileId,
+      protectedRevision: () => {
+        profile.assertCurrent(active.token);
+        const current = profile.selectedContext(active.token);
+        if (current.admission.profileBinding.profileId !== active.profileId) throw new Error('parity-profile-binding-mismatch');
+        const revision = current.credentials.read().revision;
+        current.assertCurrent(); profile.assertCurrent(active.token);
+        return revision;
+      },
+      stop: () => {
+        if (stopPromise !== undefined) return stopPromise;
+        stopPromise = (async () => {
+          try {
+            await runtime.stop();
+            await profile.close();
+            machine.release();
+            fixture.close();
+            retainedSettingsParityOwners.delete(held);
+          } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
+        })();
+        return stopPromise;
+      } };
+  } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }

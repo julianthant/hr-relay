@@ -25,12 +25,40 @@ inputs. A changed or new presentation requires operator approval, a UI-only impl
 mock data and references, then wiring. Workflow-varying counts, order, text, branches, and sources
 use existing components. Served Explorer timelines come from registered backend definitions.
 
+## Assistant setup and preference transport
+
+`AssistantQueries` exposes the existing respond/decide routes and
+`GET /api/v1/assistant/model-preference`. The strict `AssistantModelPreferenceViewSchema` carries the actual
+selected `profileId`, `epoch`, `revision` and canonical preference. The response uses `no-store`;
+missing, corrupt or refused authority returns a coded unavailable response rather than a browser
+default. The authenticated selected-profile composition owns the view.
+
+The composer recognizes the canonical setup command constants from `models/dashboard/assistant.ts`.
+A model read uses that served view. A model set goes through the existing `CommandExecutor` and
+`executeCommand` protocol, with `requestedBy` bound to `LOCAL_OPERATOR_ACTOR_ID`,
+`source: dashboard-assistant-model-preference` and the view's exact profile, epoch and expected
+revision. It is never an inference tool or a model-produced action. Normal command locks, receipt
+validation, matching readback, refusal and UNKNOWN handling apply; a lost response does not cause an
+automatic retry or invented success.
+
+The explicit verification request uses the normal assistant respond route without `subjectRef`.
+The backend recognizes the exact command before inference policy, private input projection, context,
+subjects or tools. Recognized setup commands reject attachments before local file I/O or registration.
+The separate composer `canCompose` input may admit the served unverified account resource, while
+Confirm keeps the real `accountAvailable` requirement. An explicit verification settlement refreshes
+the current served account binding once, without a polling or activation loop.
+
+[Dashboard surfaces](dashboard-surfaces.md#assistant) owns operator setup behavior;
+[Clock, configuration, and secrets](clock-config-secrets.md#assistant-choice-and-private-verification)
+owns durable preference and private account authority. Neither a mounted control nor source wiring
+establishes live model or operator acceptance.
+
 ## Static workflow source policy
 
 `app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json` into `WORKFLOW_SOURCES`.
 Every declared value is `mock` or `served`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
 for an absent ID. `PRODUCT_WORKFLOW_COMPOSITION` supplies the static product policy;
-`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup uses `served`; the other configured workflows use `mock`.
+`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup and Separations use `served`; the other configured workflows use `mock`.
 Parity starts from an explicit mock policy and opts fixture workflows into served capability tests. There is no runtime served-to-mock fallback.
 
 `WorkflowComposition.sources` controls workflow presentation; `explorerSources`, `logsSources`,

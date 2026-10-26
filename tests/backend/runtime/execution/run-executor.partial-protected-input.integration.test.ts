@@ -1,3 +1,5 @@
+import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { requireLifecycleApplied,workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -14,8 +16,11 @@ import { protectedSecretSource } from "../../../support/helpers/protected-secret
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { testDataInputSource } from "../../../support/helpers/test-data/test-data-source.js";
 
+const retainedPartialInputOwners = new Set<object>();
+
 it("refuses partial signer metadata from a genuinely admitted private producer before executor scope or effects", async () => {
   const h = sourceBoundHarness(separationsDescriptor);
+  retainedPartialInputOwners.add(h);
   try {
     const source = testDataInputSource({ separationsKualiFinalizationCanaryDocumentNumber: "4502" });
     const document = source.read("separationsKualiFinalizationCanaryDocumentNumber");
@@ -47,7 +52,7 @@ it("refuses partial signer metadata from a genuinely admitted private producer b
     const slot = h.database.authority.workerSlots.list(separationsDescriptor.id)[0];
     assert.ok(slot);
     const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: separationsDescriptor.id,
-      workerId: slot.workerId, runtimeConfig: { generation: snapshot.generation, settingsRevision: snapshot.settingsRevision,
+      workerId: slot.workerId, workerLifetime: testWorkerLifetime(h.database, separationsDescriptor.id, slot.poolIndex).workerLifetime, runtimeConfig: { generation: snapshot.generation, settingsRevision: snapshot.settingsRevision,
         settingsFingerprint: snapshot.settingsFingerprint, configFingerprint: snapshot.configFingerprint } }));
     const partial = { ...claimed, input: { ...claimed.input, parsed: { ...claimed.input.parsed, protectedBindings: [documentBinding] } } };
     assert.throws(() => RunInputStorageSchema.parse(partial.input), /timekeeperName binding is absent/u);
@@ -65,5 +70,8 @@ it("refuses partial signer metadata from a genuinely admitted private producer b
     assert.deepEqual(h.world.events, []);
     assert.deepEqual(h.database.authority.runs.get(run.envelope.runId), claimed);
     assert.equal(h.database.getMeta().authorityGeneration, generation);
-  } finally { h.dispose(); }
+    assert.equal(h.lifecycle.requeue({ commandId: h.ids.uuid(), runId: claimed.envelope.runId, expectedVersion: claimed.version, cause: "recovery", claim: { workerId: slot.workerId, claimGeneration: claimed.claimGeneration } }).state, "applied");
+    h.dispose();
+    retainedPartialInputOwners.delete(h);
+  } catch (error) { throw retainAuthoritySourceClosure([error], { admission: h }); }
 });

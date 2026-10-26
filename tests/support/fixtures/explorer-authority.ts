@@ -1,7 +1,6 @@
+import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
+import { createBoundProfileFixture } from '../helpers/admission-fixture.js';
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -15,17 +14,25 @@ import { explorerQueryDeps } from "./explorer-seams.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "./intake-kernel-seams.js";
 
+const retainedExplorerAuthorityOwners = new Set<object>();
+
 export function explorerAuthorityFixture(owned?: Readonly<{
   root: string; path: string; open: () => AuthorityDatabase; dispose: () => void;
 }>) {
-  const root = owned?.root ?? mkdtempSync(join(realpathSync(tmpdir()), "explorer-authority-"));
-  const path = owned?.path ?? join(root, "state.db");
+  const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; owned?: typeof owned; primary?: { error: unknown }; failure?: Error } = { owned };
+  retainedExplorerAuthorityOwners.add(held);
+  try {
+  const profile = owned === undefined ? createBoundProfileFixture() : undefined; held.profile = profile;
+  const selected = owned ?? profile;
+  if (selected === undefined) throw new Error('explorer-fixture-owner-required');
+  const root = 'root' in selected ? selected.root : selected.stateRoot;
+  const path = selected.path;
   const clock = manualClock(new Date("2026-09-13T10:00:00Z"));
   const query = explorerQueryDeps(clock, FingerprintSchema.parse("b".repeat(64)));
   const descriptor = query.modules.find(module => module.descriptor.id === "person-lookup")?.descriptor;
   assert.ok(descriptor);
-  const open = () => owned?.open() ?? AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "explorer-proof" }, clock);
-  let database = open();
+  const open = () => owned === undefined ? AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "explorer-proof" }, clock) : owned.open();
+  let database = open(); held.database = database;
   let transactionCount = 0;
   let failAudit = false;
   let omitOverrideWrite = false;
@@ -66,6 +73,7 @@ export function explorerAuthorityFixture(owned?: Readonly<{
     return { service, kernel };
   };
   let composed = compose();
+  let closeAttempted = false;
   return {
     root, path, clock, descriptor,
     get database() { return database; },
@@ -82,7 +90,18 @@ export function explorerAuthorityFixture(owned?: Readonly<{
         payload: { changes: [{ kind: "workflow-label", value: label }] } });
     },
     read() { return buildWorkflowExplorer({ ...query, overrides: database.authority.explorerOverrides }); },
-    restart() { database.close(); database = open(); composed = compose(); },
-    dispose() { database.close(); if (owned === undefined) rmSync(root, { recursive: true, force: true }); else owned.dispose(); },
+    restart() {
+      if (held.failure !== undefined) throw held.failure;
+      try { database.close(); database = open(); held.database = database; composed = compose(); }
+      catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
+    },
+    dispose() {
+      if (held.failure !== undefined) throw held.failure;
+      if (closeAttempted) return;
+      closeAttempted = true;
+      try { database.close(); if (owned === undefined) profile?.close(); else owned.dispose(); retainedExplorerAuthorityOwners.delete(held); }
+      catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
+    },
   };
+  } catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
 }

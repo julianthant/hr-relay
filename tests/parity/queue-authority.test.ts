@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { chromium, type Worker } from "playwright";
@@ -14,6 +15,8 @@ import {
 } from "./helpers/capture.js";
 import { dismissWorkflowWindowOverQueue, failOnPageErrors } from "./helpers/reference-harness.js";
 import { startQueueAuthorityServer, type QueueAuthorityServer } from "./helpers/queue-authority-server.js";
+
+const retainedParityFixtureFailures = new Set<object>();
 
 
 const VIEWPORTS = [
@@ -285,6 +288,7 @@ test.describe("Queue authority, live commands, and desktop parity", () => {
       args: ["--headless=new", `--disable-extensions-except=${root}`, `--load-extension=${root}`],
       viewport: { width: 1280, height: 720 },
     }).catch((error: unknown) => { rmSync(root, { recursive: true, force: true }); throw error; });
+    let parityBodyFailure: { error: unknown } | undefined;
     try {
       const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker", { timeout: 10_000 });
       const receipts: Array<Record<string, unknown>> = [];
@@ -337,10 +341,22 @@ test.describe("Queue authority, live commands, and desktop parity", () => {
       const proof = testInfo.outputPath("zoom-proof.json");
       writeFileSync(proof, JSON.stringify({ task: "3.1.13", viewport: { width: 1280, height: 720 }, receipts }, null, 2));
       await testInfo.attach("zoom-proof", { path: proof, contentType: "application/json" });
-    } finally {
+    } catch (error) { parityBodyFailure = { error }; }
+    if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
+      retainedParityFixtureFailures.add({ owners: [context, root], primary: parityBodyFailure.error });
+      throw parityBodyFailure.error;
+    }
+    let parityCleanupFailure: { error: unknown } | undefined;
+    try {
       await context.close();
       rmSync(root, { recursive: true, force: true });
+    } catch (error) { parityCleanupFailure = { error }; }
+    if (parityCleanupFailure !== undefined) {
+      retainedParityFixtureFailures.add({ owners: [context, root], primary: parityBodyFailure?.error, cleanup: parityCleanupFailure.error });
+      if (parityBodyFailure !== undefined) throw new AggregateError([parityBodyFailure.error, parityCleanupFailure.error], 'parity-body-and-cleanup-failed', { cause: parityBodyFailure.error });
+      throw parityCleanupFailure.error;
     }
+    if (parityBodyFailure !== undefined) throw parityBodyFailure.error;
   });
 
   test("Rerun modal handoff creates no run prior to final submission", async ({ page }) => {

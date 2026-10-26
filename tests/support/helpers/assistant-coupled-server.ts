@@ -21,7 +21,7 @@ export async function startAssistantCoupledServer() {
     const server = createServer((req, res) => {
       void (async () => {
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? '127.0.0.1'}`);
-        if (url.pathname === '/api/v1/assistant/respond' || url.pathname === '/api/v1/settings/chatgpt-account' && req.method === 'GET') {
+        if (url.pathname === '/api/v1/assistant/respond' || (url.pathname === '/api/v1/settings/chatgpt-account' || url.pathname === '/api/v1/assistant/model-preference') && req.method === 'GET') {
           const body = req.method === 'GET' ? undefined : await boundedBody(req);
           const abort = new AbortController(); res.on('close', () => abort.abort());
           const response = await world.app.fetch(new Request(url, { method: req.method, headers: Object.fromEntries(Object.entries(req.headers).filter((entry): entry is [string, string] => typeof entry[1] === 'string')), ...(body === undefined ? {} : { body: new Uint8Array(body) }), signal: abort.signal }));

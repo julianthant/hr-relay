@@ -14,6 +14,20 @@ export const AssistantCitationSchema = z.strictObject({
 export const ASSISTANT_DEFAULT_MODEL = "gpt-6.1-sol";
 export const ASSISTANT_DEFAULT_EFFORT = "medium";
 const ModelSlugSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u);
+export const AssistantModelPreferenceSchema = z.strictObject({ slug: ModelSlugSchema, effort: z.enum(["low", "medium", "high"]) });
+export type AssistantModelPreference = z.infer<typeof AssistantModelPreferenceSchema>;
+export const ASSISTANT_VERIFY_COMMAND = '/verify-assistant';
+export const ASSISTANT_MODEL_COMMAND = '/assistant-model';
+export const AssistantModelPreferenceViewSchema = z.strictObject({
+  profileId: z.uuid(), epoch: z.number().int().nonnegative(), revision: z.number().int().nonnegative(),
+  preference: AssistantModelPreferenceSchema,
+});
+export type AssistantModelPreferenceView = z.infer<typeof AssistantModelPreferenceViewSchema>;
+export const AssistantModelPreferenceRecordSchema = z.strictObject({
+  format: z.literal(1), id: z.literal("current"), profileId: z.uuid(), revision: z.number().int().positive(),
+  preference: AssistantModelPreferenceSchema, commandId: z.uuid(), auditId: z.uuid(), updatedAt: z.iso.datetime(),
+});
+export type AssistantModelPreferenceRecord = z.infer<typeof AssistantModelPreferenceRecordSchema>;
 const FunctionNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/u);
 export const AssistantModelCatalogSchema = z.strictObject({
   models: z.array(z.strictObject({ slug: ModelSlugSchema, displayName: z.string().min(1).max(256) })).max(256),
@@ -66,7 +80,7 @@ export const AssistantFunctionNamespaceSchema = z.strictObject({ type: z.literal
 });
 export type AssistantFunctionNamespace = z.infer<typeof AssistantFunctionNamespaceSchema>;
 export const AssistantInferenceRequestSchema = z.strictObject({ model: ModelSlugSchema,
-  reasoning: z.strictObject({ effort: z.enum(["low", "medium", "high"]) }),
+  reasoning: z.strictObject({ effort: AssistantModelPreferenceSchema.shape.effort }),
   input: z.array(AssistantInputItemSchema).min(1).max(128), tools: z.array(AssistantFunctionNamespaceSchema).max(8),
 }).superRefine((value, context) => {
   const namespaces = new Set<string>(), calls = new Map<string, { namespace: string; name: string; settled: boolean }>();
@@ -95,6 +109,7 @@ export const AssistantRequestSchema = z.strictObject({
 });
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 export const ASSISTANT_FAILURES = Object.freeze({
+  CHATGPT_RESOURCE_CLOSURE_UNPROVED: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text,
   ASSISTANT_INVALID: ERROR_CATALOG.ASSISTANT_INVALID.text,
   ASSISTANT_CONTEXT_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_CONTEXT_UNAVAILABLE.text,
   ASSISTANT_CONTEXT_STALE: ERROR_CATALOG.ASSISTANT_CONTEXT_STALE.text,

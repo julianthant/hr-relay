@@ -1,3 +1,4 @@
+import { AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
 import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import configuredSources from "../../../../../config/dashboard-workflow-sources.json";
 import { z } from "zod";
@@ -11,12 +12,12 @@ import { composeDashboardRuntime } from "../../../../../src/backend/app/composit
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { assistantKnowledgeArtifact, ASSISTANT_KNOWLEDGE_PATH } from "../../../../../src/backend/assistant/context.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionResultSchema } from "../../../../../src/models/dashboard/assistant.js";
+import { ASSISTANT_VERIFY_COMMAND,  AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionResultSchema } from "../../../../../src/models/dashboard/assistant.js";
 import { NotificationRecordSchema } from "../../../../../src/models/notifications/notifications.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
-import { chatGptFixture } from "../../../../support/helpers/chatgpt-account-fixtures.js";
+import { chatGptFixture , publicCapabilityResponses } from "../../../../support/helpers/chatgpt-account-fixtures.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 
 const AssistantTransportRequestSchema = AssistantInferenceRequestSchema.safeExtend({
@@ -24,22 +25,50 @@ const AssistantTransportRequestSchema = AssistantInferenceRequestSchema.safeExte
   include: z.tuple([z.literal("reasoning.encrypted_content")]),
 });
 
-it.each([
-  { mode: undefined, staleAccount: false }, { mode: "without-asking", staleAccount: false },
-  { mode: "every-action", staleAccount: false }, { mode: "every-action", staleAccount: true },
-] as const)("uses the real composed selected-account service with permission=$mode staleAccount=$staleAccount and bounded outbound data", async ({ mode, staleAccount }) => {
-  const installed = mode !== undefined;
-  const f = createBoundProfileFixture(), transport = chatGptFixture(f.admission), originalFetch = globalThis.fetch;
-  const fetchProbe = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+type ServedAssistantFixture = {
+  context: ReturnType<ReturnType<typeof composeProfileRuntime>['selectedContext']>;
+  transport: ReturnType<typeof chatGptFixture>;
+  clock: ReturnType<typeof chatGptFixture>['clock'];
+  originalFetch: typeof fetch;
+  origin: string;
+  post: (path: string, value: unknown) => Promise<unknown>;
+};
+type ServedAssistantOwner = {
+  profile?: ReturnType<typeof createBoundProfileFixture>;
+  transport?: ReturnType<typeof chatGptFixture>;
+  runtime?: ReturnType<typeof composeProfileRuntime>;
+  dashboard?: Awaited<ReturnType<typeof composeDashboardRuntime>>;
+  fetchProbe?: { mockRestore(): void };
+  unsettled: Error;
+  primary?: { error: unknown };
+  failures: unknown[];
+};
+let servedAssistantOwner: ServedAssistantOwner | undefined;
+async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Promise<void>) {
+  if (servedAssistantOwner !== undefined) {
+    const error = servedAssistantOwner.primary === undefined ? servedAssistantOwner.unsettled : servedAssistantOwner.primary.error;
+    if (error instanceof Error) throw error;
+    throw new AggregateError([error], 'Predecessor assistant fixture remains unproved', { cause: error });
+  }
+  const owner: ServedAssistantOwner = { unsettled: new Error('Predecessor assistant fixture is unsettled'), failures: [] };
+  servedAssistantOwner = owner;
+  let ready = false;
+  let primary: { error: unknown } | undefined;
+  try {
+    const f = createBoundProfileFixture();
+    owner.profile = f;
+    const transport = chatGptFixture(f.admission);
+    owner.transport = transport;
+    const originalFetch = globalThis.fetch;
+    const fetchProbe = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return originalFetch(input, init);
     return transport.transport(input, init);
   });
-  const clock = transport.clock;
-  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
-  let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined, primary: unknown;
-  const failures: unknown[] = [];
-  try {
+    owner.fetchProbe = fetchProbe;
+    const clock = transport.clock;
+    const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+    owner.runtime = runtime;
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
     const sources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredSources);
     const knowledge = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => sources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
@@ -51,15 +80,58 @@ it.each([
     assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("selected fixture required");
     const context = runtime.selectedContext(active.token);
     const authorization = await context.account.signIn({ usePlan: true }); await transport.callback(authorization); await authorization.completion;
-    dashboard = await composeDashboardRuntime({ admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
+    const dashboard = await composeDashboardRuntime({ admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
       clock, isolation: rebuildRuntimeIsolation, env: {}, backendPortOverride: 0, frontendPortOverride: 0, preflightRunnerFactory: healthyRuntimePreflightRunners,
-      ...(installed ? { assistantModelPolicy: { policy: { model: "gpt-6.1-sol", effort: "medium" as const, eligible: true as const, consented: true as const,
-        billing: "chatgpt-plan" as const, verifiedUntil: new Date(clock.nowMs() + 60_000).toISOString() }, isCurrent: () => { runtime.assertCurrent(active.token); return true; } } } : {}) });
+       });
+    owner.dashboard = dashboard;
     const origin = `http://127.0.0.1:${String(dashboard.port)}`;
     const post = async (path: string, value: unknown): Promise<unknown> => {
       const response = await originalFetch(`${origin}/api/v1/${path}`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(value) });
       const body: unknown = await response.json(); return body;
     };
+
+    ready = true;
+    await body({ context, transport, clock, originalFetch, origin, post });
+  } catch (error) { primary = { error }; owner.primary = primary; }
+  if (!ready) {
+    const error = primary?.error;
+    if (error instanceof Error) throw error;
+    throw new AggregateError([error], 'Assistant fixture construction failed', { cause: error });
+  }
+  try {
+    assert.ok(owner.runtime);
+    assert.ok(owner.transport);
+    assert.ok(owner.fetchProbe);
+    assert.ok(owner.profile);
+    if (owner.dashboard !== undefined) await owner.dashboard.stop(); else await owner.runtime.close();
+    await owner.transport.cleanup();
+    owner.fetchProbe.mockRestore();
+    owner.profile.close();
+    servedAssistantOwner = undefined;
+  } catch (error) { owner.failures.push(error); owner.primary ??= { error }; }
+  if (primary !== undefined || owner.failures.length > 0) throw new AggregateError(
+    [...(primary === undefined ? [] : [primary.error]), ...owner.failures],
+    'Composed assistant fixture failed', { cause: primary === undefined ? owner.failures[0] : primary.error });
+}
+
+it.each([
+  { mode: undefined, staleAccount: false }, { mode: "without-asking", staleAccount: false },
+  { mode: "every-action", staleAccount: false }, { mode: "every-action", staleAccount: true },
+] as const)("uses the real composed selected-account service with permission=$mode staleAccount=$staleAccount and bounded outbound data", async ({ mode, staleAccount }) => {
+  const installed = mode !== undefined;
+  await withServedAssistant(async ({ context, transport, clock, originalFetch, origin, post }) => {
+    if (installed) {
+      const preferenceResponse = await originalFetch(`${origin}/api/v1/assistant/model-preference`);
+      assert.equal(preferenceResponse.status, 200);
+      assert.equal(preferenceResponse.headers.get('cache-control'), 'no-store');
+      const preference = AssistantModelPreferenceViewSchema.parse(await preferenceResponse.json());
+      assert.equal(preference.profileId, context.admission.profileBinding.profileId);
+      assert.equal(preference.epoch, context.profileEpoch);
+      assert.equal(preference.revision, 0);
+      publicCapabilityResponses(transport);
+      const verified = AssistantResultSchema.parse(await post('assistant/respond', { message: ASSISTANT_VERIFY_COMMAND, subjectRef: 'ignored-fixture-reference' }));
+      assert.equal(verified.state, 'answered');
+    }
     const before = transport.calls.length;
     const privateResult = AssistantResultSchema.parse(await post("assistant/respond", { message: "unrecognized private local request" }));
     assert.equal(privateResult.state, "refused");
@@ -145,10 +217,53 @@ it.each([
       } else { assert.equal(result.state, "answered"); assert.equal(turns, 1); }
       for (const notificationId of ids) assert.equal(context.database.authority.notifications.get(notificationId)?.status, staleAccount ? "unread" : "read");
     }
-  } catch (error) { primary = error; }
-  try { if (dashboard !== undefined) await dashboard.stop(); else await runtime.close(); } catch (error) { failures.push(error); }
-  try { await transport.cleanup(); } catch (error) { failures.push(error); }
-  fetchProbe.mockRestore();
-  if (failures.length === 0) { try { f.close(); } catch (error) { failures.push(error); } }
-  if (primary !== undefined || failures.length > 0) throw new AggregateError([...(primary === undefined ? [] : [primary]), ...failures], "assistant composition fixture failed", { cause: primary });
+
+  });
+});
+
+it.each(["without-asking", "every-action"] as const)('serves preference CAS, replay and verification for %s', async mode => {
+  await withServedAssistant(async ({ context, transport, clock, originalFetch, origin, post }) => {
+    const preferenceResponse = await originalFetch(`${origin}/api/v1/assistant/model-preference`);
+      assert.equal(preferenceResponse.status, 200);
+      assert.equal(preferenceResponse.headers.get('cache-control'), 'no-store');
+      const preference = AssistantModelPreferenceViewSchema.parse(await preferenceResponse.json());
+      assert.equal(preference.profileId, context.admission.profileBinding.profileId);
+      assert.equal(preference.epoch, context.profileEpoch);
+      assert.equal(preference.revision, 0);
+      publicCapabilityResponses(transport);
+      const verified = AssistantResultSchema.parse(await post('assistant/respond', { message: ASSISTANT_VERIFY_COMMAND, subjectRef: 'ignored-fixture-reference' }));
+      assert.equal(verified.state, 'answered');
+
+    const grant = CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+        family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode } } }));
+    assert.equal(grant.state, "applied");
+    const view = AssistantModelPreferenceViewSchema.parse(await (await originalFetch(`${origin}/api/v1/assistant/model-preference`)).json());
+      const command = { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator",
+        source: 'dashboard-assistant-model-preference', family: "assistant-model-preference", type: "set-assistant-model-preference",
+        target: { profileId: view.profileId, epoch: view.epoch, expectedRevision: view.revision },
+        payload: { ...view.preference, effort: view.preference.effort === 'low' ? 'medium' : 'low' } };
+      const selected = CommandResultSchema.parse(await post('commands', command));
+      assert.equal(selected.state, 'applied');
+      const changed = AssistantModelPreferenceViewSchema.parse(await (await originalFetch(`${origin}/api/v1/assistant/model-preference`)).json());
+      assert.equal(changed.revision, view.revision + 1);
+      assert.deepEqual(changed.preference, command.payload);
+      const beforeReplay = context.database.getMeta().authorityGeneration;
+      assert.equal(CommandResultSchema.parse(await post('commands', command)).state, 'already-applied');
+      assert.equal(context.database.getMeta().authorityGeneration, beforeReplay);
+      const unverified = AssistantResultSchema.parse(await post('assistant/respond', { message: 'Explain the current page' }));
+      assert.equal(unverified.state, 'refused');
+      if (unverified.state === 'refused') assert.equal(unverified.code, 'ASSISTANT_MODEL_UNVERIFIED');
+      publicCapabilityResponses(transport);
+      assert.equal(AssistantResultSchema.parse(await post('assistant/respond', { message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
+      assert.equal(context.account.captureAssistantModelPolicy()?.isCurrent(), true);
+      const beforeForeign = transport.calls.length, generation = context.database.getMeta().authorityGeneration;
+      const foreign = { ...command, commandId: randomUUID(), target: { ...command.target, profileId: randomUUID(), expectedRevision: changed.revision } };
+      assert.notEqual(CommandResultSchema.parse(await post('commands', foreign)).state, 'applied');
+      assert.equal(transport.calls.length, beforeForeign);
+      assert.equal(context.database.getMeta().authorityGeneration, generation);
+      assert.equal(context.database.authority.commands.get(foreign.commandId), undefined);
+      assert.equal(context.database.authority.commandAudits.findByCommand(foreign.commandId), undefined);
+
+  });
 });

@@ -15,6 +15,8 @@ export type ChatGptAccountSnapshot =
       readonly expiresAt?: string; readonly planUsage: "enabled" | "disabled" | "limit-reached" };
 
 export interface ChatGptAccountPort {
+  readonly getResource?: () => ChatGptAccountResource;
+  readonly refresh?: () => Promise<void>;
   readonly mode: "preview" | "live";
   readonly getSnapshot: () => ChatGptAccountSnapshot;
   readonly subscribe: (listener: () => void) => () => void;

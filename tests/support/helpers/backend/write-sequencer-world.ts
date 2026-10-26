@@ -1,5 +1,8 @@
+import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
+import { randomUUID } from "node:crypto";
+import { runClaim } from "../../../../src/models/run/record.js";
 import { CONFIG_SNAPSHOT, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
-import { testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerPorts, testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
@@ -10,13 +13,14 @@ import { type RunRecord } from "../../../../src/models/run/record.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_EID, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_KEY, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessionManager, writeFixtureSessions, writeFixtureTransactionNode, type WriteFixtureWorld, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_OBSERVATION, WRITE_FIXTURE_STAGED_STATE } from "../../fixtures/write-sequencer-fixtures.js";
+import { buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_EID, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_KEY, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessionManager, writeFixtureSessions, writeFixtureTransactionNode, type WriteFixtureWorld, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_OBSERVATION, WRITE_FIXTURE_STAGED_STATE } from "../../fixtures/write-sequencer-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase, type AuthorityWriteCommitHooks } from "../synthetic-storage-admission.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 
 interface Harness {
   readonly world: WriteFixtureWorld;
+  readonly retain: (error: unknown) => Error;
   readonly admitWorker: (poolIndex: number) => void;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
@@ -30,6 +34,8 @@ interface Harness {
   readonly executeDryRun: (context: WriteSequencerContext) => Promise<TransactionDryRunPreview>;
 }
 
+const retainedWriteSequencerOwners = new Set<object>();
+
 export function createWriteSequencerTestWorld() {
   const disposers: (() => void)[] = [];
 
@@ -38,16 +44,24 @@ export function createWriteSequencerTestWorld() {
     commitHooks?: AuthorityWriteCommitHooks;
     emitterThrowsOn?: "data.observed" | "failed-task-span" | "transaction.fenced" | "verify-start";
   }> = {}): Harness {
+    const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; manager?: WorkerSessionManager; primary?: { error: unknown }; failure?: Error } = {};
+    retainedWriteSequencerOwners.add(held);
+    try {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const profile = createBoundProfileFixture();
+    const profile = createBoundProfileFixture(); held.profile = profile;
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "write-sequencer-test" },
       clock,
       options.commitHooks,
     );
+    held.database = database;
+    let closeAttempted = false;
     disposers.push(() => {
-      database.close();
-      profile.close();
+      if (held.failure !== undefined) throw held.failure;
+      if (closeAttempted) return;
+      closeAttempted = true;
+      try { database.close(); profile.close(); retainedWriteSequencerOwners.delete(held); }
+      catch (error) { held.primary ??= { error }; held.failure = retainAuthoritySourceClosure(held.primary.error === error ? [error] : [held.primary.error, error], { admission: held }); throw held.failure; }
     });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     const admitWorker = (poolIndex: number): void => {
@@ -57,7 +71,7 @@ export function createWriteSequencerTestWorld() {
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
     const sessions = writeFixtureSessions(world);
-    const manager = writeFixtureSessionManager(sessions, registry, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)));
+    const manager = writeFixtureSessionManager(sessions, registry, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock))); held.manager = manager;
     const emitter = recordingEmitter();
     const spanSink = {
       emit(event: Parameters<typeof emitter.emitter.emit>[0]): void {
@@ -112,20 +126,33 @@ export function createWriteSequencerTestWorld() {
         context.run.envelope.configFingerprint,
         () => sequencer.executeDryRun(context),
       );
-    return { world, admitWorker, database, clock, manager, sessions, scheduler, emitter, ids, sequencer, execute, executeDryRun };
+    const retain = (error: unknown): Error => {
+      held.primary ??= { error };
+      held.failure ??= retainAuthoritySourceClosure([held.primary.error], { admission: held });
+      return held.failure;
+    };
+    return { world, retain, admitWorker, database, clock, manager, sessions, scheduler, emitter, ids, sequencer, execute, executeDryRun };
+    } catch (error) {
+      held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure;
+    }
   }
 
   function claimRunning(
     database: AuthorityDatabase,
     clock: TestClock,
     runInput: Record<string, unknown> = writeFixtureQueuedRun(),
-    workerId: string = WRITE_FIXTURE_WORKER_ID,
+    requestedWorkerId?: string,
   ): { run: RunRecord; claim: { workerId: string; claimGeneration: number } } {
     const now = clock.now().toISOString();
     const enqueued = database.authority.runs.enqueue(runInput);
     assert.equal(enqueued.state, "inserted");
+    const member = requestedWorkerId === undefined
+      ? database.authority.workerSlots.list(WRITE_FIXTURE_WORKFLOW_ID).find(slot => slot.poolIndex === 1 && slot.retiredAt === null)
+      : database.authority.workerSlots.get(requestedWorkerId);
+    assert.ok(member && member.workflow === WRITE_FIXTURE_WORKFLOW_ID && member.retiredAt === null);
+    const workerId = member.workerId;
+    if (requestedWorkerId !== undefined) assert.equal(workerId, requestedWorkerId);
     const lease = database.authority.workerLeases.get(workerId);
-    const member = database.authority.workerSlots.get(workerId);
     if (lease === undefined || member === undefined || member.retiredAt !== null) throw new Error("fixture claim authority unavailable");
     const workerLifetime = { leaseGeneration: lease.leaseGeneration, membershipRevision: member.membershipRevision };
     const claimed = database.authority.runs.claimNext({
@@ -154,6 +181,17 @@ export function createWriteSequencerTestWorld() {
     });
     if (running.state !== "applied") throw new Error("running transition failed");
     return { run: running.run, claim };
+  }
+
+  function releaseClaim(database: AuthorityDatabase, clock: TestClock, run: RunRecord, claim: { workerId: string; claimGeneration: number }): void {
+    const current = database.authority.runs.get(run.envelope.runId); assert.ok(current);
+    assert.deepEqual(database.authority.writeIntents.listByRun(current.envelope.runId), []);
+    const currentClaim = runClaim(current); assert.ok(currentClaim);
+    assert.equal(currentClaim.workerId, claim.workerId);
+    assert.equal(currentClaim.claimGeneration, claim.claimGeneration);
+    assert.equal(testRunService(database, clock).requeue({ commandId: randomUUID(), runId: current.envelope.runId,
+      expectedVersion: current.version, claim, cause: 'recovery' }).state, "applied");
+    assert.equal(runClaim(database.authority.runs.get(current.envelope.runId) ?? (() => { throw new Error("write-fixture-run-missing"); })()), undefined);
   }
 
   function contextFor(
@@ -247,5 +285,5 @@ export function createWriteSequencerTestWorld() {
   const cleanup = () => {
     for (const dispose of disposers.splice(0)) dispose();
   };
-  return { disposers, harness, claimRunning, contextFor, intentByKey, attemptingIntentFixture, cleanup };
+  return { disposers, harness, claimRunning, releaseClaim, contextFor, intentByKey, attemptingIntentFixture, cleanup };
 }

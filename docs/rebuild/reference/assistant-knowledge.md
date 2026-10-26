@@ -58,3 +58,4 @@ setting paths.browserProfileRoot: The ordinary setting paths.browserProfileRoot 
 setting paths.duoCredential: The ordinary setting paths.duoCredential is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 setting paths.duoExtensionDir: The ordinary setting paths.duoExtensionDir is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 workflow person-lookup: Person Lookup is a served workflow. Use dashboard Run with the selected subject and a current plan. Assistant workflow execution is unavailable until subject binding is implemented.
+workflow separations: Separations is a served workflow. Use dashboard Run with the selected subject and a current plan. Assistant workflow execution is unavailable until subject binding is implemented.

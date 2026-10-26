@@ -1,4 +1,5 @@
-import { ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema } from "../../../../models/dashboard/assistant.js";
+import { wireError } from "./failure-status.js";
+import { ASSISTANT_FAILURES, AssistantModelPreferenceViewSchema, AssistantRequestSchema, AssistantResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema } from "../../../../models/dashboard/assistant.js";
 import type { AssistantService } from "../../../assistant/service.js";
 import type { DashboardApp } from "./api-types.js";
 import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
@@ -17,7 +18,14 @@ async function readInput(request: Request): Promise<unknown> {
   } finally { try { await reader.cancel(); } finally { reader.releaseLock(); } }
 }
 
-export function registerAssistantRoutes(app: DashboardApp, service: (Pick<AssistantService, "respond"> & Partial<Pick<AssistantService, "decide">>) | undefined): void {
+export function registerAssistantRoutes(app: DashboardApp, service: AssistantService | undefined): void {
+  app.get("/api/v1/assistant/model-preference", c => {
+    c.header('cache-control', 'no-store');
+    try {
+      if (service?.modelPreference === undefined) return c.json(wireError('ASSISTANT_UNAVAILABLE', ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE, false), 503);
+      return c.json(AssistantModelPreferenceViewSchema.parse(service.modelPreference()));
+    } catch { return c.json(wireError('ASSISTANT_UNAVAILABLE', ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE, false), 503); }
+  });
   app.use("/api/v1/assistant/respond", operatorMutationIngressGuard);
   app.post("/api/v1/assistant/respond", async c => {
     c.header("Cache-Control", "no-store");

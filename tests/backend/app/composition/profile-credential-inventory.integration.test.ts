@@ -1,3 +1,4 @@
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -15,7 +16,7 @@ import { composeProfileCredentialRepairInventory, composeProfileCredentialInitia
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
 import { createCredentialStore, inspectCredentialKeyCopy } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, deriveAuthorityUpgradePlanDigest } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityUpgradeRecordSchema, type AuthorityUpgradeRecord } from "../../../../src/models/config/authority.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -59,20 +60,30 @@ function fixture(f = createBoundProfileFixture()) {
   };
 }
 
-async function upgradedFixture(version: 6 | 7) {
+const failedUpgradeFixtures = new Set<Readonly<{ profile: ReturnType<typeof createBoundProfileFixture>; owners: readonly unknown[]; primary: unknown }>>();
+
+async function upgradedFixture(version: 6 | 7 | 8) {
   const f = createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const databases: DatabaseSync[] = [];
   try {
     const raw = new DatabaseSync(f.path);
+    databases.push(raw);
+    let sourceFailure: { error: unknown } | undefined;
     try {
       for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= version)) for (const statement of migration.statements) raw.exec(statement);
-      if (version === 7) raw.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,7,7,?,NULL,'unbuilt',?,?)")
-        .run(clock.now().toISOString(), f.admission.profileBinding.installationId, f.admission.profileBinding.profileId);
+      if (version === 7 || version === 8) raw.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,?,7,?,NULL,'unbuilt',?,?)")
+        .run(version, clock.now().toISOString(), f.admission.profileBinding.installationId, f.admission.profileBinding.profileId);
       else raw.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES(1,6,7,?,NULL,'unbuilt')").run(clock.now().toISOString());
       raw.exec(`PRAGMA user_version=${String(version)}; PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}`);
-    } finally { raw.close(); }
+    } catch (error) { sourceFailure = { error }; }
+    try { raw.close(); }
+    catch (error) { throw retainAuthoritySourceClosure(sourceFailure === undefined ? [error] : [sourceFailure.error, error], { database: raw, admission: f.admission }); }
+    if (sourceFailure !== undefined) throw sourceFailure.error;
     assert.equal((await upgradeStorage(f.admission, { stateRoot: f.stateRoot,
       processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false }, clock)).state, "upgraded");
     const inspected = new DatabaseSync(f.path, { readOnly: true });
+    databases.push(inspected);
+    let inspectionFailure: { error: unknown } | undefined;
     try {
       const row = inspected.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();
       assert.equal(typeof row?.payload_json, "string");
@@ -80,12 +91,15 @@ async function upgradedFixture(version: 6 | 7) {
       const record = AuthorityUpgradeRecordSchema.parse(JSON.parse(row.payload_json)); assert.equal(record.phase, "settled");
       if (record.phase !== "settled") throw new Error("upgrade fixture receipt unsettled");
       assert.equal(record.planDigest, createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion: version,
-        toSchemaVersion: 8, sourceContentFingerprint: record.upgradeId,
+        toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, sourceContentFingerprint: record.upgradeId,
         statements: SQLITE_MIGRATIONS.filter(migration => migration.version > version).flatMap(migration => migration.statements) })).digest("hex"));
-    } finally { inspected.close(); }
+    } catch (error) { inspectionFailure = { error }; }
+    try { inspected.close(); }
+    catch (error) { throw retainAuthoritySourceClosure(inspectionFailure === undefined ? [error] : [inspectionFailure.error, error], { database: inspected, admission: f.admission }); }
+    if (inspectionFailure !== undefined) throw inspectionFailure.error;
     f.finish();
     return fixture(f);
-  } catch (error) { f.close(); throw error; }
+  } catch (error) { failedUpgradeFixtures.add({ profile: f, owners: databases, primary: error }); throw error; }
 }
 
 function retainedBackup(f: ReturnType<typeof fixture>) {
@@ -116,10 +130,10 @@ function changeUpgradeProof(f: ReturnType<typeof fixture>, transform: (record: F
 }
 
 it("qualifies a genuine retained bound7 backup through its exact settled upgrade and preserves its bytes through erasure inventory", async () => {
-  const f = await upgradedFixture(7), backup = retainedBackup(f), bytes = readFileSync(backup.path);
+  const f = await upgradedFixture(8), backup = retainedBackup(f), bytes = readFileSync(backup.path);
   let settlement: ReturnType<typeof f.erase> | undefined;
   try {
-    assert.equal(backup.manifest.schemaVersion, 7);
+    assert.equal(backup.manifest.schemaVersion, 8);
     assert.equal(backup.manifest.profileId, f.admission.profileBinding.profileId);
     assert.equal(backup.manifest.installationId, f.admission.profileBinding.installationId);
     await f.context.account.close();
@@ -133,7 +147,7 @@ it("qualifies a genuine retained bound7 backup through its exact settled upgrade
 });
 
 for (const mutation of ["absent", "duplicate", "unfinished", "forged-plan", "forged-path", "forged-source"] as const) it(`refuses retained bound7 copy with ${mutation} canonical upgrade provenance`, async () => {
-  const f = await upgradedFixture(7), backup = retainedBackup(f), bytes = readFileSync(backup.path);
+  const f = await upgradedFixture(8), backup = retainedBackup(f), bytes = readFileSync(backup.path);
   try {
     await f.context.account.close(); await f.inventory.prepare();
     changeUpgradeProof(f, record => {
@@ -152,7 +166,7 @@ for (const mutation of ["absent", "duplicate", "unfinished", "forged-plan", "for
 });
 
 it("refuses a genuine foreign bound7 copy even when its manifest claims the current source namespace", async () => {
-  const f = await upgradedFixture(7), other = await upgradedFixture(7);
+  const f = await upgradedFixture(8), other = await upgradedFixture(8);
   try {
     const target = retainedBackup(f), foreign = retainedBackup(other);
     assert.notEqual(foreign.manifest.profileId, target.manifest.profileId);
@@ -165,7 +179,7 @@ it("refuses a genuine foreign bound7 copy even when its manifest claims the curr
 });
 
 it("refuses substitution of a qualified bound7 copy before assessment", async () => {
-  const f = await upgradedFixture(7), backup = retainedBackup(f);
+  const f = await upgradedFixture(8), backup = retainedBackup(f);
   let settlement: ReturnType<typeof f.erase> | undefined;
   try {
     await f.context.account.close(); await f.inventory.prepare();
@@ -236,7 +250,7 @@ for (const mutation of ["forged-source-version", "missing-source-table", "extra-
         sha256: createHash("sha256").update(bytes).digest("hex") }), { mode: 0o600 });
     }
     await assert.rejects(f.inventory.prepare(), error => mutation === "forged-source-version"
-      ? error instanceof AuthoritySchemaVersionError && error.schemaVersion === 8
+      ? error instanceof AuthoritySchemaVersionError && error.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION
       : error instanceof Error && error.message === "authority-native-schema-shape-mismatch");
     assert.deepEqual(f.context.database.getMeta(), sourceBefore);
     assert.equal(readFileSync(protectedPath).equals(protectedBefore), true);
@@ -346,4 +360,81 @@ for (const encoding of ["raw", "base64", "utf16le", "utf16be"] as const) it(`det
     writeFileSync(path, Buffer.alloc(64 * 1024 + 100, 0x78), { mode: 0o600 });
     assert.equal(scanProfileCredentialCopy(path, [], scan).containsSecret, false);
   } finally { await f.cleanup(); }
+});
+
+
+it('certifies the unchanged bound backup from a canonical seven-to-current pending-setup conversion', async () => {
+  const f = await upgradedFixture(7);
+  let settlement: ReturnType<typeof f.erase> | undefined;
+  let bodyFailed = false;
+  let cleanupFailure: { error: unknown } | undefined;
+  try {
+    const backup = retainedBackup(f), bytes = readFileSync(backup.path);
+    assert.equal(backup.manifest.schemaVersion, 7);
+    await f.context.account.close();
+    const before = f.context.database.readProfileResourceCustody();
+    const proof = before.upgrades.find(record => record.phase === "settled");
+    assert.ok(proof && proof.phase === "settled");
+    assert.equal(proof.fromSchemaVersion, 7);
+    assert.equal(proof.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    const protectedPath = join(f.stateRoot, "credentials", "protected.json"), protectedBefore = readFileSync(protectedPath);
+    await f.inventory.prepare();
+    assert.deepEqual(f.context.database.readProfileResourceCustody(), before);
+    assert.equal(readFileSync(protectedPath).equals(protectedBefore), true);
+    assert.throws(() => f.admission.assertAuthorityDatabase(backup.path));
+    settlement = f.erase();
+    const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
+    assert.equal(observed.logoutComplete, true);
+    assert.deepEqual(observed.backupPlaintext, []);
+    assert.deepEqual(observed.unknownFormats, []);
+    assert.equal(readFileSync(backup.path).equals(bytes), true);
+  } catch (error) {
+    bodyFailed = true; failedUpgradeFixtures.add({ profile: f, owners: [f.context, settlement], primary: error }); throw error;
+  } finally {
+    if (!bodyFailed) {
+      try { settlement?.admission.release(); await f.cleanup(); }
+      catch (error) { failedUpgradeFixtures.add({ profile: f, owners: [f.context, settlement], primary: error }); cleanupFailure = { error }; }
+    }
+  }
+  if (cleanupFailure !== undefined) {
+    const error = cleanupFailure.error;
+    if (error instanceof Error) throw error;
+    throw new AggregateError([error], 'profile-credential-inventory-cleanup-failed', { cause: error });
+  }
+});
+
+it('refuses retargeting a setup receipt to historical eight without the matching immutable plan', async () => {
+  const f = await upgradedFixture(7);
+  let bodyFailed = false;
+  let cleanupFailure: { error: unknown } | undefined;
+  try {
+    const backup = retainedBackup(f), bytes = readFileSync(backup.path);
+    await f.context.account.close();
+    await f.inventory.prepare();
+    const original = f.context.database.readProfileResourceCustody().upgrades.find(record => record.phase === "settled");
+    assert.ok(original && original.phase === "settled");
+    assert.equal(original.fromSchemaVersion, 7);
+    assert.equal(original.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.notEqual(original.planDigest, deriveAuthorityUpgradePlanDigest(7, original.upgradeId, 8));
+    changeUpgradeProof(f, record => [AuthorityUpgradeRecordSchema.parse({ ...record, toSchemaVersion: 8 })]);
+    const generation = f.context.database.getMeta().authorityGeneration;
+    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "profile-inventory-backup-upgrade-unproved");
+    assert.equal(f.context.database.getMeta().authorityGeneration, generation);
+    assert.equal(readFileSync(backup.path).equals(bytes), true);
+    changeUpgradeProof(f, () => [original]);
+    await f.inventory.prepare();
+    assert.deepEqual(f.context.database.readProfileResourceCustody().upgrades.find(record => record.recordKey === original.recordKey), original);
+  } catch (error) {
+    bodyFailed = true; failedUpgradeFixtures.add({ profile: f, owners: [f.context], primary: error }); throw error;
+  } finally {
+    if (!bodyFailed) {
+      try { await f.cleanup(); }
+      catch (error) { failedUpgradeFixtures.add({ profile: f, owners: [f.context], primary: error }); cleanupFailure = { error }; }
+    }
+  }
+  if (cleanupFailure !== undefined) {
+    const error = cleanupFailure.error;
+    if (error instanceof Error) throw error;
+    throw new AggregateError([error], 'profile-credential-inventory-cleanup-failed', { cause: error });
+  }
 });

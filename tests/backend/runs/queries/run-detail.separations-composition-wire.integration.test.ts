@@ -1,3 +1,4 @@
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createSeparationStartFixtures } from "../../../support/helpers/backend/separation-start-fixtures.js";
 import { createSeparationIdentityPacketFixture } from "../../../support/helpers/separation-identity-packet-fixture.js";
@@ -44,10 +45,22 @@ const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const databases: AuthorityDatabase[] = [];
 const worlds: DashboardWorld[] = [];
 
+const retainedSeparationWireOwners = new Set<object>();
+function retainWireFailure(error: unknown): Error {
+  const held = { databases: databases.splice(0), profiles: profiles.splice(0), worlds: worlds.splice(0), primary: { error } };
+  retainedSeparationWireOwners.add(held);
+  return retainAuthoritySourceClosure([error], { admission: held });
+}
 afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  for (const profile of profiles.splice(0)) profile.close();
-  for (const world of worlds.splice(0)) world.dispose();
+  const held: { databases: AuthorityDatabase[]; profiles: typeof profiles; worlds: DashboardWorld[]; primary?: { error: unknown } } = {
+    databases: databases.splice(0), profiles: profiles.splice(0), worlds: worlds.splice(0) };
+  retainedSeparationWireOwners.add(held);
+  try {
+    for (const database of held.databases.reverse()) database.close();
+    for (const profile of held.profiles) profile.close();
+    for (const world of held.worlds) world.dispose();
+    retainedSeparationWireOwners.delete(held);
+  } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
 });
 
 function openDatabase(): AuthorityDatabase {
@@ -66,6 +79,7 @@ const { plan } = createSeparationStartFixtures(openDatabase, CLOCK);
 describe("separations — start planning through the existing service", () => {
 
   it("gives an explicit re-read its OWN item, which is §'the re-run wall' item 2's whole point", () => {
+    try {
     // Checkpoint keys omit run id, so repeated runs can replay the same item node evidence.
     const planned = plan([
       SUBMISSION,
@@ -75,9 +89,11 @@ describe("separations — start planning through the existing service", () => {
     assert.equal(planned.planned[0]?.matchKey, "separations:4510");
     assert.equal(planned.planned[1]?.matchKey, "separations:4510#re-read-1");
     assert.notEqual(planned.planned[0]?.itemId, planned.planned[1]?.itemId);
+  } catch (error) { throw retainWireFailure(error); }
   });
 
   it("dry-run stops at the first transaction node", () => {
+    try {
     const support = workflowDryRunSupport(separationsDescriptor);
     assert.deepEqual(support, { state: "supported", stopsAt: "clear-pending" });
 
@@ -92,6 +108,7 @@ describe("separations — start planning through the existing service", () => {
       );
     }
     assert.equal(plan([SUBMISSION], true).planned.length, 1);
+  } catch (error) { throw retainWireFailure(error); }
   });
 });
 
@@ -133,10 +150,11 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
     workerId, now: GATE_NOW });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed") throw new Error("identity fixture claim refused");
+  const workerLifetime = testWorkerLifetime(world.database, separationsDescriptor.id, slot.poolIndex).workerLifetime;
   let current = claimed.run;
   for (const lifecycle of [
-    { state: "validating", workerId, claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
-    { state: "running", workerId, claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
+    { state: "validating", workerLifetime, workerId, claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
+    { state: "running", workerLifetime, workerId, claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
     PARKED_GATE_LIFECYCLE,
   ]) {
     const result = world.database.authority.runs.transition({ runId: RUN_ID, expectedVersion: current.version,
@@ -180,6 +198,7 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
 
 describe("separations — the identity-gate wire", () => {
   it("serves the whole packet INCLUDING the write plan, and the actions that resolve it", () => {
+    try {
     const world = makeWorld();
     worlds.push(world);
     const packet = packetWithPlan();
@@ -269,12 +288,15 @@ describe("separations — the identity-gate wire", () => {
       ).decision,
       "approved",
     );
+  } catch (error) { throw retainWireFailure(error); }
   });
 
   it("names EXACTLY ONE gate dependency holding an identity packet, which is what the section requires", () => {
+    try {
 
     const views = gateNodeViews() as readonly { nodeId: string; dependsOn: readonly string[] }[];
     assert.equal(views.length, 1);
     assert.deepEqual(views[0]?.dependsOn, ["comparison"]);
+  } catch (error) { throw retainWireFailure(error); }
   });
 });

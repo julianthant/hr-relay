@@ -1,8 +1,9 @@
+import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
-import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantFunctionNamespaceSchema, AssistantActionDecisionSchema, AssistantActionResultSchema, AssistantActionProposalSchema, type AssistantActionProposal, type AssistantActionDecision, type AssistantActionResult,
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantFunctionNamespaceSchema, AssistantActionDecisionSchema, AssistantActionResultSchema, AssistantActionProposalSchema, type AssistantActionProposal, type AssistantActionDecision, type AssistantActionResult,
   type AssistantFailureCode, type AssistantResult, type AssistantInputItem, AssistantCitationSchema } from "../../models/dashboard/assistant.js";
-import { ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
+import { ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { AssistantContextError, type AssistantContext } from "./context.js";
 import type { AssistantPlanner } from "./proposal.js";
@@ -18,6 +19,10 @@ export interface AssistantModelPolicy {
   readonly consented: true;
   readonly billing: "chatgpt-plan";
   readonly verifiedUntil: string;
+}
+export interface AssistantModelPolicySnapshot {
+  readonly policy: AssistantModelPolicy;
+  isCurrent(): boolean;
 }
 export type AssistantFunctionOutcome = Readonly<{ kind: "continue"; output: JsonValue }> | Readonly<{ kind: "complete"; result: AssistantResult }>;
 export interface AssistantFunctionContext {
@@ -37,11 +42,12 @@ export interface AssistantFunctionSet {
   }>[];
 }
 export interface AssistantServiceOptions {
+  readonly verifySelectedModel?: (signal: AbortSignal) => Promise<void>;
+  readonly readModelPreference?: () => AssistantModelPreferenceView;
   readonly account: Pick<ChatGptAccountService, "inferAssistant" | "listAssistantModels" | "readAuthority" | "revalidateAuthority">;
   readonly context: AssistantContext | (() => AssistantContext);
   readonly runtime: () => Readonly<{ repositoryId: string; revision: string }>;
-  readonly modelPolicy: AssistantModelPolicy | undefined;
-  readonly isModelPolicyCurrent: () => boolean;
+  readonly modelPolicy: () => AssistantModelPolicySnapshot | undefined;
   readonly clock: Clock;
   readonly subjects?: AssistantSubjectBroker;
   readonly planner?: AssistantPlanner;
@@ -58,34 +64,54 @@ const refused = (code: AssistantFailureCode): AssistantResult => ({ state: "refu
 
 export function createAssistantService(options: AssistantServiceOptions) {
   // Policy is installed by trusted composition, never by a request or model.
-  const policy = PolicySchema.safeParse(options.modelPolicy);
-  function modelPolicyCurrent(): boolean {
-    if (!policy.success || Date.parse(policy.data.verifiedUntil) <= options.clock.nowMs()) return false;
-    try {
-      const current: unknown = options.isModelPolicyCurrent();
-      if (current instanceof Promise) {
-        // Async checks are refused; drain rejection without logging.
-        void current.catch(() => {}); return false;
-      }
-      return current === true;
-    } catch { throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED"); }
+  function captureModelPolicy() {
+    let snapshot: AssistantModelPolicySnapshot | undefined;
+    try { snapshot = options.modelPolicy(); }
+    catch (error) { if (error instanceof ChatGptResourceClosureUnprovedError || error instanceof AuthoritySourceClosureUnprovedError) throw error; throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED"); }
+    const policy = PolicySchema.safeParse(snapshot?.policy);
+    const isCurrent = snapshot?.isCurrent?.bind(snapshot);
+    function modelPolicyCurrent(): boolean {
+      if (!policy.success || Date.parse(policy.data.verifiedUntil) <= options.clock.nowMs()) return false;
+      try {
+        const current: unknown = isCurrent?.();
+        if (current instanceof Promise) {
+          // Async checks are refused; drain rejection without logging.
+          void current.catch(() => {}); return false;
+        }
+        return current === true;
+      } catch (error) { if (error instanceof ChatGptResourceClosureUnprovedError || error instanceof AuthoritySourceClosureUnprovedError) throw error; throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED"); }
+    }
+    return { policy, modelPolicyCurrent };
   }
   return Object.freeze({
+    modelPreference() {
+      if (options.readModelPreference === undefined) throw new AssistantModelPolicyError('assistant-model-preference-unavailable');
+      return AssistantModelPreferenceViewSchema.parse(options.readModelPreference());
+    },
     decide(input: unknown, signal: AbortSignal): AssistantActionResult {
       const parsed = AssistantActionDecisionSchema.safeParse(input);
       if (!parsed.success) return { state: "refused", code: "ASSISTANT_INVALID" };
       try {
         signal.throwIfAborted();
+        const { policy, modelPolicyCurrent } = captureModelPolicy();
         if (!policy.success || !modelPolicyCurrent()) return { state: "refused", code: "ASSISTANT_MODEL_UNVERIFIED" };
         if (options.decideAction === undefined) return { state: "refused", code: "ASSISTANT_UNAVAILABLE" };
         return AssistantActionResultSchema.parse(options.decideAction(parsed.data, signal));
-      } catch { return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" }; }
+      } catch (error) { return { state: "refused", code: error instanceof ChatGptResourceClosureUnprovedError || error instanceof AuthoritySourceClosureUnprovedError ? 'CHATGPT_RESOURCE_CLOSURE_UNPROVED' : "ASSISTANT_PROPOSAL_REFUSED" }; }
     },
     async respond(input: unknown, signal: AbortSignal): Promise<AssistantResult> {
       let effect: AssistantActionProposal | undefined;
       try {
         const request = AssistantRequestSchema.safeParse(input);
         if (!request.success) return refused("ASSISTANT_INVALID");
+        if (request.data.message === ASSISTANT_VERIFY_COMMAND) {
+          if (options.verifySelectedModel === undefined) return refused('ASSISTANT_UNAVAILABLE');
+          signal.throwIfAborted();
+          await options.verifySelectedModel(signal);
+          signal.throwIfAborted();
+          return AssistantResultSchema.parse({ state: 'answered', text: 'Assistant verification completed. You can now send an assistant request.', citations: [] });
+        }
+        const { policy, modelPolicyCurrent } = captureModelPolicy();
         if (!policy.success || !modelPolicyCurrent()) return refused("ASSISTANT_MODEL_UNVERIFIED");
         const context = typeof options.context === "function" ? options.context() : options.context;
         const assertCurrent = () => {
@@ -171,6 +197,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         return refused("ASSISTANT_LIMIT");
       } catch (error) {
         if (effect !== undefined) return { state: "unknown", actionId: effect.actionId, action: effect };
+        if (error instanceof ChatGptResourceClosureUnprovedError || error instanceof AuthoritySourceClosureUnprovedError) return refused('CHATGPT_RESOURCE_CLOSURE_UNPROVED');
         if (signal.aborted) return refused("ASSISTANT_CANCELLED");
         if (error instanceof AssistantModelPolicyError) return refused("ASSISTANT_MODEL_UNVERIFIED");
         if (error instanceof ChatGptAccountError) {
@@ -188,4 +215,4 @@ export function createAssistantService(options: AssistantServiceOptions) {
     },
   });
 }
-export type AssistantService = Pick<ReturnType<typeof createAssistantService>, "respond"> & Partial<Pick<ReturnType<typeof createAssistantService>, "decide">>;
+export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'modelPreference'>>;

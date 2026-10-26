@@ -1,12 +1,13 @@
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
 import type { TaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import type { ProtectedSecretSource } from "../../../../src/models/config/secrets.js";
 import type { WriteFixtureWorld } from "../write-sequencer-fixtures.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { testAdmittedWorker } from '../run-lifecycle-fixtures.js';
 import assert from "node:assert/strict";
-import { join } from "node:path";
+
 import { createBoundProfileFixture } from "../../helpers/admission-fixture.js";
 import { duoCeremonyGatesOver } from "../../helpers/duo-ceremony-fixtures.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -30,11 +31,18 @@ import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../operator-comm
 import { writeFixtureDescriptor, createWriteFixtureWorld, buildWriteFixtureRegistry, writeFixtureSessions,
   writeFixtureSessionManager, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_EID } from "../write-sequencer-fixtures.js";
 
+const retainedSourceBoundFixtureOwners = new Set<object>();
+
 export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource) {
+  const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
+  retainedSourceBoundFixtureOwners.add(held);
+  try {
   const profile = createBoundProfileFixture();
-  const root = profile.stateRoot;
+  held.profile = profile;
+
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "repeat-proof" }, clock);
+  held.database = database;
   initializeRuntime(database, clock);
   const activeConfig = database.authority.runtimeConfig.get();
   assert.ok(activeConfig);
@@ -43,12 +51,16 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
   const ids = sequentialIdFactory("c");
   const planIds = sequentialIdFactory("b");
   const lifecycleIds = sequentialIdFactory("a");
-  const slot=database.withAuthorityTransaction(repositories=>admitDirectWorker(repositories,{commandId:ids.uuid(),workflow:descriptor.id,
-    poolIndex:1,expectedPoolVersion:0,processId:process.pid,processAcquisitionId:ids.uuid(),
-    authorityPath:profile.path,processLockRoot:join(root,"locks"),now:clock.now().toISOString()},ids.uuid()));
-  const started=database.authority.workerLeases.start({workerId:slot.workerId,workflow:descriptor.id,
-    browserSystems:workflowProjections(descriptor).systems,processId:process.pid,requestedBy:"local-operator",now:clock.now().toISOString()});
+  const admitted = testAdmittedWorker(database, clock, { path: profile.path, workflow: descriptor.id,
+    poolIndex: 1, browserSystems: workflowProjections(descriptor).systems });
+  held.worker = admitted;
+  const slot = admitted.member, started = admitted.started;
+  assert.ok(started);
   assert.equal(started.state,"started");
+  const lifetimeSlot = database.authority.workerSlots.get(slot.workerId), lifetimeLease = database.authority.workerLeases.get(slot.workerId);
+  assert.ok(lifetimeSlot); assert.ok(lifetimeLease);
+  assert.equal(lifetimeSlot.workerId, slot.workerId); assert.equal(lifetimeLease.workerId, slot.workerId);
+  const workerLifetime = { membershipRevision: lifetimeSlot.membershipRevision, leaseGeneration: lifetimeLease.leaseGeneration };
   const timeline = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   const lifecycle = new RunRecordService({ database, clock, ids: lifecycleIds, publishQueued: (run, publication) => {
     assert.ok(database.authority.runs.get(run.envelope.runId), "publication sees the run inside its owning transaction");
@@ -98,7 +110,7 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
   async function execute(run: RunRecord) {
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
     const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: ids.uuid(), workflow: descriptor.id,
-      workerId: slot.workerId, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
+      workerId: slot.workerId, workerLifetime, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
         settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
     assert.equal(claimed.envelope.runId, run.envelope.runId);
     return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun({ ...common, descriptor: registeredDescriptor, writeSequencer: sequencer }, {
@@ -106,11 +118,25 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
     }));
   }
   function fresh(run: RunRecord) { const value = database.authority.runs.get(run.envelope.runId); assert.ok(value); return value; }
-  return { authorityPath:profile.path,database, get descriptor() { return registeredDescriptor; },
+  let disposeAttempted = false, disposeFailure: Error | undefined;
+  retainedSourceBoundFixtureOwners.delete(held);
+  return { profile, authorityPath:profile.path,database, get descriptor() { return registeredDescriptor; },
     registerDescriptor(next: AnyWorkflowDescriptor) { registeredDescriptor = next; }, clock, ids, lifecycleIds, planIds, get queueRoots() {
     return readTimelineRecords(database.authority.timelineEvents).records.flatMap((record) =>
       record.payload.kind === "span" && record.payload.event.t === "run.queued" ? [record.payload.event] : []);
   }, lifecycle, kernel, planner, world, stores, manager,
     proposal, command, start, execute, fresh, resolution, recovery,
-    dispose: () => { database.close(); profile.close(); } };
+    dispose: () => {
+      if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
+      disposeAttempted = true;
+      try { database.close(); profile.close(); }
+      catch (error) {
+        held.primary = error;
+        disposeFailure = retainAuthoritySourceClosure([error], { admission: held });
+        retainedSourceBoundFixtureOwners.add(held);
+        throw disposeFailure;
+      }
+    } };
+
+  } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }

@@ -18,12 +18,13 @@ import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { readStoppedProfileUpgradeInventory } from "./profile-inventory.js";
+import { composeStoppedControlCredentialInventory } from "../../app/composition/profile-credential-inventory.js";
 import type { VerifiedBackup } from "../sqlite/backup-service.js";
 import { deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
 
 export const StorageUpgradeReportSchema = z.strictObject({
   state: z.enum(["planned", "initialized", "upgraded", "already-upgraded"]),
-  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   credentials: z.literal("unchanged"),
   diagnostics: z.strictObject({ reclaimedStages: z.number().int().nonnegative(), retainedStages: z.number().int().nonnegative(), capacityWarning: z.boolean() }).optional(),
@@ -224,7 +225,7 @@ async function runReadyProfileUpgrade(machine: RuntimeAdmission, owner: RuntimeA
     fromSchemaVersion: initial.schemaVersion, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
   if (input.plan) return report("planned");
   if (initial.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return report("already-upgraded");
-  if (initial.schemaVersion !== 7) throw new Error("profile-stopped-upgrade-version-refused");
+  if (initial.schemaVersion !== 8) throw new Error("profile-stopped-upgrade-version-refused");
   const backed = await backupStoppedAuthority(owner, owner.stateRoot, clock, processLockRoot, restore);
   if (backed.manifests.length !== 1) throw new Error("profile-stopped-upgrade-single-backup-required");
   const manifest = backed.manifests[0];
@@ -241,4 +242,58 @@ async function runReadyProfileUpgrade(machine: RuntimeAdmission, owner: RuntimeA
   assertReadyUpgradeInventory(inventory, inspectInventory(), path,
     { kind: "upgraded", sourceFingerprint: initial.authorityContentFingerprint }, verified);
   return report("upgraded");
+}
+
+export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock) {
+  requireRuntimeAdmission(machine).assertExclusive();
+  const context = machine.readInstallationContext();
+  if (context === undefined) throw new Error("profile-control-upgrade-machine-membership-unknown");
+  const processLockRoot = resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot);
+  machine.assertFixedProcessLockRoot(context.workspace, processLockRoot);
+  const heldRestore = machine.maintenanceRestore();
+  const ownsRestore = heldRestore === undefined;
+  const restore = heldRestore ?? acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
+  let control: ReturnType<RuntimeAdmission["beginStoppedMachineControlUpgrade"]> | undefined;
+  const inventories: Array<{ dispose(): void }> = [];
+  let result: { state: "planned" | "current" | "upgraded"; profileCount: number; receiptId?: string } | undefined;
+  let primary: { error: unknown } | undefined;
+  try {
+    control = machine.beginStoppedMachineControlUpgrade(restore);
+    if (!control.machineControlCurrent() || control.upgradeIntentPresent()) {
+      for (const profileId of control.registeredProfileIds()) {
+        const claim = control.profileInventory(profileId);
+        const inventory = composeStoppedControlCredentialInventory({ claim, hostFacts: input.hostFacts, clock });
+        inventories.push(inventory);
+        control.recordProfileInventory(claim, inventory.proof);
+      }
+    }
+    const report = control.run(input.plan);
+    if (!input.plan && report.state === "upgraded") {
+      const readback = control.run(false);
+      if (readback.state !== "current" || readback.profileCount !== report.profileCount) throw new Error("profile-control-upgrade-readback-failed");
+    }
+    result = report;
+  } catch (error) { primary = { error }; }
+  releaseStoppedMachineControlUpgrade(control, restore, ownsRestore, { primary, inventories, admission: machine });
+  if (result === undefined) throw new Error("profile-control-upgrade-readback-failed");
+  return result;
+}
+
+export function releaseStoppedMachineControlUpgrade(control: { release(): void } | undefined, restore: RestoreAdmissionHandle, ownsRestore: boolean,
+  held: Readonly<{ primary?: { readonly error: unknown }; inventories?: readonly { dispose(): void }[]; admission?: RuntimeAdmission }> = {}): void {
+  const retain = (errors: readonly unknown[]): never => {
+    throw retainAuthoritySourceClosure(errors, { restore, admission: { admission: held.admission, control, inventories: held.inventories } });
+  };
+  if (held.primary?.error instanceof AuthoritySourceClosureUnprovedError) retain([held.primary.error]);
+  try { control?.release(); }
+  catch (error) { retain(held.primary === undefined ? [error] : [held.primary.error, error]); }
+  for (const inventory of held.inventories ?? []) {
+    try { inventory.dispose(); }
+    catch (error) { retain(held.primary === undefined ? [error] : [held.primary.error, error]); }
+  }
+  if (ownsRestore) {
+    try { restore.release(); }
+    catch (error) { retain(held.primary === undefined ? [error] : [held.primary.error, error]); }
+  }
+  if (held.primary !== undefined) throw held.primary.error;
 }

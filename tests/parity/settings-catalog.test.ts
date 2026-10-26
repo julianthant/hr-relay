@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 import { expect, test, type Page } from "@playwright/test";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -11,6 +12,8 @@ import { ensureParityBundle } from "./helpers/bundle.js";
 import { PARITY_THEMES, installTheme, assertThemeApplied } from "./helpers/capture.js";
 import { registerReferenceServers } from "./helpers/reference-harness.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+
+const retainedParityFixtureFailures = new Set<object>();
 
 async function attachTree(page: Page, name: string): Promise<void> {
   const body = await page.locator("body").ariaSnapshot();
@@ -72,8 +75,13 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
   const secret = "synthetic-browser-credential-sentinel";
   const errors: string[] = []; const logs: string[] = [];
   page.on("pageerror", error => errors.push(error.message)); page.on("console", message => logs.push(message.text()));
+  let parityBodyFailure: { error: unknown } | undefined;
   try {
     const client = createDashboardClient({ baseUrl: server.url });
+    const initialProtected = await client.editableSettings();
+    if (initialProtected.protectedSettings.state !== "available") throw new Error('protected-settings-unavailable');
+    const protectedBaseline = initialProtected.protectedSettings.readback.revision;
+    expect(protectedBaseline).toBe(server.protectedRevision());
     await page.setViewportSize({ width: 1024, height: 720 }); await installTheme(page, theme);
     await page.goto(`${server.url}/?settings=general`);
     await page.getByRole("link", { name: "Credentials", exact: true }).click();
@@ -91,7 +99,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     await expect(password).toBeDisabled();
     const afterLost = await client.editableSettings(); expect(afterLost.revision).toBe(1);
     if (afterLost.protectedSettings.state !== "available") throw new Error("protected-readback-unavailable");
-    expect(afterLost.protectedSettings.readback.revision).toBe(2);
+    expect(afterLost.protectedSettings.readback.revision).toBe(protectedBaseline + 1);
     expect(afterLost.protectedSettings.entries.ucpathPassword?.value).toBe(secret);
     await page.getByRole("button", { name: "Retry exact attempt", exact: true }).click();
     await expect(page.getByText("Already saved", { exact: true })).toBeVisible();
@@ -108,10 +116,10 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     await expect(page.getByText("Saved", { exact: true })).toBeVisible();
     const cleared = await client.editableSettings(); expect(cleared.revision).toBe(1);
     if (cleared.protectedSettings.state !== "available") throw new Error("protected-readback-unavailable");
-    expect(cleared.protectedSettings.readback.entries.ucpathPassword.present).toBe(false); expect(cleared.protectedSettings.readback.revision).toBe(3);
+    expect(cleared.protectedSettings.readback.entries.ucpathPassword.present).toBe(false); expect(cleared.protectedSettings.readback.revision).toBe(protectedBaseline + 2);
     // A real competing protected writer advances only that authority.
     await password.fill(secret);
-    await client.executeCommand({ ...original, commandId: randomUUID(), target: { expectedRevision: 3 }, payload: { ...original.payload, writeId: randomUUID(), entries: { timekeeperName: { set: "synthetic-competing-timekeeper" } } } });
+    await client.executeCommand({ ...original, commandId: randomUUID(), target: { expectedRevision: cleared.protectedSettings.readback.revision }, payload: { ...original.payload, writeId: randomUUID(), entries: { timekeeperName: { set: "synthetic-competing-timekeeper" } } } });
     await password.blur();
     await expect(page.getByText("The command conflicted with a newer state. Refresh and review the current result.", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry edit", exact: true })).toBeVisible();
@@ -119,14 +127,14 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     expect(await password.inputValue() === secret).toBe(true);
     const afterConflict = await client.editableSettings();
     if (afterConflict.protectedSettings.state !== "available") throw new Error("protected-conflict-readback-unavailable");
-    expect(afterConflict.protectedSettings.readback.revision).toBe(4);
+    expect(afterConflict.protectedSettings.readback.revision).toBe(protectedBaseline + 3);
     expect(afterConflict.protectedSettings.entries.timekeeperName?.value).toBe("synthetic-competing-timekeeper");
     // Lose the confirming GET after the next real effect; retry must keep its identity.
     await page.route("**/api/v1/settings/editable", route => route.abort("failed"), { times: 1 });
     await page.getByRole("button", { name: "Retry edit", exact: true }).click();
     await expect(page.getByText("Credentials write unconfirmed", { exact: true })).toBeVisible();
     const retryEdit = ProtectedSettingsCommandRequestSchema.parse(attempts.at(-1));
-    expect(retryEdit.target.expectedRevision).toBe(4);
+    expect(retryEdit.target.expectedRevision).toBe(protectedBaseline + 3);
     expect(retryEdit.payload.entries).toEqual({ ucpathPassword: { set: secret } });
     const beforeRetry = JSON.stringify(attempts.at(-1));
     await page.getByRole("button", { name: "Retry exact attempt", exact: true }).click();
@@ -135,6 +143,8 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     await expect(password).toHaveValue(secret);
     await expect(password).toHaveAttribute("type", "password");
     const readback = await client.editableSettings();
+    if (readback.protectedSettings.state !== 'available') throw new Error('protected-settings-unavailable');
+    expect(readback.protectedSettings.readback.revision).toBe(protectedBaseline + 4);
     expect(JSON.stringify(readback).includes(secret)).toBe(true);
     expect((await page.content()).includes(secret)).toBe(true);
     expect((await page.locator("body").ariaSnapshot()).includes(secret)).toBe(true);
@@ -164,5 +174,17 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     await page.setViewportSize({ width: 1440, height: 900 });
     await assertThemeApplied(page, theme); expect(errors).toEqual([]);
     await attachTree(page, `settings-catalog-real-${theme.name}.a11y.yml`);
-  } finally { await server.stop(); }
+  } catch (error) { parityBodyFailure = { error }; }
+  if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
+    retainedParityFixtureFailures.add({ owner: server, primary: parityBodyFailure.error });
+    throw parityBodyFailure.error;
+  }
+  let parityCleanupFailure: { error: unknown } | undefined;
+  try { await server.stop(); } catch (error) { parityCleanupFailure = { error }; }
+  if (parityCleanupFailure !== undefined) {
+    retainedParityFixtureFailures.add({ owner: server, primary: parityBodyFailure?.error, cleanup: parityCleanupFailure.error });
+    if (parityBodyFailure !== undefined) throw new AggregateError([parityBodyFailure.error, parityCleanupFailure.error], 'parity-body-and-cleanup-failed', { cause: parityBodyFailure.error });
+    throw parityCleanupFailure.error;
+  }
+  if (parityBodyFailure !== undefined) throw parityBodyFailure.error;
 });

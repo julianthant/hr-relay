@@ -1,3 +1,4 @@
+import { AssistantModelPreferenceSchema } from "../../models/dashboard/assistant.js";
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
 import { AssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
 import { RunDisplayNameSchema } from "../../models/run/display-name.js";
@@ -26,6 +27,7 @@ export class CommandIdentityConflictError extends Error {
 }
 
 export const CommandFamilySchema = z.enum([
+  "assistant-model-preference",
   "failure-resolution",
   "workflow-batch",
   "start",
@@ -40,6 +42,7 @@ export const CommandFamilySchema = z.enum([
 ]);
 
 export const CommandActionSchema = z.enum([
+  "set-assistant-model-preference",
   "annotate-failure",
   "set-batch-grouping",
   "start-run",
@@ -164,6 +167,12 @@ export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["pause-worker", "resume-worker"]), target: WorkerVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: z.strictObject({ workerId: WorkerIdSchema, browserSessionId: BrowserSessionIdSchema, expectedVersion: PositiveIntSchema, controlBasis: WorkerControlBasisSchema.optional() }) }),
 ]);
+
+export const AssistantModelPreferenceCommandRequestSchema = z.strictObject({
+  ...CommandEnvelopeFields, family: z.literal("assistant-model-preference"), type: z.literal("set-assistant-model-preference"),
+  target: z.strictObject({ profileId: z.uuid(), epoch: z.number().int().nonnegative(), expectedRevision: NonNegativeIntSchema }),
+  payload: AssistantModelPreferenceSchema,
+});
 
 export const AssistantPermissionChangeSchema = z.strictObject({
   expectedPolicyRevision: NonNegativeIntSchema, mode: AssistantPermissionModeSchema,
@@ -358,6 +367,7 @@ export const FailureResolutionCommandSchema = z.strictObject({ ...CommandEnvelop
   target: FailureResolutionTargetSchema, payload: FailureResolutionActionSchema });
 export type FailureResolutionCommand = z.infer<typeof FailureResolutionCommandSchema>;
 export const CommandRequestSchema = z.union([
+  AssistantModelPreferenceCommandRequestSchema,
   FailureResolutionCommandSchema,
   WorkflowBatchCommandRequestSchema,
   StartCommandRequestSchema,
@@ -374,6 +384,7 @@ export const CommandRequestSchema = z.union([
 ]);
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
+  z.strictObject({ family: z.literal("assistant-model-preference"), profileId: z.uuid(), revision: PositiveIntSchema }),
   z.strictObject({family:z.literal("failure-resolution"), runId:RunIdSchema, failureId:FailureResolutionTargetSchema.shape.failureId}),
   z.strictObject({ family: z.literal("workflow-batch"), batchId: RunSessionIdSchema }),
   z.strictObject({
@@ -755,6 +766,7 @@ export function commandEffectIsWeaker(stated: CommandEffectClass, actual: Comman
 }
 
 export const COMMAND_EFFECT_BY_ACTION = {
+  "set-assistant-model-preference": "local-write",
   "annotate-failure": "local-write",
   "set-batch-grouping": "local-write",
   "start-run": "external-submit",
@@ -795,6 +807,7 @@ export const COMMAND_EFFECT_BY_ACTION = {
 } as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
 
 export const COMMAND_ASSISTANT_METADATA = {
+  "set-assistant-model-preference": "Persist the selected profile model preference",
   "annotate-failure": "Resolve a recorded failure",
   "set-batch-grouping": "Change queue grouping",
   "start-run": "Start an approved workflow plan",
@@ -848,6 +861,7 @@ export const CommandFamilySpecSchema = z.strictObject({
 });
 
 const COMMAND_ACTIONS_BY_FAMILY = {
+  "assistant-model-preference": ["set-assistant-model-preference"],
   "failure-resolution": ["annotate-failure"],
   "workflow-batch": ["set-batch-grouping"],
   start: ["start-run"],
@@ -890,6 +904,7 @@ export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).supe
 });
 
 export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.parse([
+  { family: "assistant-model-preference", actions: ["set-assistant-model-preference"] },
   { family: "failure-resolution", actions: ["annotate-failure"] },
   { family: "workflow-batch", actions: ["set-batch-grouping"] },
   { family: "start", actions: ["start-run"] },

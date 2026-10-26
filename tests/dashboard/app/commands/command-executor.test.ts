@@ -1,3 +1,4 @@
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from '../../../../src/models/dashboard/assistant.js';
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { CommandExecutor, type CommandExecutionOptions, type CommandExecutionScope, type CommandOutcome } from "../../../../src/dashboard/app/commands/command-executor.js";
@@ -437,4 +438,25 @@ it.each(["actor", "client", "authority"])("cannot check/release original under c
   let reads = 0;
   assert.equal((await h.executor.check(request.commandId, { ...h.options(), observe: async () => { reads++; return CommandResultSchema.parse(landing(request)); } })).kind, "refused");
   assert.equal(reads, 0); assert.equal(h.sent.length, 1);
+});
+
+it('retains the unknown preference lock for the same profile while allowing a different profile', async () => {
+  const h = harness(), profileA = id(700), profileB = id(701);
+  h.setReply(request => {
+    assert.ok(!('targets' in request)); assert.equal(request.family, "assistant-model-preference");
+    if (request.family !== "assistant-model-preference") assert.fail('preference-request-required');
+    return { state: 'applied', commandId: request.commandId,
+      affectedTargets: [{ family: "assistant-model-preference", profileId: request.target.profileId, revision: request.target.expectedRevision + 1 }] };
+  });
+  const options = h.options();
+  const make = (n: number, profileId: string) => CommandRequestSchema.parse({ commandId: id(n), requestedAt: '2026-01-02T03:04:05.000Z',
+    requestedBy: options.scope.actorId, source: 'dashboard-assistant-model-preference', family: "assistant-model-preference", type: "set-assistant-model-preference",
+    target: { profileId, epoch: 2, expectedRevision: 0 }, payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } });
+  const first = await h.executor.execute(make(901, profileA), { ...options, readback: async () => ({ state: "mismatch", evidence: null }) });
+  assert.equal(first.kind, "uncertain"); assert.equal(h.sent.length, 1);
+  const blocked = await h.executor.execute(make(902, profileA), options);
+  assert.equal(blocked.kind, "refused"); assert.equal(h.sent.length, 1);
+  const separate = await h.executor.execute(make(903, profileB), { ...options, readback: async () => ({ state: "mismatch", evidence: null }) });
+  assert.equal(separate.kind, "uncertain"); assert.equal(h.sent.length, 2);
+  assert.equal(h.executor.retainedAttempts().filter(attempt => attempt.outcome?.kind === "uncertain").length, 2);
 });

@@ -6,7 +6,7 @@ import { ExplorerTimeline } from "./explorer-flow.js";
 import { buildExplorerPreview, previewFieldSource } from "./explorer-fixture.js";
 import { blockedAfter, DEFAULT_SCENARIO, type PreviewScenario } from "./explorer-flow-model.js";
 import { buildEmergencyContactMock, buildOnboardingMock, DEFAULT_MOCK_SCENARIO, mockFieldSource, updateMockScenario } from "./explorer-mock-fixtures.js";
-import { buildWorkflowMock, explorerWorkflowOptions, explorerRecoveryWorkflow, DEFAULT_EXPLORER_WORKFLOW_ID, initialWorkflowChoices, updateWorkflowChoice, workflowContractSource } from "./explorer-workflow-model.js";
+import { buildWorkflowMock, explorerWorkflowOptions, explorerRecoveryWorkflow, initialWorkflowChoices, updateWorkflowChoice, workflowContractSource } from "./explorer-workflow-model.js";
 import { MOCK_WORKFLOWS } from "../workflows/mocks/workflow-mock-catalog.js";
 
 import type { DashboardClient } from "../../client/index.js";
@@ -14,7 +14,7 @@ import { useExplorerWiring } from "../../state/explorer-wiring-adapter.js";
 import { formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 export function WorkflowExplorer({ catalog, client }: { catalog: readonly WorkflowCatalogEntry[]; client?: DashboardClient }) {
   const workflows = useMemo(() => explorerWorkflowOptions(catalog), [catalog]);
-  const [workflowId, setWorkflowId] = useViewState("explorerWorkflow", DEFAULT_EXPLORER_WORKFLOW_ID);
+  const [workflowId, setWorkflowId] = useViewState("explorerWorkflow", explorerRecoveryWorkflow(catalog));
   const id = MOCK_WORKFLOWS.find(flow => flow.id === workflowId.replace(/^fixture-/u, ""))?.id;
   const served = catalog.find(entry => entry.id === workflowId && entry.source === "served");
   const resource = useExplorerWiring(client, served?.id, served?.served?.version);

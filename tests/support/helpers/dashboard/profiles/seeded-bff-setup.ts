@@ -1,3 +1,5 @@
+import { createBoundProfileFixture } from '../../admission-fixture.js';
+import { retainAuthoritySourceClosure } from '../../../../../src/backend/storage/source-closure.js';
 import type { RuntimeProcessLockHandle } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { sqliteRunReader } from "../../canonical-run-reader.js";
 import { personLookupDescriptor } from "../../registered-workflows.js";
@@ -8,9 +10,9 @@ import { SEEDED_AT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
 import { seed } from "../served-fixtures/seeded-lifecycle.js";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { tmpdir } from "node:os";
+
 import { join } from "node:path";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
@@ -35,6 +37,8 @@ export interface SeededServer {
   readonly runIds: Readonly<Record<string, string>>;
   close(): Promise<void>;
 }
+
+const retainedSeededFixtureOwners = new Set<object>();
 
 export function createSeededBffSetup({ seedRuntimeConfig, composeFixtureServices, assertServedBundle, dateNavigationReader, seedDateNavigation }: {
 seedRuntimeConfig: (database: AuthorityDatabase, clock: Clock) => void;
@@ -99,24 +103,33 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
     assertServedBundle(input.distDir, input.bundle);
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-parity-seeded-")));
-    const stateRoot = join(root, ".tracker");
-    mkdirSync(stateRoot, { mode: 0o700 });
+    const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; server?: Server; services?: ReturnType<typeof composeFixtureServices>; workerHandles?: RuntimeProcessLockHandle[]; primary?: unknown } = {};
+    retainedSeededFixtureOwners.add(held);
+    const profile = createBoundProfileFixture();
+    held.profile = profile;
+    const root = profile.workspace, stateRoot = profile.stateRoot;
     const clock = manualClock(SEEDED_AT);
-    const database = AuthorityDatabase.open(
-      { path: join(stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "parity-seeded-bff" },
-      clock,
-    );
+    let database: AuthorityDatabase;
+    try { database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 1000, migrationOwner: "parity-seeded-bff" }, clock); }
+    catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
+    held.database = database;
 
     const workerHandles: RuntimeProcessLockHandle[] = [];
+    held.workerHandles = workerHandles;
+    let cleanupAttempted = false, cleanupFailure: Error | undefined;
     const cleanupAuthority = (): void => {
-      const failures: unknown[] = [];
-      for (const handle of workerHandles.splice(0).reverse()) {
-        try { handle.release(); } catch (error) { failures.push(error); }
+      if (cleanupAttempted) { if (cleanupFailure !== undefined) throw cleanupFailure; return; }
+      cleanupAttempted = true;
+      try {
+        for (const handle of workerHandles.toReversed()) handle.release();
+        database.close();
+        profile.close();
+        retainedSeededFixtureOwners.delete(held);
+      } catch (error) {
+        cleanupFailure = retainAuthoritySourceClosure([error], { admission: { held, workerHandles } });
+        retainedSeededFixtureOwners.add(held);
+        throw cleanupFailure;
       }
-      try { database.close(); } catch (error) { failures.push(error); }
-      try { rmSync(root, { recursive: true, force: true }); } catch (error) { failures.push(error); }
-      if (failures.length > 0) throw new AggregateError(failures, "seeded authority cleanup failed");
     };
     try {
     seedRuntimeConfig(database, clock);
@@ -177,7 +190,9 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     }
 
     const selectionServices = await input.prepareSelection?.({database,clock,root});
-    const { app, hub, closeRunLogs } = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
+    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
+    held.services = services;
+    const { app, hub, closeRunLogs } = services;
 
     const server: Server = createServer((req, res) => {
       void (async (): Promise<void> => {
@@ -202,6 +217,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       });
     });
 
+    held.server = server;
     await new Promise<void>((resolvePromise) => {
       server.listen(0, "127.0.0.1", resolvePromise);
     });
@@ -210,12 +226,15 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       throw new Error("seeded server bound no TCP address");
     }
 
+    let closePromise: Promise<void> | undefined;
     return Object.freeze({
       port: address.port,
       baseUrl: `http://127.0.0.1:${address.port}`,
       day: SEEDED_DAY,
       runIds: Object.freeze(runIds),
-      close: async (): Promise<void> => {
+      close: (): Promise<void> => {
+        if (closePromise !== undefined) return closePromise;
+        closePromise = (async () => {
         try {
           server.closeAllConnections();
           await new Promise<void>((resolvePromise, rejectPromise) => {
@@ -223,14 +242,18 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
           });
           hub.close();
           closeRunLogs();
-        } finally { cleanupAuthority(); }
+        } catch (error) {
+          held.primary = error;
+          throw retainAuthoritySourceClosure([error], { admission: { held, workerHandles } });
+        }
+        cleanupAuthority();
+        })();
+        return closePromise;
       },
     });
     } catch (error) {
-      const failures = [error];
-      try { cleanupAuthority(); } catch (cleanupError) { failures.push(cleanupError); }
-      if (failures.length > 1) throw new AggregateError(failures, "seeded setup and cleanup failed", { cause: error });
-      throw error;
+      held.primary = error;
+      throw retainAuthoritySourceClosure([error], { admission: { held, workerHandles } });
     }
   }
 

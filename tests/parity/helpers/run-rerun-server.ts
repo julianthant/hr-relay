@@ -1,16 +1,18 @@
+import { boundProfileCredentials } from '../../support/helpers/admission-fixture.js';
+import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import { seedInitialSettingsRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
 import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../src/models/config/settings.js";
 import { executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
-import { createCredentialStore } from "../../support/helpers/synthetic-storage-admission.js";
+
 import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 /** Private launch fixture: real SQLite, planner, command kernel, projection and controlled executor. */
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+
 import { readFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
-import { tmpdir } from "node:os";
+
 import { extname, join, normalize } from "node:path";
 import { launchHarness } from "../../support/fixtures/run-launch-fixtures.js";
 import { createRunQueueProjection } from "../../../src/backend/runs/projections/run-queue-projection.js";
@@ -26,10 +28,15 @@ import { separationsDescriptor } from "../../support/helpers/registered-workflow
 import { populatedProtectedRecord } from "../../support/fixtures/preflight/runtime-fixture.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "./fixture-start.js";
 
+const retainedRunRerunFixtureOwners = new Set<object>();
+
 export async function startRunRerunServer() {
   assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
-  const h = launchHarness("reject-active", seedInitialSettingsRuntimeConfig); const source = await h.completeSource();
-  return serveLaunchAuthority(h, source);
+  const h = launchHarness("reject-active", seedInitialSettingsRuntimeConfig);
+  const held: { harness: typeof h; primary?: unknown; server?: ReturnType<typeof createServer> } = { harness: h };
+  retainedRunRerunFixtureOwners.add(held);
+  try { const source = await h.completeSource(); return await serveLaunchAuthority(h, source, undefined, held); }
+  catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 
 export async function startSeparationsStartServer() {
@@ -37,11 +44,14 @@ export async function startSeparationsStartServer() {
   const h = launchHarness("reject-active", seedInitialSettingsRuntimeConfig, {
     descriptor: separationsDescriptor, protectedSecrets: { read: populatedProtectedRecord },
   });
-  return serveLaunchAuthority(h, undefined, FIXTURE_START_PICKER_BOOTSTRAP);
+  const held: { harness: typeof h; primary?: unknown; server?: ReturnType<typeof createServer> } = { harness: h };
+  retainedRunRerunFixtureOwners.add(held);
+  try { return await serveLaunchAuthority(h, undefined, FIXTURE_START_PICKER_BOOTSTRAP, held); }
+  catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 
-async function serveLaunchAuthority<Source>(h: ReturnType<typeof launchHarness>, source: Source, catalog?: FrontendBootstrapWire) {
-  const stateRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-launch-projection-")));
+async function serveLaunchAuthority<Source>(h: ReturnType<typeof launchHarness>, source: Source, catalog: FrontendBootstrapWire | undefined, held: { harness: ReturnType<typeof launchHarness>; primary?: unknown; server?: ReturnType<typeof createServer> }) {
+  const stateRoot = h.profile.stateRoot;
   const database = h.database; const descriptorHash = catalog?.descriptorHash ?? descriptorSetHash([h.descriptor.contractFingerprint]);
   const day = h.clock.now().toISOString().slice(0, 10);
   const projection = createRunQueueProjection({ timeline: database.authority.timelineEvents,
@@ -77,7 +87,7 @@ async function serveLaunchAuthority<Source>(h: ReturnType<typeof launchHarness>,
     for (const stream of streams) stream.write(value);
   }
   const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value,
-    hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" }), h.clock), createCredentialStore({ stateRoot }));
+    hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" }), h.clock, { stateRoot, artifactRoot: h.profile.admission.artifactRoot }), boundProfileCredentials(h.profile.admission));
   function saveSettings(patch: SettingsPatch) {
     return executeSettingsCommand({ authority: h.database, clock: h.clock, ids: h.ids, settings }, {
       commandId: h.ids.uuid(), family: "settings", type: "apply-settings", requestedAt: h.clock.now().toISOString(),
@@ -114,12 +124,24 @@ async function serveLaunchAuthority<Source>(h: ReturnType<typeof launchHarness>,
       res.writeHead(200, { "content-type": types[extname(target)] ?? "application/octet-stream" }).end(await readFile(target));
     })().catch((error: unknown) => { if (res.headersSent) res.destroy(); else res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: String(error) })); });
   });
+  held.server = server;
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address(); if (address === null || typeof address === "string") throw new Error("launch server failed to bind");
+  let closePromise: Promise<void> | undefined;
   return { h, source, day, descriptorHash, projection, snapshot, commands, publish, saveSettings, baseUrl: `http://127.0.0.1:${address.port}`,
     loseResponse: () => { loseNextResponse = true; },
-    async close() { for (const stream of streams) stream.destroy(); server.closeAllConnections();
-      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); h.dispose(); rmSync(stateRoot, { recursive: true, force: true }); },
+    close() {
+      if (closePromise !== undefined) return closePromise;
+      closePromise = (async () => {
+        try {
+          for (const stream of streams) stream.destroy(); server.closeAllConnections();
+          await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+          h.dispose();
+          retainedRunRerunFixtureOwners.delete(held);
+        } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
+      })();
+      return closePromise;
+    },
   };
 }
 export type RunRerunServer = Awaited<ReturnType<typeof startRunRerunServer>>;

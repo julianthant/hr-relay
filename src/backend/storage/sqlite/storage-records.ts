@@ -1,3 +1,4 @@
+import { AssistantModelPreferenceRecordSchema } from "../../../models/dashboard/assistant.js";
 import { AssistantGrantRecordSchema, AssistantChatRecordSchema, AssistantActionRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { SavedWorkbookSchema } from "../../../models/dashboard/workbooks.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
@@ -42,6 +43,7 @@ export const DiagnosticAttachmentStorageRecordSchema = z.strictObject({
 });
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
+  assistant_model_preference: AssistantModelPreferenceRecordSchema,
   database_upgrades: AuthorityUpgradeRecordSchema,
   settings_snapshots: ConfigSnapshotRecordSchema,
   commands: NativeCommandRequestSchema,

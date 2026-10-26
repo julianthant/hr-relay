@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
@@ -32,12 +33,17 @@ import { WriteSafetyAuthorityError } from "../../../src/rules/write-safety/write
 import { ambiguousProbeVerdict,unknownProbeVerdict } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { createWriteSequencerTestWorld } from "../../support/helpers/backend/write-sequencer-world.js";
 
+const retainedWriteSafetyOwners = new Set<object>();
+
 {
 const NOW = FOUNDATION_NOW;
 
 describe("D resolution command authority", () => {
   it("annotation cannot settle a parked UNKNOWN write or admit its generic retry", () => {
     const f = resolutionFixture();
+    const held: { fixture: typeof f; primary?: { error: unknown } } = { fixture: f };
+    retainedWriteSafetyOwners.add(held);
+    let primary: { error: unknown } | undefined;
     try {
       const run = f.createRun(id(83));
       assert.equal(run.lifecycle.state, "running");
@@ -67,7 +73,9 @@ describe("D resolution command authority", () => {
       assert.equal(JSON.stringify({ run: f.db.authority.runs.get(run.envelope.runId),
         intent: f.db.authority.writeIntents.get(intent.writeIntentId) }), before);
       assert.equal(f.db.authority.failures.get(f.record.failureId)?.writeState, "unknown");
-    } finally { f.dispose(); }
+    } catch (error) { primary = { error }; held.primary = primary; }
+    if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([primary.error], { admission: f });
+    if (primary !== undefined) throw primary.error;
   });
 });
 }
@@ -105,6 +113,15 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
     assert.equal(unresolved.status, "parked"); assert.ok(unresolved.occurrence);
     // Feed the real fenced record to a fresh adapter with no originating lifecycle row.
     const orphan = harness();
+    const heldOrphan: { fixture: typeof orphan; database?: AuthorityDatabase; primary?: { error: unknown } } = { fixture: orphan };
+    retainedWriteSafetyOwners.add(heldOrphan);
+    const orphanDisposeIndex = disposers.indexOf(orphan.dispose);
+    assert.ok(orphanDisposeIndex >= 0);
+    disposers.splice(orphanDisposeIndex, 1);
+    try {
+    orphan.database.close();
+    const orphanDatabase = AuthorityDatabase.open({ path: orphan.authorityPath, busyTimeoutMs: 250, migrationOwner: "write-orphan-corruption" }, orphan.clock);
+    heldOrphan.database = orphanDatabase;
     const attempt = h.database.authority.writeAttempts.listByIntent(unresolved.writeIntentId)[0];
     const { parkedCode, message, authorityReason, ...identity } = unresolved;
     void parkedCode; void message; void authorityReason;
@@ -114,16 +131,19 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
     assert.equal(baseline.status, "committed");
     const { runId, runAttempt, currentAttemptId, bindingProof, bindingProofDigest, fencedAt, confirmedAt, completionProof, ...baseIdentity } = baseline;
     void runId; void runAttempt; void currentAttemptId; void bindingProof; void bindingProofDigest; void fencedAt;
-    orphan.database.authority.writeIntents.recordObservedPresent({ ...baseIdentity, status: "observed-present", observedProof: completionProof, observedAt: confirmedAt });
-    seedCorruptWriteFenceFixture(orphan.database, { intent: fenced,
+    orphanDatabase.authority.writeIntents.recordObservedPresent({ ...baseIdentity, status: "observed-present", observedProof: completionProof, observedAt: confirmedAt });
+    seedCorruptWriteFenceFixture(orphanDatabase, { intent: fenced,
       attempt: { ...attempt, outcome: { state: "attempting" } } }, DatabaseSync);
-    assert.equal(orphan.database.authority.runs.get(one.envelope.runId), undefined);
+    assert.equal(orphanDatabase.authority.runs.get(one.envelope.runId), undefined);
     const otherCommand = orphan.ids.uuid();
     const key = repeatOccurrenceKey(unresolved.occurrence.businessKeyDigest, otherCommand, unresolved.occurrence.nodeId);
     const next = { ...fenced, writeIntentId: orphan.ids.uuid(), idempotencyKey: key, idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", key),
       occurrence: { ...unresolved.occurrence, confirmationCommandId: otherCommand } };
-    assert.throws(() => orphan.database.authority.writeIntents.fenceAttempt({ claim: { workerId: "synthetic-orphan-worker", claimGeneration: 1 }, intent: next,
+    assert.throws(() => orphanDatabase.authority.writeIntents.fenceAttempt({ claim: { workerId: "synthetic-orphan-worker", claimGeneration: 1 }, intent: next,
       attempt: { ...attempt, writeIntentId: next.writeIntentId, outcome: { state: "attempting" } } }), /unresolved write occurrence/);
+
+    orphanDatabase.close(); orphan.dispose(); retainedWriteSafetyOwners.delete(heldOrphan);
+    } catch (error) { heldOrphan.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: heldOrphan }); }
   });
 
 
@@ -136,6 +156,8 @@ const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_CO
 
 const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
+const heldAtomicWriteOwners: { profiles: typeof profiles; databases: typeof openDatabases; primary?: { error: unknown } } = { profiles, databases: openDatabases };
+retainedWriteSafetyOwners.add(heldAtomicWriteOwners);
 const databasePaths = new WeakMap<AuthorityDatabase, string>();
 const CLOCK = manualClock(new Date(NOW));
 
@@ -152,13 +174,11 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
 }
 
 describe("authority generation accounting", () => {
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const profile of profiles.splice(0)) profile.close();
-});
+
 
 
   it("rolls back a caught nested fence failure to its savepoint without leaking an intent", () => {
+    try {
     const database = openDatabase();
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, databasePaths.get(database) ?? (() => { throw new Error("missing fixture path"); })());
     fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
@@ -182,6 +202,8 @@ afterEach(() => {
     assert.equal(database.authority.writeIntents.get(UUID_8), undefined);
     assert.equal(database.authority.writeIntents.get(UUID_1)?.status, "attempting");
     assert.equal(database.getMeta().authorityGeneration, generationBefore);
+
+    } catch (error) { heldAtomicWriteOwners.primary = { error }; throw error; }
   });
 });
 }
@@ -309,7 +331,7 @@ afterEach(() => {
 }
 
 {
-const {harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
+const {harness, claimRunning, releaseClaim, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
 
 describe("the seven-beat happy path", () => {
 afterEach(cleanup);
@@ -317,6 +339,7 @@ afterEach(cleanup);
 
   it("keeps a probe observation emitted when that task throws later", async () => {
     const h = harness();
+    try {
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.probeThrowsAfterRecord = new Error("probe failed after observing the page");
@@ -338,10 +361,14 @@ afterEach(cleanup);
       ["span.ended", "failed"],
     ]);
     assert.equal(intentByKey(h.database), undefined, "a pre-fence throw creates no intent");
+
+    releaseClaim(h.database, h.clock, run, claim);
+    } catch (error) { throw h.retain(error); }
   });
 
   it("preserves a probe task error first when its failed-span writer also throws", async () => {
     const h = harness({ emitterThrowsOn: "failed-task-span" });
+    try {
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.probeThrowsAfterRecord = new Error("PRIMARY_PROBE_TASK_FAILURE");
@@ -362,10 +389,14 @@ afterEach(cleanup);
 
     assert.equal(intentByKey(h.database), undefined);
     assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")));
+
+    releaseClaim(h.database, h.clock, run, claim);
+    } catch (error) { throw h.retain(error); }
   });
 
   it("fails an undeclared transaction observation by task and field before staging", async () => {
     const h = harness();
+    try {
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.recordUndeclaredProbeField = true;
@@ -391,6 +422,9 @@ afterEach(cleanup);
       "the earlier valid batch remains; the undeclared batch emits nothing",
     );
     assert.equal(intentByKey(h.database), undefined);
+
+    releaseClaim(h.database, h.clock, run, claim);
+    } catch (error) { throw h.retain(error); }
   });
 });
 
@@ -403,6 +437,7 @@ afterEach(cleanup);
   ] as const) {
     it(`${verdict.state} means no fence and no click`, async () => {
       const h = harness();
+    try {
       const { run, claim } = claimRunning(h.database, h.clock);
       h.world.probeResults.push(verdict);
       await assert.rejects(h.execute(contextFor(run, claim)), (error: unknown) => {
@@ -417,11 +452,15 @@ afterEach(cleanup);
       });
       assert.equal(intentByKey(h.database), undefined);
       assert.deepEqual(h.world.events, ["probe"]);
-    });
+
+    releaseClaim(h.database, h.clock, run, claim);
+    } catch (error) { throw h.retain(error); }
+  });
   }
 
   it("a throwing pre-write probe preserves classified authority evidence without fencing", async () => {
     const h = harness();
+    try {
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(new Error("UCPath grid exposed 10101010 before it failed"));
     await assert.rejects(h.execute(contextFor(run, claim)), (error: unknown) => {
@@ -432,6 +471,9 @@ afterEach(cleanup);
       return true;
     });
     assert.equal(intentByKey(h.database), undefined);
+
+    releaseClaim(h.database, h.clock, run, claim);
+    } catch (error) { throw h.retain(error); }
   });
 });
 
@@ -441,6 +483,7 @@ afterEach(cleanup);
 
   it("identifies a refused preview by safe key digest without exposing the person identifier", async () => {
     const h = harness();
+    try {
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
     h.world.probeResults.push(unknownProbeVerdict(WRITE_FIXTURE_NOW));
 
@@ -456,6 +499,9 @@ afterEach(cleanup);
         return true;
       },
     );
+
+    releaseClaim(h.database, h.clock, run, claim);
+    } catch (error) { throw h.retain(error); }
   });
 });
 
@@ -464,6 +510,7 @@ afterEach(cleanup);
 
   it("refuses the probe lease loudly: no browser, no fence, no click, nothing settled", async () => {
     const h = harness();
+    try {
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     // Call outside the binding window to probe the real session-manager refusal.
@@ -480,10 +527,14 @@ afterEach(cleanup);
     assert.equal(intentByKey(h.database), undefined, "no fence");
     const current = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.equal(current?.lifecycle.state, "running", "a pre-lease precondition refusal leaves settlement to the interpreter");
+
+    releaseClaim(h.database, h.clock, run, claim);
+    } catch (error) { throw h.retain(error); }
   });
 
   it("refuses executeDryRun's staging lease the same way — the preview arm is not an escape hatch", async () => {
     const h = harness();
+    try {
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
     await assert.rejects(
       h.sequencer.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true)),
@@ -495,6 +546,9 @@ afterEach(cleanup);
       },
     );
     assert.deepEqual(h.world.events, [], "no prepare or observation ran");
+
+    releaseClaim(h.database, h.clock, run, claim);
+    } catch (error) { throw h.retain(error); }
   });
 });
 }

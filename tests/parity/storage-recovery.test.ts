@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { storageRecoveryTarget } from "./helpers/storage-recovery-server.js";
@@ -10,6 +11,8 @@ import { StorageDoctorWireSchema } from "../../src/models/dashboard/storage.js";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+const retainedParityFixtureFailures = new Set<object>();
+
 
 for (const theme of PARITY_THEMES) for (const viewport of [{width: 1024, height: 720}, {width: 1440, height: 900}]) {
   const a11yName = `recovered-${theme.name}-${String(viewport.width)}x${String(viewport.height)}.a11y.yml`;
@@ -18,7 +21,8 @@ test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String
     ensureParityBundle();
     const target = await storageRecoveryTarget();
     const errors = failOnPageErrors(page);
-    try {
+    let parityBodyFailure: { error: unknown } | undefined;
+  try {
       await target.start();
       await page.setViewportSize(viewport);
       await installTheme(page, theme);
@@ -68,13 +72,26 @@ test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String
       await test.info().attach(a11yName, {body, contentType: "text/yaml"});
       await test.info().attach("real-route-proof.json", {body: JSON.stringify({provenance: target.provenance(), before: wire,
         restored: JSON.parse(restored.output) as unknown, after, requests: target.requests}, null, 2), contentType: "application/json"});
-    } finally { await target.dispose(); }
+    } catch (error) { parityBodyFailure = { error }; }
+  if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
+    retainedParityFixtureFailures.add({ owner: target, primary: parityBodyFailure.error });
+    throw parityBodyFailure.error;
+  }
+  let parityCleanupFailure: { error: unknown } | undefined;
+  try { await target.dispose(); } catch (error) { parityCleanupFailure = { error }; }
+  if (parityCleanupFailure !== undefined) {
+    retainedParityFixtureFailures.add({ owner: target, primary: parityBodyFailure?.error, cleanup: parityCleanupFailure.error });
+    if (parityBodyFailure !== undefined) throw new AggregateError([parityBodyFailure.error, parityCleanupFailure.error], 'parity-body-and-cleanup-failed', { cause: parityBodyFailure.error });
+    throw parityCleanupFailure.error;
+  }
+  if (parityBodyFailure !== undefined) throw parityBodyFailure.error;
   });
 }
 
 test("real doctor serves corrupt authority and invalid recovery evidence together", async ({page}) => {
   ensureParityBundle();
   const target = await storageRecoveryTarget();
+  let parityBodyFailure: { error: unknown } | undefined;
   try {
     const authorityPath = join(target.root, "state.db");
     const original = readFileSync(authorityPath);
@@ -96,5 +113,17 @@ test("real doctor serves corrupt authority and invalid recovery evidence togethe
     expect(readFileSync(authorityPath, "utf8")).toBe("synthetic corrupt authority");
     expect(target.requests.filter(row => row.method !== "GET")).toEqual([]);
     await test.info().attach("combined-failure.json", {body: JSON.stringify(wire), contentType: "application/json"});
-  } finally { await target.dispose(); }
+  } catch (error) { parityBodyFailure = { error }; }
+  if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
+    retainedParityFixtureFailures.add({ owner: target, primary: parityBodyFailure.error });
+    throw parityBodyFailure.error;
+  }
+  let parityCleanupFailure: { error: unknown } | undefined;
+  try { await target.dispose(); } catch (error) { parityCleanupFailure = { error }; }
+  if (parityCleanupFailure !== undefined) {
+    retainedParityFixtureFailures.add({ owner: target, primary: parityBodyFailure?.error, cleanup: parityCleanupFailure.error });
+    if (parityBodyFailure !== undefined) throw new AggregateError([parityBodyFailure.error, parityCleanupFailure.error], 'parity-body-and-cleanup-failed', { cause: parityBodyFailure.error });
+    throw parityCleanupFailure.error;
+  }
+  if (parityBodyFailure !== undefined) throw parityBodyFailure.error;
 });

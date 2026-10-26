@@ -33,7 +33,7 @@ import {AssistantPanel} from '${resolve('src/dashboard/surfaces/shell/assistant-
 import {createAssistantMockProducer} from '${resolve('src/dashboard/surfaces/shell/assistant-panel-model.ts')}';
 import {createDashboardClient} from '${resolve('src/dashboard/client/index.ts')}';
 import {useAssistantController} from '${resolve('src/dashboard/surfaces/assistant/assistant-controller-model.ts')}';
-import {ChatGptAccountContext,createPreviewChatGptAccountPort} from '${resolve('src/dashboard/surfaces/settings/general/chatgpt-account-model.ts')}';
+import {ChatGptAccountContext,createServedChatGptAccountPort} from '${resolve('src/dashboard/surfaces/settings/general/chatgpt-account-model.ts')}';
 const params=new URLSearchParams(location.search);
 document.documentElement.dataset.demoTheme=params.get('theme')||'dark';
 document.documentElement.dataset.motion=params.get('motion')||'on';
@@ -44,7 +44,7 @@ const servedClient={async assistantRespond(){if(params.get('respondLost')==='1')
 function Served(){const served=useAssistantController(servedClient,1,undefined,false);return <AssistantPanel producer={createAssistantMockProducer('new')} accountClient={client} served={served} title="Action proof"/>;}
 
 const mount=createRoot(document.getElementById('fixture'));
-if(params.get('served')==='1'){const preview=createPreviewChatGptAccountPort();preview.signIn({usePlan:true}).then(()=>mount.render(<ChatGptAccountContext.Provider value={{...preview,mode:'live'}}><Served/></ChatGptAccountContext.Provider>));}
+if(params.get('served')==='1'){const preview=createServedChatGptAccountPort(client);preview.refresh().then(()=>mount.render(<ChatGptAccountContext.Provider value={{...preview,mode:'live'}}><Served/></ChatGptAccountContext.Provider>));}
 else mount.render(<AssistantPanel producer={createAssistantMockProducer(params.get('scene')||'ask-write')} accountClient={client} onClose={noop} onRename={noop} onChats={noop} onOpenChatFile={async()=>null} initialText={params.get('text')||''} onRegisterSpreadsheet={async file=>{document.body.dataset.registered=file.name;}} onRunWorkflow={async request=>{if(request.dryRun!==true)throw Error('fixture-refuses-live');document.body.dataset.run=JSON.stringify(request);return {state:'complete',source:'mock',files:[{...request.file,id:'updated',name:'Updated.csv',status:'Updated'},{...request.file,id:'generated',name:'Results.csv',status:'Generated'}]};}}/>);
 `);
   await build({ configFile: false, root, plugins: [react(), tailwindcss()], logLevel: 'warn', build: { outDir: resolve(root, 'dist'), emptyOutDir: true } });
@@ -163,6 +163,7 @@ test('served local action uses the existing card and keeps lost confirmation non
     await expect(input).toBeEnabled(); await input.fill('mark notifications read');
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
     const card = page.getByRole('article', { name: 'Proposed action details' });
+    await card.getByRole('button', { name: "Effects and stop points", exact: true }).click();
     await expect(card).toContainText('Proposed action · Local change');
     await expect(card).toContainText('Local notification'); await expect(card).toContainText('None');
     await expect(card).not.toContainText('Dry run'); await expect(card).not.toContainText('Alex Rivera');

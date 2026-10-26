@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 
 import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
@@ -11,6 +12,8 @@ import { gotoAppState } from './helpers/app-driver.js';
 import { absentProbeEvidence } from '../support/fixtures/write-sequencer-fixtures.js';
 import { CommandRequestSchema } from '../../src/rules/commands/commands.js';
 
+const retainedParityFixtureFailures = new Set<object>();
+
 const failed = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === 'single' && row.status === 'failed');
 if (failed === undefined) throw new Error('Focus verification requires a failed fixture for admitted footer actions');
 
@@ -22,7 +25,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       { key: 'rerun', kind: 'navigation', label: 'Retry', navigate: { kind: 'rerun', expectedVersion: row.rowRevision }, intent: 'neutral', icon: 'retry', placement: ['footer'] },
       { key: 'delete', kind: 'command', command: 'delete', label: 'Delete', expectedVersion: row.rowRevision, intent: 'destructive', icon: 'delete', placement: ['footer'], confirm: { title: 'Delete this run?', confirmLabel: 'Delete run', tone: 'destructive' } },
     ] } : row) } });
-    try {
+    let parityBodyFailure: { error: unknown } | undefined;
+  try {
       const writes: string[] = [], errors: string[] = [];
       const commands: unknown[] = [];
       page.on('request', request => {
@@ -191,6 +195,18 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       } finally { await authority.close(); }
 
-    } finally { await server.close(); }
+    } catch (error) { parityBodyFailure = { error }; }
+  if (parityBodyFailure?.error instanceof AuthoritySourceClosureUnprovedError) {
+    retainedParityFixtureFailures.add({ owner: server, primary: parityBodyFailure.error });
+    throw parityBodyFailure.error;
+  }
+  let parityCleanupFailure: { error: unknown } | undefined;
+  try { await server.close(); } catch (error) { parityCleanupFailure = { error }; }
+  if (parityCleanupFailure !== undefined) {
+    retainedParityFixtureFailures.add({ owner: server, primary: parityBodyFailure?.error, cleanup: parityCleanupFailure.error });
+    if (parityBodyFailure !== undefined) throw new AggregateError([parityBodyFailure.error, parityCleanupFailure.error], 'parity-body-and-cleanup-failed', { cause: parityBodyFailure.error });
+    throw parityCleanupFailure.error;
+  }
+  if (parityBodyFailure !== undefined) throw parityBodyFailure.error;
   });
 }

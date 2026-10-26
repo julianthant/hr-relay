@@ -7,7 +7,7 @@ import { createRoot as createRoot_m0,type Root as Root_m0 } from "react-dom/clie
 import { renderToStaticMarkup as renderToStaticMarkup_m1 } from "react-dom/server";
 import { afterAll as afterAll_m0,afterEach as afterEach_m0,beforeAll as beforeAll_m0,describe as describe_m0,describe as describe_m1,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
 import { PRODUCT_WORKFLOW_COMPOSITION as PRODUCT_WORKFLOW_COMPOSITION_m1,WORKFLOW_SOURCES as WORKFLOW_SOURCES_m1,workflowComposition as workflowComposition_m1,workflowSource as workflowSource_m1 } from "../../../../src/dashboard/app/workflow-sources.js";
-import { explorerWorkflowOptions as explorerWorkflowOptions_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
+import { explorerRecoveryWorkflow as explorerRecoveryWorkflow_m1, explorerWorkflowOptions as explorerWorkflowOptions_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
 import { WorkflowExplorer as WorkflowExplorer_m0 } from "../../../../src/dashboard/surfaces/explorer/explorer.js";
 import { launchWorkflows as launchWorkflows_m1 } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { RunWorkflowPicker as RunWorkflowPicker_m1 } from "../../../../src/dashboard/surfaces/run-start/run-start-picker.js";
@@ -85,6 +85,19 @@ afterEach_m0(_afterEachFixture2);
     assert_m0.equal(document.querySelectorAll("li[data-step-number]").length, 22);
     assert_m0.ok(document.querySelector('[aria-label="Read result preview"]'));
   });
+  it_m0("opens served Separations on the registered definition instead of the mock timeline", async () => {
+    const registered = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows));
+    const catalog = buildWorkflowCatalog_m0(registered, true, WORKFLOW_SOURCES_m1);
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot_m0(host);
+    await act_m0(async () => root?.render(createElement_m0(WorkflowExplorer_m0, { catalog })));
+    const select = document.querySelector('[aria-label="Explorer workflow"]');
+    assert_m0.ok(select instanceof HTMLButtonElement);
+    assert_m0.equal(select.getAttribute("data-value"), "separations");
+    assert_m0.match(document.body.textContent ?? "", /Registered workflow data is unavailable because the dashboard client is not connected/);
+    assert_m0.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
+  });
 });
 }
 
@@ -108,10 +121,17 @@ describe_m1("frontend workflow catalog", () => {
       expect_m1(entries.find(entry => entry.id === "person-lookup")?.source).toBe("preview");
     }
   });
-  it_m1("retains explicit mock fixtures while production selects Person Lookup served", () => {
+  it_m1("retains explicit mock fixtures while production selects Person Lookup and Separations served", () => {
     expect_m1(MOCK_WORKFLOW_CATALOG_m1.workflows.map(flow => flow.id).sort()).toEqual(Object.keys(WORKFLOW_SOURCES_m1).sort());
     expect_m1(Object.keys(WORKFLOW_SOURCES_m1).sort()).toEqual(catalog.map(entry => entry.id).sort());
-    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["person-lookup"]);
+    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["separations", "person-lookup"]);
+    const product = buildWorkflowCatalog_m1(served, true);
+    expect_m1(product.find(entry => entry.id === "separations")).toMatchObject({ source: "served" });
+    expect_m1(product.find(entry => entry.id === "person-lookup")).toMatchObject({ source: "served" });
+    expect_m1(explorerRecoveryWorkflow_m1(product)).toBe("separations");
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", false)).toBe("served");
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", true)).toBe("served");
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("onboarding", false)).toBe("mock");
     expect_m1(served.every(flow => Object.hasOwn(WORKFLOW_SOURCES_m1, flow.workflowId))).toBe(true);
     expect_m1(catalog.every(entry => entry.source === "preview" && entry.served === undefined)).toBe(true);
     expect_m1(servedLaunchWorkflows_m1(catalog)).toEqual([]);

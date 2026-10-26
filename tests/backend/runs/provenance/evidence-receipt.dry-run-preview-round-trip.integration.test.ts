@@ -1,3 +1,6 @@
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
+import { runClaim } from '../../../../src/models/run/record.js';
+import { testRunService } from '../../../support/fixtures/run-lifecycle-fixtures.js';
 import { createDryRunPreviewResultTestWorld } from "../../../support/helpers/backend/dry-run-preview-result-world.js";
 import { deriveRunResultDigest } from "../../../../src/models/run/result.js";
 import assert from "node:assert/strict";
@@ -8,6 +11,8 @@ import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenanc
 import { WRITE_FIXTURE_NODE_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { FINALIZATION_FIELDS, finalizationClaimRunning, finalizationContext, finalizationDurableFootprint, finalizationHarness, finalizationPreviewDependencies, finalizationQueuedRun } from "../../../support/helpers/kuali-finalization-fixtures.js";
 import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
+
+const retainedKualiPreviewOwners = new Set<object>();
 
 const {kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness, cleanup } = createDryRunPreviewResultTestWorld();
 
@@ -41,6 +46,9 @@ describe("a dry run previews its transaction node and ends there", () => {
   it("derives a receipt that says unknown and none, and never verified-done", async () => {
     const k = finalizationHarness();
     kualiOpen.push(k);
+    const held: { k: typeof k; primary?: { error: unknown } } = { k };
+    retainedKualiPreviewOwners.add(held);
+    try {
     const { run, claim } = finalizationClaimRunning(
       k.database,
       k.clock,
@@ -90,6 +98,20 @@ describe("a dry run previews its transaction node and ends there", () => {
     assert.deepEqual(receipt.output, [], "a preview produced no workflow output");
     // The run's own inputs are still stated — a preview reads for real.
     assert.ok(receipt.input.length > 0);
+
+    assert.deepEqual(k.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    const current = k.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+    const heldClaim = runClaim(current); assert.ok(heldClaim);
+    assert.equal(testRunService(k.database, k.clock).requeue({ commandId: k.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version,
+      claim: { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration }, cause: 'recovery' }).state, 'applied');
+    const after = k.database.authority.runs.get(run.envelope.runId); assert.ok(after);
+    assert.equal(runClaim(after), undefined);
+    retainedKualiPreviewOwners.delete(held);
+    } catch (error) {
+      held.primary = { error };
+      const index = kualiOpen.indexOf(k); if (index >= 0) kualiOpen.splice(index, 1);
+      throw retainAuthoritySourceClosure([error], { admission: held });
+    }
   });
 
 
@@ -98,6 +120,9 @@ describe("a dry run previews its transaction node and ends there", () => {
     // this run would write is exactly the `already-present` subject.
     const k = finalizationHarness({ persistedFinalization: FINALIZATION_FIELDS });
     kualiOpen.push(k);
+    const held: { k: typeof k; primary?: { error: unknown } } = { k };
+    retainedKualiPreviewOwners.add(held);
+    try {
     const { run, claim } = finalizationClaimRunning(
       k.database,
       k.clock,
@@ -157,12 +182,29 @@ describe("a dry run previews its transaction node and ends there", () => {
     assert.equal(footprint.intent, undefined);
     assert.equal(footprint.checkpoint, undefined);
     assert.deepEqual(footprint.outboxes, []);
+
+    assert.deepEqual(k.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    const current = k.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+    const heldClaim = runClaim(current); assert.ok(heldClaim);
+    assert.equal(testRunService(k.database, k.clock).requeue({ commandId: k.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version,
+      claim: { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration }, cause: 'recovery' }).state, 'applied');
+    const after = k.database.authority.runs.get(run.envelope.runId); assert.ok(after);
+    assert.equal(runClaim(after), undefined);
+    retainedKualiPreviewOwners.delete(held);
+    } catch (error) {
+      held.primary = { error };
+      const index = kualiOpen.indexOf(k); if (index >= 0) kualiOpen.splice(index, 1);
+      throw retainAuthoritySourceClosure([error], { admission: held });
+    }
   });
 
 
   it("keeps executeTransaction refusing a dry run, with zero durable footprint", async () => {
     const k = finalizationHarness();
     kualiOpen.push(k);
+    const held: { k: typeof k; primary?: { error: unknown } } = { k };
+    retainedKualiPreviewOwners.add(held);
+    try {
     const { run, claim } = finalizationClaimRunning(
       k.database,
       k.clock,
@@ -178,11 +220,28 @@ describe("a dry run previews its transaction node and ends there", () => {
     assert.equal(footprint.checkpoint, undefined);
     assert.deepEqual(footprint.outboxes, []);
     assert.equal(k.world.persistedFinalization, undefined);
+
+    assert.deepEqual(k.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    const current = k.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+    const heldClaim = runClaim(current); assert.ok(heldClaim);
+    assert.equal(testRunService(k.database, k.clock).requeue({ commandId: k.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version,
+      claim: { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration }, cause: 'recovery' }).state, 'applied');
+    const after = k.database.authority.runs.get(run.envelope.runId); assert.ok(after);
+    assert.equal(runClaim(after), undefined);
+    retainedKualiPreviewOwners.delete(held);
+    } catch (error) {
+      held.primary = { error };
+      const index = kualiOpen.indexOf(k); if (index >= 0) kualiOpen.splice(index, 1);
+      throw retainAuthoritySourceClosure([error], { admission: held });
+    }
   });
 
   it("refuses a preview of a transaction node that declares no dry-run arm", async () => {
     const k = finalizationHarness();
     kualiOpen.push(k);
+    const held: { k: typeof k; primary?: { error: unknown } } = { k };
+    retainedKualiPreviewOwners.add(held);
+    try {
     const { run, claim } = finalizationClaimRunning(
       k.database,
       k.clock,
@@ -196,5 +255,19 @@ describe("a dry run previews its transaction node and ends there", () => {
       /declares dryRun:"unsupported"; there is no preview arm to run/,
     );
     assert.deepEqual(k.world.events, [], "the refusal precedes the browser");
+
+    assert.deepEqual(k.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    const current = k.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+    const heldClaim = runClaim(current); assert.ok(heldClaim);
+    assert.equal(testRunService(k.database, k.clock).requeue({ commandId: k.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version,
+      claim: { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration }, cause: 'recovery' }).state, 'applied');
+    const after = k.database.authority.runs.get(run.envelope.runId); assert.ok(after);
+    assert.equal(runClaim(after), undefined);
+    retainedKualiPreviewOwners.delete(held);
+    } catch (error) {
+      held.primary = { error };
+      const index = kualiOpen.indexOf(k); if (index >= 0) kualiOpen.splice(index, 1);
+      throw retainAuthoritySourceClosure([error], { admission: held });
+    }
   });
 });

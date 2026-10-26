@@ -8,8 +8,8 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/models/workflow/presentatio
 import { type RegisteredTaskStore } from "../../src/workflow-kit/task-registry.js";
 import { BUILD_MANIFEST } from "../../src/workflow-kit/validation/build-manifest.js";
 import { defineWorkflowRole } from "../../src/workflow-kit/validation/module-role.js";
-import { type AnyWorkflowEntry, type WorkflowAuthor, compileWorkflow, composeWorkflowModule, defineWorkflow, workflowDefinitionOf, workflowExplorerDeclaration, workflowEntryKinds } from "../../src/workflow-kit/workflow-definition.js";
-import { descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../src/workflow-kit/workflow.js";
+import { type AnyWorkflowEntry, type WorkflowAuthor, compileWorkflow, composeWorkflowModule, defineStepEntries, defineWorkflow, workflowDefinitionOf, workflowExplorerDeclaration, workflowEntryKinds } from "../../src/workflow-kit/workflow-definition.js";
+import { defineWorkflowStep, descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../src/workflow-kit/workflow.js";
 import { PersonLookupCanonicalInput, PersonLookupInput, personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
@@ -35,6 +35,15 @@ const { lookupInput, fixtureWorkflow } = createSearchWorkflowDefinitionFixtures(
 type Author = WorkflowAuthor<typeof PersonLookupInput>;
 
 describe("workflow definition compiler", () => {
+  it("preserves an omitted task label when sharing a step identity", () => {
+    const step = defineWorkflowStep({ key: "searching", label: "Search for person" });
+    const entries = defineStepEntries(step);
+    const unlabeled = entries.task("search", SearchPersonOrg, { replay: "checkpoint" });
+    expect(unlabeled.step).toBe(step);
+    expect(unlabeled).not.toHaveProperty("label");
+    expect(entries.task("named", SearchPersonOrg, { label: "Named search", replay: "checkpoint" }).label).toBe("Named search");
+  });
+
   it("validates outcome declarations against the result field and unique vocabulary", () => {
     const projection = personLookupWorkflow.outcomeProjection;
     assert.ok(projection);
@@ -266,7 +275,7 @@ describe("workflow definition compiler", () => {
 
     const module = composeWorkflowModule(compiled, taskStoreRegistry.stores);
     expect(module.stores.map(({ namespace }) => String(namespace))).toEqual(["ucpath", "crm", "workflow:person-lookup"]);
-    expect(module.role).toEqual({ kind: "standalone" });
+    expect(module.role).toEqual({ kind: "composition" });
     expect(module.definition).toBe(personLookupWorkflow);
 
     const foreign = { ...compiled, definition: personLookupWorkflow };

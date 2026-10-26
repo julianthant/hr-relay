@@ -5,8 +5,9 @@ import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-ad
 import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../../storage/admission/installation.js";
 import { acquireRuntimeRestoreAdmission, acquireRuntimeProcessLock, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
+import { systemClock } from "../../../rules/time/clock.js";
 import { join } from "node:path";
-import { acquireExclusiveRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { acquireExclusiveRuntimeAdmission, RuntimeAdmission } from "../../storage/admission/admission.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
 import { RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
 
@@ -109,6 +110,34 @@ export async function runSecureEnvironmentBootstrap(
   if (bootDiagnostics) {
     const { parseDiagnosticArgs } = await import("../composition/explain-compose.js");
     parseDiagnosticArgs(entrypointArgs.slice(2));
+  }
+  const storageCommand = entrypoint === "cli" && entrypointArgs[0] === "storage" ? entrypointArgs[1] : undefined;
+  const machineControlMaintenance = storageCommand === "upgrade" && entrypointArgs.includes("--machine-control");
+  const duoPublicationRecovery = storageCommand === "recover-duo-publication";
+  if (machineControlMaintenance || duoPublicationRecovery) {
+    if (duoPublicationRecovery && entrypointArgs.length !== 2) throw new Error("unsupported storage recover-duo-publication argument");
+    const admission = RuntimeAdmission.acquireStoppedMachineControlMaintenance(workspace);
+    let retainCustody = false;
+    try {
+      if (duoPublicationRecovery) {
+        const recovered = admission.recoverInterruptedDuoPublication();
+        process.stdout.write(`storage recover-duo-publication: recovered revision ${String(recovered.revision)}\n`);
+        return;
+      }
+      const { composeStorageCommand } = await import("../composition/storage-compose.js");
+      const outcome = await composeStorageCommand(rebuildRuntimeIsolation, entrypointArgs.slice(1), systemClock, workspace, admission);
+      process.stdout.write(outcome.output.endsWith("\n") ? outcome.output : `${outcome.output}\n`);
+      if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
+    } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) {
+        retainCustody = true;
+        throw retainAuthoritySourceClosure([error], { admission });
+      }
+      throw error;
+    } finally {
+      if (!retainCustody) admission.release();
+    }
+    return;
   }
   const mode = bootDiagnostics || entrypoint === "cli" && entrypointArgs[0] === "storage"
     && !["doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")

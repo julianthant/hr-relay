@@ -70,6 +70,7 @@ function sameScope(left: CommandExecutionScope | undefined, right: CommandExecut
 function lockKey(request: CommandRequest): string {
   let identity: readonly unknown[];
   switch (request.family) {
+    case 'assistant-model-preference': identity = [request.target.profileId]; break;
     case "run": identity = [request.target.runId]; break;
     case "gate": identity = [request.target.runId, request.target.gateId]; break;
     case "start": identity = [request.target.workflowId, request.target.startPlanId]; break;
