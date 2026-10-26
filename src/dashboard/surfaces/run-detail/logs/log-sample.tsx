@@ -17,8 +17,7 @@ import { LogSkeleton } from "../../shared/loading/loading.js";
 import { queueRunHeader } from "../run-header-model.js";
 
 export function LogSample({ selection, nowIso, source = "served", initialStepId }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource; initialStepId?: string }) {
-  const requestedPreview = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("logPreview");
-  if (source === "served" && selection !== undefined && requestedPreview === null) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} />;
+  if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} />;
   return <PreviewLogSample selection={selection} nowIso={nowIso} />;
 }
 
