@@ -1,3 +1,6 @@
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
@@ -7,7 +10,7 @@ import { createCommandKernel, type CommandKernel } from "../../../../src/backend
 import { runWorkerLoop, type WorkerLoopReport } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { createWriteSequencer, type WriteSequencerHooks } from "../../../../src/backend/runtime/writes/write-sequencer.js";
-import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
@@ -18,6 +21,7 @@ import { ManualScheduler, recordingEmitter, recordingLogger } from "../phase1f-e
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 
 interface RoundTrip {
+  readonly profile: ReturnType<typeof createBoundProfileFixture>;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly world: WriteFixtureWorld;
@@ -87,7 +91,10 @@ export function createParkedWriteRoundTripTestWorld() {
     });
 
     const park = async (failCommit = true) => {
-      assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun()).state, "inserted");
+      const run = RunRecordSchema.parse(writeFixtureQueuedRun());
+      assert.equal(database.authority.runs.enqueue(run).state, "inserted");
+      createTimelineEmitter({ repository: database.authority.timelineEvents, clock }).emit(
+        runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic write-resolution rehearsal" }));
       // The write lands nowhere provable: probe says absent, then the click
       // throws AFTER the fence — the canonical post-fence unknown.
       world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -129,7 +136,7 @@ export function createParkedWriteRoundTripTestWorld() {
       });
     };
 
-    return { database, clock, world, kernel, park };
+    return { profile, database, clock, world, kernel, park };
   }
 
   function parkedIntent(database: AuthorityDatabase) {

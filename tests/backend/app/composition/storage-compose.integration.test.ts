@@ -1,4 +1,13 @@
-import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
+import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
+import { WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_IMPL_FINGERPRINT, WriteFixtureProofSchema, writeFixtureDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
+import { testAdmittedWorker, testRunContinuation } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
@@ -29,7 +38,7 @@ import { AuthorityDatabase as AuthorityDatabase_m0 } from "../../../support/help
 
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService, sweepWorkerClaims, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { executeSequencedWriteCommit } from "../../../../src/backend/runtime/writes/write-sequencer.js";
+import { buildCommittedSettlement, executeSequencedWriteCommit } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
@@ -39,12 +48,12 @@ import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/tim
 import { SpanAuthorityReconciliationWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
-import { LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
 
 import { ATOMIC_WRITE_COMMIT, CONFIG_SNAPSHOT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { atomicWriteCheckpoint, currentAtomicWriteFixture, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
+import { releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 
 import { copyFileSync, existsSync, symlinkSync, truncateSync } from "node:fs";
 
@@ -525,124 +534,133 @@ afterEach(_afterEachFixture0);
 });
 
 it.each([false, true])("restore confirmation evidence survives recovery accounting (backup after commit: %s)", async (backupAfterCommit) => {
+const rehearsal = createParkedWriteRoundTripTestWorld();
 try {
-
-  CLOCK.setWall(new Date(WRITE_INTENT_ATTEMPTING.fencedAt));
-  const p = paths("ready"); createAuthority(p);
-  const checkpoint = atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT);
-  const inspect = (path: string) => {
-    return withAuthorityDatabaseReadOnly(admissions.get(p.repoRoot)!, path, db => {
-      const run = runRecordFromRow(db.prepare("SELECT * FROM runs WHERE id=?").get(WRITE_INTENT_ATTEMPTING.runId));
-      const attempt = WriteAttemptRecordSchema.parse(nativeOrdinaryRecordFromRow("write_attempts", db.prepare("SELECT * FROM write_attempts WHERE id=?").get(WRITE_ATTEMPT.writeAttemptId)));
-      const intent = WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", db.prepare("SELECT * FROM write_intents WHERE id=?").get(WRITE_INTENT_ATTEMPTING.writeIntentId)));
-      return { runId: run.envelope.runId, version: run.version, lifecycle: run.lifecycle.state,
-        claimedAt: "claimedAt" in run.lifecycle ? run.lifecycle.claimedAt : undefined, claimGeneration: run.claimGeneration,
-        attemptId: attempt.writeAttemptId, outcome: attempt.outcome.state, operationStatus: intent.status,
-        checkpoint: db.prepare("SELECT 1 FROM run_checkpoints WHERE id=?").get(checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration)) !== undefined,
-        events: db.prepare("SELECT * FROM timeline_events ORDER BY cursor").all().map(timelineEventFromRow).map(record => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind) };
-    }, 500);
-  };
-  let owningWorkerId: ReturnType<typeof WorkerIdSchema.parse>;
-  const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-seed" }, CLOCK);
-  try {
-    seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT, p.authorityPath);
-    const queued = initial.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId); assert.ok(queued);
-    createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
-      runQueuedSpanEvent({ run: queued, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic restored commit" }));
-    assert.equal(queued.lifecycle.state, "claimed");
-    if (queued.lifecycle.state !== "claimed") throw new Error("native fixture must retain claimed owner");
-    owningWorkerId = queued.lifecycle.workerId;
-    const service = new RunRecordService({ database: initial, clock: CLOCK, ids: { uuid: randomUUID },
-      publishQueued: () => { throw new Error("test must not enqueue"); } });
-    const validating = service.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId,
-      claim: { workerId: owningWorkerId, claimGeneration: 1 }, lifecycle: { state: "validating", workerLifetime: queued.lifecycle.workerLifetime,
-        workerId: owningWorkerId, claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString() } });
-    assert.equal(validating.state, "applied", JSON.stringify(validating));
-    const running = service.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId,
-      claim: { workerId: owningWorkerId, claimGeneration: 1 }, lifecycle: { state: "running", workerLifetime: queued.lifecycle.workerLifetime,
-        workerId: owningWorkerId, claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString(),
-        currentNodeId: checkpoint.nodeId } });
-    assert.equal(running.state, "applied");
-    fenceWriteFixture(initial, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
-  } finally { initial.close(); }
+  const harness = rehearsal.roundTrip();
+  const { profile, clock } = harness;
+  const p: Paths = { repoRoot: profile.workspace, stateRoot: profile.stateRoot, authorityPath: profile.path,
+    backupDirectory: join_m0(profile.stateRoot, "backups", "authority"), renewAfterRestore() {
+      const previous = profile.admission;
+      const renewed = profile.renewAfterRestore();
+      admissions.set(profile.workspace, renewed.admission);
+      assert.throws(() => previous.assertLive(), /profile-restore-context-expired|released admission/u);
+    } };
+  admissions.set(p.repoRoot, profile.admission);
+  writeFileSync(join_m0(p.repoRoot, "package.json"), JSON.stringify({ name: "restored-write-resolution", version: "0.1.0" }));
+  await harness.park();
+  const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+  const intent = rehearsal.parkedIntent(harness.database);
+  assert.ok(parked && parked.lifecycle.state === "parked-write");
+  assert.ok(intent.status === "unknown");
+  if (intent.status !== "unknown") throw new Error("rehearsal must retain UNKNOWN write");
+  const proofValue = WriteFixtureProofSchema.parse({ transactionId: "T654321" });
+  const node = descriptorRuntimeNodes(writeFixtureDescriptor).find(node => node.id === WRITE_FIXTURE_NODE_ID);
+  if (node?.kind !== "transaction") throw new Error("resolution transaction fixture required");
+  const settlement = buildCommittedSettlement({ descriptor: writeFixtureDescriptor, nodeId: String(node.id), run: parked, intent,
+    commitContract: node.commit.uses, operator: ActorIdSchema.parse("local-operator"), implFingerprint: WRITE_FIXTURE_IMPL_FINGERPRINT,
+    proofSource: "operator-attestation", proofValue, outputValue: JsonValueSchema.parse(node.commit.uses.output.parse(Reflect.apply(node.commit.uses.writeSafety.completion.outputFromProof, undefined, [proofValue]))),
+    confirmedAt: clock.now().toISOString(), ids: { uuid: randomUUID } });
+  const command = rehearsal.resolutionCommand("resolve-write-present", { runId: parked.envelope.runId, expectedVersion: parked.version,
+    writeIntentId: intent.writeIntentId, intentGeneration: intent.generation }, {
+    proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: proofValue }, evidenceNote: "Synthetic exact occurrence receipt" });
+  releaseSeededWriteOwners(harness.database, clock.now().toISOString()); harness.database.close();
+  const inspect = (path: string) => withAuthorityDatabaseReadOnly(admissions.get(p.repoRoot)!, path, db => {
+    const run = runRecordFromRow(db.prepare("SELECT * FROM runs WHERE id=?").get(WRITE_FIXTURE_RUN_ID));
+    const attempt = WriteAttemptRecordSchema.parse(nativeOrdinaryRecordFromRow("write_attempts", db.prepare("SELECT * FROM write_attempts WHERE id=?").get(intent.currentAttemptId)));
+    const operation = WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", db.prepare("SELECT * FROM write_intents WHERE id=?").get(intent.writeIntentId)));
+    return { runId: run.envelope.runId, version: run.version, lifecycle: run.lifecycle.state, claimGeneration: run.claimGeneration,
+      attemptId: attempt.writeAttemptId, outcome: attempt.outcome.state, operationStatus: operation.status,
+      checkpoint: db.prepare("SELECT 1 FROM run_checkpoints WHERE id=?").get(checkpointLookupKey(settlement.checkpoint.workflowId, settlement.checkpoint.itemId, settlement.checkpoint.nodeId, settlement.checkpoint.attempt, settlement.checkpoint.claimGeneration)) !== undefined,
+      events: db.prepare("SELECT * FROM timeline_events ORDER BY cursor").all().map(timelineEventFromRow).map(record => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind) };
+  }, 500);
   const before = inspect(p.authorityPath);
-  assert.equal(before.lifecycle, "running"); assert.equal(before.outcome, "attempting");
-  let backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
+  assert.equal(before.lifecycle, "parked-write"); assert.equal(before.outcome, "unknown");
+  let backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], clock, p.repoRoot);
   assert.equal(backup.exitCode, 0, backup.output);
-  let manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
-  CLOCK.setWall(new Date(ATOMIC_WRITE_COMMIT.confirmedAt));
-  const newer = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-commit" }, CLOCK);
+  let manifest = readdirSync(p.backupDirectory).find(name => name.endsWith(".manifest.json")); assert.ok(manifest);
+  function resolutionKernel(database: AuthorityDatabase) {
+    const active = database.authority.runtimeConfig.get(); assert.ok(active);
+    const lifecycle = new RunRecordService({ database, clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("resolution must not enqueue a new run"); } });
+    const unused = (): never => { throw new Error("unrelated resolution rehearsal operation"); };
+    return createCommandKernel({ authority: database, lifecycle, clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
+      configIdentity: { configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId },
+      intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+      descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined },
+      writeResolution: createWriteResolutionExecutor({ authority: database, continuation: testRunContinuation(database, clock),
+        descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined },
+        ids: { uuid: randomUUID }, resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT }),
+      workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused,
+        stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
+  }
+  const newer = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "known-present-resolution" }, clock);
   try {
-    const service = new RunRecordService({ database: newer, clock: CLOCK, ids: { uuid: randomUUID },
-      publishQueued: () => { throw new Error("test must not enqueue"); } });
-    const claim = { workerId: owningWorkerId,
-      claimGeneration: PositiveIntSchema.parse(before.claimGeneration) };
-    executeSequencedWriteCommit(newer, { run: { runId: before.runId, expectedVersion: before.version, claim },
-      commit: currentAtomicWriteFixture(ATOMIC_WRITE_COMMIT), checkpoint }, { kind: "advance-running", claim, claimedAt: before.claimedAt!,
-      port: workerRunLifecyclePort(service) });
-  } finally { newer.close(); }
+    const service = new RunRecordService({ database: newer, clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("test must not enqueue"); } });
+    const claim = { workerId: WRITE_FIXTURE_WORKER_ID, claimGeneration: PositiveIntSchema.parse(before.claimGeneration) };
+    const generation = newer.getMeta().authorityGeneration;
+    assert.deepEqual(service.retry({ commandId: randomUUID(), runId: before.runId, expectedVersion: before.version,
+      runtimeConfig: selectRunRuntime(newer.authority) }, writeFixtureDescriptor), { state: "refused", refusal: { reason: "invalid-state" } });
+    assert.equal(newer.getMeta().authorityGeneration, generation);
+    assert.throws(() => executeSequencedWriteCommit(newer, { run: { runId: before.runId, expectedVersion: before.version, claim },
+      commit: settlement.commit, checkpoint: settlement.checkpoint }, { kind: "advance-running", claim, claimedAt: parked.createdAt,
+      port: workerRunLifecyclePort(service) }));
+    assert.deepEqual(inspect(p.authorityPath), before);
+    assert.equal(newer.getMeta().authorityGeneration, generation);
+    const worker = testAdmittedWorker(newer, clock, { path: p.authorityPath, workflow: writeFixtureDescriptor.id, poolIndex: 2, browserSystems: [] });
+    assert.equal(newer.authority.runs.claimNext({ workflow: writeFixtureDescriptor.id, workerId: worker.workerId,
+      workerLifetime: worker.workerLifetime, now: clock.now().toISOString() }).state, "idle");
+    assert.deepEqual(inspect(p.authorityPath), before);
+    assert.equal(resolutionKernel(newer).execute(command).state, "applied");
+  } finally { releaseSeededWriteOwners(newer, clock.now().toISOString()); newer.close(); }
   const committed = inspect(p.authorityPath);
   assert.equal(committed.version, before.version + 1); assert.equal(committed.attemptId, before.attemptId);
   assert.equal(committed.outcome, "committed"); assert.equal(committed.checkpoint, true);
   if (backupAfterCommit) {
-    // A preserved confirmation already present in the restored backup is accounted for.
-    backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
+    backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], clock, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
-    manifest = readdirSync(p.backupDirectory).filter((name) => name.endsWith(".manifest.json")).sort().at(-1);
-    assert.ok(manifest);
+    manifest = readdirSync(p.backupDirectory).filter(name => name.endsWith(".manifest.json")).sort().at(-1); assert.ok(manifest);
   }
-  const restore = await composeStorageCommand(rebuildRuntimeIsolation,
-    ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
-  assert.equal(restore.exitCode, 0, restore.output);
-  p.renewAfterRestore();
+  const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], clock, p.repoRoot);
+  assert.equal(restore.exitCode, 0, restore.output); p.renewAfterRestore();
   const restoredReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
-  const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
-  const current = inspect(p.authorityPath);
-  const preserved = inspect(join_m0(p.stateRoot, "backups", "suspects", restoredReport.suspectFileName));
+  const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, p.repoRoot);
+  const current = inspect(p.authorityPath), preserved = inspect(join_m0(p.stateRoot, "backups", "suspects", restoredReport.suspectFileName));
   assert.deepEqual(current, backupAfterCommit ? committed : before); assert.deepEqual(preserved, committed);
   assert.equal(doctor.exitCode, backupAfterCommit ? 0 : 1, doctor.output);
   if (backupAfterCommit) {
-    const healthy = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-control" }, CLOCK);
+    const healthy = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restored-resolution-replay" }, clock);
     try {
-      const service = new RunRecordService({ database: healthy, clock: CLOCK, ids: { uuid: randomUUID },
-        publishQueued: () => { throw new Error("test must not enqueue"); } });
-      assert.equal(service.renewClaim({ commandId: randomUUID(), runId: current.runId,
-        claim: { workerId: owningWorkerId, claimGeneration: current.claimGeneration } }).state, "applied");
+      const generation = healthy.getMeta().authorityGeneration;
+      assert.equal(resolutionKernel(healthy).execute(command).state, "already-applied");
+      assert.equal(healthy.getMeta().authorityGeneration, generation);
     } finally { healthy.close(); }
-    const accounted = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
+    const accounted = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, p.repoRoot);
     assert.equal(accounted.exitCode, 0, accounted.output);
-    assert.ok(inspect(p.authorityPath).version > committed.version);
+    assert.deepEqual(inspect(p.authorityPath), committed);
     return;
   }
-  CLOCK.advanceWall(60 * 60 * 1000);
-  const mutationDb = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-sweep" }, CLOCK);
+  clock.advanceWall(60 * 60 * 1000);
+  const mutationDb = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restored-unknown-sweep" }, clock);
   try {
-    const service = new RunRecordService({ database: mutationDb, clock: CLOCK, ids: { uuid: randomUUID },
-      publishQueued: () => { throw new Error("test must not enqueue"); } });
-    const outcomes = sweepWorkerClaims(mutationDb, workerRunLifecyclePort(service), {
-      staleBefore: CLOCK.now().toISOString(), now: CLOCK.now().toISOString() });
-    assert.equal(outcomes.length, 1);
-    const outcome = outcomes[0]; assert.ok(outcome);
-    assert.equal(outcome.state, "recovery-required");
-    if (outcome.state !== "recovery-required") throw new Error("expected parked recovery");
-    assert.equal(outcome.parked, true);
+    const service = new RunRecordService({ database: mutationDb, clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("test must not enqueue"); } });
+    const outcomes = sweepWorkerClaims(mutationDb, workerRunLifecyclePort(service), { staleBefore: clock.now().toISOString(), now: clock.now().toISOString() });
+    assert.equal(outcomes.length, 0);
   } finally { mutationDb.close(); }
   const afterSweep = inspect(p.authorityPath);
-  assert.equal(afterSweep.version, committed.version);
+  assert.equal(afterSweep.version, before.version);
   assert.equal(afterSweep.lifecycle, "parked-write");
-  assert.equal(afterSweep.outcome, "attempting"); assert.equal(afterSweep.checkpoint, false);
-  const doctorAfter = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
+  assert.equal(afterSweep.outcome, "unknown"); assert.equal(afterSweep.checkpoint, false);
+  const doctorAfter = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, p.repoRoot);
   assert.equal(doctorAfter.exitCode, 1, doctorAfter.output);
   const afterReport = z.object({ spanAuthority: SpanAuthorityReconciliationWireSchema }).parse(JSON.parse(doctorAfter.output));
   assert.equal(afterReport.spanAuthority.state, "degraded");
   if (afterReport.spanAuthority.state !== "degraded") throw new Error("expected restore-loss warning");
-  assert.ok(afterReport.spanAuthority.problems.some((problem) => problem.state === "restore-loss"
-    && problem.runId === current.runId && problem.possibleExternalWrite === true));
-
+  assert.ok(afterReport.spanAuthority.problems.some(problem => problem.state === "restore-loss" && problem.runId === current.runId && problem.possibleExternalWrite === true));
 } finally {
-_afterEachFixture0();
+  _afterEachFixture0();
+  rehearsal.cleanup();
 }
 });
+
 }
 
 describe("storage recover-chatgpt-lock", () => {
