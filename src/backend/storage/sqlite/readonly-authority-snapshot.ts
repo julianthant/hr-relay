@@ -5,7 +5,7 @@ import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { existsSync, statSync, lstatSync, mkdtempSync, rmSync, type BigIntStats } from "node:fs";
+import { existsSync, statSync, lstatSync, mkdtempSync, realpathSync, rmSync, type BigIntStats } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -94,7 +94,7 @@ try {
 `;
 
 export function createReadonlyAuthoritySnapshot(sourcePath: string) {
-  const directory = mkdtempSync(join(tmpdir(), "relay-readonly-authority-"));
+  const directory = mkdtempSync(join(realpathSync(tmpdir()), "relay-readonly-authority-"));
   const path = join(directory, "authority.sqlite");
   const sources: Array<{ path: string; suffix: string; stats: BigIntStats | undefined }> = [];
   let disposed = false;

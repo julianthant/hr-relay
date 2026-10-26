@@ -144,7 +144,7 @@ it("refuses an abruptly terminated copy and removes its private directory withou
   const actualSpawn = childProcesses.spawnSync;
   const copier = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
     if (command !== process.execPath || !Array.isArray(args) || typeof args[3] !== "string"
-      || !dirname(args[3]).startsWith(join(tmpdir(), "relay-readonly-authority-"))) {
+      || !dirname(args[3]).startsWith(join(realpathSync(tmpdir()), "relay-readonly-authority-"))) {
       return actualSpawn(command, args, options);
     }
     assert.ok(Array.isArray(args));

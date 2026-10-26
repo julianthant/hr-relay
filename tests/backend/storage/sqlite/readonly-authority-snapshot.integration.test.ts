@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
@@ -12,6 +13,30 @@ import { createReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "
 import { countUcsdLoginRows, readProfileDatabaseBinding } from "../../../../src/backend/storage/sqlite/profile-local-databases.js";
 
 const digest = (path: string) => createHash("sha256").update(fs.readFileSync(path)).digest("hex");
+
+it("uses a physical owned snapshot under an aliased temp root without admitting source aliases", () => {
+  const f = createBoundProfileFixture();
+  using _profile = { [Symbol.dispose]() { f.close(); } };
+  const workspace = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "readonly-temp-alias-"));
+  using _workspace = { [Symbol.dispose]() { fs.rmSync(workspace, { recursive: true }); } };
+  const priorTemp = process.env.TMPDIR;
+  using _environment = { [Symbol.dispose]() {
+    if (priorTemp === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = priorTemp;
+  } };
+  const physical = join(workspace, "physical"), alias = join(workspace, "alias");
+  fs.mkdirSync(physical, { mode: 0o700 });
+  fs.symlinkSync(physical, alias, "dir");
+  process.env.TMPDIR = alias;
+  const snapshot = createReadonlyAuthoritySnapshot(f.path);
+  using _snapshot = { [Symbol.dispose]() { snapshot.dispose(); } };
+  assert.equal(dirname(dirname(snapshot.path)), physical);
+  assert.equal(fs.realpathSync(snapshot.path), snapshot.path);
+  assert.deepEqual(readProfileDatabaseBinding(snapshot.path), readProfileDatabaseBinding(f.path));
+  const sourceAlias = join(workspace, "source-alias.db");
+  fs.symlinkSync(f.path, sourceAlias);
+  assert.throws(() => readProfileDatabaseBinding(sourceAlias), /source-integrity/u);
+});
 
 it("snapshot disposal keeps the same uncertainty and never retries physical removal", () => {
   const f = createBoundProfileFixture(), before = digest(f.path);
