@@ -183,7 +183,7 @@ for (const shape of ["object", "array", "wrapper"] as const) it(`authenticates r
   const f = stoppedControlFixture(shape === "object" ? retainedCredential : shape === "array" ? [retainedCredential] : { credentials: [retainedCredential] });
   let inventory: ReturnType<typeof composeStoppedControlCredentialInventory> | undefined;
   const capture = vi.spyOn(nativeFs, "mkdtempSync");
-  let issued: string[] = [];
+  let issued: string[];
   syncBuiltinESMExports();
   try {
     const path = join(f.stateRoot, "credentials", "duo-webauthn.json"), bytes = readFileSync(path);
