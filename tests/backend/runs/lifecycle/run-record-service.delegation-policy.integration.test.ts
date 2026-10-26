@@ -21,7 +21,7 @@ import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../.
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
-import { childPolicyModules, childUnawaitedIndependentModules } from "../../../support/fixtures/child-execution-workflows.js";
+import { childPolicyModules, childUnawaitedModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores, plan1Contract } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { testAdmittedWorker, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
@@ -38,7 +38,7 @@ function terminal(run: RunRecord, outcome: "cancelled" | "done"): void {
 }
 
 function fixture(policy: "cascade" | "independent", unawaited = false) {
-  const { root: compiled, modules } = unawaited ? childUnawaitedIndependentModules() : childPolicyModules(policy);
+  const { root: compiled, modules } = unawaited ? childUnawaitedModules(policy) : childPolicyModules(policy);
   assert.equal(plan1Contract.effect, "read");
   for (const module of modules) {
     assert.ok(descriptorRuntimeNodes(module.descriptor).every(node => node.kind !== "transaction"));
@@ -136,6 +136,36 @@ async function executeClaimedParent(f: ReturnType<typeof fixture>, claimed: RunR
   assert.equal(observed, 1);
   return outcome;
 }
+
+it("requests cancellation on both a claimed anchor and claimed member without settling either", async () => {
+  const f = fixture("cascade", true);
+  const parentOwner = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
+    poolIndex: 1, browserSystems: [] });
+  const childOwner = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
+    poolIndex: 2, browserSystems: [] });
+  await f.deps.sessions.closeAll("parked"); f.deps.sessions.releaseRunConfigFingerprint();
+  const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
+  const runtimeConfig = { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
+    settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint };
+  const parent = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
+    workerId: parentOwner.workerId, workerLifetime: parentOwner.workerLifetime, runtimeConfig });
+  assert.ok(parent.state === "applied" && "run" in parent);
+  await executeClaimedParent(f, parent.run, () => {
+    const member = f.child();
+    const claimed = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
+      workerId: childOwner.workerId, workerLifetime: childOwner.workerLifetime, runtimeConfig });
+    assert.equal(claimed.state, "applied");
+    assert.ok("run" in claimed);
+    assert.equal(claimed.run.envelope.runId, member.envelope.runId);
+    const cancelled = f.execution.kernel.execute(f.cancel());
+    assert.equal(cancelled.state, "applied");
+    for (const run of [f.root, member]) {
+      const current = f.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+      assert.equal(current.cancelRequested, true);
+      assert.notEqual(current.lifecycle.state, "terminal");
+    }
+  });
+});
 
 it("freshly claims an independent queued child after its other physical parent's reset", async () => {
   const f = fixture("independent", true);

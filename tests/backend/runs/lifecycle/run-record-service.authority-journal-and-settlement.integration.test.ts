@@ -472,27 +472,6 @@ describe("canonical run-record service", () => {
     for (const run of [...members, anchor]) assert.equal(service.read(run.envelope.runId).state, "deleted");
   });
 
-  it("requests cancellation on both a claimed anchor and claimed member without settling either", () => {
-    const { service, request, runtimeConfig, database, clock } = fixture();
-    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
-    const member = created(service, { ...request, commandId: "99000000-0000-4000-8000-000000000001", matchKey: "claimed-member",
-      shape: "operation-member", parent: { runId: anchor.envelope.runId, tracePrefix: anchor.envelope.traceId, edgeId: "member" } });
-    testWorkerPorts(database, clock, { path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex: 2 });
-    const claimMember2 = database.authority.workerSlots.get("person-lookup-worker-2");
-    if (claimMember2 === undefined) throw new Error("fixture-claim-member-required");
-    const claimed = service.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember2.poolIndex).workerLifetime, commandId: "99000000-0000-4000-8000-000000000002", workflow: WORKFLOW_ID,
-      workerId: "person-lookup-worker-2", runtimeConfig });
-    assert.equal(claimed.state, "applied");
-    const cancelled = service.transition({ commandId: "99000000-0000-4000-8000-000000000003", runId: anchor.envelope.runId,
-      expectedVersion: anchor.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
-    assert.equal(cancelled.state, "applied");
-    for (const run of [anchor, member]) {
-      const current = database.authority.runs.get(run.envelope.runId); assert.ok(current);
-      assert.equal(current.cancelRequested, true);
-      assert.notEqual(current.lifecycle.state, "terminal");
-    }
-  });
-
   it("#23 runs a multi-member group through cancel-tree and leaves-first deletion", () => {
     const writes: RunRecord[] = [];
     const { service, request } = fixture(undefined, {

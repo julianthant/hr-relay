@@ -51,11 +51,11 @@ export const childExecutionModules = [plan1Leaf, childExecutionNested, childExec
   .map(compiled => composeWorkflowModule(compiled, plan1Stores.stores));
 export const childExecutionStores = plan1Stores;
 
-export function childUnawaitedIndependentModules() {
-  const compiled = compileWorkflow(defineWorkflow({ ...common, id: "fixture-child-unawaited-independent", code: "fcu",
+export function childUnawaitedModules(cascadeCancel: "cascade" | "independent") {
+  const compiled = compileWorkflow(defineWorkflow({ ...common, id: `fixture-child-unawaited-${cascadeCancel}`, code: "fcu",
     steps: ({ delegate, result }) => {
       const child = delegate({ id: "child", target: leaf, edgeId: "child", cardinality: "one", await: "none", join: "none",
-        policy: { ...policy, cascadeCancel: "independent" } }, [],
+        policy: { ...policy, cascadeCancel } }, [],
       { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
       return { steps: [[{ key: "child", label: "Child" }, [child]]], result: result(Plan1Input, [], ({ input }) => input) };
     } }), { manifest });
