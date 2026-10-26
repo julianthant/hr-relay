@@ -6,7 +6,7 @@ import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { existsSync, statSync, lstatSync, mkdtempSync, rmSync, type BigIntStats } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -93,6 +93,12 @@ try {
 }
 `;
 
+let assistantCostSnapshotCalls = 0;
+let assistantCostSnapshotNs = 0n;
+export function assistantCostSnapshotObservation() {
+  return { snapshotCalls: assistantCostSnapshotCalls, snapshotNs: Number(assistantCostSnapshotNs) };
+}
+
 export function createReadonlyAuthoritySnapshot(sourcePath: string) {
   const directory = mkdtempSync(join(tmpdir(), "relay-readonly-authority-"));
   const path = join(directory, "authority.sqlite");
@@ -129,9 +135,16 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
       }
       if (suffix === "-journal" && source.stats.size > 0n) throw new Error("authority-readonly-source-journal-unsettled");
     }
-    const copy = spawnSync(process.execPath, ["--input-type=commonjs", "-e", copySnapshotScript, path,
+    const assistantCostStart = process.hrtime.bigint();
+    let copy: SpawnSyncReturns<string>;
+    try {
+      copy = spawnSync(process.execPath, ["--input-type=commonjs", "-e", copySnapshotScript, path,
       JSON.stringify(sources.map(source => ({ path: source.path, suffix: source.suffix,
         expected: source.stats === undefined ? null : identity(source.stats) })))], { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
+    } finally {
+      assistantCostSnapshotCalls++;
+      assistantCostSnapshotNs += process.hrtime.bigint() - assistantCostStart;
+    }
     const copyFailed = () => new Error("authority-readonly-snapshot-copy-failed", {
       cause: copy.error ?? { status: copy.status, signal: copy.signal },
     });

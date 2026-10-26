@@ -1,5 +1,6 @@
+import { assistantCostRegistryObservation } from "../../../../../src/backend/storage/admission/installation.js";
 import { AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
-import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { assistantCostSnapshotObservation, withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import configuredSources from "../../../../../config/dashboard-workflow-sources.json";
 import { z } from "zod";
 import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
@@ -53,7 +54,12 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
   const owner: ServedAssistantOwner = { unsettled: new Error('Predecessor assistant fixture is unsettled'), failures: [] };
   servedAssistantOwner = owner;
   const traceStart = process.hrtime.bigint();
-  const trace = (stage: string) => process.stderr.write(`[DEBUG-assistant-timeout-20261026] ${stage} ${Number(process.hrtime.bigint() - traceStart) / 1_000_000}ms\n`);
+  const trace = (stage: string) => {
+    const registry = assistantCostRegistryObservation(), snapshot = assistantCostSnapshotObservation();
+    assert.ok(Number.isSafeInteger(registry.registryCalls) && Number.isSafeInteger(registry.registryNs)
+      && Number.isSafeInteger(snapshot.snapshotCalls) && Number.isSafeInteger(snapshot.snapshotNs));
+    process.stderr.write(`[DEBUG-assistant-timeout-20261026] ${stage} ${Number(process.hrtime.bigint() - traceStart) / 1_000_000}ms registryCalls=${registry.registryCalls} registryNs=${registry.registryNs} snapshotCalls=${snapshot.snapshotCalls} snapshotNs=${snapshot.snapshotNs}\n`);
+  };
   trace('fixture-start');
   let ready = false;
   let primary: { error: unknown } | undefined;
