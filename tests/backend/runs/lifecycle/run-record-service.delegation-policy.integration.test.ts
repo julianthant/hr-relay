@@ -11,6 +11,8 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { delegatedCandidateEligible } from "../../../../src/backend/runs/lifecycle/run-claim-admission.js";
+import { authenticateDescendantHome } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
@@ -60,6 +62,41 @@ function fixture(policy: "cascade" | "independent", unawaited = false) {
     requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { runId: root.envelope.runId, expectedVersion: currentRoot().version } });
   return { ...h.authority, deps: h.deps, execution, root, currentRoot, child, cancel, modules };
 }
+
+it("authenticates a genuine delegated child at claim and execution boundaries and refuses absent root session or manifests", async () => {
+  const f = fixture("cascade");
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const root = f.currentRoot(), child = f.child();
+  assert.ok(root.sessionId);
+  const resolve = (workflow: string) => f.modules.find(module => module.descriptor.id === workflow)?.descriptor;
+  const generation = f.database.getMeta().authorityGeneration;
+  f.database.withAuthorityTransaction(repositories => {
+    assert.equal(delegatedCandidateEligible(repositories, child, root.envelope.workflow, resolve), true);
+    assert.equal(authenticateDescendantHome(repositories, child, root.envelope.workflow), true);
+    const { sessionId: _sessionId, ...withoutSession } = root;
+    const missingSession = { ...repositories, runs: { ...repositories.runs,
+      get: (runId: string) => runId === root.envelope.runId ? withoutSession : repositories.runs.get(runId) } };
+    assert.throws(() => delegatedCandidateEligible(missingSession, child, root.envelope.workflow, resolve),
+      /delegation-root-start-authority-unavailable/u);
+    assert.throws(() => authenticateDescendantHome(missingSession, child, root.envelope.workflow),
+      /delegation-root-start-authority-unavailable/u);
+    const missingManifest = { ...repositories, delegationManifests: { ...repositories.delegationManifests,
+      listByParentRun: () => [] } };
+    assert.throws(() => delegatedCandidateEligible(missingManifest, child, root.envelope.workflow, resolve),
+      /delegation-group-incomplete/u);
+    assert.throws(() => authenticateDescendantHome(missingManifest, child, root.envelope.workflow),
+      /delegation-group-incomplete/u);
+    const missingBoth = { ...missingSession, delegationManifests: missingManifest.delegationManifests };
+    assert.throws(() => delegatedCandidateEligible(missingBoth, child, root.envelope.workflow, resolve),
+      /delegation-root-start-authority-unavailable/u);
+    assert.throws(() => authenticateDescendantHome(missingBoth, child, root.envelope.workflow),
+      /delegation-root-start-authority-unavailable/u);
+  });
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  const completed = await f.execution.step(f.root, world.SIGNAL);
+  assert.equal(completed.run.envelope.runId, child.envelope.runId);
+  assert.equal(completed.outcome.state, "done");
+});
 
 async function executeAfterCompletedChild(f: ReturnType<typeof fixture>, after: () => void) {
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");

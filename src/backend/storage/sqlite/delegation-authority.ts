@@ -174,7 +174,7 @@ export function authenticateDescendantHome(repositories: AuthorityRepositories, 
     child = parent;
   }
   if (child.envelope.workflow !== homeWorkflow) return false;
-  if (candidate.envelope.parent === undefined || child.sessionId === undefined) return true;
+  if (candidate.envelope.parent === undefined) return true;
   authenticateRootRun(repositories, child);
   for (const [index, member] of ancestry.slice(0, -1).entries()) {
     const parent = ancestry[index + 1];
