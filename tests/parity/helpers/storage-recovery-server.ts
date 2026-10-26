@@ -23,6 +23,7 @@ import type { DashboardApp } from "../../../src/backend/transports/http/routes/a
 import { acquireRecoveryRuntimeRestore, type RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
 import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle, acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 
 const retainedStorageRecoveryOwners = new Set<object>();
 
@@ -186,7 +187,11 @@ export async function storageRecoveryTarget() {
       shell = await startFixtureServer({distDir: PARITY_DIST_DIR, bundle: {proof: "working-tree"}});
       held.shell = shell;
       const app: DashboardApp = new Hono();
-      registerStorageRoutes(app, {storage: {admission, doctorOptions, clock,
+      const credentials = restoreHandle === undefined && diagnosticMachine !== undefined
+        ? createCredentialStore({ admission, stateRoot: root, erasureJournalAdmission: diagnosticMachine,
+          erasureJournalPath: join(diagnosticMachine.stateRoot, "machine", "erasures", `${profileId}.json`) })
+        : undefined;
+      registerStorageRoutes(app, {storage: {admission, credentials, doctorOptions, clock,
       serviceState: () => ({state: "never-run", reason: "This diagnostic host runs no automatic backups."})}});
       app.route("/", createFixtureBff().app);
       const fixtureUrl = shell.baseUrl;

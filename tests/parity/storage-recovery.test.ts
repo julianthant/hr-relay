@@ -36,12 +36,12 @@ test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String
       const wire = StorageDoctorWireSchema.parse(await (await response).json());
       expect(wire.authority.state).toBe("healthy");
       expect(wire.recovery.state).toBe("interrupted");
-      expect(wire.protectedSettings.state).toBe("available");
+      expect(wire.protectedSettings.state).toBe("unavailable");
       expect(wire.restoreCandidates.some(row => row.state === "verified-compatible" && row.selection === "single-database" && row.restoreEligibility.state === "eligible")).toBe(true);
       const interruption = page.locator(".diagnostic-check-entry").filter({hasText: "Recovery"});
       await expect(interruption).toContainText("Interrupted");
       const ucpathPassword = page.locator(".diagnostic-check-entry").filter({hasText: "UCPath password"});
-      await expect(ucpathPassword).toContainText("Present");
+      await expect(ucpathPassword).toContainText("Unavailable");
       await expect(page.getByRole("button", {name: "Storage recovery instructions"})).toHaveCount(0);
       await test.info().attach("interrupted-doctor.json", {body: JSON.stringify(wire, null, 2), contentType: "application/json"});
       expect(errors).toEqual([]);
@@ -56,7 +56,9 @@ test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String
       const after = StorageDoctorWireSchema.parse(await (await refreshed).json());
       expect(after.recovery.state).toBe("clear");
       expect(after.authority.state).toBe("healthy");
-      expect(after.protectedSettings).toEqual(wire.protectedSettings);
+      expect(after.protectedSettings.state).toBe("available");
+      if (after.protectedSettings.state !== "available") throw new Error("restored credentials unread");
+      expect(after.protectedSettings.entries.find(entry => entry.name === "ucpathPassword")?.present).toBe(true);
       await expect(interruption).toContainText("No unfinished storage operations.");
       await expect(interruption.getByRole("button", {name: "Diagnostic details", exact: true})).toHaveCount(0);
       await expect(interruption).toContainText("Clear");
