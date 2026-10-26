@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
+import { singleAppliedRunId } from "../../../support/helpers/synthetic-flow-fixture.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -293,8 +297,20 @@ afterEach_m0(_afterEachFixture0);
 
   it_m0("retains commandId across uncertain network response and exact replay produces single accepted effect", () => {
     const harness = createHarness();
-    const runId = "22222222-2222-4000-8000-222222222222";
-    enqueueRun(harness, runId);
+    const active = harness.database.authority.runtimeConfig.get();
+    assert_m0.ok(active);
+    const planner = createStartPlanService({ authority: harness.database, authorityRead: harness.database,
+      descriptors: { resolve: workflow => workflow === personLookupDescriptor_m0.id ? personLookupDescriptor_m0 : undefined },
+      clock: harness.clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: LOCAL_OPERATOR_ACTOR_ID,
+      configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId });
+    const plan = planner.plan({ workflowId: personLookupDescriptor_m0.id, submissions: [QUEUED_RUN_m0.input.raw], dryRun: true,
+      selectedStepKeys: personLookupDescriptor_m0.timeline.map(step => step.key) });
+    assert_m0.equal(plan.planned.length, 1);
+    assert_m0.equal(plan.refused.length, 0);
+    const started = harness.kernel.execute({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",
+      requestedBy: LOCAL_OPERATOR_ACTOR_ID, requestedAt: harness.clock.now().toISOString(), target: { workflowId: personLookupDescriptor_m0.id,
+        startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
+    const runId = singleAppliedRunId(started);
 
     const action: CommandAction_m0 = {
       key: "cancel",
@@ -312,7 +328,7 @@ afterEach_m0(_afterEachFixture0);
     const requestedAt = "2026-09-22T12:00:00.000Z";
 
     const composed1 = composeCommandRequest_m0(action, target, {
-      actorId: "operator-1",
+      actorId: LOCAL_OPERATOR_ACTOR_ID,
       source: "queue",
       commandId,
       requestedAt,
@@ -327,7 +343,7 @@ afterEach_m0(_afterEachFixture0);
 
 
     const composedReplay = composeCommandRequest_m0(action, target, {
-      actorId: "operator-1",
+      actorId: LOCAL_OPERATOR_ACTOR_ID,
       source: "queue",
       commandId, // exact same commandId
       requestedAt, // exact same requestedAt
