@@ -57,6 +57,42 @@ function settledMove(workspace: string, destination: RuntimePair): { operationId
   } finally { lease.release(); held.release(); }
 }
 
+it.each(["credential key", "erasure journal", "Duo membership"] as const)(
+  "revalidates cached profile registry authority after %s changes",
+  (change) => {
+    const profile = createBoundProfileFixture();
+    try {
+      const registry = profile.machine.readProfileRegistry();
+      expect(profile.machine.readProfileRegistry()).toEqual(registry);
+      const id = profile.admission.profileBinding.profileId;
+      const machine = join(profile.machine.stateRoot, "machine");
+      const target = change === "credential key"
+        ? join(machine, "credential-keys", `${id}.json`)
+        : join(machine, "erasures", `${id}.json`);
+      const duoDirectory = join(machine, "duo-credentials");
+      const companion = join(duoDirectory, "unexpected-profile.json");
+      const hadDuoDirectory = existsSync(duoDirectory);
+      const mode = change === "Duo membership" ? undefined : statSync(target).mode & 0o777;
+      try {
+        if (change === "Duo membership") {
+          mkdirSync(duoDirectory, { recursive: true, mode: 0o700 });
+          writeFileSync(companion, "{}", { mode: 0o600 });
+        } else chmodSync(target, 0o644);
+        expect(() => profile.machine.readProfileRegistry()).toThrow();
+      } finally {
+        if (change === "Duo membership") {
+          unlinkSync(companion);
+          if (!hadDuoDirectory) rmSync(duoDirectory);
+        } else {
+          if (mode === undefined) throw new Error("missing original authority mode");
+          chmodSync(target, mode);
+        }
+      }
+      expect(profile.machine.readProfileRegistry()).toEqual(registry);
+    } finally { profile.close(); }
+  },
+);
+
 it("adopts empty defaults, admits shared readers, and refuses lost locator and owner mismatch", () => {
   const { workspace, pair } = fixture();
   const first = adoptSynthetic(workspace, pair);

@@ -65,6 +65,37 @@ function applied(
 }
 
 describe("independent credential store", () => {
+  it.each(["directory permissions", "key permissions", "unexpected companion"] as const)(
+    "revalidates command ownership after %s change with an unchanged credential file",
+    (change) => {
+      const f = fixture();
+      applied(f.store, request({
+        commandId: COMMAND_1,
+        writeId: WRITE_1,
+        expectedRevision: 1,
+        entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } },
+      }));
+      assert.equal(f.store.ownsCommandId(COMMAND_1), true);
+      assert.equal(f.store.ownsCommandId(COMMAND_1), true);
+      const bytes = readFileSync(f.path);
+      const key = join(f.machine.stateRoot, "machine", "credential-keys", `${f.operation.profileId}.json`);
+      const companion = join(f.directory, "unexpected-companion.json");
+      const permissionPath = change === "directory permissions" ? f.directory : key;
+      const originalMode = lstatSync(permissionPath).mode & 0o777;
+      try {
+        if (change === "unexpected companion") writeFileSync(companion, "{}", { mode: 0o600 });
+        else chmodSync(permissionPath, 0o755);
+        assert.deepEqual(readFileSync(f.path), bytes);
+        assert.throws(() => f.store.ownsCommandId(COMMAND_1));
+      } finally {
+        if (change === "unexpected companion") unlinkSync(companion);
+        else chmodSync(permissionPath, originalMode);
+      }
+      assert.equal(f.store.ownsCommandId(COMMAND_1), true);
+      assert.equal(f.store.ownsCommandId(COMMAND_2), false);
+    },
+  );
+
   it("keeps admitted initialized read/replay read-only, then atomically advances one 0700/0600 authority", () => {
     const f = fixture();
     const initialBytes = readFileSync(f.path);
