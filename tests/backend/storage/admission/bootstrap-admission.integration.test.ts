@@ -1,4 +1,5 @@
 import nativeFirstBootFs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { retainAuthoritySourceClosure as retainFirstBootSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
@@ -9,8 +10,6 @@ import { createAdmissionChildFixtures } from "../../../support/helpers/storage/a
 import { default as assert } from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import * as filesystem_m1 from "node:fs";
-import * as filesystem_m4 from "node:fs";
 import { copyFileSync, existsSync, mkdirSync as mkdirSync_m1, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,10 +31,6 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { runtimeFixture } from "../../../support/fixtures/preflight/runtime-fixture.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
-vi.mock("node:fs", async importOriginal => {
- const actual = await importOriginal<typeof import("node:fs")>();
- return { ...actual, readdirSync: vi.fn(actual.readdirSync), mkdirSync: vi.fn(actual.mkdirSync), lstatSync: vi.fn(actual.lstatSync) };
-});
 
 {
 
@@ -91,6 +86,7 @@ async function kill(child: ChildProcess): Promise<void> {
 }
 const _afterEachFixture0 = async () => {
   vi.restoreAllMocks();
+  syncBuiltinESMExports();
   await Promise.all(children.splice(0).map(kill));
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
@@ -233,13 +229,14 @@ try {
   const root = fixture();
   const path = join(root, ".tracker/control", "admission-mutex");
   mkdirSync_m1(path, { mode: 0o700 });
-  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+  const actualReaddir = nativeFirstBootFs.readdirSync;
   let removed = false;
-  vi.mocked(filesystem_m1.readdirSync).mockImplementation(((target: Parameters<typeof actual.readdirSync>[0]) => {
-    const entries = actual.readdirSync(target);
+  vi.spyOn(nativeFirstBootFs, "readdirSync").mockImplementation(((target: Parameters<typeof actualReaddir>[0]) => {
+    const entries = actualReaddir(target);
     if (String(target) === path && !removed) { removed = true; rmdirSync(path); }
     return entries;
-  }) as typeof actual.readdirSync);
+  }) as typeof actualReaddir);
+  syncBuiltinESMExports();
   acquireEntrypointAdmission(root, "shared").release();
   expect(removed).toBe(true);
   expect(existsSync(path)).toBe(false);
@@ -430,6 +427,7 @@ const roots: string[] = [];
 const children: ChildProcess[] = [];
 const _afterEachFixture0 = async () => {
   vi.restoreAllMocks();
+  syncBuiltinESMExports();
   for (const child of children.splice(0)) {
     if (child.exitCode === null && child.signalCode === null) {
       const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
@@ -533,9 +531,10 @@ try {
   const root = initializedRoot();
   const mutex = join(root, ".tracker/control", "admission-mutex");
   const failure = Object.assign(new Error("injected mkdir access failure"), { code: "EACCES" });
-  vi.mocked(filesystem_m4.mkdirSync).mockImplementationOnce(() => { throw failure; });
+  const mkdir = vi.spyOn(nativeFirstBootFs, "mkdirSync").mockImplementationOnce(() => { throw failure; });
+  syncBuiltinESMExports();
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === failure);
-  assert.match(String(vi.mocked(filesystem_m4.mkdirSync).mock.calls.at(-1)?.[0]), /\/\.admission-mutex-tmp-[1-9]\d*-[0-9a-f]{64}-[0-9a-f-]{36}$/u);
+  assert.match(String(mkdir.mock.calls.at(-1)?.[0]), /\/\.admission-mutex-tmp-[1-9]\d*-[0-9a-f]{64}-[0-9a-f-]{36}$/u);
   assert.equal(existsSync(mutex), false);
 
 } finally {
@@ -564,7 +563,8 @@ try {
 
   const root = initializedRoot();
   const failure = Object.assign(new Error("injected lstat access failure"), { code: "EACCES" });
-  vi.mocked(filesystem_m4.lstatSync).mockImplementationOnce(() => { throw failure; });
+  vi.spyOn(nativeFirstBootFs, "lstatSync").mockImplementationOnce(() => { throw failure; });
+  syncBuiltinESMExports();
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === failure);
 
 } finally {
@@ -640,7 +640,7 @@ it.each(["missing", "permissions"] as const)("ordinary admission refuses an exis
     reopened.assertLive();
     assert.equal(reopened.readInstallationContext()?.locator.installationId, context.locator.installationId);
     assert.throws(() => reopened.assertFixedProcessLockRoot(workspace, processLockRoot), (error: unknown) => error instanceof Error
-      && (kind === "missing" ? Reflect.get(error, "code") === "ENOENT" : error.message === `unsafe directory ${processLockRoot}`));
+      && (kind === "missing" ? Reflect.get(error, "code") === "ENOENT" : error.message === `runtime-control: unsafe directory ${processLockRoot}`));
     assert.deepEqual(reopened.readProfileRegistry(), registry);
     if (kind === "missing") assert.equal(nativeFirstBootFs.existsSync(processLockRoot), false);
     else {

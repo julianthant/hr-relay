@@ -1,3 +1,4 @@
+import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -40,7 +41,13 @@ function world(clock: Clock = systemClock) {
   let admission = fixture.admission;
   const renew = () => { admission = fixture.machine.admitProfile(createProfileRegistry(fixture.machine).storageClaim(profileId)); return admission; };
   const store = () => createCredentialStore({ admission, stateRoot: fixture.stateRoot, erasureJournalAdmission: fixture.machine, erasureJournalPath: journalPath });
-  const newSession = () => createProfileSession({ admission: fixture.machine, machineRoot: fixture.machine.stateRoot,
+  const credentialInventories = {
+    repairInventory: (child: RuntimeAdmission, ...args: Parameters<ReturnType<typeof composeProfileCredentialRepairInventory>>) =>
+      composeProfileCredentialRepairInventory({ machine: fixture.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(...args),
+    initializationInventory: (child: RuntimeAdmission, ...args: Parameters<ReturnType<typeof composeProfileCredentialInitializationInventory>>) =>
+      composeProfileCredentialInitializationInventory({ machine: fixture.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(...args),
+  };
+  const newSession = () => createProfileSession({ admission: fixture.machine, machineRoot: fixture.machine.stateRoot, ...credentialInventories,
     activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
   let currentSession = newSession();
   const session = () => currentSession;
@@ -70,7 +77,7 @@ function world(clock: Clock = systemClock) {
   const restore = (projection: (path: string) => Promise<void> = async () => {}, replace = renameSync, factory?: OfflineRestoreAdmissionFactory) => new OfflineAuthorityRestoreService(admission,
     { authorityPath: fixture.path, suspectDirectory: join(fixture.stateRoot, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 },
     projection, clock, { copyFile: copyFileSync, atomicReplace: replace }, factory, store());
-  return { ...fixture, profileId, journalPath, processLockRoot, renew, store, session, signIn, backup, proof, restore, current: () => admission };
+  return { ...fixture, profileId, journalPath, processLockRoot, credentialInventories, renew, store, session, signIn, backup, proof, restore, current: () => admission };
 }
 
 function childJob(script: string) {
@@ -196,7 +203,7 @@ describe("profile restore continuity", () => {
   it("settles an interrupted erase through its exact original command before restoring availability", () => {
     const f = world();
     try {
-      const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot,
+      const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot, ...f.credentialInventories,
         activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [],
         credentialHooks: { afterErasureJournal: () => { throw new Error("synthetic-interrupted-erasure"); } } });
       const active = session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });

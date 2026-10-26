@@ -17,7 +17,6 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { createDuoCredentialStore, DuoCredentialCommitUncertainError, DuoPublicationCaptureSchema, duoStagePath } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
@@ -443,10 +442,6 @@ function privateJson(path: string, value: unknown): void {
   writeFileSync(path, JSON.stringify(value), { mode: 0o600 });
 }
 
-function snapshotNames(): Set<string> {
-  return new Set(readdirSync(tmpdir()).filter((name) => name.startsWith("relay-readonly-authority-")));
-}
-
 function assertChildProcessReleased(pid: number): void {
   let groupGone = false;
   try { process.kill(-pid, 0); }
@@ -825,7 +820,6 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
   try {
     const paths = downgradeStoppedControl(fixture, 2);
     held.processLockRoot = paths.processLockRoot;
-    const before = snapshotNames();
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
     held.maintenance = maintenance;
     const restore = maintenance.maintenanceRestore();
@@ -835,10 +829,19 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
     held.control = control;
     const profileId = control.registeredProfileIds()[0];
     assert.equal(typeof profileId, "string");
-    control.profileInventory(profileId ?? "");
-    const created = [...snapshotNames()].filter((name) => !before.has(name));
+    const capture = vi.spyOn(nativeFs, "mkdtempSync");
+    const created: string[] = [];
+    syncBuiltinESMExports();
+    try {
+      control.profileInventory(profileId ?? "");
+      for (const result of capture.mock.results) {
+        assert.equal(result.type, "return");
+        assert.ok(typeof result.value === "string");
+        created.push(result.value);
+      }
+    } finally { capture.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(created.length, 1);
-    const snapshotFile = join(tmpdir(), created[0] ?? "", "authority.sqlite");
+    const snapshotFile = join(created[0] ?? "", "authority.sqlite");
     const identity = nativeFs.lstatSync(snapshotFile);
     assert.ok(identity.isFile() && !identity.isSymbolicLink());
     assert.equal(identity.nlink, 1);
