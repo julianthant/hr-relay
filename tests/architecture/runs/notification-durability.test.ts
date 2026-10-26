@@ -1,12 +1,10 @@
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { createTrustRunReader } from "../../../src/backend/runs/trust/canonical-reader.js";
 import { personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
@@ -32,14 +30,14 @@ function sequentialIds(lane = "0"): { uuid: () => string } {
 }
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-notify-"));
+  const profile = createBoundProfileFixture();
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "notification-durability" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "notification-durability" },
     manualClock(new Date(NOW)),
   );
   disposers.push(() => {
     database.close();
-    rmSync(root, { recursive: true, force: true });
+    profile.close();
   });
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_2 }));

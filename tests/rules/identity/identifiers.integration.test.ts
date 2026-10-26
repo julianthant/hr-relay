@@ -1,8 +1,6 @@
 import { createSeparationStartFixtures } from "../../support/helpers/backend/separation-start-fixtures.js";
 import assert_m0 from "node:assert/strict";
-import { mkdtempSync as mkdtempSync_m0, rmSync as rmSync_m0 } from "node:fs";
-import { tmpdir as tmpdir_m0 } from "node:os";
-import { join as join_m0 } from "node:path";
+import { rmSync as rmSync_m0 } from "node:fs";
 import { afterEach as afterEach_m0, describe as describe_m0, it as it_m0 } from "vitest";
 
 import { deriveItemId as deriveItemId_m0 } from "../../../src/rules/identity/identifiers.js";
@@ -11,6 +9,7 @@ import { NOW as NOW_m0 } from "../../support/fixtures/phase1c-contract-fixtures.
 
 
 
+import { createBoundProfileFixture as createBoundProfileFixture_m0 } from "../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase as AuthorityDatabase_m0 } from "../../support/helpers/synthetic-storage-admission.js";
 
 import assert_m1 from "node:assert/strict";
@@ -40,12 +39,13 @@ const _afterEachFixture0 = () => {
 };
 
 function openDatabase(): AuthorityDatabase_m0 {
-  const root = mkdtempSync_m0(join_m0(tmpdir_m0(), "hrauto-separations-wire-"));
-  roots.push(root);
+  const profile = createBoundProfileFixture_m0();
   const database = AuthorityDatabase_m0.open(
-    { path: join_m0(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
+  const close = database.close.bind(database);
+  database.close = () => { close(); profile.close(); };
   databases.push(database);
   return database;
 }

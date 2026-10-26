@@ -74,6 +74,21 @@ if (poolIndex === undefined) throw new Error("fixture has no unheld worker slot"
   assert.equal(database.authority.runs.get(ledger.runId)?.claimGeneration, 1);
 }
 
+export function releaseSeededWriteOwners(database: AuthorityDatabase, now: string): void {
+  for (const slot of database.authority.workerSlots.list()) {
+    for (const run of database.authority.runs.listByWorker(slot.workerId)) {
+      if (run.lifecycle.state !== "claimed" && run.lifecycle.state !== "validating" && run.lifecycle.state !== "running") continue;
+      if (database.authority.writeIntents.listByRun(run.envelope.runId).some(intent => intent.status === "attempting")) continue;
+      const released = database.authority.runs.requeue({
+        runId: run.envelope.runId, expectedVersion: run.version,
+        claim: { workerId: slot.workerId, claimGeneration: run.claimGeneration },
+        cause: "recovery", now,
+      });
+      if (released.state !== "applied") throw new Error("fixture-worker-claim-release-unproved");
+    }
+  }
+}
+
 export function currentAtomicWriteFixture(input: unknown) {
   return AtomicWriteCommitInputSchema.parse(input);
 }

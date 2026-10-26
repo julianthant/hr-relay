@@ -3,9 +3,7 @@ import { seedSyntheticRuntimeConfig } from "../../../support/fixtures/operator-c
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
 import { fanOutQueuedRuns } from "../../../../src/backend/runs/lifecycle/run-fan-out.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
@@ -16,6 +14,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { PersonLookupCanonicalInput,PersonLookupInput } from "../../../../src/workflows/person-lookup/workflow.js";
 import { NOW,UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const roots: string[] = [];
@@ -26,12 +25,13 @@ afterEach(() => {
 });
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-fan-out-omission-"));
-  roots.push(root);
+  const profile = createBoundProfileFixture();
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     manualClock(new Date(NOW)),
   );
+  const close = database.close.bind(database);
+  database.close = () => { close(); profile.close(); };
   seedSyntheticRuntimeConfig(database);
   databases.push(database);
   return database;

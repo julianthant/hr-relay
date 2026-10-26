@@ -1,8 +1,6 @@
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { RunResultRecordSchema, deriveCheckpointOutputDigest, deriveTerminalDependencyDigest, type RunResultRecord } from "../../../../src/models/run/result.js";
 import { RunCheckpointRecordSchema, type RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
@@ -20,8 +18,7 @@ export interface Fixture {
 
 
 export function createStepOmissionTestWorld() {
-  const roots: string[] = [];
-
+  const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
   const databases: AuthorityDatabase[] = [];
 
   const STEP = "crm-read";
@@ -35,13 +32,14 @@ export function createStepOmissionTestWorld() {
   const TYPED_FACT = "a1ZVr000004TypedMAC";
 
   function openDatabase(): AuthorityDatabase {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-omission-receipt-"));
-    roots.push(root);
+    const profile = createBoundProfileFixture();
+    profiles.push(profile);
+    const clock = manualClock(new Date("2026-08-04T00:11:13.500Z"));
     const database = AuthorityDatabase.open(
-      { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "omission-receipt-test" },
-      manualClock(new Date("2026-08-04T00:11:13.500Z")),
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "omission-receipt-test" },
+      clock,
     );
-    testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+    testWorkerPorts(database, clock, { path: profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
     databases.push(database);
     return database;
   }
@@ -138,7 +136,7 @@ export function createStepOmissionTestWorld() {
   }
   const cleanup = () => {
     for (const database of databases.splice(0)) database.close();
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+    for (const profile of profiles.splice(0)) profile.close();
   };
-  return { roots, databases, STEP, TYPED_FACT, omittedStepFixture, ASSERTED_AT, ASSERTED_NODE, OMITTED_NODE, cleanup };
+  return { databases, STEP, TYPED_FACT, omittedStepFixture, ASSERTED_AT, ASSERTED_NODE, OMITTED_NODE, cleanup };
 }

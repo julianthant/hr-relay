@@ -1,8 +1,8 @@
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
-import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -34,14 +34,14 @@ function commitHistory(database: AuthorityDatabase, input: unknown, checkpoint: 
 }
 
 const CLOCK = manualClock(new Date(NOW));
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const databases: AuthorityDatabase[] = [];
 const paths = new WeakMap<AuthorityDatabase, string>();
 
 function databasePath(): string {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-atomic-write-"));
-  roots.push(root);
-  return join(root, "state.sqlite");
+  const profile = createBoundProfileFixture();
+  profiles.push(profile);
+  return profile.path;
 }
 
 function open(path: string, hooks?: AuthorityWriteCommitHooks): AuthorityDatabase {
@@ -67,8 +67,9 @@ function fence(database: AuthorityDatabase): void {
 }
 
 afterEach(() => {
+  for (const database of databases) releaseSeededWriteOwners(database, NOW);
   for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) profile.close();
 });
 describe("atomic write authority commit", () => {
   it.each(["written-at", "output"] as const)("refuses a mismatched confirmation checkpoint %s before settlement", (field) => {

@@ -2,9 +2,7 @@ import { ProtectedStoreRecordSchema } from "../../../../src/models/config/protec
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
 
@@ -14,6 +12,7 @@ import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtu
 import { uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { createPersonLookupStartFixtures } from "../../../support/helpers/backend/person-lookup-start-fixtures.js";
@@ -52,12 +51,13 @@ const _afterEachFixture0 = () => {
 };
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-separations-wire-"));
-  roots.push(root);
+  const profile = createBoundProfileFixture();
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
+  const close = database.close.bind(database);
+  database.close = () => { close(); profile.close(); };
   databases.push(database);
   return database;
 }

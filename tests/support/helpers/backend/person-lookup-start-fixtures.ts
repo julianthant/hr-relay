@@ -1,6 +1,4 @@
-import { mkdtempSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
@@ -12,13 +10,15 @@ export function createPersonLookupStartFixtures(
   clock: NonNullable<Parameters<typeof AuthorityDatabase.open>[1]>,
   planTtlMs: number,
 ) {
+  void roots;
   function openDatabase(): AuthorityDatabase {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-start-"));
-    roots.push(root);
+    const profile = createBoundProfileFixture();
     const database = AuthorityDatabase.open(
-      { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
       clock,
     );
+    const close = database.close.bind(database);
+    database.close = () => { close(); profile.close(); };
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     databases.push(database);
     return database;

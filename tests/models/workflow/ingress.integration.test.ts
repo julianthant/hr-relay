@@ -1,9 +1,7 @@
 import { createSeparationStartFixtures } from "../../support/helpers/backend/separation-start-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
 
 import { parseInputRunText,toRawSubmission } from "../../../src/models/workflow/ingress.js";
@@ -15,6 +13,7 @@ type DashboardWorld
 } from "../../support/helpers/backend/dashboard-harness.js";
 
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 
 const CLOCK = manualClock(new Date(NOW));
@@ -33,12 +32,13 @@ afterEach(() => {
 });
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-separations-wire-"));
-  roots.push(root);
+  const profile = createBoundProfileFixture();
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
+  const close = database.close.bind(database);
+  database.close = () => { close(); profile.close(); };
   databases.push(database);
   return database;
 }

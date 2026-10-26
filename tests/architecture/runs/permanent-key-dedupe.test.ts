@@ -1,9 +1,7 @@
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture, writeFenceFixtureInput } from "../../support/helpers/write-fence-fixture.js";
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
+import { atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import {
@@ -26,16 +24,16 @@ import {
 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 const CLOCK = manualClock(new Date(NOW));
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const databases: AuthorityDatabase[] = [];
 const UUID_9 = "99999999-9999-4999-8999-999999999999";
 const UUID_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OBSERVED_KEY = "10101010|termination|2026-08-02";
 
 function authorityPath(): string {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-permanent-key-"));
-  roots.push(root);
-  return join(root, "state.sqlite");
+  const profile = createBoundProfileFixture();
+  profiles.push(profile);
+  return profile.path;
 }
 
 function open(path: string): AuthorityDatabase {
@@ -79,8 +77,9 @@ function observedPresentIntent() {
 }
 
 afterEach(() => {
+  for (const database of databases) releaseSeededWriteOwners(database, NOW);
   for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) profile.close();
 });
 
 describe("permanent system-scoped write keys", () => {

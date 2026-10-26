@@ -1,9 +1,7 @@
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { BUILD_MANIFEST } from "../../../src/workflow-kit/validation/build-manifest.js";
@@ -66,23 +64,23 @@ function kualiReceipt() {
   });
 }
 
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const databases: AuthorityDatabase[] = [];
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) profile.close();
 });
 
 
 function personLookupReceipt() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-receipt-guard-"));
-  roots.push(root);
+  const profile = createBoundProfileFixture();
+  profiles.push(profile);
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "evidence-receipt-guard" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "evidence-receipt-guard" },
     manualClock(new Date("2026-08-04T00:11:13.500Z")),
   );
-  testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+  testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   const seeded = seedPersonLookupExitRun(database);
   return buildRunEvidenceReceipt({
