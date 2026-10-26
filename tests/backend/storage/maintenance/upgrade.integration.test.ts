@@ -19,6 +19,7 @@ import { WorkerPoolRecordSchema } from "../../../../src/models/run/worker-pool.j
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
 import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
@@ -63,7 +64,8 @@ describe("stopped native upgrade admission",()=>{
    const mutate=<T,>(work:()=>Readonly<{result:T;changes:number}>)=>work().result;
    const settings=createSettingsActivationRepositories({database:raw,mutate,
     readRecord:()=>undefined});
-   settings.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+   const resolved=resolveConfigWithProvenance({}, {primaryDisplay:null}, clock, {stateRoot:f.root,artifactRoot:f.admission.artifactRoot});
+   settings.runtimeConfig.initialize({...CONFIG_SNAPSHOT,...resolved});
    const repository=createTimelineRepository({database:raw,mutate,read:work=>work(),assertOwner:()=>{}});
    createDebugEventWriter({repository,clock,build:"test"}).emit({category:"http",phase:"failed",correlationId:"retained-history"});
   } finally {raw.close();}
