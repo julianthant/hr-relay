@@ -22,7 +22,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) {
   const { clock } = deps;
   const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
-  const lifecycle = new RunRecordService({ database, clock, ids: { uuid: randomUUID }, resolveDescriptor: resolve,
+  const lifecycle = new RunRecordService({ database, clock, ids: deps.ids, resolveDescriptor: resolve,
     ...(deps.buildManifest === undefined ? {} : { buildManifest: deps.buildManifest }),
     publishQueued: (run, publication) => {
       assert.ok(publication);

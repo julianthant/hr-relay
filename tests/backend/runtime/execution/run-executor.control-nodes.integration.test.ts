@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { testRunLifecycle,testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -728,15 +729,19 @@ describe("parallel and seam arms", () => {
     const wired = controlHarness(childRunDescriptor);
     const { database, path } = wired.authority;
     const resolve = (id: string) => [childRunDescriptor, childLeafDescriptor].find(descriptor => descriptor.id === id);
-    const canonical = canonicalChildExecution(wired.deps, database, path, resolve);
+    let rootIdIssued = false;
+    const canonical = canonicalChildExecution({ ...wired.deps, ids: { uuid: () => {
+      if (!rootIdIssued) { rootIdIssued = true; return RUN_ID; }
+      return randomUUID();
+    } } }, database, path, resolve);
     const childRuns: ChildRunExecutor = {
       executeChildRun: context => {
         contexts.push(String(context.node.id));
         return canonical.childRuns.executeChildRun(context);
       },
     };
-    const queued = controlQueuedRun(childRunDescriptor, "left");
-    database.authority.runs.enqueue(queued);
+    const queued = canonical.start(childRunDescriptor, controlQueuedRun(childRunDescriptor, "left").input.raw, { dryRun: false });
+    assert.equal(queued.envelope.runId, RUN_ID);
     const reclaimed = claim(database, childRunDescriptor);
     const pending = await executeClaimedRun({ ...wired.deps, childRuns }, { ...reclaimed, signal: SIGNAL });
     assert.equal(pending.state, "yielded-delegation");
