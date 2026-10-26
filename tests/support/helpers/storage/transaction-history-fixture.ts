@@ -1,3 +1,4 @@
+import { isLiveWorker } from "../../../../src/models/run/worker.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import assert from "node:assert/strict";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
@@ -28,8 +29,12 @@ export function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) 
         input:{raw:{},parsed:{schemaHash:HASH_A,value:{},protectedBindings:[]},ingressSchemaHash:HASH_A},
         lifecycle:{state:"queued"},claimGeneration:0,version:1,createdAt:ledger.fencedAt,updatedAt:ledger.fencedAt }));
       const slots = database.authority.workerSlots.list(separationsDescriptor.id).filter(entry => entry.retiredAt === null);
-      const free = slots.find(slot => !database.authority.runs.listByWorker(slot.workerId).some(run =>
-        ["claimed", "validating", "running"].includes(run.lifecycle.state)));
+      const free = slots.find(slot => {
+        const lease = database.authority.workerLeases.get(slot.workerId);
+        assert.ok(lease, "history fixture member has no retained worker lifetime");
+        return isLiveWorker(lease) && !database.authority.runs.listByWorker(slot.workerId).some(run =>
+          ["claimed", "validating", "running"].includes(run.lifecycle.state));
+      });
       const poolIndex = free?.poolIndex ?? [1, 2, 3].find(index => !slots.some(slot => slot.poolIndex === index));
       assert.ok(poolIndex !== undefined, "history fixture has no unheld slot");
       if (free === undefined) testWorkerPorts(database, historyClock, { path, descriptor: separationsDescriptor, poolIndex });

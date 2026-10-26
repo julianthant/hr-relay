@@ -169,12 +169,14 @@ it("refuses missing retained confirmation publication instead of returning small
       runId, expectedVersion: run.version }).state, "deleted");
     assert.equal(w.history.query(range).rows.length, 1);
     using raw = new DatabaseSync(w.path);
+    const publication = raw.prepare("SELECT publication_json FROM write_intents WHERE id=?").get(fixture.commit.transaction.writeIntentId)?.publication_json;
+    assert.ok(typeof publication === "string");
     const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='write_intents'").all();
-    try {
-      for (const trigger of triggers) raw.exec(`DROP TRIGGER "${String(trigger.name)}"`);
-      assert.equal(raw.prepare("UPDATE write_intents SET publication_json=NULL WHERE id=?").run(fixture.commit.transaction.writeIntentId).changes, 1);
-    } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
-    assert.throws(() => w.history.query(range), /run-search-index-rebuild-required/u);
+    using _restoreTriggers = { [Symbol.dispose]() { for (const trigger of triggers) raw.exec(String(trigger.sql)); } };
+    for (const trigger of triggers) raw.exec(`DROP TRIGGER "${String(trigger.name)}"`);
+    using _restorePublication = { [Symbol.dispose]() { raw.prepare("UPDATE write_intents SET publication_json=? WHERE id=?").run(publication, fixture.commit.transaction.writeIntentId); } };
+    assert.equal(raw.prepare("UPDATE write_intents SET publication_json=NULL WHERE id=?").run(fixture.commit.transaction.writeIntentId).changes, 1);
+    assert.throws(() => w.history.query(range), /authority table write_intents failed native record validation:[\s\S]*expected string, received null/u);
   } finally { w.dispose(); }
 });
 
@@ -443,13 +445,17 @@ afterEach(_afterEachFixture0);
   it.each(["workflowId", "itemId"] as const)("refuses a run-owned operation with a contradictory %s", (field) => {
     const { database, run, path } = committed();
     try {
-      const raw = new DatabaseSync(path);
-      try { raw.prepare("UPDATE write_intents SET payload_json = json_set(payload_json, ?, ?) WHERE id = ?")
-        .run(`$.${field}`, field === "workflowId" ? "other-workflow" : randomUUID(), WRITE_INTENT_ATTEMPTING.writeIntentId); }
-      finally { raw.close(); }
       const before = database.getMeta();
-      expect(() => deleteRun(database, run.envelope.runId, UUID_5))
-        .toThrow(/confirmed|write-intent/u);
+      {
+        using raw = new DatabaseSync(path);
+        const payload = raw.prepare("SELECT payload_json FROM write_intents WHERE id=?").get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.payload_json;
+        assert.ok(typeof payload === "string");
+        using _restore = { [Symbol.dispose]() { raw.prepare("UPDATE write_intents SET payload_json=? WHERE id=?").run(payload, WRITE_INTENT_ATTEMPTING.writeIntentId); } };
+        raw.prepare("UPDATE write_intents SET payload_json = json_set(payload_json, ?, ?) WHERE id = ?")
+          .run(`$.${field}`, field === "workflowId" ? "other-workflow" : randomUUID(), WRITE_INTENT_ATTEMPTING.writeIntentId);
+        expect(() => deleteRun(database, run.envelope.runId, UUID_5))
+          .toThrow(/confirmed|write-intent/u);
+      }
       expect(database.getMeta()).toEqual(before);
       expect(database.authority.runs.get(run.envelope.runId)).toBeDefined();
       expect(database.authority.deletedRuns.get(run.envelope.runId)).toBeUndefined();
@@ -460,15 +466,21 @@ afterEach(_afterEachFixture0);
     const { database, run, path } = committed();
     try {
       // Model damaged retained ownership without removing the confirmed event.
-      const raw = new DatabaseSync(path);
-      const trigger = String(raw.prepare("SELECT sql FROM sqlite_schema WHERE name='write_attempts_retained'").get()?.sql);
-      try {
-        raw.exec("DROP TRIGGER write_attempts_retained");
-        expect(raw.prepare("DELETE FROM write_attempts WHERE id = ?").run(WRITE_ATTEMPT.writeAttemptId).changes).toBe(1);
-      } finally { raw.exec(trigger); raw.close(); }
       const before = database.getMeta();
-      expect(() => deleteRun(database, run.envelope.runId, UUID_5))
-        .toThrow(/confirmed-history-attempt-mismatch/u);
+      {
+        using raw = new DatabaseSync(path);
+        const attempt = raw.prepare("SELECT * FROM write_attempts WHERE id=?").get(WRITE_ATTEMPT.writeAttemptId);
+        assert.ok(attempt);
+        const trigger = raw.prepare("SELECT sql FROM sqlite_schema WHERE name='write_attempts_retained'").get()?.sql;
+        assert.ok(typeof trigger === "string");
+        using _restoreTrigger = { [Symbol.dispose]() { raw.exec(trigger); } };
+        raw.exec("DROP TRIGGER write_attempts_retained");
+        using _restoreAttempt = { [Symbol.dispose]() { raw.prepare("INSERT INTO write_attempts (id,intent_id,generation,run_id,payload_json,created_at) VALUES (?,?,?,?,?,?)")
+          .run(attempt.id, attempt.intent_id, attempt.generation, attempt.run_id, attempt.payload_json, attempt.created_at); } };
+        expect(raw.prepare("DELETE FROM write_attempts WHERE id = ?").run(WRITE_ATTEMPT.writeAttemptId).changes).toBe(1);
+        expect(() => deleteRun(database, run.envelope.runId, UUID_5))
+          .toThrow(/confirmed-history-attempt-mismatch/u);
+      }
       expect(database.getMeta()).toEqual(before);
       expect(database.authority.runs.get(run.envelope.runId)).toBeDefined();
       expect(database.authority.deletedRuns.get(run.envelope.runId)).toBeUndefined();
