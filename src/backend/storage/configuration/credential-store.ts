@@ -929,7 +929,6 @@ export function credentialMigrationSource(store: CredentialStore): CredentialMig
 
 export function assertCredentialStoreOwner(store: CredentialStore, admissionInput: RuntimeAdmission): void {
   const admission = requireRuntimeAdmission(admissionInput), owner = committedStores.get(store);
-  admission.assertLive();
   if (owner === undefined || owner.admission !== admission || owner.stateRoot !== admission.stateRoot
     || owner.journalAdmission === admission
     || owner.journalPath !== join(owner.journalAdmission.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`)) {
