@@ -182,6 +182,9 @@ const retainedCredential = { rpId: "duosecurity.com", credentialId: "synthetic-r
 for (const shape of ["object", "array", "wrapper"] as const) it(`authenticates retained active-engine ${shape} bytes without changing them during control-only assessment`, () => {
   const f = stoppedControlFixture(shape === "object" ? retainedCredential : shape === "array" ? [retainedCredential] : { credentials: [retainedCredential] });
   let inventory: ReturnType<typeof composeStoppedControlCredentialInventory> | undefined;
+  const capture = vi.spyOn(nativeFs, "mkdtempSync");
+  let issued: string[] = [];
+  syncBuiltinESMExports();
   try {
     const path = join(f.stateRoot, "credentials", "duo-webauthn.json"), bytes = readFileSync(path);
     const claim = f.upgrade.profileInventory(f.profileId);
@@ -194,7 +197,16 @@ for (const shape of ["object", "array", "wrapper"] as const) it(`authenticates r
     const substitute = `${path}.substitute`;
     writeFileSync(substitute, bytes, { mode: 0o600 }); renameSync(substitute, path);
     assert.throws(() => verifyStoppedControlCredentialAttestation(inventory!.proof, claim, false), /credential-maintenance-inventory-changed/u);
-  } finally { inventory?.dispose(); f.close(); }
+    issued = capture.mock.results.map(result => {
+      assert.equal(result.type, "return");
+      assert.ok(typeof result.value === "string");
+      return result.value;
+    });
+  } finally {
+    try { inventory?.dispose(); f.close(); }
+    finally { capture.mockRestore(); syncBuiltinESMExports(); }
+  }
+  for (const directory of issued) assert.equal(existsSync(directory), false);
 });
 
 it("refuses malformed retained active-engine bytes rather than granting a control-only absence proof", () => {
@@ -830,16 +842,17 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
     const profileId = control.registeredProfileIds()[0];
     assert.equal(typeof profileId, "string");
     const capture = vi.spyOn(nativeFs, "mkdtempSync");
-    const created: string[] = [];
+    const issued: string[] = [];
     syncBuiltinESMExports();
     try {
       control.profileInventory(profileId ?? "");
       for (const result of capture.mock.results) {
         assert.equal(result.type, "return");
         assert.ok(typeof result.value === "string");
-        created.push(result.value);
+        issued.push(result.value);
       }
     } finally { capture.mockRestore(); syncBuiltinESMExports(); }
+    const created = issued.filter(path => existsSync(path));
     assert.equal(created.length, 1);
     const snapshotFile = join(created[0] ?? "", "authority.sqlite");
     const identity = nativeFs.lstatSync(snapshotFile);
@@ -857,6 +870,7 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
     assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "shared"), /installation lease busy/u);
     assert.throws(() => releaseStoppedMachineControlUpgrade(control, restore, true), (error: unknown) => error instanceof AuthoritySourceClosureUnprovedError);
     assert.equal(existsSync(snapshotFile), true);
+    for (const directory of issued) if (directory !== created[0]) assert.equal(existsSync(directory), false);
     assert.equal(readFileSync(paths.controlPath).equals(paths.controlBytes), true);
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
   } catch (error) { primary = { error }; held.primary = primary; }
