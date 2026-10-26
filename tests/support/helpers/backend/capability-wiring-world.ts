@@ -194,7 +194,7 @@ export function createCapabilityWiringTestWorld() {
     return { authority, emitter, deps };
   }
 
-  function claim(authority: ReturnType<typeof openAuthorityHarness>, descriptor: AnyWorkflowDescriptor): {
+  function claim(authority: Pick<ReturnType<typeof openAuthorityHarness>, "database" | "clock" | "path">, descriptor: AnyWorkflowDescriptor): {
     run: RunRecord;
     claim: { workerId: string; claimGeneration: number };
   } {
