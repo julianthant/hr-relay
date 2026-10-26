@@ -1,3 +1,5 @@
+import nativeFs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { vi } from "vitest";
 import childProcess from "node:child_process";
 import { chromium } from "playwright";
@@ -42,8 +44,22 @@ async function inject(f: ReturnType<typeof runtimeFixture>, entry: Case): Promis
     const undo=[replace(pkgPath,JSON.stringify(pkg)),replace(lockPath,JSON.stringify(lock))];return()=>{for(const restore of undo)restore();};
   }
   if (id === "runtime.package-lock") return replace(join(f.root,"package-lock.json"), "{}");
-  if (id === "browser.chromium" || id === "browser.duo-extension" || id === "path.state" || id === "path.artifact") {
-    const path = id === "browser.chromium" ? f.executable : id === "path.state" ? f.stateRoot : id === "path.artifact" ? f.artifactRoot
+  if (id === "path.state") {
+    f.admission.assertLive();
+    const originalAccess = nativeFs.accessSync;
+    let injected = false;
+    const access = vi.spyOn(nativeFs, "accessSync").mockImplementation((path, mode) => {
+      if (String(path) === f.stateRoot && mode === (nativeFs.constants.R_OK | nativeFs.constants.W_OK)) {
+        injected = true;
+        throw Object.assign(new Error("synthetic-state-root-unavailable"), { code: "ENOENT" });
+      }
+      return originalAccess(path, mode);
+    });
+    syncBuiltinESMExports();
+    return () => { access.mockRestore(); syncBuiltinESMExports(); assert.equal(injected, true); f.admission.assertLive(); };
+  }
+  if (id === "browser.chromium" || id === "browser.duo-extension" || id === "path.artifact") {
+    const path = id === "browser.chromium" ? f.executable : id === "path.artifact" ? f.artifactRoot
       : entry.variant === "extension" ? join(f.input.config.paths.duoExtensionDir,"manifest.json") : f.input.config.paths.duoCredential;
     renameSync(path,`${path}.parked`); return()=>{renameSync(`${path}.parked`,path);};
   }
@@ -128,9 +144,9 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
       assert.equal((await f.report()).results.every(result=>result.status==="pass"||result.status==="warning"),true,"healthy control failed");
       assert.equal((await f.report()).results.find(result=>result.check===entry.dependency.check)?.status,"pass");
       undo=await inject(f,entry);
-      const databaseBefore=readFileSync(entry.dependency.id === "path.state" ? `${f.stateRoot}.parked/state.db` : f.databasePath);
+      const databaseBefore=readFileSync(f.databasePath);
       const report=await f.report(transform);
-      assert.deepEqual(readFileSync(entry.dependency.id === "path.state" ? `${f.stateRoot}.parked/state.db` : f.databasePath),databaseBefore,"detectors mutated authority");
+      assert.deepEqual(readFileSync(f.databasePath),databaseBefore,"detectors mutated authority");
       await undo();undo=undefined;
       assert.equal((await f.report()).results.find(result=>result.check===entry.dependency.check)?.status,"pass","explicit restoration did not re-check healthy");
       executions.push(ExecutionSchema.parse({scenario:entry.dependency.scenario,dependency:entry.dependency.id,variant:entry.variant,check:entry.dependency.check,report,
