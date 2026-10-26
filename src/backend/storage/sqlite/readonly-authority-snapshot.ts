@@ -42,25 +42,36 @@ const inspect = path => {
     throw error;
   }
 };
-const assertUnchanged = () => {
+const reportMismatch = (phase, source, observed) => {
+  const fields = ["dev", "ino", "mode", "size", "mtimeNs", "ctimeNs"];
+  const expected = source.expected === null ? [] : source.expected.split(":");
+  const actual = observed === undefined ? [] : identity(observed).split(":");
+  process.stderr.write(JSON.stringify({ phase, suffix: source.suffix, fields: fields.filter((_, index) => expected[index] !== actual[index]) }) + "\\n");
+};
+const assertUnchanged = phase => {
   for (const source of sources) {
     const current = inspect(source.path);
+    let descriptorStats;
     if ((current === undefined ? null : identity(current)) !== source.expected
-      || source.descriptor !== undefined && identity(fstatSync(source.descriptor, { bigint: true })) !== source.expected) {
+      || source.descriptor !== undefined && identity(descriptorStats = fstatSync(source.descriptor, { bigint: true })) !== source.expected) {
+      reportMismatch(phase, source, descriptorStats ?? current);
       throw new Error("authority-readonly-source-changed");
     }
   }
 };
 try {
   try {
-    assertUnchanged();
+    assertUnchanged("before-copy");
     for (const source of sources) {
       if (source.expected === null) continue;
       source.descriptor = openSync(source.path, constants.O_RDONLY | constants.O_NOFOLLOW);
       source.stats = fstatSync(source.descriptor, { bigint: true });
-      if (identity(source.stats) !== source.expected) throw new Error("authority-readonly-source-changed");
+      if (identity(source.stats) !== source.expected) {
+        reportMismatch("open", source, source.stats);
+        throw new Error("authority-readonly-source-changed");
+      }
     }
-    assertUnchanged();
+    assertUnchanged("open");
     const chunk = Buffer.alloc(64 * 1024);
     for (const source of sources) {
       if (source.descriptor === undefined || source.suffix === "-shm" || source.suffix === "-journal") continue;
@@ -71,7 +82,10 @@ try {
           const length = readSync(source.descriptor, chunk, 0, chunk.length, null);
           if (length === 0) break;
           total += BigInt(length);
-          if (total > source.stats.size) throw new Error("authority-readonly-source-changed");
+          if (total > source.stats.size) {
+            process.stderr.write(JSON.stringify({ phase: "copy-length", suffix: source.suffix, fields: ["size"] }) + "\\n");
+            throw new Error("authority-readonly-source-changed");
+          }
           let offset = 0;
           while (offset < length) {
             const written = writeSync(destination, chunk, offset, length - offset);
@@ -79,10 +93,13 @@ try {
             offset += written;
           }
         }
-        if (total !== source.stats.size) throw new Error("authority-readonly-source-changed");
+        if (total !== source.stats.size) {
+          process.stderr.write(JSON.stringify({ phase: "copy-length", suffix: source.suffix, fields: ["size"] }) + "\\n");
+          throw new Error("authority-readonly-source-changed");
+        }
       } finally { closeSync(destination); }
     }
-    assertUnchanged();
+    assertUnchanged("after-read");
   } finally {
     for (const source of sources) if (source.descriptor !== undefined) closeSync(source.descriptor);
   }
@@ -113,6 +130,9 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
       const current = inspect(source.path);
       if ((current === undefined) !== (source.stats === undefined)
         || current !== undefined && source.stats !== undefined && identity(current) !== identity(source.stats)) {
+        const fields = ["dev", "ino", "mode", "size", "mtimeNs", "ctimeNs"] as const;
+        process.stderr.write(JSON.stringify({ phase: "after-read", suffix: source.suffix,
+          fields: fields.filter(field => current?.[field] !== source.stats?.[field]) }) + "\n");
         throw new Error("authority-readonly-source-changed");
       }
     }
@@ -135,6 +155,9 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
     const copyFailed = () => new Error("authority-readonly-snapshot-copy-failed", {
       cause: copy.error ?? { status: copy.status, signal: copy.signal },
     });
+    for (const line of copy.stderr?.split("\n") ?? []) {
+      if (/^\{"phase":"(?:before-copy|open|copy-length|after-read)","suffix":"(?:|-wal|-shm|-journal)","fields":\[(?:"(?:dev|ino|mode|size|mtimeNs|ctimeNs)"(?:,"(?:dev|ino|mode|size|mtimeNs|ctimeNs)")*)?\]\}$/.test(line)) process.stderr.write(line + "\n");
+    }
     if (copy.error !== undefined || copy.signal !== null) throw copyFailed();
     if (copy.status !== 0) {
       let failure: { message: string; code?: string };
