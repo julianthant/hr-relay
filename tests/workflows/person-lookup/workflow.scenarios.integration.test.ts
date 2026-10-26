@@ -15,7 +15,7 @@ import { createDeterministicCrmOnboardingDriver } from "../../../src/backend/sys
 import { recordBrowserAction } from "../../../src/backend/systems/browser-shared/action-notes.js";
 import { BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
-import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testWorkerLifetime } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { ReadOnboardingDatesOutputSchema } from "../../../src/models/systems/crm/read-onboarding-dates.js";
 import { searchPersonOrgWithPagePort, assignmentDetailsToCells, type PersonOrgDetail } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { searchPersonMatchWithPort } from "../../../src/backend/systems/ucpath/driver/person-match-operation.js";
@@ -408,7 +408,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(next.envelope.retryOf, source.envelope.runId);
     assert.deepEqual(next.input.parsed.value, source.input.parsed.value);
     assert.deepEqual(next.input.parsed.value, input);
-    const nextClaim = database.authority.runs.claimNext({ workflow: personLookupDescriptor.id, workerId: claimed.claim.workerId, now: clock.now().toISOString() });
+    const nextClaim = database.authority.runs.claimNext({ workflow: personLookupDescriptor.id, workerId: claimed.claim.workerId, workerLifetime: testWorkerLifetime(database, personLookupDescriptor.id, 1).workerLifetime, now: clock.now().toISOString() });
     assert.ok(nextClaim.state === "claimed", JSON.stringify(nextClaim));
     assert.equal(nextClaim.run.envelope.runId, next.envelope.runId);
     assert.equal((await executeClaimedRun(harness.deps, { run: nextClaim.run, claim: { workerId: claimed.claim.workerId, claimGeneration: nextClaim.run.claimGeneration }, signal: world.SIGNAL })).state, "done");
