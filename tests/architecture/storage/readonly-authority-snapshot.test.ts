@@ -4,15 +4,14 @@ import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rm
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { spawnSync } from "node:child_process";
+import childProcesses, { spawnSync } from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import { it, vi } from "vitest";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "../../../src/backend/storage/sqlite/backup-inspection.js";
 import { createReadonlyAuthoritySnapshot } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
-
-vi.mock("node:child_process", { spy: true });
 
 function inventory(directory: string) {
   const child = spawnSync(process.execPath, ["--input-type=commonjs", "-e", `
@@ -88,7 +87,8 @@ it("refuses unsafe companions and detects changed original source identity", () 
 it.each([false, true])("retains live SQLite locks across isolated snapshot disposal: %s", snapshotEnabled => {
   const script = `
     import assert from "node:assert/strict";
-    import { spawnSync } from "node:child_process";
+    import childProcesses, { spawnSync } from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
     import { mkdtempSync, lstatSync, rmSync } from "node:fs";
     import { tmpdir } from "node:os";
     import { join } from "node:path";
@@ -141,18 +141,28 @@ it("refuses an abruptly terminated copy and removes its private directory withou
   const database = new DatabaseSync(path); database.exec("CREATE TABLE proof(value)"); database.close();
   const before = readFileSync(path);
   let directory: string | undefined;
-  vi.mocked(spawnSync).mockImplementationOnce((_command, args) => {
+  const actualSpawn = childProcesses.spawnSync;
+  const copier = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
+    if (command !== process.execPath || !Array.isArray(args) || typeof args[3] !== "string"
+      || !dirname(args[3]).startsWith(join(tmpdir(), "relay-readonly-authority-"))) {
+      return actualSpawn(command, args, options);
+    }
     assert.ok(Array.isArray(args));
     const destination: unknown = args[3]; assert.ok(typeof destination === "string");
+    assert.equal(destination, join(dirname(destination), "authority.sqlite"));
     directory = dirname(destination);
     assert.ok(existsSync(directory));
     writeFileSync(destination, "partial copy");
     return { pid: 0, output: [], stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), status: null, signal: "SIGTERM" };
   });
+  syncBuiltinESMExports();
   try {
     assert.throws(() => createReadonlyAuthoritySnapshot(path), /authority-readonly-snapshot-copy-failed/u);
     assert.ok(directory);
     assert.equal(existsSync(directory), false);
     assert.ok(readFileSync(path).equals(before));
-  } finally { rmSync(workspace, { recursive: true, force: true }); }
+  } finally {
+    copier.mockRestore(); syncBuiltinESMExports();
+    rmSync(workspace, { recursive: true, force: true });
+  }
 });
