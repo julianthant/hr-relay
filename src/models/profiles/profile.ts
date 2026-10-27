@@ -193,7 +193,7 @@ export function assertFinishedProfileOnboarding(operation: SignUpOperation): voi
     if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined
       || attempt.ceremony === undefined || attempt.portal !== undefined && attempt.ceremony.credentialId !== attempt.portal.credentialId
       || (method === "key" ? attempt.ceremony.mechanism !== "fast-duo" || attempt.operatorConfirmedAt === undefined && attempt.portal?.acceptance !== "exact-credential-request"
-        : attempt.portal === undefined || attempt.ceremony.mechanism !== "native-platform" || !attempt.ceremony.softwareInterceptionDisabled || attempt.operatorConfirmedAt === undefined)) {
+        : attempt.portal?.acceptance !== "portal-accepted" || attempt.ceremony.mechanism !== "native-platform" || !attempt.ceremony.softwareInterceptionDisabled || attempt.operatorConfirmedAt === undefined)) {
       throw new Error("profile-onboarding-incomplete");
     }
   }

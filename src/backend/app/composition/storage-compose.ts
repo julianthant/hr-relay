@@ -11,6 +11,7 @@ import { createChatGptAccountService } from "../../accounts/chatgpt-account-serv
 import { composeProfileSettings } from "./dashboard/settings.js";
 import { activeSettingsConfig, activeSettingsRuntimeIdentity } from "../../runtime/settings/settings-runtime.js";
 import { createProfileSession, ProfileSessionRefusedError } from "../../profiles/profile-session.js";
+import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
 import type { CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
@@ -230,6 +231,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
 export function composeProfileRuntime(input: Readonly<{
   admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock; processLockRoot: string;
   credentialHooks?: CredentialStoreHooks;
+  onboardingDuo?: ProfileOnboardingDuoProvider;
 }>) {
   const machine = requireRuntimeAdmission(input.admission);
   type Context = ReturnType<typeof composeSelectedProfileStorage>;
@@ -272,7 +274,8 @@ export function composeProfileRuntime(input: Readonly<{
     entry.preparation = { state: "pending", completion };
     void completion.catch(error => { entry.preparation = { state: "failed", error }; });
   };
-  const session = createProfileSession({ machineRoot: machine.stateRoot, admission: machine,
+  const session = createProfileSession({ machineRoot: machine.stateRoot, admission: machine, clock: input.clock,
+    ...(input.onboardingDuo === undefined ? {} : { onboardingDuo: input.onboardingDuo }),
     credentialsFor: (admission, purpose) => {
       const profileId = admission.profileBinding.profileId, entry = resources.get(profileId) ?? {};
       const current = entry[purpose];
@@ -410,6 +413,8 @@ export function composeProfileRuntime(input: Readonly<{
     },
     async close(): Promise<void> {
       beginClose();
+      try { await session.closeOnboarding(); }
+      catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       for (const [profileId, entry] of resources) {
         const ordinary = entry.ordinary;
         if (ordinary?.context === undefined || ordinary.state === "closed") continue;

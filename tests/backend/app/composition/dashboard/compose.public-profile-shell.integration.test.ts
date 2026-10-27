@@ -1,5 +1,5 @@
 import { request as httpRequest } from "node:http";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { runSecureEnvironmentBootstrap } from "../../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-session.js";
@@ -23,6 +23,8 @@ import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/a
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
+import { ProfileVerifierDocumentSchema } from "../../../../../src/models/profiles/profile.js";
+import type { DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../../../src/backend/profiles/onboarding-duo.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 
 function fixture() {
@@ -108,6 +110,7 @@ it("serves public profile state without minting a selected profile, actor or aut
   const f = fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
+
     runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
@@ -163,16 +166,70 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
   const f = fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
+    const keyCapture: { capability?: DraftDuoCapability } = {};
+    const onboardingDuo: ProfileOnboardingDuoProvider = {
+      async start(attempt, bind, _reportFailure) {
+        const capability = await bind({ contextId: randomUUID(), tabId: attempt.method === "key" ? 1 : 2,
+          accountName: "fixture@ucsd.edu", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+        const credentialId = attempt.method === "key" ? "fixture-software-key" : "fixture-native-touch";
+        if (attempt.method === "key") {
+          keyCapture.capability = capability;
+          const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+          await capability.persistPending({ credentialId,
+            privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
+            publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"),
+            transport: "usb", isResidentCredential: false, createdAt: new Date().toISOString() });
+        }
+        await capability.recordCeremony({ credentialId, requestId: randomUUID(),
+          mechanism: attempt.method === "key" ? "fast-duo" : "native-platform", softwareInterceptionDisabled: attempt.method === "touch" });
+        if (attempt.method === "touch") await capability.recordPortalAcceptance({ credentialId, requestId: randomUUID(), acceptance: "portal-accepted" });
+      },
+      async cancel() { return { state: "closed" }; },
+    };
     runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     assert.ok(runtime.port > 0);
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
       headers: { origin: base, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
     const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
-    const active = PublicProfileStateSchema.parse(await signup.json()); assert.equal(active.state, "active");
-    if (active.state !== "active") throw new Error("fixture actual signup required");
-    const header = signup.headers.get("set-cookie"); assert.ok(header); assert.match(header, /HttpOnly/u); assert.match(header, /SameSite=Strict/u);
+    const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding");
+    if (draft.state !== "onboarding") throw new Error("fixture actual signup draft required");
+    const draftHeader = signup.headers.get("set-cookie"); assert.ok(draftHeader);
+    const draftCookie = draftHeader.split(";", 1)[0]; assert.ok(draftCookie);
+    assert.match(draftHeader, /HttpOnly/u); assert.match(draftHeader, /SameSite=Strict/u);
+    assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie: draftCookie } })).status, 401);
+    assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
+    assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
+    assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
+    assert.equal((await post("/api/v1/profile/onboarding/complete", { operationId: draft.operationId }, draftCookie)).status, 409);
+    assert.equal((await post("/api/v1/profile/onboarding/duo/start", { operationId: randomUUID(), method: "key" }, draftCookie)).status, 409);
+    assert.equal((await post("/api/v1/profile/onboarding/duo/start", { operationId: draft.operationId, method: "key" }, "relay-profile-onboarding=foreign")).status, 409);
+    const key = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/start", { operationId: draft.operationId, method: "key" }, draftCookie)).json());
+    assert.equal(key.state, "onboarding");
+    if (key.state !== "onboarding") throw new Error("fixture key draft required");
+    assert.equal(key.methods.key.state, "pending"); assert.equal(key.methods.key.portalAccepted, false); assert.equal(key.step, "duo");
+    const confirmedKey = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/confirm", {
+      operationId: draft.operationId, method: "key", attemptId: key.methods.key.attemptId, operatorConfirmed: true }, draftCookie)).json());
+    if (confirmedKey.state !== "onboarding") throw new Error("fixture confirmed key draft required");
+    assert.equal(confirmedKey.methods.key.state, "complete"); assert.equal(confirmedKey.methods.key.portalAccepted, false);
+    assert.ok(keyCapture.capability);
+    const signAttempt = randomUUID(), reservation = await keyCapture.capability.reserveSignCount({ credentialId: "fixture-software-key", attemptId: signAttempt });
+    assert.ok(reservation.count > 0);
+    await assert.rejects(keyCapture.capability.reserveSignCount({ credentialId: "fixture-software-key", attemptId: signAttempt }), /duo-attempt-reused/u);
+    const touch = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/start", { operationId: draft.operationId, method: "touch" }, draftCookie)).json());
+    if (touch.state !== "onboarding" || touch.methods.touch.attemptId === undefined) throw new Error("fixture touch draft required");
+    assert.equal(touch.methods.touch.state, "pending");
+    const ready = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/confirm", {
+      operationId: draft.operationId, method: "touch", attemptId: touch.methods.touch.attemptId, operatorConfirmed: true }, draftCookie)).json());
+    assert.equal(ready.state, "onboarding");
+    if (ready.state !== "onboarding") throw new Error("fixture Ready draft required");
+    assert.equal(ready.step, "ready"); assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
+    const finished = await post("/api/v1/profile/onboarding/complete", { operationId: draft.operationId }, draftCookie);
+    const active = PublicProfileStateSchema.parse(await finished.json()); assert.equal(active.state, "active");
+    if (active.state !== "active") throw new Error("fixture actual completed signup required");
+    assert.ok(f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion);
+    const header = finished.headers.get("set-cookie"); assert.ok(header); assert.match(header, /HttpOnly/u); assert.match(header, /SameSite=Strict/u);
     const cookie = header.split(";", 1)[0]; assert.ok(cookie);
     assert.equal(JSON.stringify(active).includes(cookie.slice(cookie.indexOf("=") + 1)), false);
     const bootstrap = await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie, origin: base } });
@@ -200,6 +257,38 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     rmSync(f.root, { recursive: true, force: true });
     rmSync(temporary, { recursive: true });
   }
+});
+
+it("aborts an unpublished pre-enrollment draft through erasure before accepting changed Details", async () => {
+  const f = fixture();
+  let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  try {
+    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    const base = `http://127.0.0.1:${String(runtime.port)}`;
+    const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
+      headers: { origin: base, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
+    const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+    const draft = PublicProfileStateSchema.parse(await signup.json());
+    if (draft.state !== "onboarding") throw new Error("fixture unpublished draft required");
+    const header = signup.headers.get("set-cookie"); assert.ok(header);
+    const cookie = header.split(";", 1)[0]; assert.ok(cookie);
+    assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
+    const cancelled = await post("/api/v1/profile/onboarding/cancel", { operationId: draft.operationId }, cookie);
+    assert.equal(cancelled.status, 200); assert.deepEqual(PublicProfileStateSchema.parse(await cancelled.json()), { state: "signed-out" });
+    assert.equal(f.machine.readProfileRegistry().profiles.length, 0); assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
+    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "credential-keys", `${draft.profileId}.json`)), false);
+    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`)), false);
+    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "erasures", `${draft.profileId}.json`)), true);
+    assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId, "state.db")), true);
+    assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie } })).status, 401);
+    const replacement = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-up", {
+      firstName: "Changed", lastName: "Details", email: "changed@ucsd.edu", password: "new-disposable-fixture-password" })).json());
+    assert.equal(replacement.state, "onboarding");
+    if (replacement.state !== "onboarding") throw new Error("fixture replacement draft required");
+    assert.notEqual(replacement.profileId, draft.profileId); assert.notEqual(replacement.operationId, draft.operationId);
+    assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
+  } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
 for (const fault of ["prior-request", "profile-close"] as const) it(`fences and drains real public transfers before retaining ${fault} shutdown failure`, async () => {
