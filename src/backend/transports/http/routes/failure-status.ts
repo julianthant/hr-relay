@@ -6,7 +6,8 @@ import { WorkbookLibraryError } from "../../../workbooks/workbook-library-servic
 import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protected-input.js";
 import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
-import { ProfileSessionRefusedError, ProfileUpgradeUnavailableError } from "../../../profiles/profile-session.js";
+import { ProfileUpgradeUnavailableError } from "../../../profiles/profile-session.js";
+import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { ProfileBrowserRootRefusalError, ProfileStorageRelocationUnsupportedError, ProfileUpgradeSourceRefusalError } from "../../../storage/admission/admission.js";
 
 import { z } from "zod";

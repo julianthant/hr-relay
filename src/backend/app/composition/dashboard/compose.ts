@@ -18,7 +18,8 @@ import { ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfileOnboardin
   CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema,
   CancelProfileOnboardingDuoRequestSchema, PublicProfileStateSchema, type PublicProfileState } from "../../../../models/profiles/public-profile.js";
 import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
-import { ProfileSessionRefusedError, consumeAuthenticatedProfileUpgrade, type ActiveProfileSession, type AuthenticatedProfileUpgrade, type ProfileUpgradeRequired } from "../../../profiles/profile-session.js";
+import { consumeAuthenticatedProfileUpgrade, type ActiveProfileSession, type AuthenticatedProfileUpgrade, type ProfileUpgradeRequired } from "../../../profiles/profile-session.js";
+import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
 import { staticBundleHandler } from "../../../transports/http/static-bundle.js";
 import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";

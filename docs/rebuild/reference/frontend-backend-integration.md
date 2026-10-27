@@ -296,3 +296,17 @@ The existing profile sign-in endpoint reports `PROFILE_UPGRADE_STARTING` through
 After proved old profile/server/shared-admission closure, the same whole-app owner reacquires exclusive installation custody, once-consumes and revalidates the authenticated identity witness, then invokes the existing backed-up READY upgrade service with a fresh registered claim. Strict readback and exclusive release precede a new shared public shell on the same loopback port. The operator signs in afresh afterward. No second endpoint, UI component, executor, startup migration or server-lock exemption exists.
 
 The long-lived CLI awaits the actual replacement owner's failure/stop lifetime; bootstrap does not release its stale original admission after application ownership has transferred. Ordinary stop fences synchronously and retains its cached outcome. Transfer, closure, exclusive acquisition, revalidation, upgrade or restart failure remains terminal and visible, retaining every owner whose closure is unproved; no automatic retry follows uncertain mutation.
+
+### Profile onboarding boundary
+
+Details returns canonical `onboarding` state and a limited HttpOnly cookie scoped to profile routes.
+`readProfileSession` carries current server method states. The onboarding Duo start, confirm and
+exact-attempt cancel routes operate only on the issued operation and attempt; closing a setup popup
+preserves the draft. Whole-draft cancellation returns signed-out only after canonical custody and
+erasure proof. Neither Details, Duo completion nor entering Ready publishes a saved account.
+
+The Ready Finish callback invokes `completeProfileOnboarding({operationId})`. Backend receipts for
+both software FastDuo and native Mac Touch ID, proved provider closure and explicit Finish precede
+registry/verifier/active-session publication. Only the ordinary returned session cookie mounts
+bootstrap, Queue, Run and HR data authority. Failed or unknown publication remains a defined HOLD;
+public error codes never expose private causes or credential values.

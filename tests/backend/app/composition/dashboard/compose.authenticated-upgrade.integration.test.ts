@@ -21,7 +21,8 @@ import * as http from "../../../../../src/backend/transports/http/http-server.js
 import { acquireSharedRuntimeAdmission, acquireExclusiveRuntimeAdmission, ProfileUpgradeSourceRefusalError, type RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase, inspectNativeAuthority } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import { readProfileDatabaseBinding } from "../../../../../src/backend/storage/sqlite/profile-local-databases.js";
-import { createProfileSession, consumeAuthenticatedProfileUpgrade, ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-session.js";
+import { createProfileSession, consumeAuthenticatedProfileUpgrade } from "../../../../../src/backend/profiles/profile-session.js";
+import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import { createProfileVerifiers } from "../../../../../src/backend/profiles/verifier-store.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../../support/helpers/admission-fixture.js";
 import { createSettingsApplicationExecutor } from "../../../../../src/backend/runs/commands/settings-service.js";

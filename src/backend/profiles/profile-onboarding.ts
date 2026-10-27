@@ -5,7 +5,7 @@ import { assertFinishedProfileOnboarding, type SignUpDuoAttempt, type SignUpOper
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
 import type { Clock } from "../../rules/time/clock.js";
 import type { createDraftDuoCredentialStore } from "../storage/configuration/duo-credential-store.js";
-import { ProfileSessionRefusedError } from "./profile-session.js";
+import { ProfileSessionRefusedError } from "./profile-errors.js";
 import type { DraftDuoAttempt, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
 
 export function duoAccountMatches(email: string, observed: string): boolean {
@@ -28,7 +28,7 @@ export function createProfileOnboarding(input: {
   const retainedFailures: unknown[] = [];
   const unavailable = (): never => { throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); };
   const requiredDraft = (operation: SignUpOperation) => {
-    if (operation.phase !== "applying" || operation.onboarding === undefined) return unavailable();
+    if (operation.onboarding === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && operation.onboarding.finish !== undefined)) return unavailable();
     return operation.onboarding;
   };
   function current(attempt: DraftDuoAttempt): { operation: SignUpOperation; receipt: SignUpDuoAttempt } {
@@ -156,6 +156,10 @@ export function createProfileOnboarding(input: {
   const owner = {
     async start(operationId: string, method: ProfileOnboardingMethod): Promise<void> {
       const provider = input.provider; if (provider === undefined) return unavailable();
+      const before = requiredDraft(input.read(operationId));
+      const prior = before.attempts.filter(entry => entry.generation === before.generation && entry.method !== method && entry.providerClosedAt === undefined);
+      if (prior.some(entry => entry.state !== "complete")) return unavailable();
+      for (const receipt of prior) await owner.cancelAttempt(operationId, receipt.method, receipt.attemptId);
       const attempt = input.update(operationId, operation => {
         const draft = requiredDraft(operation);
         if (draft.abort !== undefined || draft.finish !== undefined) return unavailable();

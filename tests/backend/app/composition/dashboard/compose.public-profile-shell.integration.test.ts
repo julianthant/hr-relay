@@ -2,7 +2,7 @@ import { request as httpRequest } from "node:http";
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { runSecureEnvironmentBootstrap } from "../../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
-import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-session.js";
+import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import { DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import assert from "node:assert/strict";
@@ -167,8 +167,10 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
     const keyCapture: { capability?: DraftDuoCapability } = {};
+    let providerActive = false, closedAttempts = 0;
     const onboardingDuo: ProfileOnboardingDuoProvider = {
       async start(attempt, bind, _reportFailure) {
+        assert.equal(providerActive, false); providerActive = true;
         const capability = await bind({ contextId: randomUUID(), tabId: attempt.method === "key" ? 1 : 2,
           accountName: "fixture@ucsd.edu", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
         const credentialId = attempt.method === "key" ? "fixture-software-key" : "fixture-native-touch";
@@ -184,7 +186,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
           mechanism: attempt.method === "key" ? "fast-duo" : "native-platform", softwareInterceptionDisabled: attempt.method === "touch" });
         if (attempt.method === "touch") await capability.recordPortalAcceptance({ credentialId, requestId: randomUUID(), acceptance: "portal-accepted" });
       },
-      async cancel() { return { state: "closed" }; },
+      async cancel() { providerActive = false; closedAttempts += 1; return { state: "closed" }; },
     };
     runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
@@ -195,6 +197,8 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding");
     if (draft.state !== "onboarding") throw new Error("fixture actual signup draft required");
+    assert.equal(draft.methods.key.state, "idle"); assert.equal(draft.methods.touch.state, "idle");
+    assert.equal(draft.methods.key.state, "idle"); assert.equal(draft.methods.touch.state, "idle");
     const draftHeader = signup.headers.get("set-cookie"); assert.ok(draftHeader);
     const draftCookie = draftHeader.split(";", 1)[0]; assert.ok(draftCookie);
     assert.match(draftHeader, /HttpOnly/u); assert.match(draftHeader, /SameSite=Strict/u);
@@ -219,6 +223,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     await assert.rejects(keyCapture.capability.reserveSignCount({ credentialId: "fixture-software-key", attemptId: signAttempt }), /duo-attempt-reused/u);
     const touch = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/start", { operationId: draft.operationId, method: "touch" }, draftCookie)).json());
     if (touch.state !== "onboarding" || touch.methods.touch.attemptId === undefined) throw new Error("fixture touch draft required");
+    assert.equal(closedAttempts, 1);
     assert.equal(touch.methods.touch.state, "pending");
     const ready = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/confirm", {
       operationId: draft.operationId, method: "touch", attemptId: touch.methods.touch.attemptId, operatorConfirmed: true }, draftCookie)).json());

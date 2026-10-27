@@ -1,3 +1,4 @@
+import { ProfileSessionRefusedError } from "./profile-errors.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -27,7 +28,7 @@ import {
 } from "../../models/config/protected-settings.js";
 import { CredentialEraseInputSchema } from "../../models/config/credential-store.js";
 import { operatorFailureSentence, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
-import { deriveProfileNames, ProfileNameValidationError, ProfileAuthoritySnapshotSchema, type ProfileAuthoritySnapshot } from "../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding, deriveProfileNames, ProfileNameValidationError, ProfileAuthoritySnapshotSchema, type ProfileAuthoritySnapshot } from "../../models/profiles/profile.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import {
   noSymlinkAncestry,
@@ -99,9 +100,6 @@ export interface ProfileRefusal {
   readonly request?: string;
 }
 
-export class ProfileSessionRefusedError extends Error {
-  constructor(readonly code: ErrorCatalogCode) { super(operatorFailureSentence(code)); this.name = "ProfileSessionRefusedError"; }
-}
 
 export interface ProfileLogoutResult extends ProfileRefusal {
   readonly inventory?: CredentialInventory;
@@ -370,6 +368,18 @@ export function createProfileSession(input: {
     if (!existsSync(join(root, "credentials", "protected.json"))) rmSync(root, { recursive: true, force: true });
   }
 
+  function assertPublishedFinish(operation: SignUpOperation, registration: ReturnType<typeof registry.read>["profiles"][number]["registration"]): void {
+    assertFinishedProfileOnboarding(operation);
+    const draft = operation.onboarding, completion = registration.onboardingCompletion;
+    if (operation.phase !== "publishing" || draft?.finish === undefined || completion === undefined
+      || registration.operationId !== operation.operationId || registration.commandId !== operation.commandId || registration.writeId !== operation.writeId
+      || completion.generation !== draft.generation || completion.finishId !== draft.finish.finishId || completion.finishedAt !== draft.finish.finishedAt) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+    for (const method of ["key", "touch"] as const) {
+      const receipt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
+      if (createHash("sha256").update(canonicalJsonStringify(receipt)).digest("hex") !== completion[method].receiptDigest) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+    }
+  }
+
   function publishSignUp(operation: SignUpOperation, fields: { readonly email: string; readonly password: string }): ActiveProfileSession {
     admission.assertWritable();
     operation = { ...operation, phase: "publishing" };
@@ -392,10 +402,11 @@ export function createProfileSession(input: {
 
   function onboardingState(operation: SignUpOperation): ProfileOnboardingState {
     const draft = operation.onboarding;
-    if (draft === undefined || operation.phase !== "applying") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+    if (draft === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && draft.finish !== undefined)) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     const method = (name: "key" | "touch") => {
       const attempt = draft.attempts.findLast(entry => entry.method === name && entry.generation === draft.generation);
-      const state = attempt?.state === "closed" ? "idle" as const : attempt?.state ?? "unavailable" as const;
+      const idle = input.onboardingDuo === undefined ? "unavailable" as const : "idle" as const;
+      const state = attempt?.state === "closed" ? idle : attempt?.state ?? idle;
       return { state: attempt !== undefined && state === "pending"
           && attempt.providerClosedAt === undefined && !onboarding.hasLiveAttempt(attempt.attemptId) ? "unknown" as const : state,
         ...(attempt === undefined ? {} : { attemptId: attempt.attemptId }),
@@ -412,8 +423,9 @@ export function createProfileSession(input: {
     admission.assertWritable();
     if (onboardingSessions.get(token) !== operationId) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     const operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operationId);
-    if (operation?.onboarding === undefined || operation.phase !== "applying"
-      || registry.read().profiles.some(row => row.profileId === operation.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    if (operation?.onboarding === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && operation.onboarding.finish !== undefined)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    const published = registry.read().profiles.find(row => row.profileId === operation.profileId);
+    if (published !== undefined) assertPublishedFinish(operation, published.registration);
     if (!allowAbort && operation.onboarding.abort !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
     return operation;
   }
@@ -443,7 +455,7 @@ export function createProfileSession(input: {
         duo: { state: "never-initialized", profileId: operation.profileId, revision: 0 } } };
       writeOperation(operation);
     }
-    if (operation.onboarding === undefined || operation.phase !== "applying") return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
+    if (operation.onboarding === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && operation.onboarding.finish !== undefined)) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     if (operation.onboarding.abort !== undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
     if (operation.firstName !== names.firstName || operation.lastName !== names.lastName) return refusal("PROFILE_SIGN_IN_REFUSED");
     registry.ensureRoot(operation.profileId);
@@ -688,14 +700,18 @@ export function createProfileSession(input: {
         if (completed.operationId !== operationId || "state" in requireSession(completed.session.token)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
         return completed.session;
       }
-      if (onboardingState(requireOnboarding(token, operationId)).step !== "ready") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-      await onboarding.drain(operationId);
+      const initial = requireOnboarding(token, operationId);
+      if (onboardingState(initial).step !== "ready") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+      if (!registry.read().profiles.some(row => row.profileId === initial.profileId)) await onboarding.drain(operationId);
       return withProfileLock(machineRoot, () => {
         const pending = requireOnboarding(token, operationId);
         if (pending.onboarding === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
         if (pending.onboarding.finish === undefined) writeOperation({ ...pending, onboarding: { ...pending.onboarding,
           finish: { finishId: randomUUID(), finishedAt: (input.clock ?? systemClock).now().toISOString() } } });
-        const operation = onboarding.verifyFinish(operationId), fields = storeFor(operation.profileId).read().entries;
+        const published = registry.read().profiles.find(row => row.profileId === pending.profileId);
+        const operation = published === undefined ? onboarding.verifyFinish(operationId) : pending;
+        if (published !== undefined) assertPublishedFinish(operation, published.registration);
+        const fields = storeFor(operation.profileId).read().entries;
         const email = fields.ucpathUserId?.value, password = fields.ucpathPassword?.value;
         if (email === undefined || password === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
         const session = publishSignUp(operation, { email, password });
@@ -743,6 +759,12 @@ export function createProfileSession(input: {
         if (!verifiers.passwordMatches(row.profileId, fields.password)) {
           verifiers.recordFailure(row.profileId, nowMs);
           return refusal("PROFILE_SIGN_IN_REFUSED");
+        }
+        const finishing = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId);
+        if (finishing.length > 1) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
+        for (const operation of finishing) {
+          assertPublishedFinish(operation, row.registration);
+          releaseOrdinary(row.profileId); deleteOperation(operation.operationId);
         }
         const selection = registry.read();
         if (selection.activeProfileId !== null && selection.activeProfileId !== row.profileId) return refusal("PROFILE_TRANSITION_BLOCKED");

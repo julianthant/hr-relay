@@ -22,7 +22,7 @@ import { createBoundProfileFixture } from "../../../../support/helpers/admission
 import type { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
-import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-session.js";
+import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 

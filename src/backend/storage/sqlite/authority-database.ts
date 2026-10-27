@@ -1815,6 +1815,23 @@ export class AuthorityDatabase implements Disposable {
     return new AuthorityDatabase(admission, input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials);
   }
 
+  static readIncompleteOnboardingInventory(admission: RuntimeAdmission) {
+    const owner = requireRuntimeAdmission(admission), path = join(owner.stateRoot, "state.db");
+    owner.assertStoppedIncompleteProfileInventory();
+    return withAuthorityDatabaseReadOnly(owner, path, database => {
+      const inspection = inspectNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION), binding = owner.profileBinding;
+      if (inspection.installationId !== binding.installationId || inspection.profileId !== binding.profileId) throw new Error("profile-incomplete-inventory-binding-mismatch");
+      const names = inspectionTableNames(database), expected = AUTHORITY_TABLE_REGISTRY.map(table => table.name).sort();
+      if (canonicalJsonStringify(names) !== canonicalJsonStringify(expected)) throw new Error("profile-incomplete-inventory-schema-mismatch");
+      const counts = Object.freeze(AUTHORITY_TABLE_REGISTRY.map(table => Object.freeze({ table: table.name,
+        count: z.strictObject({ count: z.number().int().safe().nonnegative() }).parse(database.prepare(`SELECT COUNT(*) AS count FROM ${table.name}`).get()).count })));
+      const artifactReferenceCount = readManagedArtifactReferencesFromDatabase(database).length;
+      const empty = counts.every(row => row.table === "database_states" || row.table === "database_upgrades" || row.count === 0) && artifactReferenceCount === 0;
+      owner.assertStoppedIncompleteProfileInventory();
+      return Object.freeze({ authorityGeneration: inspection.authorityGeneration, counts, artifactReferenceCount, empty });
+    });
+  }
+
   static readProfileMaintenanceInventory(admission: RuntimeAdmission) {
     const owner = requireRuntimeAdmission(admission), path = join(owner.stateRoot, "state.db");
     owner.assertLive();

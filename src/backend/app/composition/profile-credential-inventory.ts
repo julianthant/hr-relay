@@ -11,7 +11,7 @@ import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
-import { inspectCredentialKeyCopy, inspectCredentialCopy, assertCredentialStoreOwner, readForErasure, attestStoppedControlCredentials, releaseStoppedControlCredentialAttestation } from "../../storage/configuration/credential-store.js";
+import { isOwnedDraftAbortSource, inspectCredentialKeyCopy, inspectCredentialCopy, assertCredentialStoreOwner, readForErasure, attestStoppedControlCredentials, releaseStoppedControlCredentialAttestation } from "../../storage/configuration/credential-store.js";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readSync, type Stats } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -107,7 +107,7 @@ function observeStoppedControlProcessCustody(processLockRoot: string, admission:
 }
 function assessProfileCredentialCopies(admission: RuntimeAdmission, before: ReturnType<typeof enumerateProfileCredentialMembership>,
   backups: readonly Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[], fields: Readonly<{ capturedSecrets: readonly string[];
-    capturedSecretsComplete: boolean; containsKey(value: unknown): boolean; readonly keyScanOverlap: number; inspectEncrypted(path: string): Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> }>,
+    abortSource?: CredentialInitializationCopyInspection["abortSource"]; capturedSecretsComplete: boolean; containsKey(value: unknown): boolean; readonly keyScanOverlap: number; inspectEncrypted(path: string): Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> }>,
   purpose: CredentialMaintenancePurpose) {
   const root = admission.stateRoot, backupPlaintext: string[] = [], unknownFormats = [...before.unsupported];
   if (purpose.kind === "stopped-control") {
@@ -115,6 +115,7 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
     if (issued.binding.profileId !== admission.profileBinding.profileId || issued.stateRoot !== root) throw new Error("profile-control-upgrade-inventory-owner-mismatch");
   }
       for (const path of [...before.copies, ...before.backupPaths]) {
+        if (isOwnedDraftAbortSource(fields.abortSource, path, admission)) continue;
         const scanned = scanProfileCredentialCopy(path, fields.capturedSecrets, fields), backup = backups.find(value => value.backupPath === path);
         if (backup !== undefined && scanned.digest !== backup.manifest.sha256) throw new Error("profile-inventory-backup-changed");
         let containsSecret = scanned.containsSecret;

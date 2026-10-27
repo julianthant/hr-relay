@@ -13,7 +13,7 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { readRuntimeProcessLock } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import * as accounts from "../../../../../src/backend/accounts/chatgpt-account-service.js";
-import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-session.js";
+import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import * as kernel from "../../../../../src/backend/runs/commands/command-kernel.js";
 import { ProfileStorageRelocationUnsupportedError } from "../../../../../src/backend/storage/admission/admission.js";
 import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";

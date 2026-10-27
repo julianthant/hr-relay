@@ -10,7 +10,8 @@ import { requireLifecycleApplied, RunRecordService } from "../../runs/lifecycle/
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { composeProfileSettings } from "./dashboard/settings.js";
 import { activeSettingsConfig, activeSettingsRuntimeIdentity } from "../../runtime/settings/settings-runtime.js";
-import { createProfileSession, ProfileSessionRefusedError } from "../../profiles/profile-session.js";
+import { createProfileSession } from "../../profiles/profile-session.js";
+import { ProfileSessionRefusedError } from "../../profiles/profile-errors.js";
 import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
 import type { CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
