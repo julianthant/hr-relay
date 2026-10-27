@@ -244,3 +244,24 @@ it("reads a closed incomplete profile inventory without changing source database
   catch (error) { failures.push(error); }
   if (failures.length) throw new AggregateError(failures, "incomplete profile readonly source stability");
 });
+
+it("withdraws a genuine incomplete profile while preserving safe SQLite 0644 custody", async () => {
+  const f = await createHistoricalIncompleteProfileFixture();
+  await using _fixture = { async [Symbol.asyncDispose]() { await f.close(); } };
+  fs.chmodSync(f.databasePath, 0o644);
+  const capture = () => ["", "-wal", "-shm", "-journal"].map(suffix => {
+    const path = f.databasePath + suffix, value = fs.lstatSync(path, { bigint: true, throwIfNoEntry: false });
+    return { suffix, ...(value === undefined ? { absent: true } : {
+      device: String(value.dev), inode: String(value.ino), mode: String(value.mode), size: String(value.size),
+      modified: String(value.mtimeNs), changed: String(value.ctimeNs), digest: digest(path) }) };
+  });
+  const before = capture(), key = digest(f.keyPath), protectedDocument = digest(f.protectedPath);
+  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  using _machine = { [Symbol.dispose]() { machine.release(); } };
+  await machine.reclassifyIncompleteProfileAsDraft(f.profileId);
+  assert.equal(machine.readProfileRegistry().profiles.length, 0);
+  assert.equal(fs.lstatSync(f.databasePath).mode & 0o777, 0o644);
+  assert.deepEqual(capture(), before);
+  assert.equal(digest(f.keyPath), key);
+  assert.equal(digest(f.protectedPath), protectedDocument);
+});

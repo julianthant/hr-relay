@@ -146,7 +146,9 @@ interface PrivateFileOptions {
 
 export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: DirectoryIdentity; stat: Stats } | undefined {
   const { label, maxBytes, allowedLinkCounts = [1] } = options;
-  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || label === "authority database";
+  const database = label === "authority database";
+  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || database;
+  const invalidMode = (mode: number): boolean => database ? (mode & 0o022) !== 0 : (mode & 0o7777) !== CREDENTIAL_FILE_MODE;
   const unavailable = lock ? "directory-integrity: credential lock is unavailable" : `credential store ${label} is unavailable`;
   const invalid = lock ? "directory-integrity: credential lock permissions or identity are invalid" : `directory-integrity: ${label} permissions or identity are invalid`;
   let pathStatus;
@@ -154,7 +156,7 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
   catch (error) { throw new Error(unavailable, { cause: error }); }
   if (pathStatus === undefined) return undefined;
   if (!pathStatus.isFile() || pathStatus.isSymbolicLink() || !allowedLinkCounts.includes(pathStatus.nlink)
-    || ((lock || record) && (pathStatus.mode & 0o7777) !== CREDENTIAL_FILE_MODE)
+    || ((lock || record) && invalidMode(pathStatus.mode))
     || (expectedUid !== undefined && pathStatus.uid !== expectedUid)) {
     throw new Error(lock || record ? invalid : "directory-integrity: protected.json must be one private regular file");
   }
@@ -166,7 +168,7 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
   let primary: { error: unknown } | undefined;
   try {
     const before = fstatSync(descriptor); descriptorIdentity = before;
-    if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || (before.mode & 0o7777) !== CREDENTIAL_FILE_MODE
+    if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || invalidMode(before.mode)
       || (expectedUid !== undefined && before.uid !== expectedUid)
       || (lock && before.size > maxBytes)
       || (record && (before.dev !== pathStatus.dev || before.ino !== pathStatus.ino))) throw new Error(invalid);

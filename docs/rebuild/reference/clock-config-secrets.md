@@ -315,6 +315,12 @@ Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 
 0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
 Each record retains its own transaction and recovery contract.
 
+Credential envelopes, keys, locks, and other private documents require mode `0600`. SQLite file
+witnesses follow the canonical database policy: an owned, one-link, regular non-symlink file with no
+group or world write permission beneath validated private profile ancestry. A safe `0644` database
+retains its mode, bytes, and physical identity during read-only inspection and incomplete-profile
+withdrawal. These reads do not change database permissions.
+
 Duo enrollment binds the exact browser-owned `sender.documentId`: a 32-character hexadecimal token.
 The extension broker, backend broker, and stored scope retain its case and value without UUID
 conversion. Account, operation, and arm identities remain UUIDs. Missing, malformed, foreign, or

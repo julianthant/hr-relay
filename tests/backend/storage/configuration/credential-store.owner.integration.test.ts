@@ -38,6 +38,13 @@ it("requires one private regular authority database for a file witness", () => {
     const options = { label: "authority database" as const, maxBytes: 1024 };
     assert.equal(readPrivateFile(path, options)?.bytes.toString(), "synthetic authority");
     chmodSync(path, 0o644);
+    assert.equal(readPrivateFile(path, options)?.bytes.toString(), "synthetic authority");
+    for (const label of ["protected.json", "lock", "ChatGPT", "Duo credential", "erasure journal"] as const) {
+      assert.throws(() => readPrivateFile(path, { label, maxBytes: 1024 }), /permissions or identity are invalid/u);
+    }
+    chmodSync(path, 0o664);
+    assert.throws(() => readPrivateFile(path, options), /authority database permissions or identity are invalid/u);
+    chmodSync(path, 0o666);
     assert.throws(() => readPrivateFile(path, options), /authority database permissions or identity are invalid/u);
     chmodSync(path, 0o600);
     linkSync(path, alias);
