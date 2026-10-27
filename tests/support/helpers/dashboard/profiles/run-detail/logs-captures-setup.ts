@@ -72,7 +72,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
       { level: "warning", minute: 48, message: "Two candidates share the name Morrow, Bea" },
       { level: "info", minute: 49, message: "identity-review gate opened for candidate selection" },
     ]],
-    [FIXTURE_IDS.gateTypedEidRun, 44, [
+    [FIXTURE_IDS.gateNameMismatchRun, 44, [
       { level: "info", minute: 22, message: "Searching UCPath directory for Morrow, Bea" },
       { level: "warning", minute: 23, message: "The UCPath detail displays a different name for this EID" },
       { level: "info", minute: 24, message: "identity-review gate opened; the EID must be typed" },

@@ -226,13 +226,13 @@ Confirmed-action publication is separate from settlement. `run-executor.ts` publ
 
 The post-gate task verifies the packet digest, approved EID membership, and `chosenFrom` label. It refuses an EID the packet never showed. A supplied-EID packet cannot consume an operator result. Rejection is a failed identity verification and cannot reach a write.
 
-`identity-evidence.ts` produces the decision packet, disagreements-first comparisons, and server-owned `approvalShape`. The packet includes the write plan from `write-plan.ts`; its digest binds the planned values as well as identity. Protected timekeeper values use retained protected-input binding identity in this packet and its digest.
+`identity-evidence.ts` produces the decision packet, disagreements-first comparisons, and server-owned `approvalShape`: `choose-a-candidate` when the packet shows several approvable EIDs, otherwise `one-click`. Disagreeing fields make the served approval confirmation destructive. The packet includes the write plan from `write-plan.ts`; its digest binds the planned values as well as identity. Protected timekeeper values use retained protected-input binding identity in this packet and its digest.
 
 The actual `IdentityApprovalResultSchema` carries the decision, selected EID, choice origin, and evidence digest, or a rejection reason. Actor and instant come from the durable `GateResultRecord` written by the command kernel. Approval cannot be inferred from a browser observation. Fresh staged-page binding remains required in both identity branches.
 
 ### 14.6 Approval ceremony risks
 
-Risk 1 is a client that downgrades the server's required identity ceremony to one-click approval. `src/dashboard/surfaces/run-detail/identity/identity-ceremony.ts` accepts the served `one-click`, `choose-a-candidate`, or `type-the-eid` shape and refuses unknown or contradictory packets. Candidate choice has no default selection. Only the operator's decision is composed locally; the EID origin and evidence digest come from the served packet.
+Risk 1 is a client that downgrades the server's required identity ceremony to one-click approval. `src/dashboard/surfaces/run-detail/identity/identity-ceremony.ts` accepts the served `one-click` or `choose-a-candidate` shape and refuses unknown or contradictory packets. Candidate choice has no default selection. The dashboard serves and composes approvals only; it offers no rejection. Only the operator's decision is composed locally; the EID origin and evidence digest come from the served packet.
 
 `src/rules/separations/identity-approval.ts` remains the authority: an unshown EID, changed evidence digest, contradictory origin, rejection, or missing required approval refuses before a write. Fresh page binding separately prevents an approved person from being replaced by a different staged subject.
 

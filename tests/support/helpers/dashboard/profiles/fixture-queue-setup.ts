@@ -402,7 +402,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
     failedRun: uuidOf(4),
     openGateRun: uuidOf(5),
 
-    gateTypedEidRun: uuidOf(44),
+    gateNameMismatchRun: uuidOf(44),
     parkedRun: uuidOf(6),
     cancelledRun: uuidOf(7),
     partialRun: uuidOf(8),

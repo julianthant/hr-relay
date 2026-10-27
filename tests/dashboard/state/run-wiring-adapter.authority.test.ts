@@ -143,9 +143,8 @@ describe("served Logs decision authority", () => {
     assert.equal(sent.length, 0);
   });
 
-  it("keeps typed-EID approval and rejection unavailable", () => {
-    const typed = servedGate(fixtures.TYPE_EID);
-    assert.deepEqual(gateLogActions(typed), []);
+  it("offers a name-mismatch gate as a pick and never a rejection", () => {
+    assert.equal(gateLogActions(servedGate(fixtures.NAME_MISMATCH))[0]?.input?.kind, "candidate");
     const oneClick = servedGate(fixtures.ONE_CLICK);
     assert.deepEqual(gateLogActions({ ...oneClick, actions: [{ ...identityApprovalAction("Reject"), key: "resolve-gate-rejected", resolution: "rejected", confirm: CONFIRM }] }), []);
   });
