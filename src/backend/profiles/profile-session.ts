@@ -452,9 +452,6 @@ export function createProfileSession(input: {
       operation = admission.beginProfileSignUp({
         emailKey, firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
       });
-      operation = { ...operation, onboarding: { accountId: randomUUID(), generation: 1, attempts: [],
-        duo: { state: "never-initialized", profileId: operation.profileId, revision: 0 } } };
-      writeOperation(operation);
     }
     if (operation.onboarding === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && operation.onboarding.finish !== undefined)) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     if (operation.onboarding.abort !== undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
