@@ -196,7 +196,7 @@ it("unknown enrollment copy never directs adding the uncertain method again", as
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
     assert.equal(host.querySelector("h1")?.textContent, "Security key");
-    assert.match(host.textContent ?? "", /Security key · Failed/);
+    assert.match(host.textContent ?? "", /Security keyFailed/);
     assert.doesNotMatch(host.textContent ?? "", /outcome unknown|Needs review|may already have been added/);
     assert.match(host.textContent ?? "", /without repeating this attempt/);
     assert.doesNotMatch(host.textContent ?? "", /Security key is next|Start with a security key|then add a security key|Security key and Touch ID not added/);
@@ -211,7 +211,7 @@ it("unknown enrollment copy never directs adding the uncertain method again", as
       const currentPort = { ...port, unavailable: false, onboarding: { ...onboarding, methods: { ...onboarding.methods, key: { ...onboarding.methods.key, state } } } };
       await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: currentPort })));
       assert.equal(host.querySelector("h1")?.textContent, "Security key");
-      assert.match(host.textContent ?? "", state === "pending" ? /Security key · Pending/ : /Security key · Failed/);
+      assert.match(host.textContent ?? "", state === "pending" ? /Security keyPending/ : /Security keyFailed/);
       assert.doesNotMatch(host.textContent ?? "", /Start with a security key|Next, add a security key/);
     }
   } finally { await act(async () => root.unmount()); host.remove(); }
@@ -231,7 +231,7 @@ it("both served setup pages keep method outcomes visible without offering anothe
         start: async () => { calls.push("start"); return unavailable(); }, confirmDuo: unavailable, submit: unavailable };
       await act(async () => root.render(createElement(OnboardingSetup, { page, port })));
       const row = host.querySelector(page === "fast" ? ".method-list li" : ".device-row"); assert.ok(row);
-      assert.equal(row.querySelector(page === "fast" ? "small" : "p")?.textContent, label);
+      assert.equal(row.querySelector(page === "fast" ? ".duo-method-pill" : "p")?.textContent, label);
       assert.doesNotMatch(host.textContent ?? "", /Not added|Needs review|outcome unknown/);
       assert.match(host.querySelector(".sr-only")?.textContent ?? "", new RegExp(`Security key: ${label}`));
       if (state === "unknown" || state === "unavailable") {
@@ -242,5 +242,35 @@ it("both served setup pages keep method outcomes visible without offering anothe
         if (page === "fast") assert.match(host.textContent ?? "", /without repeating this attempt/);
       }
     }
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("selects Fast Duo cards through the device selector and blocks selection while a method is pending or busy", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const idle = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+  const draft = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: idle, touch: idle } };
+  const unused = async (): Promise<never> => { throw new Error("unexpected command"); };
+  let settle!: (value: typeof draft) => void;
+  const port: ServedOnboardingPort = { source: "served", onboarding: draft, validate: mockOnboardingPort.validate, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, showBrowser: unused, openPortal: () => new Promise(resolve => { settle = resolve; }) };
+  const cards = () => [...host.querySelectorAll<HTMLButtonElement>(".method-card")];
+  try {
+    await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port })));
+    assert.equal(cards().length, 2);
+    assert.equal(host.querySelector(".method-heading")?.textContent, "Relay sign-in methods0 of 2 completed");
+    await act(async () => cards()[1].click());
+    assert.equal(cards()[1].getAttribute("aria-pressed"), "true");
+    const select = host.querySelector<HTMLSelectElement>("#device-type"); assert.ok(select);
+    assert.equal(select.value, "touch");
+    await act(async () => { select.value = "key"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
+    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open duo.ucsd.edu")!.click());
+    assert.ok(cards().every(card => card.disabled)); assert.equal(select.disabled, true);
+    await act(async () => settle(draft));
+    assert.ok(cards().every(card => !card.disabled));
+    await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port: { ...port, onboarding: { ...draft, methods: { key: idle, touch: { ...idle, state: "pending", attemptId: "00000000-0000-4000-8000-000000000003" } } } } })));
+    assert.ok(cards().every(card => card.disabled)); assert.equal(select.disabled, true);
+    await act(async () => cards()[1].click());
+    assert.equal(select.value, "key");
+    assert.equal(cards()[1].querySelector(".duo-method-pill")?.textContent, "Pending");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

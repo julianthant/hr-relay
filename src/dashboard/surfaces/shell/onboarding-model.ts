@@ -86,6 +86,21 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
 }
 
 export const duoMethodLabels = Object.freeze({ idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Failed", unavailable: "Failed" });
+export function duoMethodPresentation(method: keyof DuoMethods, state: keyof typeof duoMethodLabels) {
+  const failed = state === "unknown" || state === "unavailable";
+  return {
+    note: state === "complete" ? "This sign-in method is verified. No further enrollment is needed."
+      : failed ? "Relay could not confirm that setup completed. Review your Duo devices; do not repeat this attempt."
+      : state === "pending" ? method === "key" ? "Waiting for Duo security key enrollment." : "Waiting for native Touch ID."
+      : method === "key" ? "Fast Duo creates the software key only when Duo requests it." : "Uses the native Mac prompt, with software interception disabled.",
+    track: [
+      { label: "Started", tone: state === "idle" ? "off" : "complete" },
+      { label: failed ? "Not confirmed" : "Added in Duo", tone: failed ? "failed" : state === "idle" ? "off" : state },
+      { label: "Confirmed by Relay", tone: state === "complete" ? "complete" : "off" },
+    ],
+  };
+}
+
 export function duoSummary(methods: DuoMethods, draft?: ProfileOnboardingState): string {
   if (draft) return `Security key: ${duoMethodLabels[draft.methods.key.state]} · Touch ID: ${duoMethodLabels[draft.methods.touch.state]}`;
   if (methods.key && methods.touch) return "Security key and Touch ID ready";
