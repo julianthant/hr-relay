@@ -1,4 +1,5 @@
-import { finishProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
+import { createHistoricalIncompleteProfileFixture } from '../../../support/fixtures/storage/historical-incomplete-profile-fixture.js';
+import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import nativeFs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { createSyntheticProfileSession as createProfileSession } from "../../../support/helpers/admission-fixture.js";
@@ -20,7 +21,7 @@ import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { createDuoCredentialStore, DuoCredentialCommitUncertainError, DuoPublicationCaptureSchema, duoStagePath } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
+import { createDuoCredentialStore, createDraftDuoCredentialStore, DuoCredentialCommitUncertainError, DuoPublicationCaptureSchema, duoStagePath } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
 import { issueDuoCredentialPurpose, openDuoCredentialDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { DuoCredentialDocumentSchema } from "../../../../src/models/config/duo-credential-store.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -29,6 +30,10 @@ import { createBoundProfileFixture } from "../../../support/helpers/admission-fi
 async function setup(options: { sharedMachine?: true } = {}) {
   const fixture = await createBoundProfileFixture(options), clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
   const store = createDuoCredentialStore(fixture.admission, fixture.machine, clock);
+  const baseline = store.read();
+  assert.equal(baseline.state, 'initialized');
+  assert.equal(baseline.revision, 2);
+  assert.deepEqual(baseline.credentials.map(({ state, highWater }) => ({ state, highWater })), [{ state: 'ready', highWater: 0 }]);
   const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const input = { credentialId: Buffer.from(randomUUID()).toString("base64url"),
     scope: { armId: randomUUID(), contextId: randomUUID(), tabId: 1, accountId: randomUUID(), origin: "https://login.duosecurity.com", rpId: "duosecurity.com",
@@ -36,26 +41,54 @@ async function setup(options: { sharedMachine?: true } = {}) {
     privateKeyPkcs8: key.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
     publicKeySpki: key.publicKey.export({ type: "spki", format: "der" }).toString("base64") };
   const path = join(fixture.machine.stateRoot, "machine", "duo-credentials", `${fixture.admission.profileBinding.profileId}.json`);
-  return { ...fixture, clock, store, input, documentPath: path };
+  return { ...fixture, clock, store, baseline, input, documentPath: path };
 }
 
 it("durably stages pending enrollment before acknowledgement and holds signing until exact confirmation", async () => {
+  const pending = await createBoundProfileFixture({ pending: true });
+  const clock = manualClock(new Date());
+  const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu",
+      password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
+  const provider = syntheticOnboardingDuo(() => fields.email);
+  let observedNeverInitialized = false;
+  const session = createProfileSession({ onboardingDuo: { ...provider,
+      async start(attempt, bind, reportFailure) {
+        if (attempt.method === 'key') {
+          const store = createDraftDuoCredentialStore(pending.admission, pending.machine, attempt.operationId, attempt.generation, clock);
+          assert.deepEqual(store.read(), { state: 'never-initialized', revision: 0, credentials: [] });
+          observedNeverInitialized = true;
+        }
+        await provider.start(attempt, bind, reportFailure);
+      } }, admission: pending.machine, machineRoot: pending.machine.stateRoot,
+    initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: pending.machine, admission: child,
+      clock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
+    repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine: pending.machine, admission: child,
+      clock, hostFacts: { primaryDisplay: null } })(request, writer, copies) });
+  try {
+    const draft = session.signUp(fields);
+    assert.equal(draft.state, 'onboarding');
+    if (draft.state !== 'onboarding') throw new Error('draft-not-issued');
+    await session.startOnboardingDuo(draft.token, draft.operationId, 'key');
+    assert.equal(observedNeverInitialized, true);
+  } finally { await session.close(); await pending.close(); }
   const f = await setup();
   try {
     const registry = readFileSync(join(f.machine.stateRoot, "machine", "profiles.json"));
     const protectedBytes = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
-    assert.deepEqual(f.store.read(), { state: "never-initialized", revision: 0, credentials: [] });
-    assert.equal(f.store.enroll(f.input).revision, 1);
+    assert.deepEqual(f.store.read(), f.baseline);
+    assert.equal(f.store.enroll(f.input).revision, f.baseline.revision + 1);
     const bytes = readFileSync(f.documentPath);
     assert.equal(bytes.includes(f.input.privateKeyPkcs8), false);
-    assert.deepEqual(f.store.read().credentials.map(row => row.state), ["pending"]);
+    assert.deepEqual(f.store.read().credentials, [...f.baseline.credentials, { credentialId: f.input.credentialId, state: 'pending', highWater: 0 }]);
     assert.throws(() => f.store.reserve(f.input.credentialId), /duo-ready-credential-required/u);
     assert.throws(() => f.store.confirm("foreign", f.input.scope), /duo-pending-credential-mismatch/u);
     assert.throws(() => f.store.confirm(f.input.credentialId, { ...f.input.scope, tabId: 2 }), /duo-pending-credential-mismatch/u);
-    assert.equal(f.store.confirm(f.input.credentialId, f.input.scope).revision, 2);
+    assert.equal(f.store.confirm(f.input.credentialId, f.input.scope).revision, f.baseline.revision + 2);
+    assert.deepEqual(f.store.read().credentials, [...f.baseline.credentials, { credentialId: f.input.credentialId, state: 'ready', highWater: 0 }]);
     const first = f.store.reserve(f.input.credentialId), second = f.store.reserve(f.input.credentialId);
     assert.equal(first.count, Math.floor(f.clock.nowMs() / 1000));
     assert.equal(second.count, first.count + 1); assert.notEqual(first.attemptId, second.attemptId);
+    assert.deepEqual(f.store.read().credentials, [...f.baseline.credentials, { credentialId: f.input.credentialId, state: 'ready', highWater: second.count }]);
     assert.equal(readFileSync(join(f.machine.stateRoot, "machine", "profiles.json")).equals(registry), true);
     assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).equals(protectedBytes), true);
     assert.throws(() => f.store.confirm(f.input.credentialId, f.input.scope), /duo-pending-credential-mismatch/u);
@@ -95,8 +128,12 @@ it("explicit erasure retires identities and counters without reviving a retired 
   const f = await setup();
   try {
     f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope); f.store.reserve(f.input.credentialId);
+    const beforeErase = f.store.read();
+    assert.deepEqual(beforeErase.credentials.filter(row => row.credentialId !== f.input.credentialId), f.baseline.credentials);
     const revision = f.store.erase().revision;
+    assert.equal(revision, beforeErase.revision + 1);
     assert.deepEqual(f.store.read(), { state: "erased", revision, credentials: [] });
+    for (const credential of f.baseline.credentials) assert.throws(() => f.store.reserve(credential.credentialId), /duo-ready-credential-required/u);
     assert.throws(() => f.store.reserve(f.input.credentialId), /duo-ready-credential-required/u);
     assert.throws(() => f.store.enroll(f.input), /duo-credential-id-reused/u);
   } finally { await f.close(); }
@@ -127,10 +164,10 @@ it("authenticates encrypted payloads with the issued anchored key and distinct p
     const bytes = readFileSync(f.documentPath), envelope = JSON.parse(bytes.toString("utf8")) as { tag: string };
     const tag = Buffer.from(envelope.tag, "base64"); tag[0] = (tag[0] ?? 0) ^ 1;
     const corrupted = Buffer.from(JSON.stringify({ ...envelope, tag: tag.toString("base64") }));
-    assert.throws(() => openDuoCredentialDocument(purpose, corrupted, 1), /duo-document-authentication-failed/u);
-    assert.throws(() => openDuoCredentialDocument(purpose, bytes, 2), /duo-envelope-binding-mismatch/u);
-    assert.throws(() => openDuoCredentialDocument({ profileId: purpose.profileId }, bytes, 1), /duo-purpose-unissued/u);
-    assert.equal(f.store.read().revision, 1);
+    assert.throws(() => openDuoCredentialDocument(purpose, corrupted, f.baseline.revision + 1), /duo-document-authentication-failed/u);
+    assert.throws(() => openDuoCredentialDocument(purpose, bytes, f.baseline.revision + 2), /duo-envelope-binding-mismatch/u);
+    assert.throws(() => openDuoCredentialDocument({ profileId: purpose.profileId }, bytes, f.baseline.revision + 1), /duo-purpose-unissued/u);
+    assert.equal(f.store.read().revision, f.baseline.revision + 1);
   } finally { await f.close(); }
 });
 
@@ -143,38 +180,38 @@ it("fails closed at uint32 exhaustion without changing the last committed count"
     const before = readFileSync(f.documentPath);
     assert.throws(() => f.store.reserve(f.input.credentialId), /duo-counter-exhausted/u);
     assert.equal(readFileSync(f.documentPath).equals(before), true);
-    assert.equal(f.store.read().credentials[0]?.highWater, 0xffff_ffff);
+    assert.equal(f.store.read().credentials.find(row => row.credentialId === f.input.credentialId)?.highWater, 0xffff_ffff);
+    assert.deepEqual(f.store.read().credentials.filter(row => row.credentialId !== f.input.credentialId), f.baseline.credentials);
   } finally { await f.close(); }
 });
 
 const retainedStoppedControlSetupOwners = new Set<object>();
 async function stoppedControlFixture(retainedCredential?: unknown) {
-  const held: { fixture?: Awaited<ReturnType<typeof createBoundProfileFixture>>; restore?: ReturnType<typeof acquireRuntimeRestoreAdmission>;
+  const held: { fixture?: Awaited<ReturnType<typeof createHistoricalIncompleteProfileFixture>>; restore?: ReturnType<typeof acquireRuntimeRestoreAdmission>;
     upgrade?: ReturnType<typeof acquireStoppedProfileControlUpgrade>; primary?: unknown } = {};
   retainedStoppedControlSetupOwners.add(held);
   try {
-    const fixture = await createBoundProfileFixture();
+    const fixture = await createHistoricalIncompleteProfileFixture();
     held.fixture = fixture;
-    const profileId = fixture.admission.profileBinding.profileId;
-    if (retainedCredential !== undefined) writeFileSync(join(fixture.stateRoot, "credentials", "duo-webauthn.json"), JSON.stringify(retainedCredential), { mode: 0o600 });
-    const controlPath = join(fixture.workspace, ".tracker", "control", "profile-registry.json");
-    const markerPath = join(fixture.machine.stateRoot, "machine", "profile-registry-version.json");
+    const profileId = fixture.profileId;
+    if (retainedCredential !== undefined) writeFileSync(join(fixture.profileRoot, "credentials", "duo-webauthn.json"), JSON.stringify(retainedCredential), { mode: 0o600 });
+    const controlPath = fixture.controlPath;
+    const markerPath = fixture.markerPath;
     const current = JSON.parse(readFileSync(controlPath, "utf8")) as { schemaVersion: number; duo: Array<{ state: string }> };
     assert.equal(current.schemaVersion, 2);
     assert.ok(current.duo.every(row => row.state === "never-initialized"));
+    assert.deepEqual(current.duo, [{ profileId, state: 'never-initialized', revision: 0 }]);
     const { duo: _duo, ...prior } = current;
-    fixture.admission.release(); fixture.machine.release();
     writeFileSync(controlPath, JSON.stringify({ ...prior, schemaVersion: 1 }));
     writeFileSync(markerPath, JSON.stringify({ schemaVersion: 2 }));
-    const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
+    const processLockRoot = fixture.processLockRoot;
     const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
     held.restore = restore;
-      const upgrade = acquireStoppedProfileControlUpgrade(fixture.workspace, restore);
-      held.upgrade = upgrade;
-      retainedStoppedControlSetupOwners.delete(held);
-      return { ...fixture, profileId, controlPath, upgrade, restore,
-        async close() { upgrade.release(); restore.release(); await fixture.close(); } };
-
+    const upgrade = acquireStoppedProfileControlUpgrade(fixture.workspace, restore);
+    held.upgrade = upgrade;
+    retainedStoppedControlSetupOwners.delete(held);
+    return { ...fixture, stateRoot: fixture.profileRoot, path: fixture.databasePath, profileId, controlPath, upgrade, restore,
+      async close() { upgrade.release(); restore.release(); await fixture.close(); } };
 
   } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
@@ -411,11 +448,12 @@ it("reserves increasing counts in independent processes and burns a committed at
     const [a, b] = await Promise.all([first.reserve(), second.reserve()]);
     assert.equal(Math.max(a.count, b.count), Math.min(a.count, b.count) + 1); assert.notEqual(b.attemptId, a.attemptId);
     await first.crashAfterReservation();
-    const burned = f.store.read().credentials[0]; assert.ok(burned);
+    const burned = f.store.read().credentials.find(row => row.credentialId === f.input.credentialId); assert.ok(burned);
     assert.equal(burned.highWater, Math.max(a.count, b.count) + 1);
     const restarted = await duoChild(f); children.push(restarted);
     const c = await restarted.reserve(); assert.equal(c.count, burned.highWater + 1);
-    assert.equal(f.store.read().credentials[0]?.highWater, c.count);
+    assert.equal(f.store.read().credentials.find(row => row.credentialId === f.input.credentialId)?.highWater, c.count);
+    assert.deepEqual(f.store.read().credentials.filter(row => row.credentialId !== f.input.credentialId), f.baseline.credentials);
   } catch (error) { primary = { error }; retained.primary = primary; }
   const closed = await Promise.allSettled(children.map(child => child.close()));
   const failures: unknown[] = [];
@@ -442,7 +480,7 @@ it("recovers an interrupted Duo publication only for the issued claim and keeps 
     assert.throws(() => other.recoverInterruptedPublication(), /duo-transaction-unissued/u);
     assert.throws(() => other.read(), /duo-publication-pending/);
     f.store.recoverInterruptedPublication();
-    const burned = f.store.read().credentials[0];
+    const burned = f.store.read().credentials.find(row => row.credentialId === f.input.credentialId);
     assert.ok(burned);
     assert.equal(f.store.reserve(f.input.credentialId).count, burned.highWater + 1);
     assert.throws(() => f.store.recoverInterruptedPublication(), /duo-transaction-unissued/u);
@@ -627,7 +665,7 @@ it("finishes one interrupted Duo publication after the producing process exits a
     retained.admission = admission;
     {
       const reopened = createDuoCredentialStore(admission, machine, f.clock);
-      const burned = reopened.read().credentials[0];
+      const burned = reopened.read().credentials.find(row => row.credentialId === f.input.credentialId);
       assert.ok(burned);
       assert.equal(burned.highWater >= Math.floor(f.clock.nowMs() / 1000), true);
       const next = reopened.reserve(f.input.credentialId);
@@ -673,13 +711,16 @@ it("refuses unmanaged Duo copies, then backup erase and restore keep burned coun
     const second = f.store.reserve(f.input.credentialId);
     assert.equal(second.count, first.count + 1);
     assert.throws(() => f.store.restore(backupPath), /duo-purpose-restore-lowers-burned-count/u);
-    assert.equal(f.store.read().credentials[0]?.highWater, second.count);
+    assert.equal(f.store.read().credentials.find(row => row.credentialId === f.input.credentialId)?.highWater, second.count);
+    assert.deepEqual(f.store.read().credentials.filter(row => row.credentialId !== f.input.credentialId), f.baseline.credentials);
     const purpose = issueDuoCredentialPurpose(f.admission, f.machine);
     const currentRevision = f.store.read().revision;
     const currentDocument = openDuoCredentialDocument(purpose, readFileSync(f.documentPath), currentRevision);
     const backedUpDocument = openDuoCredentialDocument(purpose, readFileSync(backupPath), backedUp.revision);
-    assert.equal(currentDocument.credentials.length, 1);
-    assert.equal(backedUpDocument.credentials.length, 1);
+    assert.equal(currentDocument.credentials.length, f.baseline.credentials.length + 1);
+    assert.deepEqual(currentDocument.credentials.filter(row => row.credentialId !== f.input.credentialId).map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })), f.baseline.credentials);
+    assert.equal(backedUpDocument.credentials.length, f.baseline.credentials.length + 1);
+    assert.deepEqual(backedUpDocument.credentials.filter(row => row.credentialId !== f.input.credentialId).map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })), f.baseline.credentials);
     assert.throws(() => f.store.restore(f.path), /duo-purpose-restore-unmanaged/u);
     const enginePath = join(f.stateRoot, "credentials", "duo-webauthn.json");
     const engineBefore = existsSync(enginePath) ? readFileSync(enginePath) : Buffer.from("{\"activeEngine\":true}\n");
@@ -717,6 +758,7 @@ it("refuses unmanaged Duo copies, then backup erase and restore keep burned coun
     const reopened = createDuoCredentialStore(f.admission, f.machine, f.clock);
     assert.deepEqual(reopened.read().credentials, []);
     assert.throws(() => reopened.reserve(f.input.credentialId), /duo-ready-credential-required/u);
+    for (const credential of f.baseline.credentials) assert.throws(() => reopened.reserve(credential.credentialId), /duo-ready-credential-required/u);
     assert.equal(readFileSync(enginePath).equals(engineBefore), true);
   } finally { await f.close(); }
 });
