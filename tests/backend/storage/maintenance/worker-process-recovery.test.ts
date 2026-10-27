@@ -7,7 +7,7 @@ const acquisitionId = "00000000-0000-4000-8000-000000000001";
 function receiptFixture() {
   const workspace = "/synthetic/relay", state = `${workspace}/.tracker/data`, processLockRoot = `${state}/locks`;
   const witness = (path: string) => ({ path, device: 1, inode: 2, digest: "a".repeat(64) });
-  const capture = { workspace, installationId: acquisitionId, processLockRoot,
+  const capture = { singletonClaims: [], workspace, installationId: acquisitionId, processLockRoot,
     original: { schemaVersion: 3, name: "workers", workerId: "synthetic-worker", pid: 123,
       processIdentity: { platform: "darwin", startToken: "123" }, acquisitionId,
       acquiredAt: "2026-10-18T05:47:55.967Z", releasedAt: null },

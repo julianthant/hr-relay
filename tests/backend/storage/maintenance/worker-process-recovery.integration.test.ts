@@ -11,7 +11,7 @@ import { afterEach, it, vi } from "vitest";
 import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 import { runOfflineWorkerProcessRecovery } from "../../../../src/backend/storage/maintenance/worker-process-recovery.js";
 import { profileProcessQuery } from "../../../../src/backend/storage/maintenance/process-closure.js";
-import { inspectRuntimeProcessOrphans, inspectStoppedDeviceRecertificationCustody, workerProcessRecoveryProved, observeProcessIdentity, WorkerProcessLockFileSchema, WORKER_PROCESS_RECOVERY_DIRECTORY } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock, validateWorkerProcessRecoveryReceipt, inspectRuntimeProcessOrphans, inspectStoppedDeviceRecertificationCustody, workerProcessRecoveryProved, observeProcessIdentity, WorkerProcessLockFileSchema, WORKER_PROCESS_RECOVERY_DIRECTORY } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireStorageBackupEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { captureExistingDataOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
@@ -53,6 +53,49 @@ function fixture(options: Parameters<typeof createHistoricalFlatProfileFixture>[
     stdout: command === "/bin/ps" ? ` ${process.pid} synthetic-proof\n` : `p${process.pid}\nfcwd\ntDIR\nn/synthetic-other-root\n` }));
   return { ...f, acquisitionId, path, plan, apply, unchanged, receipt: join(f.processLockRoot, WORKER_PROCESS_RECOVERY_DIRECTORY, `${acquisitionId}.json`) };
 }
+
+function deadSingletonClaims(f: ReturnType<typeof fixture>) {
+  const owner = WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(f.path, "utf8")));
+  return (["server", "live-smoke", "geocode"] as const).map(role => {
+    const handle = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: role, pid: owner.pid }, systemClock,
+      { observeProcessIdentity: () => ({ state: "alive", identity: owner.processIdentity }) });
+    const path = join(f.processLockRoot, `${role}-claims`, `${handle.generation}.claim.json`);
+    return { role, acquisitionId: handle.acquisitionId, pid: owner.pid, generation: handle.generation, path, bytes: readFileSync(path), inode: statSync(path).ino };
+  });
+}
+
+it("plans and applies proved-gone unreleased singleton claims with bound receipt evidence and unchanged files", () => {
+  const f = fixture(), claims = deadSingletonClaims(f), plan = f.plan();
+  assert.equal(plan.report.state, "planned"); assert.equal(existsSync(f.receipt), false);
+  assert.equal(f.apply(plan.report.captureDigest).report.state, "recovered");
+  const receipt = validateWorkerProcessRecoveryReceipt(JSON.parse(readFileSync(f.receipt, "utf8")));
+  assert.deepEqual(receipt.capture.singletonClaims.map(({ role, generation, acquisitionId, pid, observation }) =>
+    ({ role, generation, acquisitionId, pid, observation })), claims.map(({ role, generation, acquisitionId, pid }) =>
+    ({ role, generation, acquisitionId, pid, observation: { state: "gone" } })));
+  for (const claim of claims) {
+    assert.deepEqual(readFileSync(claim.path), claim.bytes); assert.equal(statSync(claim.path).ino, claim.inode);
+    assert.deepEqual(readdirSync(join(f.processLockRoot, `${claim.role}-claims`)), [`${claim.generation}.claim.json`]);
+  }
+  f.unchanged();
+  assert.equal(f.apply(plan.report.captureDigest).report.state, "already-recovered");
+});
+
+it("refuses a gone singleton claim changed between plan and apply", () => {
+  const f = fixture(), claims = deadSingletonClaims(f), plan = f.plan();
+  const claim = claims[0]; assert.ok(claim);
+  writeFileSync(claim.path, `${claim.bytes.toString("utf8")}\n`);
+  assert.notEqual(f.plan().report.captureDigest, plan.report.captureDigest);
+  assert.throws(() => f.apply(plan.report.captureDigest), /worker-process-recovery-capture-changed/u);
+  assert.equal(existsSync(f.receipt), false); f.unchanged();
+});
+
+it("refuses a live singleton owner before planning recovery", () => {
+  const f = fixture();
+  const lock = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "server", pid: process.pid });
+  try { assert.throws(() => f.plan(), /worker-process-recovery-(other-owner-unreleased|runtime-active)/u); }
+  finally { lock.release(); }
+  assert.equal(existsSync(f.receipt), false); f.unchanged();
+});
 
 it("plans without mutation, recovers a native6 flat installation without registry, and admits existing backup while preserving original custody/history", async () => {
   const f = fixture();

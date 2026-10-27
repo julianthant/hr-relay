@@ -43,7 +43,8 @@ function runtimeCustody(capture: WorkerProcessRecoveryCapture, clock: Clock) {
   const root = capture.processLockRoot;
   const snapshot = observeRuntimeLockSnapshot({ processLockRoot: root, sourceDatabaseIdentity: authoritySourceDatabaseIdentity(join(capture.roots[0].path, "state.db")) }, clock);
   if (Object.values(snapshot.processLocks).some(lock => lock.state !== "stopped")) refuse("runtime-active");
-  assertWorkerProcessRecoveryRuntimeStopped(root, capture.original.acquisitionId);
+  const singletonClaims = assertWorkerProcessRecoveryRuntimeStopped(root, capture.original.acquisitionId);
+  if (!same(singletonClaims, capture.singletonClaims)) refuse("capture-changed");
   const membership: unknown[] = [];
   for (const name of ["server-claims", "live-smoke-claims", "geocode-claims", "workers"]) {
     const directory = join(root, name), info = lstatSync(directory, { throwIfNoEntry: false });

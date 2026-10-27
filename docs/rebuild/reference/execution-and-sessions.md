@@ -280,7 +280,9 @@ fresh gone-owner and process/open-file/cwd observations, and independently close
 lease/browser/Duo/control/run/write custody. Unresolved HR writes remain held. Changed sources,
 unknown observations or failed resource closure refuse. Existing backup and claim consumers retain
 their current native and owner proofs. Finite stopped device recertification still requires released
-worker records.
+worker records. Unreleased singleton claims are admissible only when the normal process start-identity
+check proves their owners gone; live or unprovable owners refuse. Their identities, file witnesses and
+observations are bound into the capture and receipt without changing any claim file.
 
 Receipts live in the fixed lock root's `worker-process-recovery/` directory. Publication uses a
 private staged file, no-overwrite link, stage removal and directory fsync. A crash before the sole

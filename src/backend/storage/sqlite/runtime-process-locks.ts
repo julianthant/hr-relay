@@ -92,8 +92,14 @@ export type WorkerProcessLockFile = z.infer<typeof WorkerProcessLockFileSchema>;
 const ProcessCustodyFileSchema = z.strictObject({ path: z.string().min(1), device: z.number().int().nonnegative(),
   inode: z.number().int().nonnegative(), digest: FingerprintSchema });
 const ProcessCustodyRootSchema = ProcessCustodyFileSchema.omit({ digest: true }).extend({ mode: z.number().int(), owner: z.number().int().nonnegative() });
+const RecoverySingletonClaimSchema = z.strictObject({ role: z.enum(["server", "live-smoke", "geocode"]),
+  generation: PositiveIntSchema, acquisitionId: z.uuid(), pid: PositiveIntSchema, processIdentity: ProcessStartIdentitySchema,
+  observation: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("gone") }),
+    z.strictObject({ state: z.literal("alive"), identity: ProcessStartIdentitySchema })]), file: ProcessCustodyFileSchema })
+  .refine(claim => claim.observation.state === "gone" || !processIdentityEquals(claim.processIdentity, claim.observation.identity));
 export const WorkerProcessRecoveryCaptureSchema = z.strictObject({ workspace: z.string().min(1), installationId: z.uuid(),
   processLockRoot: z.string().min(1), original: WorkerProcessLockFileSchema, file: ProcessCustodyFileSchema,
+  singletonClaims: z.array(RecoverySingletonClaimSchema),
   witnesses: z.array(ProcessCustodyFileSchema).length(4), roots: z.tuple([ProcessCustodyRootSchema, ProcessCustodyRootSchema, ProcessCustodyRootSchema]) });
 export type WorkerProcessRecoveryCapture = z.infer<typeof WorkerProcessRecoveryCaptureSchema>;
 export const WorkerProcessRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1),
@@ -724,12 +730,24 @@ export function validateWorkerProcessRecoveryReceipt(input: unknown) {
   return receipt;
 }
 
-export function assertWorkerProcessRecoveryRuntimeStopped(root: string, acquisitionId: string): void {
+export function assertWorkerProcessRecoveryRuntimeStopped(root: string, acquisitionId: string, observer: ProcessIdentityObserver = observeProcessIdentity) {
+  const singletonClaims: z.infer<typeof RecoverySingletonClaimSchema>[] = [];
   for (const role of ["server", "live-smoke", "geocode"] as const) {
-    if (readSingletonClaims(root, role).some(record => record.releasedAt === null)) throw new Error("worker-process-recovery-other-owner-unreleased");
+    for (const record of readSingletonClaims(root, role)) {
+      if (record.releasedAt !== null) continue;
+      const observation = observer(record.pid);
+      if (recordOwnerIsAlive(record, () => observation)) throw new Error("worker-process-recovery-other-owner-unreleased");
+      const file = readProcessCustodyFile(join(root, `${role}-claims`, `${record.generation}.claim.json`));
+      if (canonicalJsonStringify(CurrentRuntimeProcessLockFileSchema.parse(JSON.parse(file.bytes.toString("utf8")))) !== canonicalJsonStringify(record)) {
+        throw new Error("worker-process-recovery-source-changed");
+      }
+      singletonClaims.push(RecoverySingletonClaimSchema.parse({ role, generation: record.generation, acquisitionId: record.acquisitionId,
+        pid: record.pid, processIdentity: record.processIdentity, observation, file: file.witness }));
+    }
   }
   for (const record of iterateWorkerProcessLocks(root)) if (record.releasedAt === null && record.acquisitionId !== acquisitionId
-    && !workerProcessRecoveryProved(root, record)) throw new Error("worker-process-recovery-other-owner-unreleased");
+    && !workerProcessRecoveryProved(root, record, observer)) throw new Error("worker-process-recovery-other-owner-unreleased");
+  return singletonClaims;
 }
 
 export function workerProcessRecoveryProved(root: string, record: WorkerProcessLockFile, observer: ProcessIdentityObserver = observeProcessIdentity): boolean {
