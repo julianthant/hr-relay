@@ -280,6 +280,7 @@ it("backs up native6 records and retained 0644 data into private copies without 
     assert.equal(backup.sourceStateRoot, f.stateRoot);
     assert.ok(backup.files.some(entry => entry.path === "profile/credentials/protected.json"));
     assert.ok(backup.files.some(entry => entry.path === "profile/.runtime-owner.json"));
+    assert.ok(backup.files.some(entry => entry.path === `profile/artifacts/${f.artifact.split("/").at(-1) ?? ""}`));
     for (const [index, path] of paths.entries()) {
       assert.deepEqual(readFileSync(path), before[index]?.bytes);
       assert.equal(statSync(path).mode, before[index]?.identity.mode);

@@ -154,7 +154,7 @@ export async function backupExistingData(machine: RuntimeAdmission, admission: R
     if (backups.length !== membership.backupPaths.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("existing-data-backup-source-membership-unproved");
     const { decodeStoredArtifact } = await import("../artifacts/content-addressed-artifact-writer.js");
     for (const reference of sourceFacts.artifactReferences) {
-      const stored = decodeStoredArtifact(JSON.parse(file(join(admission.artifactRoot, `${reference.sha256}.artifact`)).bytes.toString("utf8")), reference.sha256);
+      const stored = decodeStoredArtifact(JSON.parse(file(join(admission.artifactRoot, `${reference.sha256}.artifact`), existingDataFileLabel(`profile/artifacts/${reference.sha256}.artifact`)).bytes.toString("utf8")), reference.sha256);
       if (canonicalJsonStringify(stored.ref) !== canonicalJsonStringify(reference)) throw new Error("existing-data-artifact-reference-mismatch");
     }
   }
