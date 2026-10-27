@@ -383,7 +383,7 @@ export async function backupFlatStorage(admission: RuntimeAdmission, clock: Cloc
     coupledBackup: { backupPath: path, backupDigest: hash(bytes) } };
 }
 
-function assertFlatBackupFacts(workspace: string, stateRoot: string, artifactRoot: string,
+export function assertFlatBackupFacts(workspace: string, stateRoot: string, artifactRoot: string,
   sourceFacts: ReturnType<typeof AuthorityDatabase.readProfileMaintenanceInventory>) {
     const expectedPaths = { stateRoot, artifactRoot,
       browserProfileRoot: join(stateRoot, "browsers"), duoCredential: join(stateRoot, "credentials", "duo-webauthn.json"),

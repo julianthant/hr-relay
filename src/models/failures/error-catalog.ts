@@ -193,6 +193,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The UCSD training reminder appeared again after Continue Log In.",
     EmptyParametersSchema,
   ),
+  WORKER_PROCESS_RECOVERY_REFUSED: catalogEntry(
+    "Relay couldn't prove that the abandoned worker's resources are closed. Its original custody and HR records remain held.",
+    EmptyParametersSchema,
+  ),
   ORPHAN_VERIFICATION_RETIREMENT_REFUSED: catalogEntry(
     "Relay couldn't safely retire an abandoned sign-in check, so close other Relay windows and try again.",
     EmptyParametersSchema,
