@@ -145,7 +145,7 @@ for (const pendingClose of [false, true]) it(pendingClose
       assert.equal(retained.ceremonyObserved, true); assert.equal(retained.portalAccepted, false);
       assert.equal(retained.operatorConfirmed, false); assert.equal(retained.exactCredentialRequestObserved, false);
       assert.equal(read().methods.touch.state, "idle"); assert.equal(acquisitions, 1); assert.equal(submissions, 1);
-      await expect(context.pages()[0].locator("#accountList")).toContainText("Needs review");
+      await expect(context.pages()[0].locator("#accountList")).toContainText("Failed");
       await assert.rejects(profile.session.cancelOnboarding(draft.token, draft.operationId));
       assert.equal(machine.readProfileRegistry().profiles.length, 0);
     } else {

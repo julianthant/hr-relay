@@ -28,6 +28,8 @@ function world(method: "key" | "touch" = "key") {
   let waiter: ((value: unknown) => void) | undefined;
   let browserWaiter: ((value: unknown) => void) | undefined;
   let blockedStop = false, releaseStop: (() => void) | undefined, portalPages = 0;
+  let lostActiveStopAck = false, blockedPump = false, missingProcessExit = false;
+  let startupHold: Promise<void> | undefined, releaseStartup: (() => void) | undefined, startupEntered: (() => void) | undefined;
   const replies = new Map<string, (value: unknown) => void>();
   let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
   let launchCount = 0;
@@ -44,7 +46,8 @@ function world(method: "key" | "touch" = "key") {
   const worker = {
     url: () => "chrome-extension://owned-extension/src/relay-background.js",
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
-      if (["install", "browserInstall"].includes(input.method)) return;
+      if (input.method === "install") { startupEntered?.(); await startupHold; return; }
+      if (input.method === "browserInstall") return;
       if (input.method === "browserNext") return new Promise(resolve => { browserWaiter = resolve; });
       if (input.method === "browserStop") { if (lostStopAck) throw new Error("synthetic worker already closed"); browserWaiter?.(null); browserWaiter = undefined; return; }
       if (input.method === "assertContext") { if (!documentCurrent) throw new Error("synthetic document drift"); return; }
@@ -53,7 +56,12 @@ function world(method: "key" | "touch" = "key") {
         return new Promise(resolve => { waiter = resolve; });
       }
       if (input.method === "reply") { replies.get(String(input.args[0]))?.(input.args[1]); return; }
-      if (input.method === "stop") { if (blockedStop) await new Promise<void>(resolve => { releaseStop = resolve; }); waiter?.(null); waiter = undefined; return; }
+      if (input.method === "stop") {
+        if (blockedStop) await new Promise<void>(resolve => { releaseStop = resolve; });
+        if (!blockedPump) { waiter?.(null); waiter = undefined; }
+        if (lostActiveStopAck) throw new Error("synthetic active worker already closed");
+        return;
+      }
       throw new Error("unexpected operation");
     },
   } as unknown as Worker;
@@ -67,7 +75,7 @@ function world(method: "key" | "touch" = "key") {
   let pages = [makePage()];
   const context = { serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), on: (_event: string, callback: () => void) => { listeners.push(callback); },
     newPage: async () => { const page = makePage(); pages.push(page); return page; },
-    close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); waiter?.(null); waiter = undefined; browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
+    close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); if (!blockedPump) { waiter?.(null); waiter = undefined; } browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
   const realProvider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory, clock, closeProofMs: 50,
     launcher: { launch: async input => {
       launchCount++; closed = false; pages = [makePage()]; listeners.length = 0; profile = input.profileDirectory;
@@ -79,7 +87,7 @@ function world(method: "key" | "touch" = "key") {
       assert.equal(preferences.credentials_enable_service, false);
       assert.equal(preferences.profile.password_manager_enabled, false);
       return context;
-    }, observeProcess: () => ({ pid: 123, observation: closed ? { state: "gone" } : { state: "alive", identity: { platform: "darwin", startToken: "synthetic-process" } } }) },
+    }, observeProcess: () => ({ pid: 123, observation: closed && !missingProcessExit ? { state: "gone" } : { state: "alive", identity: { platform: "darwin", startToken: "synthetic-process" } } }) },
   });
   const owner: DraftDuoBrowserOwner = { ...attempt, assertCurrent() { if (!current) throw new Error("synthetic revoked"); },
     async acquireCredentials() { throw new Error("unexpected credential acquisition"); },
@@ -113,9 +121,14 @@ function world(method: "key" | "touch" = "key") {
     else requests.push(request);
     return result;
   }
-  return { provider, owner, attempt, bind, calls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+  return { provider, rawProvider: realProvider, owner, attempt, bind, calls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
+    loseActiveStopAck: () => { lostActiveStopAck = true; }, blockPump: () => { blockedPump = true; },
+    withholdProcessExit: () => { missingProcessExit = true; },
+    releasePump: () => { blockedPump = false; waiter?.(null); waiter = undefined; },
+    blockStartup: () => { startupHold = new Promise(resolve => { releaseStartup = resolve; }); return new Promise<void>(resolve => { startupEntered = resolve; }); },
+    releaseStartup: () => { releaseStartup?.(); },
     async cleanup() {
       try { await provider.cancel(attempt); await provider.closeBrowser(owner); } catch (error) { assert.ok(error instanceof ProfileOnboardingDuoProviderError); }
       assert.ok(closed || launchCount === 0);
@@ -125,6 +138,90 @@ function world(method: "key" | "touch" = "key") {
 const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
 
 describe("draft Duo provider", () => {
+  for (const proof of ["proved", "missing-event", "missing-process"] as const) it(`lost active-stop ACK requires settled attempt and ${proof} physical closure`, async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      await w.send("bind", BIND);
+      await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+        transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
+      await w.send("software-created", { credentialId: "public-id", requestId: randomUUID() });
+      w.loseActiveStopAck(); if (proof === "missing-event") w.withholdCloseEvent();
+      if (proof === "missing-process") w.withholdProcessExit();
+      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
+      assert.ok(w.calls.includes("unknown")); assert.ok(!w.calls.includes("portal-accepted"));
+      if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }
+      else { await assert.rejects(w.provider.showBrowser(w.owner), error => {
+        assert.ok(error instanceof ProfileOnboardingDuoProviderError);
+        assert.ok(error.cause instanceof AggregateError);
+        const stop: unknown = error.cause.errors[0];
+        assert.ok(stop instanceof ProfileOnboardingDuoProviderError); assert.ok(stop.cause instanceof Error);
+        assert.equal(stop.cause.message, "synthetic active worker already closed");
+        assert.ok(error.cause.errors[1] instanceof ProfileOnboardingDuoProviderError);
+        return true;
+      }); assert.equal(w.launches(), 1); }
+    } finally { await w.closeBrowser(); await w.cleanup(); }
+  });
+  it("hanging startup cannot prove active stop-only closure or permit replacement", async () => {
+    const w = world();
+    const entered = w.blockStartup();
+    const starting = w.provider.start(w.attempt, w.bind, w.reportFailure);
+    try {
+      await entered; w.loseActiveStopAck();
+      let settled = false;
+      const closing = w.provider.closeBrowser(w.owner).then(result => { settled = true; return result; });
+      await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(settled, false);
+      assert.deepEqual(await closing, { state: "uncertain" });
+      await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
+    } finally { w.releaseStartup(); await starting; await w.closeBrowser(); await w.cleanup(); }
+  });
+  it("hanging pump cannot become eligible when it settles after the unchanged deadline", async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      w.blockPump(); w.loseActiveStopAck();
+      let settled = false;
+      const closing = w.provider.closeBrowser(w.owner).then(result => { settled = true; return result; });
+      await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(settled, false);
+      assert.deepEqual(await closing, { state: "uncertain" });
+      w.releasePump(); await new Promise<void>(resolve => setImmediate(resolve));
+      await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
+    } finally { w.releasePump(); await w.closeBrowser(); await w.cleanup(); }
+  });
+  it("a late dispatch retention failure cannot be superseded by physical closure", async () => {
+    const w = world();
+    let release!: () => void, entered!: () => void, unknowns = 0;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const dispatching = new Promise<void>(resolve => { entered = resolve; });
+    try {
+      await w.provider.start(w.attempt, async input => ({ ...await w.bind(input),
+        async recordCeremony() { entered(); await held; throw new Error("synthetic late dispatch failure"); },
+        async retainUnknown() { if (++unknowns > 1) throw new Error("synthetic late retention failure"); },
+      }), w.reportFailure);
+      await w.send("bind", BIND);
+      await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+        transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
+      const ceremony = w.send("software-created", { credentialId: "public-id", requestId: randomUUID() });
+      await dispatching; w.loseActiveStopAck();
+      let settled = false;
+      const closing = w.provider.closeBrowser(w.owner).then(result => { settled = true; return result; });
+      await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(settled, false); release();
+      assert.deepEqual(await ceremony, { ok: false });
+      assert.deepEqual(await closing, { state: "uncertain" }); assert.equal(unknowns, 2);
+      await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
+    } finally { release(); await w.closeBrowser(); await w.cleanup(); }
+  });
+  it("a changed attempt or browser owner cannot replace a closing retained attempt", async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure); w.blockStop();
+      const closing = w.provider.closeBrowser(w.owner);
+      await assert.rejects(w.rawProvider.start({ ...w.attempt, attemptId: randomUUID() }, w.bind, w.reportFailure));
+      await assert.rejects(w.provider.cancel({ ...w.attempt, attemptId: randomUUID() }));
+      await assert.rejects(w.provider.showBrowser({ ...w.owner, generation: w.owner.generation + 1 }));
+      w.releaseStop(); assert.deepEqual(await closing, { state: "closed" }); assert.equal(w.launches(), 1);
+    } finally { w.releaseStop(); await w.closeBrowser(); await w.cleanup(); }
+  });
   for (const proof of ["proved", "unproved"] as const) it(`lost worker-stop ACK requires ${proof} context closure before a new browser`, async () => {
     const w = world();
     try {

@@ -713,6 +713,11 @@ existing setup page. Open duo.ucsd.edu opens a separate tab in that same context
 original protected Details only after verifying the exact UCSD SSO document and form controls,
 then submits that pinned POST form once. Reopening focuses the owned tab; failed initialization
 remains refused and never resubmits. Login does not prove either enrollment method or MFA completion.
+An active attempt's lost stop acknowledgement retains uncertain custody until that exact attempt's
+startup, reporting, UNKNOWN retention and callbacks settle within its closure deadline. Only the
+same owned browser's complete context, page, process and callback closure plus profile deletion
+can then supersede that stop failure. Other failures refuse replacement; reopening never retries
+or confirms an enrollment.
 The extension UI receives public draft status and exact attempt commands, never login credentials.
 Before enrollment capture is armed, verified native Duo documents may query capability support or
 pass a sign-in request to the captured browser implementation. This path exposes no software key,
