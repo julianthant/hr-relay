@@ -1,4 +1,7 @@
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
+import { ParkedWriteCheckTargetSchema } from "../../../../rules/commands/commands.js";
+import { requireParkedWriteCheckTarget } from "../../../runtime/writes/write-recovery.js";
+import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
 import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
 import { protectIdentityEvidencePacket } from "../../../../rules/separations/identity-evidence.js";
 import {
@@ -471,7 +474,44 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
   if (native !== undefined && (native.runId !== runId || native.attempt !== intent.runAttempt
     || native.traceId !== authority.envelope.traceId || native.workflow !== authority.envelope.workflow
     || intent.bindingProof.afterPrepareSpanPath !== `${native.traceId}/${native.nodeId}/prepare`)) throw new LogIdentityRefusedError("RUN_LOG_WRITE_NATIVE_IDENTITY_MISMATCH");
-  return ParkedWriteDetailWireSchema.parse({
+  const repositories = deps.canonical?.database.authority;
+  let check: unknown = { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" };
+  if (repositories !== undefined && deps.authorityIdentity !== undefined && native !== undefined && authority.envelope.workflow === "separations"
+    && intent.bindingProof.kind === "subject-match" && ["ucpath/create-termination", "ucpath/delete-pending-terminations", "kuali/save-separation-finalization"].includes(intent.taskId)) {
+    const worker = repositories.workerSlots.list(authority.envelope.workflow).filter(slot => slot.retiredAt === null)
+      .map(slot => ({ slot, lease: repositories.workerLeases.get(slot.workerId) }))
+      .find(({ slot, lease }) => lease?.lifecycle.state === "idle" && lease.workflow === slot.workflow && lease.controlRevision !== undefined
+        && deps.ownsWorker?.(lease) === true
+        && repositories.workerControls.pending(`worker-pool:${slot.workflow}`).length === 0
+        && !repositories.runs.listByWorker(slot.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state)));
+    if (worker?.lease?.lifecycle.state === "idle" && worker.lease.controlRevision !== undefined) {
+      const { slot, lease } = worker;
+      const target = ParkedWriteCheckTargetSchema.parse({ ...deps.authorityIdentity, workerId: slot.workerId, expectedVersion: lease.version,
+        membershipRevision: slot.membershipRevision, processId: lease.processId, startedAt: lease.lifecycle.startedAt,
+        controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision },
+        workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId, runId, runVersion: authority.version,
+        runAttempt: authority.envelope.attempt, traceId: authority.envelope.traceId, nodeId: native.nodeId,
+        writeIntentId: intent.writeIntentId, intentVersion: intent.version, intentGeneration: intent.generation,
+        writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest });
+      try {
+        requireParkedWriteCheckTarget(repositories, target, deps.canonical?.descriptors.resolve(authority.envelope.workflow));
+        check = { state: "available", target };
+      } catch (error) { if (!(error instanceof WorkerControlRefusal)) throw error; }
+    }
+  }
+  const latest = repositories?.workerControls.list().findLast(record => record.request.type === "check-parked-write"
+    && record.request.requestedBy === "local-operator" && record.request.source === "run-detail"
+    && record.request.target.installationId === deps.authorityIdentity?.installationId && record.request.target.profileId === deps.authorityIdentity?.profileId
+    && record.request.target.workflowId === authority.envelope.workflow && record.request.target.itemId === authority.envelope.itemId
+    && record.request.target.runAttempt === authority.envelope.attempt && record.request.target.traceId === authority.envelope.traceId
+    && record.request.target.nodeId === native?.nodeId
+    && record.request.target.runId === runId && record.request.target.writeIntentId === intent.writeIntentId
+    && record.request.target.intentGeneration === intent.generation && record.request.target.writeAttemptId === intent.currentAttemptId
+    && record.request.target.bindingProofDigest === intent.bindingProofDigest && record.request.target.occurrenceKeyDigest === intent.idempotencyKeyDigest
+    && record.request.target.runVersion === authority.version && record.request.target.intentVersion === intent.version);
+  const lastCheck = latest?.phase.state === "succeeded" && latest.phase.acknowledgement.kind === "parked-write-check"
+    ? latest.phase.acknowledgement.result : undefined;
+  return ParkedWriteDetailWireSchema.parse({ check, ...(lastCheck === undefined ? {} : { lastCheck }),
     ...(native === undefined || nativeEvent === undefined ? {} : { native: {
       eventId: nativeEvent.eventId, order: nativeEvent.cursor, runId: native.runId,
       attempt: native.attempt, traceId: native.traceId, nodeId: native.nodeId,

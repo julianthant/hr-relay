@@ -14,6 +14,7 @@ import { seedSyntheticRuntimeConfig } from "../../../support/fixtures/operator-c
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { CommandRequestSchema, ParkedWriteCheckResultSchema } from "../../../../src/rules/commands/commands.js";
 
 const NOW = "2026-09-18T18:00:00.000Z";
 const WORKER = WorkerIdSchema.parse("person-lookup-worker-1");
@@ -178,6 +179,47 @@ describe("durable worker control admission", () => {
 });
 
 describe("worker delivery fencing", () => {
+  it.each(["observed", "busy", "lifetime", "late-revision", "closure"] as const)("keeps a parked read %s fenced and delivers it at most once", async scenario => {
+    const h = await harness(), root = mkdtempSync(join(realpathSync(tmpdir()), "worker-parked-check-"));
+    const db = AuthorityDatabase.open({ path: join(root, "authority.db"), busyTimeoutMs: 250, migrationOwner: "test" }, h.clock);
+    try {
+      seedSyntheticRuntimeConfig(db);
+      db.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
+      const slot = db.authority.workerSlots.allocate({ workflow: WORKFLOW, poolIndex: 1, commandId: null, now: NOW });
+      db.authority.workerLeases.start({ workerId: WORKER, workflow: WORKFLOW, browserSystems: ["crm"], processId: 42, requestedBy: "local-operator", now: NOW });
+      db.authority.workerLeases.reportLifecycle({ workerId: WORKER, leaseGeneration: 1, lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW }, now: NOW });
+      const commandId = randomUUID();
+      const request = CommandRequestSchema.parse({ commandId, family: "worker-browser", type: "check-parked-write", source: "run-detail", requestedAt: NOW, requestedBy: "local-operator",
+        target: { workerId: WORKER, workflowId: WORKFLOW, expectedVersion: 2, controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: slot.membershipRevision,
+          processId: scenario === "lifetime" ? 43 : 42, startedAt: NOW, installationId: randomUUID(), profileId: randomUUID(), itemId: randomUUID(), runId: randomUUID(), runVersion: 4,
+          runAttempt: 1, traceId: "wf-090000-2222", nodeId: "submit-write", writeIntentId: randomUUID(), intentVersion: 1, intentGeneration: 1,
+          writeAttemptId: randomUUID(), bindingProofDigest: HASH, occurrenceKeyDigest: HASH } });
+      assert.equal(request.type, "check-parked-write");
+      if (request.type !== "check-parked-write") throw new Error("fixture-command-mismatch");
+      db.withAuthorityTransaction(r => {
+        r.commands.insert(request); r.workerLeases.reserveControl(WORKER, request.target.controlBasis, commandId, NOW);
+        r.workerControls.admit({ commandId, request, scope: "worker-pool:person-lookup", executorId: randomUUID(), admittedAt: NOW, expiresAt: "2026-09-18T18:03:00.000Z", basisVersion: 2, phase: { state: "admitted" } });
+        r.workerControls.transition(commandId, "admitted", { state: "ready" });
+      });
+      if (scenario === "busy") db.authority.workerLeases.reportLifecycle({ workerId: WORKER, leaseGeneration: 1, lifecycle: { state: "busy", startedAt: NOW, heartbeatAt: NOW, runId: randomUUID() }, now: NOW });
+      let reads = 0;
+      const consume = createWorkerBrowserControl({ database: db, workerId: WORKER, leaseGeneration: 1, clock: h.clock, signal: SIGNAL,
+        checkParkedWrite: async () => {
+          reads += 1;
+          if (scenario === "closure") throw new Error("synthetic-closure-unproved");
+          if (scenario === "late-revision") db.authority.workerLeases.control({ workerId: WORKER, expectedVersion: 3, control: { directive: "pause", requestedBy: "local-operator", requestedAt: NOW }, now: NOW });
+          return { kind: "parked-write-check", result: ParkedWriteCheckResultSchema.parse({ commandId, requestedBy: request.requestedBy, target: request.target,
+            observedAt: NOW, held: true, provenance: "not-observed", state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE", evidenceDigest: HASH }) };
+        } });
+      if (scenario === "closure" || scenario === "late-revision") await assert.rejects(consume(h.sessions), /closure-unproved|authority-changed-after-read/);
+      else await consume(h.sessions);
+      await consume(h.sessions);
+      assert.equal(reads, scenario === "busy" || scenario === "lifetime" ? 0 : 1);
+      assert.equal(db.authority.workerControls.get(commandId)?.phase.state, scenario === "observed" ? "succeeded" : scenario === "closure" || scenario === "late-revision" ? "uncertain" : "refused");
+      assert.equal(h.opened.length, 0, "the control wrapper cannot manufacture browser access");
+      assert.equal(db.authority.runs.listByWorker(WORKER).length, 0, "a read cannot create or resume a run");
+    } finally { await h.sessions.closeAll("worker-stop"); db.close(); rmSync(root, { recursive: true, force: true }); }
+  });
   it.each(["expired", "generation", "revision", "busy", "replaced", "effect-failure"] as const)("retains %s evidence and cannot deliver a deferred or duplicate effect", async scenario => {
     const h=await harness(); let bound = false; const root=mkdtempSync(join(realpathSync(tmpdir()),"worker-fence-"));
     const db=AuthorityDatabase.open({path:join(root,"authority.db"),busyTimeoutMs:250,migrationOwner:"test"},h.clock);

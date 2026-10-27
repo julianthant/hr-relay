@@ -167,7 +167,7 @@ export function createWorkerControlRepository(deps: {
       }
       const command = database.prepare("SELECT * FROM commands WHERE id=?").get(record.commandId);
       if (command === undefined || canonicalJsonStringify(commandFromRow(command)) !== canonicalJsonStringify(record.request)) throw new Error("worker-control-command-binding-mismatch");
-      if (record.request.type === "pause-worker" || record.request.type === "resume-worker" || record.request.type === "refresh-browser" || record.request.type === "reopen-browser") {
+      if (record.request.type === "pause-worker" || record.request.type === "resume-worker" || record.request.type === "refresh-browser" || record.request.type === "reopen-browser" || record.request.type === "check-parked-write") {
         const slot = memberRow === undefined ? undefined : workerSlotFromRow(memberRow);
         const leaseRow = database.prepare("SELECT payload_json FROM worker_leases WHERE id=?").get(record.request.target.workerId);
         const lease = leaseRow === undefined ? undefined : WorkerLeaseRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(leaseRow).payload_json));

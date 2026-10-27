@@ -1431,7 +1431,8 @@ export class RunQueueProjection {
       attemptHistory,
       workerCards,
       workerAuthority,
-      workerOperations: workerOperations ?? [],
+      workerOperations: (workerOperations ?? []).map(record => record.phase.state === "succeeded" && record.phase.acknowledgement.kind === "parked-write-check"
+        ? { ...record, phase: { ...record.phase, acknowledgement: { kind: "parked-write-check", result: record.phase.acknowledgement.result } } } : record),
 
       workerPools: this.#deps.authority.listWorkerPools().map((pool) => ({
         workflowId: pool.workflow,

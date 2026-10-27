@@ -1,4 +1,10 @@
-import { RunRecordSchema } from "../../../models/run/record.js";
+import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
+import { WorkerSessionClosureUnprovedError } from "../workers/worker-sessions.js";
+import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
+import { DuoCeremonyReleaseFailedError } from "../gates/duo-ceremony-gate.js";
+import { ParkedWriteCheckResultSchema, type ParkedWriteCheckTarget, type ParkedWriteCheckResult } from "../../../rules/commands/commands.js";
+import { WorkerControlRefusal, type WorkerEffectAcknowledgement } from "../../../models/run/worker-control.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { valueFreeProtectedData, retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
 
@@ -61,6 +67,80 @@ import type { WriteIntentParkCode } from "../../storage/sqlite/write-commit-cont
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
+
+/** Exact retained authority; this read never changes the run, attempt or intent. */
+export function requireParkedWriteCheckTarget(repositories: Pick<AuthorityRepositories, "runs" | "writeIntents" | "writeAttempts" | "runCheckpoints" | "gateResults">,
+  target: ParkedWriteCheckTarget, descriptor: AnyWorkflowDescriptor | undefined) {
+  const run = repositories.runs.get(target.runId), intent = repositories.writeIntents.get(target.writeIntentId);
+  const attempt = repositories.writeAttempts.get(target.writeAttemptId);
+  if (run === undefined || intent?.status !== "parked" || attempt?.outcome.state !== "parked" || descriptor === undefined
+    || run.lifecycle.state !== "parked-write" || run.version !== target.runVersion || run.envelope.workflow !== target.workflowId
+    || run.envelope.itemId !== target.itemId || run.envelope.attempt !== target.runAttempt || run.envelope.traceId !== target.traceId
+    || run.lifecycle.writeIntentId !== target.writeIntentId || run.lifecycle.intentGeneration !== target.intentGeneration
+    || intent.version !== target.intentVersion || intent.generation !== target.intentGeneration || intent.currentAttemptId !== target.writeAttemptId
+    || intent.runId !== target.runId || intent.runAttempt !== target.runAttempt || intent.workflowId !== target.workflowId || intent.itemId !== target.itemId
+    || intent.bindingProofDigest !== target.bindingProofDigest || intent.idempotencyKeyDigest !== target.occurrenceKeyDigest
+    || attempt.writeIntentId !== target.writeIntentId || attempt.generation !== target.intentGeneration || attempt.runId !== target.runId
+    || attempt.runAttempt !== target.runAttempt || attempt.bindingProofDigest !== target.bindingProofDigest
+    || intent.bindingProof.afterPrepareSpanPath !== `${target.traceId}/${target.nodeId}/prepare`) throw new WorkerControlRefusal("parked-check-authority-changed");
+  const { node } = requireWriteResolutionBinding({ arm: "recovery-probe", descriptor, run, intent, repositories });
+  if (node.id !== target.nodeId || descriptor.id !== target.workflowId) throw new WorkerControlRefusal("parked-check-node-changed");
+  return { run, intent, node, commitInput: rebuildCommitInput(repositories, descriptor, node, run, intent) };
+}
+
+/** Registered reads only. A matching target state is not attribution to the original attempt. */
+export async function checkParkedWrite(input: Readonly<{
+  repositories: AuthorityRepositories; descriptor: AnyWorkflowDescriptor | undefined; target: ParkedWriteCheckTarget;
+  commandId: string; requestedBy: string; signal: AbortSignal;
+  probe: Omit<ProbeReadDeps, "sessions">;
+  sessions: Pick<TransactionSessionHost, "withDriver" | "closeAll"> & RunConfigFingerprintBinding;
+  configureRun: (run: RunRecord) => Readonly<{ taskDeadlineMs: number }>;
+}>): Promise<Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>> {
+  input.signal.throwIfAborted();
+  if (input.requestedBy !== "local-operator") throw new WorkerControlRefusal("PARKED_CHECK_UNAVAILABLE");
+  const { run, intent, node, commitInput } = requireParkedWriteCheckTarget(input.repositories, input.target, input.descriptor);
+  const probeId = node.commit.uses.writeSafety.idempotency.probe.taskId;
+  const supported = (intent.taskId === "ucpath/create-termination" && probeId === "ucpath/match-existing-termination")
+    || (intent.taskId === "ucpath/delete-pending-terminations" && probeId === "ucpath/match-pending-terminations")
+    || (intent.taskId === "kuali/save-separation-finalization" && probeId === "kuali/match-separation-finalization");
+  const task = input.probe.stores.stores.flatMap(store => Object.values(store.tasks)).find(value => value.contract.id === probeId);
+  const instance = run.envelope.resolvedInstance[intent.system];
+  let evidence: Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>["evidence"];
+  let state: ParkedWriteCheckResult["state"] = "unavailable";
+  let code: ParkedWriteCheckResult["code"] = "PARKED_CHECK_UNAVAILABLE";
+  if (supported && run.envelope.workflow === "separations" && intent.bindingProof.kind === "subject-match" && instance !== undefined
+    && task?.contract.effect === "read" && task.impl.sessions.length === 1 && task.impl.sessions[0]?.access === "read"
+    && task.impl.sessions[0].system === intent.system && task.contract.input.safeParse(commitInput).success) {
+    await input.sessions.closeAll("parked");
+    const resources = input.configureRun(run);
+    input.sessions.bindRunConfigFingerprint(FingerprintSchema.parse(run.envelope.configFingerprint), run.envelope.browserMode);
+    try {
+      try {
+        const verdict = await executeIdempotencyProbe({ ...input.probe, taskDeadlineMs: resources.taskDeadlineMs, sessions: input.sessions }, { commitContract: node.commit.uses,
+          commitInput, instance, signal: input.signal });
+        input.signal.throwIfAborted();
+        evidence = { schemaHash: deriveSchemaHash(task.contract.output, "output"), value: JsonValueSchema.parse(verdict) };
+        state = verdict.state === "present" ? "ambiguous" : verdict.state;
+        code = verdict.state === "present" ? "PARKED_CHECK_OCCURRENCE_UNPROVED"
+          : verdict.state === "absent" ? "PARKED_CHECK_ABSENT" : verdict.state === "ambiguous" ? "PARKED_CHECK_AMBIGUOUS" : "PARKED_CHECK_UNKNOWN";
+      } catch (error) {
+        if (error instanceof WorkerSessionClosureUnprovedError || error instanceof BrowserSessionClosureUnprovedError || error instanceof DuoCeremonyReleaseFailedError) throw error;
+        input.signal.throwIfAborted();
+        state = "unknown"; code = "PARKED_CHECK_UNKNOWN";
+      }
+    } finally {
+      try { await input.sessions.closeAll("parked"); }
+      finally { input.sessions.releaseRunConfigFingerprint(); }
+    }
+  }
+  input.signal.throwIfAborted();
+  requireParkedWriteCheckTarget(input.repositories, input.target, input.descriptor);
+  const result = ParkedWriteCheckResultSchema.parse({ commandId: input.commandId, requestedBy: input.requestedBy, target: input.target,
+    observedAt: input.probe.clock.now().toISOString(), held: true, provenance: evidence === undefined ? "not-observed" : "system-probe", state, code,
+    ...(evidence === undefined ? {} : { probeTaskId: probeId }),
+    evidenceDigest: sha256Hex(canonicalJsonStringify({ target: input.target, state, code, evidence: evidence ?? null })) });
+  return { kind: "parked-write-check", result, ...(evidence === undefined ? {} : { evidence }) };
+}
 
 /* ── the typed recovery decision ─────────────────────────────────────────── */
 

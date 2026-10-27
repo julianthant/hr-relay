@@ -182,6 +182,8 @@ An UNKNOWN submission never authorizes generic retry, another occurrence, cancel
 
 ## 4.1 Parked-write resolution
 
+The dashboard's `check-parked-write` command uses an existing idle worker's control journal and session owner to run only the registered target-system idempotency read. Admission binds the installation, profile, operator, worker lifetime and control revision, run version, original intent generation and attempt, node, binding and occurrence digest. The service rechecks retained write authority after reading and closes its sessions before acknowledging. A deadline or unproved closure retains uncertainty. The journal keeps schema-bound system evidence; the dashboard receives only the held status and evidence digest. All results leave the run and intent parked. A matching target state without original-attempt attribution is ambiguous, and absence never invokes the confirmed-absent or recovery path.
+
 The command kernel accepts `resolve-write-present` and `resolve-write-absent` only for the current `parked-write` run and `parked` intent. Requests bind run version, intent ID, generation, original attempt ID, binding digest, and `occurrenceKeyDigest`. A stale request or mismatched target changes nothing.
 
 `createWriteResolutionExecutor` provides two arms:

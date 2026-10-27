@@ -31,6 +31,8 @@ import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboa
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
+import { CommandRequestSchema, CommandResultSchema } from "../../../src/rules/commands/commands.js";
+import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const OTHER = "00000000-0000-4000-8000-000000000002";
@@ -238,7 +240,7 @@ describe("served Logs wiring", () => {
     const projection = projectRunLogs(snapshot, client);
     const entry = projection.steps.find(step => step.id === FIXTURE_PARKED_WRITE.writeIntentId)?.entries[0];
     assert.equal(entry?.id, FIXTURE_PARKED_WRITE.writeIntentId); assert.equal(entry?.kind, "decision");
-    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.equal(entry.decision.actions, undefined); assert.match(entry.decision.footer ?? "", /Resolution unavailable/); }
+    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.equal(entry.decision.actions, undefined); assert.equal(entry.decision.footer, formatErrorCatalogFailure(createErrorCatalogFailure("PARKED_CHECK_UNAVAILABLE", {})).text); }
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
     assert.match(document.body.textContent ?? "", /Write parked/);
     assert.equal(document.querySelector('article[aria-label="Write parked"]')?.querySelectorAll("button").length, 0);
@@ -246,6 +248,41 @@ describe("served Logs wiring", () => {
     assert.ok(jump);
     await act(async () => jump.click());
     assert.equal(writes, 0);
+  });
+  it("presents one held-only check without operator proof fields or applied evidence", async () => {
+    const native = nativeOf(RUN, 40);
+    const target = { workerId: "person-lookup-worker-1", workflowId: selection().row.workflowId, expectedVersion: 2,
+      controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: AT,
+      installationId: OTHER, profileId: NOTE, itemId: OTHER, runId: RUN, runVersion: selection().row.rowRevision,
+      runAttempt: FIXTURE_PARKED_WRITE.runAttempt, traceId: native.traceId, nodeId: native.nodeId, writeIntentId: FIXTURE_PARKED_WRITE.writeIntentId,
+      intentVersion: 1, intentGeneration: FIXTURE_PARKED_WRITE.generation, writeAttemptId: NOTE, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
+    const lastCheck = { commandId: NOTE, requestedBy: "local-operator", target, observedAt: AT, held: true, provenance: "system-probe",
+      state: "ambiguous", code: "PARKED_CHECK_OCCURRENCE_UNPROVED", probeTaskId: "ucpath/match-existing-termination", evidenceDigest: "c".repeat(64) };
+    const parked = RunDetailSectionResponseSchema.parse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native,
+      check: { state: "available", target }, lastCheck } });
+    const servedDetail = RunDetailWireSchema.parse({ ...detail(), availableSections: ["logs", "parked-write"] });
+    const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : path.endsWith("/parked-write") ? parked : servedDetail);
+    const snapshot = await readRunLogs(client, selection(), new AbortController().signal);
+    const entry = projectRunLogs(snapshot, client).steps.find(step => step.id === FIXTURE_PARKED_WRITE.writeIntentId)?.entries[0];
+    assert.equal(entry?.kind, "decision");
+    if (entry?.kind !== "decision") throw new Error("parked decision absent");
+    assert.equal(entry.decision.state, "parked");
+    assert.deepEqual(entry.decision.actions?.map(action => action.id), ["parked-check"]);
+    assert.equal(entry.decision.actions?.[0].input, undefined);
+    assert.equal(entry.decision.message, formatErrorCatalogFailure(createErrorCatalogFailure("PARKED_CHECK_OCCURRENCE_UNPROVED", {})).text);
+    assert.match(entry.decision.footer ?? "", /write remains held/i);
+    const request = CommandRequestSchema.parse({ commandId: NOTE, requestedBy: "local-operator", requestedAt: AT, source: "run-detail",
+      family: "worker-browser", type: "check-parked-write", target });
+    const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId,
+      affectedTargets: [{ family: "worker-browser", workerId: target.workerId }, { family: "run", runId: RUN }] });
+    assert.equal((await verifyShellCommandEffect(client, "2026-08-03", request, reply)).state, "matched");
+    assert.equal((await verifyShellCommandEffect(client, "2026-08-03", CommandRequestSchema.parse({ ...request, commandId: OTHER }), reply)).state, "mismatch");
+    const foreignProfile = CommandRequestSchema.parse({ ...request, target: { ...target, profileId: RUN } });
+    assert.equal((await verifyShellCommandEffect(client, "2026-08-03", foreignProfile, reply)).state, "mismatch");
+    assert.equal(RunDetailSectionResponseSchema.safeParse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native,
+      check: { state: "available", target: { ...target, writeAttemptId: "invalid" } } } }).success, false);
+    assert.equal(RunDetailSectionResponseSchema.safeParse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native,
+      check: { state: "available", target: { ...target, runAttempt: target.runAttempt + 1 } } } }).success, false);
   });
   it("keeps failed-write uncertainty and failure identity separate from retry permission", async () => {
     const original = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;

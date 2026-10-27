@@ -9,6 +9,11 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  PARKED_CHECK_ABSENT: catalogEntry("The target state was not found. The write remains held.", EmptyParametersSchema),
+  PARKED_CHECK_AMBIGUOUS: catalogEntry("The target evidence is ambiguous. The write remains held.", EmptyParametersSchema),
+  PARKED_CHECK_UNKNOWN: catalogEntry("The target state could not be determined. The write remains held.", EmptyParametersSchema),
+  PARKED_CHECK_UNAVAILABLE: catalogEntry("This exact parked occurrence cannot be checked with the current subject, worker or read capability. The write remains held.", EmptyParametersSchema),
+  PARKED_CHECK_OCCURRENCE_UNPROVED: catalogEntry("A matching target state was observed, but it cannot be attributed to the original attempt. The write remains held.", EmptyParametersSchema),
   DOCUMENT_UNAVAILABLE: catalogEntry("The Kuali separation document could not be opened. Review the document number before starting a new run.", EmptyParametersSchema),
   CREDENTIAL_CONTEXT_REQUIRED: catalogEntry("The selected profile credential authority is unavailable. Restart the runtime before continuing.", EmptyParametersSchema),
   RUNTIME_CUSTODY_UNCERTAIN: catalogEntry("Runtime resource closure is unproved. Preserve the current installation and process custody before restarting.", EmptyParametersSchema),

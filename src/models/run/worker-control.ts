@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { WorkerControlBasisSchema } from "./worker.js";
 import { WorkerPoolMemberSchema, WorkerPoolRosterAdmissionSchema, WorkerRetirementProofSchema } from "./worker-slot.js";
-import { CommandAuditRecordSchema, WorkerBrowserCommandRequestSchema } from "../../rules/commands/commands.js";
+import { CommandAuditRecordSchema, WorkerBrowserCommandRequestSchema, ParkedWriteCheckResultSchema } from "../../rules/commands/commands.js";
+import { SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { BrowserSessionIdSchema, BrowserSystemIdSchema, CommandIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, ConfigSnapshotIdSchema, WorkerIdSchema } from "../../rules/identity/ids.js";
 
 /** A pool and all its canonical members share one durable exclusion scope. */
@@ -13,6 +15,7 @@ export function workerControlScope(request: z.infer<typeof WorkerBrowserCommandR
 
 /** The observed result survives the BFF's acknowledgement/audit crash window. */
 export const WorkerEffectAcknowledgementSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("parked-write-check"), result: ParkedWriteCheckResultSchema, evidence: SchemaBoundCanonicalValueSchema.optional() }),
   z.strictObject({ kind: z.literal("plan"), workerIds: z.array(WorkerIdSchema), retirements: z.array(WorkerRetirementProofSchema) }),
   z.strictObject({ kind: z.literal("reset-replacement"), commandId: CommandIdSchema, oldLeaseGeneration: PositiveIntSchema,
     leaseGeneration: PositiveIntSchema, oldControlRevision: PositiveIntSchema, controlRevision: PositiveIntSchema,
@@ -96,9 +99,19 @@ export const WorkerControlRecordSchema = z.strictObject({
   closure: z.strictObject({ observedAt: IsoInstantSchema, closedSessionIds: z.array(BrowserSessionIdSchema) }).optional(),
   auditedAt: IsoInstantSchema.optional(),
 }).superRefine((record, context) => {
+  if (record.request.type === "check-parked-write" && record.phase.state === "succeeded") {
+    const observation = record.phase.acknowledgement;
+    if (observation.kind !== "parked-write-check" || observation.result.commandId !== record.commandId
+      || observation.result.requestedBy !== record.request.requestedBy
+      || canonicalJsonStringify(observation.result.target) !== canonicalJsonStringify(record.request.target)) {
+      context.addIssue({ code: "custom", message: "parked-check-observation-identity-mismatch" });
+    }
+  } else if (record.phase.state === "succeeded" && record.phase.acknowledgement.kind === "parked-write-check") {
+    context.addIssue({ code: "custom", message: "parked-check-observation-without-check" });
+  }
   if (record.control !== undefined) {
     const request = record.request;
-    if (!["pause-worker", "resume-worker", "refresh-browser", "reopen-browser"].includes(request.type)
+    if (!["pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"].includes(request.type)
       || !("workerId" in request.target) || record.control.member.workerId !== request.target.workerId
       || record.control.lifetime.leaseGeneration !== request.target.controlBasis?.leaseGeneration) context.addIssue({ code: "custom", message: "worker-control-binding-invalid" });
   }
