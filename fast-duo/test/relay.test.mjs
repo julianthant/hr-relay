@@ -437,6 +437,54 @@ test('native browser refusal has no software fallback or successful ceremony', a
   assert.equal(w.output.at(-1).success, false);
 });
 
+test('page realm creates and reads software credentials with browser readonly prototype getters', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { runInNewContext } = await import('node:vm');
+  class Response {}
+  class Attestation extends Response {}
+  class Assertion extends Response {}
+  class Credential {}
+  for (const [prototype, fields] of [
+    [Response.prototype, ['clientDataJSON']], [Attestation.prototype, ['attestationObject']],
+    [Assertion.prototype, ['authenticatorData', 'signature', 'userHandle']],
+    [Credential.prototype, ['id', 'rawId', 'type', 'authenticatorAttachment', 'response']],
+  ]) for (const field of fields) Object.defineProperty(prototype, field, { get() { throw new TypeError('Illegal invocation'); } });
+  let listener;
+  const requests = [];
+  const result = { ok: true, credentialId: '+/8=', clientDataJSON: 'AQ==', attestationObject: 'Ag==', authData: 'Aw==',
+    publicKeySpki: 'BA==', authenticatorData: 'BQ==', signature: 'Bg==', userHandle: 'Bw==', transport: 'usb' };
+  const window = { addEventListener: (_type, callback) => { listener = callback; }, postMessage: message => {
+    requests.push(message);
+    listener({ source: window, origin: ORIGIN, data: { type: 'RELAY_DUO_RESPONSE', id: message.id, success: true, result } });
+  } };
+  const credentials = { create: () => assert.fail('unexpected native create'), get: () => assert.fail('unexpected native get') };
+  runInNewContext(await readFile(new URL('../src/relay-inpage.js', import.meta.url), 'utf8'), {
+    window, location: { origin: ORIGIN, hostname: 'test.duosecurity.com' }, navigator: { credentials },
+    crypto, Uint8Array, btoa, atob, DOMException, PublicKeyCredential: Credential,
+    AuthenticatorAttestationResponse: Attestation, AuthenticatorAssertionResponse: Assertion,
+  });
+  const created = await credentials.create({ publicKey: { rp: { id: 'duosecurity.com' }, challenge: new Uint8Array([8]),
+    user: { name: 'alex@example.edu', id: new Uint8Array([9]) }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }] } });
+  const signed = await credentials.get({ publicKey: { rpId: 'duosecurity.com', challenge: new Uint8Array([10]),
+    allowCredentials: [{ type: 'public-key', id: created.rawId }] } });
+  for (const credential of [created, signed]) {
+    assert.ok(credential instanceof Credential); assert.equal(credential.id, '-_8');
+    assert.deepEqual(Buffer.from(credential.rawId), Buffer.from('+/8=', 'base64'));
+    assert.equal(credential.type, 'public-key'); assert.equal(credential.authenticatorAttachment, 'cross-platform');
+    assert.deepEqual(Buffer.from(credential.response.clientDataJSON), Buffer.from([1]));
+    assert.equal(Object.keys(credential.getClientExtensionResults()).length, 0);
+  }
+  assert.ok(created.response instanceof Attestation); assert.ok(signed.response instanceof Assertion);
+  assert.deepEqual(Buffer.from(created.response.attestationObject), Buffer.from([2]));
+  assert.deepEqual(Buffer.from(created.response.getAuthenticatorData()), Buffer.from([3]));
+  assert.deepEqual(Buffer.from(created.response.getPublicKey()), Buffer.from([4]));
+  assert.deepEqual(Array.from(created.response.getTransports()), ['usb']); assert.equal(created.response.getPublicKeyAlgorithm(), -7);
+  assert.deepEqual(Buffer.from(signed.response.authenticatorData), Buffer.from([5]));
+  assert.deepEqual(Buffer.from(signed.response.signature), Buffer.from([6]));
+  assert.deepEqual(Buffer.from(signed.response.userHandle), Buffer.from([7]));
+  assert.equal(requests[1].request.allowCredentials[0], '+/8=');
+});
+
 for (const invalid of ['origin', 'challenge', 'type', 'attachment', 'rpHash']) test(`native ${invalid} mismatch cannot produce a ceremony`, async () => {
   const w = await isolatedWorld(async (_options, Credential, Attestation) => {
     const authData = new Uint8Array(37);

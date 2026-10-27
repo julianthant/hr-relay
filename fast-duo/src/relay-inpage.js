@@ -46,15 +46,15 @@
     }, options.signal);
     if (result.passThrough) return originalGet(options);
     if (!result.ok) throw new DOMException('Duo setup refused this key request.', 'NotAllowedError');
-    const response = Object.assign(Object.create(AuthenticatorAssertionResponse.prototype), {
+    const response = Object.create(AuthenticatorAssertionResponse.prototype, Object.getOwnPropertyDescriptors({
       clientDataJSON: decode(result.clientDataJSON), authenticatorData: decode(result.authenticatorData),
       signature: decode(result.signature), userHandle: result.userHandle ? decode(result.userHandle) : null,
-    });
-    return Object.assign(Object.create(PublicKeyCredential.prototype), {
+    }));
+    return Object.create(PublicKeyCredential.prototype, Object.getOwnPropertyDescriptors({
       id: urlId(result.credentialId), rawId: decode(result.credentialId), type: 'public-key',
       authenticatorAttachment: result.transport === 'usb' ? 'cross-platform' : 'platform', response,
       getClientExtensionResults: () => ({}),
-    });
+    }));
   };
   credentials.create = async options => {
     const key = options?.publicKey;
@@ -68,14 +68,14 @@
       residentKey: key.authenticatorSelection?.residentKey === 'required' || key.authenticatorSelection?.requireResidentKey === true,
     }, options.signal, key);
     if (!result.ok) throw new DOMException('Duo setup refused enrollment.', 'NotAllowedError');
-    const response = Object.assign(Object.create(AuthenticatorAttestationResponse.prototype), {
+    const response = Object.create(AuthenticatorAttestationResponse.prototype, Object.getOwnPropertyDescriptors({
       clientDataJSON: decode(result.clientDataJSON), attestationObject: decode(result.attestationObject),
       getTransports: () => result.native ? result.transports : [result.transport], getAuthenticatorData: () => decode(result.authData),
       getPublicKey: () => result.publicKeySpki === null ? null : decode(result.publicKeySpki), getPublicKeyAlgorithm: () => result.native ? result.publicKeyAlgorithm : -7,
-    });
-    return Object.assign(Object.create(PublicKeyCredential.prototype), {
+    }));
+    return Object.create(PublicKeyCredential.prototype, Object.getOwnPropertyDescriptors({
       id: urlId(result.credentialId), rawId: decode(result.credentialId), type: 'public-key',
       authenticatorAttachment: result.native ? 'platform' : 'cross-platform', response, getClientExtensionResults: () => ({}),
-    });
+    }));
   };
 })();
