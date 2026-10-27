@@ -3,7 +3,7 @@
 export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "e2d7b690b164501d59ecb857d12efb0359fdc72c0bdb89b19da2af9326de2c93",
+    "sha256": "8ac58147e0764e0eda8555a553d22b9d03c4968c10352ae88bd18c9988c9fbe1",
     "reason": "A failed selected-context open marks database closure unproved only for typed custody uncertainty and immediately rethrows; process release remains fenced. Startup and stop cleanup retain every failed required producer closure and original cause before dependent storage release."
   },
   {
@@ -18,7 +18,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
       "path": "src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
-      "sha256": "2d1be41d998c07b1cec1c0c3ca0c42cc8426ac5ab4b8e1cf09010d8bceb3e327",
+      "sha256": "8f7b049c2d8625ca8d072fa1d5bdb27eba6acf0187b3530f8a4e79dc9937e54f",
       "reason": "Only ENOENT denotes no diagnostic stage directory (empty inventory, zero reclaimed stages or bytes) or an already absent captured file; all other errors rethrow. EEXIST verifies exact winner bytes; custody and cleanup failures throw or aggregate."
   },
   {
@@ -58,7 +58,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "ab4ca1c327d4cc7e5b71d787915c65bac4267db3be5de1bbe9787b6e38bac0ee",
+      "sha256": "4d8fbac7c75ee223447c0b5beff6eba816af4d69364be6e55ad5ee0b1738bdc6",
     "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate."
   },
   {
@@ -103,8 +103,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "e33d46d88c4dfcdd01d6474a8beb0ef897c15dd73480db1e53e9086c2dcb9716",
-    "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success."
+    "sha256": "125d0f7314956929086dbfc750a56e69189596a05f2da985a57a81d68b8b0271",
+    "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success. Claimed-profile configuration rebase rolls back and rethrows; failed rollback or database close retains custody and the original cause."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
@@ -138,7 +138,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "ce615397276436a9adbc6da3353dcab1f60f29395a8f0e27fbb418aeaa8db8ec",
+    "sha256": "f5aa1a473db2743a5ecac3219c979d515662be7ab2d9851ddf1346ea0e291740",
     "reason": "An unproved source closure keeps the stopped machine-control admission and rethrows; release runs only when that custody was not retained."
   },
   {

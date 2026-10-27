@@ -93,7 +93,7 @@
       "file": "tests/architecture/runs/operator-mutation-admission.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/frontend-backend-integration.md",
-      "invariant": "Ref frontend-backend-integration \u00a73.4 (, ): every browser-reachable mutating route the BFF registers in src/backend/transports/dashboard/routes/api.ts is admitted by a loopback Host/Origin door BEFORE its handler runs, per a closed admission table \u2014 JSON-envelope doors (commands, bulk, XLSX export, start plans, Explorer validation) also require application/json; opaque doors (intake bytes, the body-less advisory) own their media contract; the one inline door (preflight rerun) is named as such. An app.post without a row, a guard registered after its route, a wrong guard, a missing inline door, or a stale row is a violation; the arm carries a negative control fixture exhibiting all five. 3.1.12 adds POST /api/v1/exports/search to the guarded JSON doors; wrong origin and media type are refused before body/authority access.",
+      "invariant": "Every browser-reachable mutation in the API and public profile shell has a closed admission-table row and a matching loopback Host/Origin guard registered before its handler. Explicit owner claim uses the same JSON door. Onboarding may use its registered wildcard prefix; other paths do not inherit that door. JSON envelopes require application/json; opaque and inline doors own their named contracts. Missing, late or wrong guards, unclassified registrations and stale rows fail, with negative controls.",
       "replacementRequired": true
     },
     {

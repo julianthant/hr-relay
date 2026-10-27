@@ -139,16 +139,16 @@ export function ensureChildDirectory(
 }
 
 interface PrivateFileOptions {
-  readonly label: "protected.json" | "lock" | "ChatGPT" | "Duo credential" | "erasure journal" | "authority database";
+  readonly label: "protected.json" | "lock" | "ChatGPT" | "Duo credential" | "erasure journal" | "authority database" | "managed data";
   readonly maxBytes: number;
   readonly allowedLinkCounts?: readonly number[];
 }
 
 export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: DirectoryIdentity; stat: Stats } | undefined {
   const { label, maxBytes, allowedLinkCounts = [1] } = options;
-  const database = label === "authority database";
-  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || database;
-  const invalidMode = (mode: number): boolean => database ? (mode & 0o022) !== 0 : (mode & 0o7777) !== CREDENTIAL_FILE_MODE;
+  const ordinary = label === "authority database" || label === "managed data";
+  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || ordinary;
+  const invalidMode = (mode: number): boolean => ordinary ? (mode & 0o022) !== 0 : (mode & 0o7777) !== CREDENTIAL_FILE_MODE;
   const unavailable = lock ? "directory-integrity: credential lock is unavailable" : `credential store ${label} is unavailable`;
   const invalid = lock ? "directory-integrity: credential lock permissions or identity are invalid" : `directory-integrity: ${label} permissions or identity are invalid`;
   let pathStatus;

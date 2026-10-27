@@ -172,6 +172,11 @@ export function openReadOnlyDatabase(path: string, busyTimeoutMs: number): Datab
 export function withAuthorityDatabaseReadOnly<Result>(admission:RuntimeAdmission,pathInput:string,read:(database:DatabaseSync)=>Result,busyTimeoutMs=250):Result {
  const path=resolve(pathInput);
  requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
+ return withReadonlyAuthoritySnapshot(path, read, busyTimeoutMs);
+}
+
+export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (database: DatabaseSync) => Result, busyTimeoutMs = 250): Result {
+ const path = resolve(pathInput);
  requireDatabaseSourcePath(path);
  if(!existsSync(path)||statSync(path).size===0)throw new Error("authority-backup-source-missing");
  const snapshot=createReadonlyAuthoritySnapshot(path);
