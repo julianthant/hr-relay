@@ -40,14 +40,14 @@ it("real extension isolated native create uses page RP/origin and ignores forged
       try { parsedUrl = new URL(sender.url); } catch { parsedUrl = undefined; }
       realmDocumentFormats.push({
         string: typeof sender.documentId === 'string',
-        compactHex32: typeof sender.documentId === 'string' && /^[0-9a-f]{32}$/i.test(sender.documentId),
-        hyphenatedHex36: typeof sender.documentId === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sender.documentId),
+        compactHex32: typeof sender.documentId === 'string' && sender.documentId.length === 32 && /^[0-9a-f]{32}$/i.test(sender.documentId),
+        hyphenatedHex36: typeof sender.documentId === 'string' && sender.documentId.length === 36 && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sender.documentId),
       });
       const checks = {
         senderIdentity: sender.id === chrome.runtime.id,
         topFrame: sender.frameId === 0,
         activeDocument: sender.documentLifecycle === 'active',
-        documentToken: typeof sender.documentId === 'string' && /^[0-9a-f]{32}$/i.test(sender.documentId),
+        documentToken: typeof sender.documentId === 'string' && sender.documentId.length === 32 && /^[0-9a-f]{32}$/i.test(sender.documentId),
         localhost: parsedUrl?.hostname === 'localhost',
         senderOrigin: sender.origin === parsedUrl?.origin,
         requestOrigin: message.request?.origin === sender.origin,
@@ -55,7 +55,7 @@ it("real extension isolated native create uses page RP/origin and ignores forged
       };
       realmGuardFailures.push(Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name));
       if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || sender.documentLifecycle !== 'active'
-        || typeof sender.documentId !== 'string' || !/^[0-9a-f]{32}$/i.test(sender.documentId)
+        || typeof sender.documentId !== 'string' || sender.documentId.length !== 32 || !/^[0-9a-f]{32}$/i.test(sender.documentId)
         || new URL(sender.url).hostname !== 'localhost' || sender.origin !== new URL(sender.url).origin
         || message.request?.origin !== sender.origin || message.request?.rpId !== 'localhost') {
         sendResponse({ success: false }); return false;
@@ -158,6 +158,7 @@ it("real extension isolated native create uses page RP/origin and ignores forged
     assert.equal(actualReceipts[0]?.sender.documentId, actualReceipts[1]?.sender.documentId);
     for (const receipt of actualReceipts) {
       assert.equal(receipt.sender.id, extensionId);
+      assert.equal(receipt.sender.documentId.length, 32);
       assert.match(receipt.sender.documentId, /^[0-9a-f]{32}$/i);
       assert.equal(receipt.sender.origin, origin);
       assert.equal(receipt.sender.url, `${origin}/`);

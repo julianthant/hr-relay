@@ -119,6 +119,8 @@ for (const [label, sender, request] of [
   ['subframe', { ...SENDER, frameId: 1 }, enrollment()],
   ['missing document', { ...SENDER, documentId: undefined }, enrollment()],
   ['malformed document', { ...SENDER, documentId: 'x'.repeat(32) }, enrollment()],
+  ['document trailing LF', { ...SENDER, documentId: `${DOCUMENT}\n` }, enrollment()],
+  ['document trailing CR', { ...SENDER, documentId: `${DOCUMENT}\r` }, enrollment()],
   ['hyphenated document', { ...SENDER, documentId: '00000000-0000-4000-8000-000000000007' }, enrollment()],
   ['inactive document', { ...SENDER, documentLifecycle: 'cached' }, enrollment()],
   ['forged tab', { ...SENDER, tab: { id: '7' } }, enrollment()],

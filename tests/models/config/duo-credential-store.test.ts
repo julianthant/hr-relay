@@ -10,7 +10,7 @@ it("retains the browser document token verbatim while keeping issued identities 
     accountId: "00000000-0000-4000-8000-000000000002", origin: "https://test.duosecurity.com", rpId: "duosecurity.com",
     armedAt: "2026-10-26T12:00:00.000Z", expiresAt: "2026-10-26T12:10:00.000Z" };
   assert.equal(DuoEnrollmentScopeSchema.parse(scope).contextId, token);
-  for (const value of [undefined, "", "x".repeat(32), token.slice(1), `${token}0`, ` ${token}`, scope.armId]) {
+  for (const value of [undefined, "", "x".repeat(32), token.slice(1), `${token}0`, ` ${token}`, `${token}\n`, `${token}\r`, scope.armId]) {
     assert.equal(BrowserDocumentIdSchema.safeParse(value).success, false);
     assert.equal(DuoEnrollmentScopeSchema.safeParse({ ...scope, contextId: value }).success, false);
   }

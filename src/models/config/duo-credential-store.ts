@@ -6,7 +6,7 @@ const Base64Schema = z.string().min(4).max(16_384).regex(/^(?:[A-Za-z0-9+/]{4})*
 const CredentialIdSchema = z.string().min(1).max(2048).regex(/^[A-Za-z0-9_-]+$/u);
 const TimestampSchema = z.iso.datetime();
 
-export const BrowserDocumentIdSchema = z.string().regex(/^[0-9a-f]{32}$/iu);
+export const BrowserDocumentIdSchema = z.string().length(32).regex(/^[0-9a-f]{32}$/iu);
 
 export const DuoEnrollmentScopeSchema = z.strictObject({
   armId: z.uuid(), contextId: BrowserDocumentIdSchema, tabId: z.number().int().nonnegative(), accountId: z.uuid(),
