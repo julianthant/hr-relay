@@ -117,7 +117,7 @@ export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMetho
     if (source === "mock") window.addEventListener("message", message);
     return () => { window.clearInterval(timer); window.removeEventListener("message", message); window.removeEventListener("pagehide", close); close(); };
   }, [source, operationId]);
-  return { status, open() {
+  return { status: source === "served" && operationId === undefined ? "error" as const : status, open() {
     if (child.current && !child.current.closed) { child.current.focus(); return; }
     child.current = window.open(`${location.pathname}?onboardingSetup=fast`, "hub-duo-setup", "popup,width=1200,height=900");
     setStatus(child.current ? "launching" : "error");
