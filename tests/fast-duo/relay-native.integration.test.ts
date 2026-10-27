@@ -120,7 +120,7 @@ it("real extension isolated native create uses page RP/origin and ignores forged
     assert.ok(Array.isArray(value));
     const output = (value as { id: string; success: boolean; result: { clientDataJSON: string; authData: string; native: boolean; credentialId: string } }[]).find(reply => reply.id === "real-native");
     assert.ok(output);
-    assert.equal(output.success, true);
+    assert.equal(output.success, true, JSON.stringify({ success: output.success, nativeCredentials, receiptTypes: (await receipts()).map(receipt => receipt.type) }));
     assert.equal(output.result.native, true);
     const clientData = JSON.parse(Buffer.from(output.result.clientDataJSON, "base64").toString("utf8")) as { origin: string; challenge: string; type: string };
     assert.equal(clientData.origin, origin);
