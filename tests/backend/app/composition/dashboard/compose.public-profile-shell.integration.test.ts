@@ -26,6 +26,32 @@ import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard
 import { ProfileVerifierDocumentSchema } from "../../../../../src/models/profiles/profile.js";
 import type { DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../../../src/backend/profiles/onboarding-duo.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
+import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
+
+async function finishPublicSignUp(base: string): Promise<Response> {
+  const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
+    headers: { origin: base, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
+  const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+  const draft = PublicProfileStateSchema.parse(await signup.json());
+  assert.equal(draft.state, "onboarding");
+  if (draft.state !== "onboarding") throw new Error("fixture actual signup draft required");
+  const cookie = signup.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+  for (const method of ["key", "touch"] as const) {
+    const started = await post("/api/v1/profile/onboarding/duo/start", { operationId: draft.operationId, method }, cookie);
+    const pending = PublicProfileStateSchema.parse(await started.json());
+    assert.equal(pending.state, "onboarding");
+    if (pending.state !== "onboarding") throw new Error("fixture actual Duo attempt required");
+    assert.equal(pending.methods[method].state, "pending");
+    const confirmed = await post("/api/v1/profile/onboarding/duo/confirm", {
+      operationId: draft.operationId, method, attemptId: pending.methods[method].attemptId, operatorConfirmed: true }, cookie);
+    const result = PublicProfileStateSchema.parse(await confirmed.json());
+    assert.equal(result.state, "onboarding");
+    if (result.state !== "onboarding") throw new Error("fixture confirmed Duo draft required");
+    assert.equal(result.methods[method].state, "complete");
+    assert.equal(result.step, method === "touch" ? "ready" : "duo");
+  }
+  return post("/api/v1/profile/onboarding/complete", { operationId: draft.operationId }, cookie);
+}
 
 function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "public-profile-shell-")));
@@ -404,10 +430,9 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined;
   try {
     runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
-    const signup = await fetch(`${base}/api/v1/profile/sign-up`, { method: "POST", headers: { origin: base, "content-type": "application/json" },
-      body: JSON.stringify({ firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
+    const signup = await finishPublicSignUp(base);
     assert.equal(PublicProfileStateSchema.parse(await signup.json()).state, "active");
     assert.ok(context !== undefined && token !== undefined);
     context.database.getMeta(); profile.assertCurrent(token);
@@ -470,10 +495,9 @@ it("revokes retained selected producers before a genuine in-flight public transp
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined, stopping: Promise<void> | undefined;
   try {
     runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, env: {} });
+      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {} });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
-    const signup = await fetch(`${base}/api/v1/profile/sign-up`, { method: "POST", headers: { origin: base, "content-type": "application/json" },
-      body: JSON.stringify({ firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
+    const signup = await finishPublicSignUp(base);
     assert.equal(PublicProfileStateSchema.parse(await signup.json()).state, "active");
     assert.ok(profile !== undefined && context !== undefined && token !== undefined);
     const owner = profile, selected = context, capturedToken = token;

@@ -6,7 +6,9 @@ import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { DeletedRunRecordSchema } from "../../../src/models/run/deleted-run.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { runRecordColumns } from "../../../src/backend/storage/sqlite/run-record-row.js";
-import { insertNativeCommand, settleNativeCommand } from "../../../src/backend/storage/sqlite/command-record-row.js";
+import { commandFromRow, insertNativeCommand, settleNativeCommand } from "../../../src/backend/storage/sqlite/command-record-row.js";
+import { createSettingsActivationRepositories } from "../../../src/backend/storage/sqlite/settings-activation.js";
+import { nativeOrdinaryRecordFromRow } from "../../../src/backend/storage/sqlite/native-record-row.js";
 import { inspectNativeAuthority } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { CanonicalDeleteRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../src/rules/commands/commands.js";
@@ -147,8 +149,13 @@ function seedClosedHistoricalActivity(f: Awaited<ReturnType<typeof historicalPre
       { stateRoot: f.profileRoot, artifactRoot: join(f.profileRoot, "artifacts") });
     const snapshot = ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: 1, fingerprint: resolved.fingerprint,
       capturedAt: at, capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
-    raw.prepare("INSERT INTO settings_snapshots (id,revision,fingerprint,payload_json,captured_at) VALUES (?,?,?,?,?)")
-      .run(snapshot.configSnapshotId, snapshot.revision, snapshot.fingerprint, canonicalJsonStringify(snapshot), snapshot.capturedAt);
+    createSettingsActivationRepositories({ database: raw,
+      mutate: work => work().result,
+      readRecord(table, key, schema) {
+        const row = raw.prepare(`SELECT * FROM ${table} WHERE id=?`).get(key);
+        return row === undefined ? undefined : schema.parse(table === "commands" ? commandFromRow(row) : nativeOrdinaryRecordFromRow(table, row));
+      },
+    }).runtimeConfig.initialize(snapshot);
     const runId = randomUUID(), itemId = randomUUID(), traceId = `se-120000-${String(1000 + (kind === "deleted" ? 1 : 2))}`;
     const fixture = ledgerCommitFixture(kind === "deleted" ? 71 : 72, { runId, itemId, traceId, workflowId: separationsDescriptor.id,
       configFingerprint: snapshot.fingerprint, instance: "test" });
@@ -160,7 +167,7 @@ function seedClosedHistoricalActivity(f: Awaited<ReturnType<typeof historicalPre
       shape: "single", priority: "interactive", dryRun: false, attempt: 1, enqueuedAt: at },
       input: { raw: {}, parsed: { schemaHash: sha256Hex("historical fixture input"), value: {}, protectedBindings: [] }, ingressSchemaHash: sha256Hex("historical fixture input") },
       lifecycle: kind === "deleted" ? { state: "terminal", outcome: "interrupted", endedAt: at }
-        : { state: "parked-write", writeIntentId: intent.writeIntentId, code: "unknown", message: "Historical outcome remains unknown" },
+        : { state: "parked-write", writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, parkedAt: at, code: "unknown", message: "Historical outcome remains unknown" },
       claimGeneration: 1, version: 5, createdAt: at, updatedAt: at });
     const columns = runRecordColumns(run), keys = Object.keys(columns);
     raw.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...Object.values(columns));
