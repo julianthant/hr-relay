@@ -1826,7 +1826,35 @@ export class AuthorityDatabase implements Disposable {
       const counts = Object.freeze(AUTHORITY_TABLE_REGISTRY.map(table => Object.freeze({ table: table.name,
         count: z.strictObject({ count: z.number().int().safe().nonnegative() }).parse(database.prepare(`SELECT COUNT(*) AS count FROM ${table.name}`).get()).count })));
       const artifactReferenceCount = readManagedArtifactReferencesFromDatabase(database).length;
-      const empty = counts.every(row => row.table === "database_states" || row.table === "database_upgrades" || row.count === 0) && artifactReferenceCount === 0;
+      let empty = counts.every(row => row.table === "database_states" || row.table === "database_upgrades" || row.count === 0) && artifactReferenceCount === 0;
+      const initializationTables = new Set<AuthorityTableName>(["settings", "commands", "command_audits", "settings_snapshots"]);
+      if (!empty && artifactReferenceCount === 0
+        && counts.every(row => row.table === "database_states" || row.table === "database_upgrades" || initializationTables.has(row.table) || row.count === 0)
+        && counts.every(row => !["settings", "commands", "command_audits"].includes(row.table) || row.count === 1)) {
+        const settings = readAppSettings(database), active = settings?.active;
+        if (settings !== undefined && settings.saved === null && active != null
+          && canonicalJsonStringify(settings.initialization.settings) === canonicalJsonStringify(initialSettingsFileRecord())
+          && active.settingsRevision === 1 && active.settingsFingerprint === settings.initialization.settings.settingsFingerprint) {
+          const initial = settings.initialization;
+          const command = z.object({ parent_id: z.null(), state: z.literal("succeeded"), outcome_json: z.string() })
+            .parse(database.prepare("SELECT * FROM commands WHERE id=?").get(initial.commandId));
+          const audit = nativeOrdinaryRecordFromRow("command_audits", database.prepare("SELECT * FROM command_audits WHERE id=?").get(initial.auditId));
+          if (canonicalJsonStringify(JSON.parse(command.outcome_json)) !== canonicalJsonStringify(audit)) throw new Error("profile-incomplete-inventory-initialization-mismatch");
+          const snapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
+            .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
+          const endpoints = new Set([initial.configSnapshotId, active.configSnapshotId]);
+          for (const snapshot of snapshots) {
+            // Intermediate startup snapshots have no retained activation authority.
+            if (!endpoints.has(snapshot.configSnapshotId)) throw new Error("profile-incomplete-inventory-snapshot-unbound");
+            if (snapshot.revision !== 1 || snapshot.capturedBy !== LOCAL_OPERATOR_ACTOR_ID
+              || snapshot.configSnapshotId === initial.configSnapshotId && (snapshot.fingerprint !== initial.configFingerprint || snapshot.capturedAt !== initial.initializedAt)
+              || snapshot.configSnapshotId === active.configSnapshotId && (snapshot.fingerprint !== active.configFingerprint || snapshot.capturedAt !== active.activatedAt)) {
+              throw new Error("profile-incomplete-inventory-snapshot-mismatch");
+            }
+          }
+          empty = snapshots.length === endpoints.size && active.generation === snapshots.length;
+        }
+      }
       owner.assertStoppedIncompleteProfileInventory();
       return Object.freeze({ authorityGeneration: inspection.authorityGeneration, counts, artifactReferenceCount, empty });
     });
