@@ -333,7 +333,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
           footer: "Resolution unavailable: this panel cannot collect a failure annotation." } }] });
     } else if (section.section === "identity-gate" && section.payload.state === "available") {
       const gate = section.payload.value;
-      const ceremony = identityCeremonyFor(gate, "approved");
+      const ceremony = identityCeremonyFor(gate);
       order.set(gate.gateId, requireNative(gate.native).order); node.set(gate.gateId, requireNative(gate.native).nodeId);
       steps.push({ id: gate.gateId, time: fmtActionClock(gate.parkedAt), title: gate.label,
         entries: [{ kind: "decision", id: gate.gateId, time: fmtActionClock(gate.parkedAt), decision: { title: gate.label, state: "review",
@@ -341,7 +341,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
           comparison: gate.packet.comparisons.map(comparison => ({ label: comparison.field, expected: comparison.documentValue, observed: comparison.ucpathValue })),
           ...(ceremony.kind === "confirm" ? { field: { label: "Approving employee", value: `${ceremony.option.displayName} · ${directIdentifierDisplay(ceremony.option.eid)}`,
             outcome: `${ceremony.option.chosenFrom} · ${ceremony.option.origin}` } } : {}),
-          footer: "Some resolutions are unavailable: this panel cannot collect typed identity or rejection text.", actions: detail.gate.state === "open" && detail.gate.nodeId === gate.gateId && detail.captures !== undefined && detail.captures.state !== "error" ? gateLogActions(gate) : undefined } }] });
+          actions: detail.gate.state === "open" && detail.gate.nodeId === gate.gateId && detail.captures !== undefined && detail.captures.state !== "error" ? gateLogActions(gate) : undefined } }] });
     }
   }
   const decisionEvents = new Set(sections.flatMap(section => section.section === "identity-gate" && section.payload.state === "available"
@@ -400,7 +400,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
 export function gateLogActions(gate: IdentityGateDetailWire): readonly LogDecisionAction[] {
   return gate.actions.flatMap(action => {
     if (action.kind !== "command" || action.command !== "resolve-gate" || action.resolution !== "approved") return [];
-    const ceremony = identityCeremonyFor(gate, "approved");
+    const ceremony = identityCeremonyFor(gate);
     if (ceremony.kind !== "choose" && ceremony.kind !== "confirm") return [];
     return [{ id: action.key, label: action.label, primary: action.intent === "primary", result: { title: action.label, message: "" },
       ...(ceremony.kind === "choose" ? { input: { kind: "candidate" as const, question: gate.label, candidates: ceremony.options.map(option => ({

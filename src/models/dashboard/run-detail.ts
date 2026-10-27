@@ -845,7 +845,7 @@ export const IdentityGateDetailWireSchema = z.strictObject({
   packet: IdentityEvidencePacketSchema,
   options: z.array(IdentityGateOptionWireSchema).min(1),
     /* The SERVER decides how much ceremony the decision costs, so a surface cannot quietly turn a risky approval into one click. */
-  approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
+  approvalShape: z.enum(["one-click", "choose-a-candidate"]),
   /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
 }).superRefine((gate, context) => {

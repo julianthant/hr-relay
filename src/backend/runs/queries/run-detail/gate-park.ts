@@ -401,11 +401,9 @@ function identityGateActions(authority: RunRecord, packet: IdentityEvidencePacke
     {
       key: "resolve-gate-approved",
       label: packet.approvalShape === "one-click" ? "Approve this person" : "Approve the chosen EID",
-      detail: packet.approvalShape === "type-the-eid"
-        ? "This decision is ambiguous: the EID must be typed, not selected."
-        : packet.approvalShape === "choose-a-candidate"
-          ? "Choose which candidate the separation document means."
-          : "One unambiguous candidate, one active job, and the names agree.",
+      detail: packet.approvalShape === "choose-a-candidate"
+        ? "Choose which candidate the separation document means."
+        : "Confirm the one candidate the separation document means.",
       intent: "primary",
       icon: "resolve",
       placement: ["banner", "footer"],
@@ -423,24 +421,6 @@ function identityGateActions(authority: RunRecord, packet: IdentityEvidencePacke
           }. Approving files the rest of this separation against this person anyway.`,
         confirmLabel: "Approve",
         tone: disagreements.length === 0 ? "neutral" : "destructive",
-      },
-    },
-    {
-      key: "resolve-gate-rejected",
-      label: "Reject — this is not the right person",
-      detail: "Ends the run with the reason recorded. Nothing downstream runs.",
-      intent: "destructive",
-      icon: "resolve",
-      placement: ["banner", "footer"],
-      kind: "command",
-      command: "resolve-gate",
-      expectedVersion: authority.version,
-      resolution: "rejected",
-      confirm: {
-        title: "Reject this identity",
-        body: `The run ends and records why. Separation document ${packet.documentNumber} stays untouched.`,
-        confirmLabel: "Reject",
-        tone: "neutral",
       },
     },
   ];

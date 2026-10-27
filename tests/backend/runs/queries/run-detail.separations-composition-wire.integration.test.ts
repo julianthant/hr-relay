@@ -252,11 +252,11 @@ describe("separations — the identity-gate wire", () => {
     );
     assert.equal(payload.value.evidenceDigest, deriveIdentityEvidenceDigest(packet));
 
-    assert.equal(payload.value.approvalShape, "type-the-eid");
+    assert.equal(payload.value.approvalShape, "one-click");
 
     assert.deepEqual(
       payload.value.actions.map(({ command }) => command),
-      ["resolve-gate", "resolve-gate"],
+      ["resolve-gate"],
     );
     const command = CommandRequestSchema.parse({
       commandId: uuidOf(31),

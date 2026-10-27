@@ -28,8 +28,8 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
   }), native: { eventId: uuidOf(9501), order: 4, runId: FIXTURE_IDS.openGateRun, attempt: 1,
     traceId: traceOf(5), spanPath: `${traceOf(5)}/${GATE_NODE_ID}`, nodeId: GATE_NODE_ID } };
 
-  const FIXTURE_IDENTITY_GATE_TYPED_EID = { ...buildFixtureIdentityGate({
-    runId: FIXTURE_IDS.gateTypedEidRun,
+  const FIXTURE_IDENTITY_GATE_NAME_MISMATCH = { ...buildFixtureIdentityGate({
+    runId: FIXTURE_IDS.gateNameMismatchRun,
     gateId: GATE_NODE_ID,
     label: "Identity Approval",
     parkedAt: at(24),
@@ -37,7 +37,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
     expectedVersion: 44,
     observedAt: at(23),
     documentName: "Okonkwo, Adaeze",
-  }), native: { eventId: uuidOf(13401), order: 4, runId: FIXTURE_IDS.gateTypedEidRun, attempt: 1,
+  }), native: { eventId: uuidOf(13401), order: 4, runId: FIXTURE_IDS.gateNameMismatchRun, attempt: 1,
     traceId: traceOf(44), spanPath: `${traceOf(44)}/${GATE_NODE_ID}`, nodeId: GATE_NODE_ID } };
 
   const PARKED_WRITE_INTENT_ID = uuidOf(906);
@@ -184,13 +184,13 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
         payload: { state: "available", value: FIXTURE_IDENTITY_GATE },
       }),
     }),
-    [FIXTURE_IDS.gateTypedEidRun]: Object.freeze({
+    [FIXTURE_IDS.gateNameMismatchRun]: Object.freeze({
       "identity-gate": sectionResponse({
         section: "identity-gate",
-        payload: { state: "available", value: FIXTURE_IDENTITY_GATE_TYPED_EID },
+        payload: { state: "available", value: FIXTURE_IDENTITY_GATE_NAME_MISMATCH },
       }),
     }),
   });
 
-  return { PARKED_WRITE_INTENT, FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_TYPED_EID, FIXTURE_PARKED_WRITE, FIXTURE_GATE_PARK_SECTIONS };
+  return { PARKED_WRITE_INTENT, FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_NAME_MISMATCH, FIXTURE_PARKED_WRITE, FIXTURE_GATE_PARK_SECTIONS };
 }

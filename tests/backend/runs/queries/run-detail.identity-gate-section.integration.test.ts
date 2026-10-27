@@ -31,7 +31,7 @@ import { BUILD_MANIFEST,resolveTaskImplFingerprint } from "../../../../src/workf
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import {
 FIXTURE_IDENTITY_GATE,
-FIXTURE_IDENTITY_GATE_TYPED_EID,
+FIXTURE_IDENTITY_GATE_NAME_MISMATCH,
 } from "../../../support/fixtures/dashboard/fixture-day.js";
 import { fixtureIdentityGateActions } from "../../../support/fixtures/dashboard/fixture-gate.js";
 import {
@@ -344,13 +344,11 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
       payload.value.options.map(({ eid, chosenFrom }) => ({ eid, chosenFrom })),
       [{ eid: EID, chosenFrom: "checked" }],
     );
-    // A name-resolved EID requires the explicit typed-EID ceremony even when
-    // the search returned exactly one candidate.
-    assert.equal(payload.value.approvalShape, "type-the-eid");
-    assert.equal(payload.value.actions.length, 2);
+    // One candidate is a confirm even when the names differ; the confirm turns destructive instead.
+    assert.equal(payload.value.approvalShape, "one-click");
     assert.deepEqual(
       payload.value.actions.map((action) => action.kind === "command" ? action.resolution : undefined),
-      ["approved", "rejected"],
+      ["approved"],
     );
     const approve = payload.value.actions[0];
     assert.equal(approve?.kind === "command" ? approve.confirm?.tone : undefined, "destructive");
@@ -358,7 +356,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
 
 
   it("pins the parity fixture's gate descriptors and option labels to this query's", async () => {
-    for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_TYPED_EID]) {
+    for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_NAME_MISMATCH]) {
       const w = await world();
       seed(w);
       putCheckpoint(w, checkpointOf(fixture.packet));

@@ -85,7 +85,7 @@ hdh: true,
 
   const CHOOSE = packetOf({ documentName: "Hernandez, Jose Santos", searchResolvesEid: NAME_SEARCH });
 
-  const TYPE_EID = packetOf({ documentName: "Okonkwo, Adaeze", searchResolvesEid: NAME_SEARCH });
+  const NAME_MISMATCH = packetOf({ documentName: "Okonkwo, Adaeze", searchResolvesEid: NAME_SEARCH });
 
   function gateDetail(packet: IdentityEvidencePacket, overrides: Record<string, unknown> = {}): IdentityGateDetail {
     const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
@@ -113,5 +113,5 @@ hdh: true,
       ...overrides,
     });
   }
-  return { jobRows, packetOf, ONE_CLICK, CHOOSE, TYPE_EID, gateDetail };
+  return { jobRows, packetOf, ONE_CLICK, CHOOSE, NAME_MISMATCH, gateDetail };
 }
