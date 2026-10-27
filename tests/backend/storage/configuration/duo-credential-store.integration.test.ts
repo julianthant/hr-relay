@@ -509,19 +509,13 @@ function assertChildProcessReleased(pid: number): void {
   if (listed.error !== undefined || listed.signal !== null || listed.status !== 1) throw new Error("duo-child-fd-unproved", { cause: listed.error });
 }
 
-function controlPaths(fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
-  const stateRoot = fixture.machine.stateRoot;
-  return { stateRoot, workspace: fixture.workspace, databasePath: fixture.path, database: readFileSync(fixture.path),
-    controlPath: join(fixture.workspace, ".tracker/control", "profile-registry.json"),
-    markerPath: join(stateRoot, "machine", "profile-registry-version.json"),
-    processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot) };
-}
-
-function downgradeStoppedControl(fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>, markerVersion: 1 | 2, dropCredentialKey = false) {
-  const paths = controlPaths(fixture);
+function downgradeStoppedControl(fixture: Pick<Awaited<ReturnType<typeof createHistoricalIncompleteProfileFixture>>,
+  "databasePath" | "controlPath" | "markerPath" | "processLockRoot" | "profileId">, markerVersion: 1 | 2, dropCredentialKey = false) {
+  const paths = { databasePath: fixture.databasePath, database: readFileSync(fixture.databasePath),
+    controlPath: fixture.controlPath, markerPath: fixture.markerPath, processLockRoot: fixture.processLockRoot };
   const current = JSON.parse(readFileSync(paths.controlPath, "utf8")) as { schemaVersion: number; duo?: unknown; erasures?: Array<Record<string, unknown>> };
-  fixture.admission.release();
-  fixture.machine.release();
+  assert.equal(current.schemaVersion, 2);
+  assert.deepEqual(current.duo, [{ profileId: fixture.profileId, state: 'never-initialized', revision: 0 }]);
   const { duo: _duo, erasures, ...prior } = current;
   const nextErasures = dropCredentialKey === true ? (erasures ?? []).map((row) => { const { credentialKey: _key, ...rest } = row; return rest; }) : erasures;
   privateJson(paths.controlPath, { ...prior, ...(nextErasures === undefined ? {} : { erasures: nextErasures }), schemaVersion: 1 });
@@ -767,7 +761,7 @@ const hostFacts = { primaryDisplay: null };
 const upgradeClock = () => manualClock(new Date("2026-01-15T00:00:00.000Z"));
 
 it("admits only the finite stopped machine-control pair through maintenance admission", async () => {
-  const unsupported = await createBoundProfileFixture();
+  const unsupported = await createHistoricalIncompleteProfileFixture();
   const unsupportedPaths = downgradeStoppedControl(unsupported, 1);
   try {
     assert.throws(() => RuntimeAdmission.acquireMachine(unsupported.workspace, "exclusive"));
@@ -777,7 +771,7 @@ it("admits only the finite stopped machine-control pair through maintenance admi
       assertUnchanged(unsupportedPaths);
     } finally { maintenance.release(); }
   } finally { await unsupported.close(); }
-  const missingKey = await createBoundProfileFixture();
+  const missingKey = await createHistoricalIncompleteProfileFixture();
   const missingPaths = downgradeStoppedControl(missingKey, 2, true);
   try {
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(missingKey.workspace);
@@ -786,7 +780,7 @@ it("admits only the finite stopped machine-control pair through maintenance admi
       assertUnchanged(missingPaths);
     } finally { maintenance.release(); }
   } finally { await missingKey.close(); }
-  const live = await createBoundProfileFixture();
+  const live = await createHistoricalIncompleteProfileFixture();
   const livePaths = downgradeStoppedControl(live, 2);
   const lock = acquireRuntimeProcessLock({ processLockRoot: livePaths.processLockRoot, name: "server", pid: process.pid });
   try {
@@ -796,13 +790,14 @@ it("admits only the finite stopped machine-control pair through maintenance admi
 });
 
 it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and rolls back a mutated stage", async () => {
-  const fixture = await createBoundProfileFixture();
+  const fixture = await createHistoricalIncompleteProfileFixture();
   const paths = downgradeStoppedControl(fixture, 2);
   assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "exclusive"));
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
   try {
     const planned = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(planned.state, "planned");
+    assert.equal(planned.runtimeAccess, "owner-claim-required");
     assertUnchanged(paths);
     execFileSync("/usr/bin/chflags", ["uchg", paths.controlPath]);
     await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
@@ -823,6 +818,7 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     writeFileSync(stagePath, stageBytes);
     const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(upgraded.state, "upgraded");
+    assert.equal(upgraded.runtimeAccess, "owner-claim-required");
     const names = readdirSync(backupDirectory).sort();
     const operationNames = names.filter((name) => name.endsWith(".control.before.json"));
     assert.equal(operationNames.length, 1);
@@ -840,12 +836,13 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
     const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(current.state, "current");
+    assert.equal(current.runtimeAccess, "owner-claim-required");
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
   } finally { maintenance.release(); await fixture.close(); }
 });
 
 it("recovers a machine-control publication stopped between the control and marker renames", async () => {
-  const fixture = await createBoundProfileFixture();
+  const fixture = await createHistoricalIncompleteProfileFixture();
   const paths = downgradeStoppedControl(fixture, 2);
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
   try {
@@ -856,6 +853,7 @@ it("recovers a machine-control publication stopped between the control and marke
     assert.equal(readFileSync(paths.markerPath).equals(paths.markerBytes), true);
     const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(upgraded.state, "upgraded");
+    assert.equal(upgraded.runtimeAccess, "owner-claim-required");
     assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 3);
     const backupDirectory = join(fixture.workspace, ".tracker/control", "profile-control-upgrades");
     const controlName = readdirSync(backupDirectory).find((name) => name.endsWith(".control.before.json"));
@@ -867,7 +865,7 @@ it("recovers a machine-control publication stopped between the control and marke
 });
 
 it("keeps the restore admission when stopped-control snapshot disposal is unproved", async () => {
-  const fixture = await createBoundProfileFixture();
+  const fixture = await createHistoricalIncompleteProfileFixture();
   const held: { fixture: typeof fixture; maintenance?: RuntimeAdmission; restore?: ReturnType<RuntimeAdmission['maintenanceRestore']>; control?: ReturnType<RuntimeAdmission['beginStoppedMachineControlUpgrade']>; processLockRoot?: string; snapshot?: { path: string; device: number; inode: number; uid: number; originalFlags: number; injected: boolean }; primary?: { error: unknown }; cleanup?: { error: unknown } } = { fixture };
   retainedPublicationRecoveryOwners.add(held);
   const readSnapshotFlags = (path: string) => z.number().int().nonnegative().parse(Number(z.string().regex(/^\d+$/).parse(execFileSync('/usr/bin/stat', ['-f', '%f', path], { encoding: 'utf8' }).trim())));
