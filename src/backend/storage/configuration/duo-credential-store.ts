@@ -26,7 +26,7 @@ export interface IssuedDuoTransaction { readonly profileId: string }
 type PublicCredential = Readonly<{ credentialId: string; state: "pending" | "ready"; highWater: number }>;
 type Mutation = (document: DuoCredentialDocument | undefined) => Readonly<{ document?: DuoCredentialDocument; result: unknown }>;
 const transactions = new WeakMap<IssuedDuoTransaction, {
-  purpose: DuoCredentialPurpose; draftOperationId?: string; machineRoot: string; mutation: Mutation; used: boolean; publicationStarted: boolean; capture?: DuoPublicationCapture; ancestry: Map<string, DirectoryIdentity>;
+  purpose: DuoCredentialPurpose; access: "metadata" | "mutation"; draftOperationId?: string; machineRoot: string; mutation: Mutation; used: boolean; publicationStarted: boolean; capture?: DuoPublicationCapture; ancestry: Map<string, DirectoryIdentity>;
 }>();
 
 function identity(path: string) {
@@ -58,7 +58,10 @@ export function prepareIssuedDuoTransaction(transaction: IssuedDuoTransaction, m
       || draft.onboarding?.generation !== generation || profile !== undefined
       || canonicalJsonStringify(draft.onboarding.duo) !== canonicalJsonStringify(prior)) throw new Error("duo-draft-authority-changed");
   } else if (draft !== undefined || registry.sessionGeneration !== generation || profile?.lifecycle !== "ready" || profile.credentialState !== "saved") throw new Error("duo-profile-authority-changed");
-  if (draft?.phase === "publishing") assertFinishedProfileOnboarding(draft);
+  if (draft?.phase === "publishing") {
+    assertFinishedProfileOnboarding(draft);
+    if (issued.access !== "metadata") throw new Error("duo-finished-draft-purpose-refused");
+  }
   issued.used = true;
   const directory = join(machineRoot, "machine", "duo-credentials");
   if (!noSymlinkAncestry(directory, issued.ancestry) && prior.state !== "never-initialized") throw new Error("duo-document-required");
@@ -174,12 +177,12 @@ function createDuoStore(profile: RuntimeAdmission, machine: RuntimeAdmission, pu
   const machineRoot = machine.stateRoot, ancestry = new Map<string, DirectoryIdentity>();
   noSymlinkAncestry(join(machineRoot, "machine", "duo-credentials"), ancestry);
   let uncertain: IssuedDuoTransaction | undefined;
-  function transact<Result>(mutation: (document: DuoCredentialDocument | undefined) => Readonly<{ document?: DuoCredentialDocument; result: Result }>, phase: "settle" | "durable-intent" = "settle"): Result {
+  function transact<Result>(mutation: (document: DuoCredentialDocument | undefined) => Readonly<{ document?: DuoCredentialDocument; result: Result }>, phase: "settle" | "durable-intent" = "settle", access: "metadata" | "mutation" = "mutation"): Result {
     if (draftOperationId === undefined) profile.assertProfileRuntime();
     else profile.assertProfileInitialization();
     const transaction = Object.freeze({ profileId: binding.profileId });
     let outcome: Readonly<{ result: Result }> | undefined;
-    const issued = { purpose, ...(draftOperationId === undefined ? {} : { draftOperationId }), machineRoot, mutation: (document: DuoCredentialDocument | undefined) => {
+    const issued = { purpose, access, ...(draftOperationId === undefined ? {} : { draftOperationId }), machineRoot, mutation: (document: DuoCredentialDocument | undefined) => {
       const result = mutation(document); outcome = result; return result;
     }, used: false, publicationStarted: false, ancestry };
     transactions.set(transaction, issued);
@@ -204,12 +207,12 @@ function createDuoStore(profile: RuntimeAdmission, machine: RuntimeAdmission, pu
   return Object.freeze({
     read(): Readonly<{ state: "never-initialized" | "registered" | "erased"; revision: number; credentials: readonly PublicCredential[] }> {
       return transact(document => ({ result: { state: document === undefined ? "never-initialized" : document.credentials.length === 0 ? "erased" : "registered",
-        revision: document?.revision ?? 0, credentials: document?.credentials.map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })) ?? [] } }));
+        revision: document?.revision ?? 0, credentials: document?.credentials.map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })) ?? [] } }), "settle", "metadata");
     },
     readForScope(scope: DuoEnrollmentScope): readonly PublicCredential[] {
       const parsed = DuoEnrollmentScopeSchema.parse(scope);
       return transact(document => ({ result: document?.credentials.filter(row => canonicalJsonStringify(row.scope) === canonicalJsonStringify(parsed))
-        .map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })) ?? [] }));
+        .map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })) ?? [] }), "settle", "metadata");
     },
     enroll(input: { credentialId: string; scope: DuoEnrollmentScope; privateKeyPkcs8: string; publicKeySpki: string;
       authenticator?: { readonly userHandle?: string; readonly transport: "internal" | "usb"; readonly isResidentCredential: boolean } }): Readonly<{ credentialId: string; revision: number }> {

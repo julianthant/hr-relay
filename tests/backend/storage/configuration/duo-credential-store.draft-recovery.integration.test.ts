@@ -11,6 +11,7 @@ import { composeProfileRuntime } from "../../../../src/backend/app/composition/s
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDraftDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
 import type { ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
+import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 
 function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider) {
@@ -238,5 +239,37 @@ it("holds tampered abort source and preserves exact key/operation until authenti
   writeFileSync(sourcePath, original, { mode: 0o600 });
   assert.deepEqual(await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId), { state: "signed-out" });
   assert.equal(existsSync(operationPath), false); assert.equal(existsSync(keyPath), false);
+  await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
+});
+
+it("limits finished publishing to value-free metadata and refuses key provisioning or mutation before exact Finish recovery", async () => {
+  const f = await readyFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), rename = nativeFs.renameSync;
+  let fired = false;
+  const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
+    rename(source, destination);
+    if (!fired && String(destination) === operationPath && SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).phase === "publishing") {
+      fired = true; throw new Error("fixture publishing before registry intent");
+    }
+  });
+  syncBuiltinESMExports();
+  try { await assert.rejects(f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId)); }
+  finally { fault.mockRestore(); syncBuiltinESMExports(); }
+  assert.equal(fired, true); assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
+  const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))), draft = operation.onboarding;
+  assert.ok(draft?.finish);
+  const key = draft.attempts.find(entry => entry.method === "key"); assert.ok(key?.scope); assert.ok(key.ceremony);
+  const admission = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.draft.profileId));
+  const store = createDraftDuoCredentialStore(admission, f.machine, operation.operationId, draft.generation, systemClock);
+  assert.deepEqual(store.readForScope(key.scope).map(entry => entry.credentialId), [key.ceremony.credentialId]);
+  assert.throws(() => store.provision(key.ceremony.credentialId, key.scope), /duo-finished-draft-purpose-refused/u);
+  assert.throws(() => store.reserveForAttempt(key.ceremony.credentialId, randomUUID(), key.scope), /duo-finished-draft-purpose-refused/u);
+  assert.throws(() => store.confirm(key.ceremony.credentialId, key.scope), /duo-finished-draft-purpose-refused/u);
+  const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  assert.throws(() => store.enroll({ credentialId: randomUUID(), scope: key.scope,
+    privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
+    publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64") }), /duo-finished-draft-purpose-refused/u);
+  admission.release();
+  assert.equal((await f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId)).state, "active");
+  assert.equal(f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion?.finishId, draft.finish.finishId);
   await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
 });
