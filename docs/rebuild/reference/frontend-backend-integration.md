@@ -310,3 +310,13 @@ both software FastDuo and native Mac Touch ID, proved provider closure and expli
 registry/verifier/active-session publication. Only the ordinary returned session cookie mounts
 bootstrap, Queue, Run and HR data authority. Failed or unknown publication remains a defined HOLD;
 public error codes never expose private causes or credential values.
+
+Show setup browser may refresh unavailable public authority with the current cookie, then shows only
+that same operation and profile. A signed-out or stale session requires the original Details through
+the existing sign-up route; it never cancels the retained draft. Unknown method outcomes stay unknown.
+Show focuses the owned extension tab or recreates that tab once in the same live context. A closed
+window is replaced only after the exact context close event, all tracked pages, the observed process,
+and startup, tab, portal and pump callbacks prove closure. A lost worker-stop acknowledgment during
+window shutdown is superseded only by that complete proof and validated owned-profile deletion;
+otherwise its cause and the closure failure remain uncertain and replacement is refused. Show never
+starts enrollment or submits SSO. Explicit Open Duo retains the existing once-per-context login path.

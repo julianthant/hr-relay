@@ -29,7 +29,7 @@ function world(method: "key" | "touch" = "key") {
   let browserWaiter: ((value: unknown) => void) | undefined;
   let blockedStop = false, releaseStop: (() => void) | undefined, portalPages = 0;
   const replies = new Map<string, (value: unknown) => void>();
-  let closed = false;
+  let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
   let launchCount = 0;
   let profile = "";
   const listeners: (() => void)[] = [];
@@ -46,7 +46,7 @@ function world(method: "key" | "touch" = "key") {
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
       if (["install", "browserInstall"].includes(input.method)) return;
       if (input.method === "browserNext") return new Promise(resolve => { browserWaiter = resolve; });
-      if (input.method === "browserStop") { browserWaiter?.(null); browserWaiter = undefined; return; }
+      if (input.method === "browserStop") { if (lostStopAck) throw new Error("synthetic worker already closed"); browserWaiter?.(null); browserWaiter = undefined; return; }
       if (input.method === "assertContext") { if (!documentCurrent) throw new Error("synthetic document drift"); return; }
       if (input.method === "next") {
         if (requests.length) return requests.shift();
@@ -57,13 +57,20 @@ function world(method: "key" | "touch" = "key") {
       throw new Error("unexpected operation");
     },
   } as unknown as Worker;
-  const page = { bringToFront: async () => undefined, goto: async () => undefined, close: async () => undefined, isClosed: () => closed };
-  const context = { serviceWorkers: () => [worker], pages: () => closed ? [] : [page], on: (_event: string, callback: () => void) => { listeners.push(callback); },
-    newPage: async () => { portalPages++; return { goto: async () => { throw new Error("synthetic navigation failure"); } }; },
-    close: async () => { closed = true; for (const listener of listeners) listener(); waiter?.(null); waiter = undefined; browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
+  function makePage() {
+    let pageClosed = false;
+    let url = "about:blank";
+    return { bringToFront: async () => { focusCount++; }, url: () => url,
+      goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; throw new Error("synthetic navigation failure"); } url = destination; },
+      close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
+  }
+  let pages = [makePage()];
+  const context = { serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), on: (_event: string, callback: () => void) => { listeners.push(callback); },
+    newPage: async () => { const page = makePage(); pages.push(page); return page; },
+    close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); waiter?.(null); waiter = undefined; browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
   const realProvider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory, clock, closeProofMs: 50,
     launcher: { launch: async input => {
-      launchCount++; profile = input.profileDirectory;
+      launchCount++; closed = false; pages = [makePage()]; listeners.length = 0; profile = input.profileDirectory;
       assert.equal(existsSync(join(input.extensionDirectory, "unlisted.txt")), false);
       assert.equal(readFileSync(join(input.extensionDirectory, "LICENSE"), "utf8"), "synthetic license fixture");
       assert.equal(readFileSync(join(input.extensionDirectory, "THIRD_PARTY_NOTICES.md"), "utf8"), "synthetic notices fixture");
@@ -107,7 +114,7 @@ function world(method: "key" | "touch" = "key") {
     return result;
   }
   return { provider, owner, attempt, bind, calls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
-    launches: () => launchCount, profile: () => profile,
+    loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
     async cleanup() {
       try { await provider.cancel(attempt); await provider.closeBrowser(owner); } catch (error) { assert.ok(error instanceof ProfileOnboardingDuoProviderError); }
@@ -118,6 +125,42 @@ function world(method: "key" | "touch" = "key") {
 const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
 
 describe("draft Duo provider", () => {
+  for (const proof of ["proved", "unproved"] as const) it(`lost worker-stop ACK requires ${proof} context closure before a new browser`, async () => {
+    const w = world();
+    try {
+      await w.provider.showBrowser(w.owner); w.loseBrowserStopAck();
+      if (proof === "unproved") w.withholdCloseEvent();
+      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
+      if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }
+      else { await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1); }
+    } finally { await w.closeBrowser(); await w.cleanup(); }
+  });
+
+  it("reopens only the setup tab in its live context once for concurrent Show commands", async () => {
+    const w = world();
+    try {
+      await w.provider.showBrowser(w.owner);
+      await w.closeSetup();
+      await Promise.all([w.provider.showBrowser(w.owner), w.provider.showBrowser(w.owner)]);
+      assert.equal(w.launches(), 1); assert.equal(w.pages(), 1); assert.equal(w.portalPages(), 0);
+      assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
+  it("focuses an existing setup and waits for proved closed-browser settlement before reopening", async () => {
+    const w = world();
+    try {
+      await w.provider.showBrowser(w.owner);
+      await w.provider.showBrowser(w.owner);
+      assert.equal(w.focuses(), 1); assert.equal(w.launches(), 1);
+      await w.closeBrowser();
+      await w.provider.showBrowser(w.owner);
+      assert.equal(w.launches(), 2);
+      assert.equal(w.portalPages(), 0);
+      assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
   it("single-flights concurrent portal commands and retains failed initialization instead of claiming a later success", async () => {
     const w = world();
     try {
@@ -137,6 +180,8 @@ describe("draft Duo provider", () => {
       await assert.rejects(w.provider.cancel(w.attempt), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
       await assert.rejects(w.provider.start({ ...w.attempt, attemptId: randomUUID() }, w.bind, w.reportFailure));
       assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "uncertain" });
+      await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
+      assert.equal(w.launches(), 1);
     } finally { w.releaseStop(); await w.closeBrowser(); await w.cleanup(); }
   });
 
@@ -254,6 +299,11 @@ describe("draft Duo provider", () => {
       assert.deepEqual(w.failures, []);
       assert.ok(w.calls.includes("unknown"));
       assert.ok(!w.calls.includes("portal-accepted"));
+      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
+      const retained = [...w.calls];
+      await w.provider.showBrowser(w.owner);
+      assert.equal(w.launches(), 2); assert.equal(w.portalPages(), 0);
+      assert.deepEqual(w.calls, retained);
     } finally { await w.cleanup(); }
   });
 
