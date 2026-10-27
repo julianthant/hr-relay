@@ -42,6 +42,8 @@ export const StartProfileOnboardingDuoRequestSchema = CompleteProfileOnboardingR
 export type StartProfileOnboardingDuoRequest = z.infer<typeof StartProfileOnboardingDuoRequestSchema>;
 export const ConfirmProfileOnboardingDuoRequestSchema = StartProfileOnboardingDuoRequestSchema.extend({ attemptId: z.uuid(), operatorConfirmed: z.literal(true) });
 export type ConfirmProfileOnboardingDuoRequest = z.infer<typeof ConfirmProfileOnboardingDuoRequestSchema>;
+export const CancelProfileOnboardingDuoRequestSchema = StartProfileOnboardingDuoRequestSchema.extend({ attemptId: z.uuid() });
+export type CancelProfileOnboardingDuoRequest = z.infer<typeof CancelProfileOnboardingDuoRequestSchema>;
 
 export const PublicProfileStateSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("signed-out") }),
