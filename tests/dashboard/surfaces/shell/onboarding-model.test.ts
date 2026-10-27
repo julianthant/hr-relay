@@ -166,7 +166,7 @@ it("served Duo keeps partial completion and unknown custody under server authori
   function Probe() { setup = useServedDuoSetup(createServedOnboardingPort(client, () => {}, draft)); return null; }
   try {
     await act(async () => root.render(createElement(Probe)));
-    await act(async () => setup.start("key"));
+    await act(async () => { await setup.start("key"); });
     assert.equal(calls, 1); assert.deepEqual(setup.methods, { key: false, touch: false });
     draft = { ...draft, methods: { key: draftMethod("complete"), touch: draftMethod("unknown") } };
     await act(async () => root.render(createElement(Probe)));
@@ -207,7 +207,7 @@ it("exact-attempt cancellation preserves the other method and rejects premature 
   if (result.state === "onboarding") { assert.equal(result.methods.key.state, "complete"); assert.equal(result.methods.touch.state, "unknown"); }
   assert.deepEqual(requests, [{ operationId: draft.operationId, method: "touch", attemptId }]);
   activate = true;
-  await assert.rejects(served.confirmDuo("touch", attemptId));
+  await assert.rejects(served.confirmDuo({ operationId: draft.operationId, profileId: draft.profileId, method: "touch", attemptId, generation: 0, authorityScope: undefined }));
   assert.equal(settled.length, 1);
 });
 
@@ -226,4 +226,59 @@ it("served Open Duo browser opens existing confirmation UI without starting capt
     await act(async () => setup.open(true));
     assert.equal(calls, 1); assert.equal(open.mock.calls.length, 1);
   } finally { await act(async () => root.unmount()); open.mockRestore(); }
+});
+
+
+it("confirmation retains the displayed attempt and rejects replacement, expiry, method and owner generations", async () => {
+  const host = document.createElement("div"), root = createRoot(host);
+  const firstAttempt = "00000000-0000-4000-8000-000000000003", secondAttempt = "00000000-0000-4000-8000-000000000004";
+  let draft = { ...onboardingDraft(), methods: { key: { ...draftMethod("pending"), attemptId: firstAttempt }, touch: draftMethod() } };
+  let authorityScope = {}, signedOut = false;
+  const requests: unknown[] = [];
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async (_url, init) => {
+    requests.push(JSON.parse(String(init?.body))); return Response.json(draft);
+  } });
+  let setup!: ReturnType<typeof useServedDuoSetup>;
+  function Probe() { setup = useServedDuoSetup(signedOut ? undefined : { ...createServedOnboardingPort(client, () => {}, draft), authorityScope }); return null; }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    const oldConfirm = setup.confirm;
+    let displayed!: Awaited<ReturnType<typeof setup.start>>;
+    await act(async () => { displayed = await setup.start("key"); });
+    assert.ok(displayed); assert.equal(displayed.attemptId, firstAttempt);
+    await act(async () => { await setup.start("key"); });
+    assert.equal(setup.matchesConfirmation(displayed), false);
+    await act(async () => oldConfirm(displayed!)); assert.equal(requests.length, 0);
+    draft = { ...draft, methods: { ...draft.methods, key: { ...draft.methods.key, attemptId: secondAttempt } } };
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => oldConfirm(displayed!)); assert.equal(requests.length, 0);
+    assert.equal(setup.matchesConfirmation(displayed), false);
+    let replacement!: Awaited<ReturnType<typeof setup.start>>;
+    await act(async () => { replacement = await setup.start("key"); }); assert.ok(replacement);
+    await act(async () => setup.setMethod("touch"));
+    await act(async () => oldConfirm(replacement!)); assert.equal(requests.length, 0);
+    await act(async () => setup.setMethod("key"));
+    await act(async () => { replacement = await setup.start("key"); }); assert.ok(replacement);
+    authorityScope = {};
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => oldConfirm(replacement!)); assert.equal(requests.length, 0);
+    await act(async () => { replacement = await setup.start("key"); }); assert.ok(replacement);
+    draft = { ...draft, methods: { ...draft.methods, key: { ...draftMethod("unknown"), attemptId: secondAttempt } } };
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => oldConfirm(replacement!)); assert.equal(requests.length, 0);
+    draft = { ...draft, operationId: "00000000-0000-4000-8000-000000000005", methods: { ...draft.methods, key: { ...draftMethod("pending"), attemptId: secondAttempt } } };
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => oldConfirm(displayed!)); assert.equal(requests.length, 0);
+    await act(async () => { replacement = await setup.start("key"); }); assert.ok(replacement);
+    await act(async () => setup.dismissConfirmation(replacement!));
+    await act(async () => oldConfirm(replacement!)); assert.equal(requests.length, 0);
+    await act(async () => { replacement = await setup.start("key"); }); assert.ok(replacement);
+    await act(async () => setup.confirm(replacement!));
+    assert.deepEqual(requests, [{ operationId: replacement.operationId, method: "key", attemptId: secondAttempt, operatorConfirmed: true }]);
+    signedOut = true;
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => oldConfirm(replacement!)); assert.equal(requests.length, 1);
+    await act(async () => root.unmount());
+    await act(async () => oldConfirm(replacement!)); assert.equal(requests.length, 1);
+  } finally { await act(async () => root.unmount()); }
 });

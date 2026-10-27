@@ -41,3 +41,18 @@ it("keeps onboarding commands in the canonical transport with validated scoped b
   await assert.rejects(client.completeProfileOnboarding({ operationId: "invalid" }));
   assert.equal(calls.length, 5);
 });
+
+
+it("accepts an explicitly confirmed software ceremony without inventing portal acceptance", async () => {
+  const method = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
+  const draft = { state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
+    profileId: "00000000-0000-4000-8000-000000000002", step: "ready",
+    methods: { key: { ...method, portalAccepted: false }, touch: method } };
+  let value = draft;
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async () => Response.json(value) });
+  const state = await client.readProfileSession();
+  assert.equal(state.state, "onboarding");
+  if (state.state === "onboarding") { assert.equal(state.methods.key.portalAccepted, false); assert.equal(state.methods.key.state, "complete"); }
+  value = { ...draft, methods: { ...draft.methods, touch: { ...method, portalAccepted: false } } };
+  await assert.rejects(client.readProfileSession());
+});

@@ -1,5 +1,5 @@
 import type { DashboardClient } from "../../client/index.js";
-import type { ProfileOnboardingState, ProfileOnboardingMethod, PublicProfileState } from "../../../models/profiles/public-profile.js";
+import type { ConfirmProfileOnboardingDuoRequest, ProfileOnboardingState, ProfileOnboardingMethod, PublicProfileState } from "../../../models/profiles/public-profile.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type OnboardingStep = "login" | "signup" | "duo" | "ready";
@@ -13,15 +13,20 @@ export interface MockOnboardingPort {
   confirm(method: keyof DuoMethods, current: DuoMethods): DuoMethods;
 }
 
+export type DuoConfirmationScope = Readonly<Pick<ConfirmProfileOnboardingDuoRequest, "operationId" | "method" | "attemptId"> & {
+  profileId: ProfileOnboardingState["profileId"]; generation: number; authorityScope: object | undefined;
+}>;
+
 export interface ServedOnboardingPort {
   readonly source: "served";
   readonly onboarding?: ProfileOnboardingState;
   readonly unavailable?: boolean;
+  readonly authorityScope?: object;
   complete(): Promise<PublicProfileState>;
   cancel(): Promise<PublicProfileState>;
   cancelDuo(method: ProfileOnboardingMethod, attemptId: string): Promise<PublicProfileState>;
   start(method: ProfileOnboardingMethod): Promise<PublicProfileState>;
-  confirmDuo(method: ProfileOnboardingMethod, attemptId: string): Promise<PublicProfileState>;
+  confirmDuo(scope: DuoConfirmationScope): Promise<PublicProfileState>;
   validate(step: "login" | "signup", details: OnboardingDetails): OnboardingErrors;
   submit(step: "login" | "signup", details: OnboardingDetails): Promise<PublicProfileState>;
 }
@@ -62,7 +67,11 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
     async cancel() { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); const result = await client.cancelProfileOnboarding({ operationId: onboarding.operationId }); return accept(result); },
     async cancelDuo(method, attemptId) { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); return accept(await client.cancelProfileOnboardingDuo({ operationId: onboarding.operationId, method, attemptId })); },
     async start(method) { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); const result = await client.startProfileOnboardingDuo({ operationId: onboarding.operationId, method }); return accept(result); },
-    async confirmDuo(method, attemptId) { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); const result = await client.confirmProfileOnboardingDuo({ operationId: onboarding.operationId, method, attemptId, operatorConfirmed: true }); return accept(result); },
+    async confirmDuo(scope) {
+      if (!onboarding || scope.operationId !== onboarding.operationId || scope.profileId !== onboarding.profileId) throw new Error("ONBOARDING_SCOPE_REPLACED");
+      const result = await client.confirmProfileOnboardingDuo({ operationId: scope.operationId, method: scope.method, attemptId: scope.attemptId, operatorConfirmed: true });
+      return accept(result);
+    },
     async submit(step, details) {
       const result = step === "signup" ? await client.signUpProfile(details) : await client.signInProfile({ email: details.email, password: details.password });
       if (step === "signup" && result.state !== "onboarding" && result.state !== "refused" && result.state !== "error") throw new Error("ONBOARDING_DRAFT_REQUIRED");
@@ -223,11 +232,11 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
         return result;
       } finally { if (generation.current === request) busy.current = false; }
     };
-    return { source: "served", validate: validateOnboarding, onboarding, unavailable: Boolean(failure),
+    return { source: "served", validate: validateOnboarding, onboarding, unavailable: Boolean(failure), authorityScope: scope,
       submit: (step, details) => run(port => port.submit(step, details)),
       complete: () => run(port => port.complete()), cancel: () => run(port => port.cancel()),
       cancelDuo: (method, attemptId) => run(port => port.cancelDuo(method, attemptId)),
-      start: method => run(port => port.start(method)), confirmDuo: (method, attemptId) => run(port => port.confirmDuo(method, attemptId)),
+      start: method => run(port => port.start(method)), confirmDuo: scope => run(port => port.confirmDuo(scope)),
     };
   }, [client, onboarding, scope, settle, failure]);
   return { state, failure, port,
@@ -247,16 +256,27 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
   const generation = useRef(0);
   const child = useRef<Window | null>(null);
   const draft = port?.onboarding;
-  useEffect(() => { generation.current++; setPending(false); setUnavailable(false); return () => { generation.current++; child.current?.close(); child.current = null; }; }, [draft?.operationId]);
+  const current = useRef({ port, method }); current.current = { port, method };
+  const matchesConfirmation = (scope: DuoConfirmationScope): boolean => {
+    const latest = current.current, active = latest.port?.onboarding;
+    return !latest.port?.unavailable && latest.port?.authorityScope === scope.authorityScope && generation.current === scope.generation && latest.method === scope.method
+      && active?.operationId === scope.operationId && active.profileId === scope.profileId
+      && active.methods[scope.method].state === "pending" && active.methods[scope.method].attemptId === scope.attemptId;
+  };
+  useEffect(() => { generation.current++; setPending(false); setUnavailable(false); return () => { generation.current++; child.current?.close(); child.current = null; }; }, [draft?.operationId, port?.authorityScope]);
   const run = async (action: () => Promise<PublicProfileState>) => {
     if (pending || !port) return;
     const request = ++generation.current; setPending(true); setUnavailable(false);
-    try { const result = await action(); if (request === generation.current) setUnavailable(result.state !== "onboarding"); }
+    try {
+      const result = await action();
+      if (request === generation.current) { setUnavailable(result.state !== "onboarding"); return result; }
+    }
     catch { if (request === generation.current) setUnavailable(true); }
     finally { if (request === generation.current) setPending(false); }
   };
   return { methods: { key: draft?.methods.key.state === "complete", touch: draft?.methods.touch.state === "complete" },
-    connected: draft !== undefined && !port?.unavailable, unavailable: unavailable || port?.unavailable || draft?.methods[method].state === "unknown" || draft?.methods[method].state === "unavailable", listening: pending || draft?.methods[method].state === "pending", method, setMethod,
+    connected: draft !== undefined && !port?.unavailable, unavailable: unavailable || port?.unavailable || draft?.methods[method].state === "unknown" || draft?.methods[method].state === "unavailable", listening: pending || draft?.methods[method].state === "pending", method, setMethod(next: ProfileOnboardingMethod) { if (next !== current.current.method) generation.current++; setMethod(next); }, matchesConfirmation,
+    dismissConfirmation(scope: DuoConfirmationScope) { if (scope.generation === generation.current) generation.current++; },
     returnToParent() { window.opener?.focus(); },
     cancel() { const attemptId = draft?.methods[method].attemptId; if (port && attemptId) void run(() => port.cancelDuo(method, attemptId)); },
     open(capture: boolean) {
@@ -268,7 +288,19 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
       }
       if (draft.methods[method].state === "idle") void run(() => port.start(method));
     },
-    start(selected: ProfileOnboardingMethod) { if (port && draft?.methods[selected].state === "idle") void run(() => port.start(selected)); },
-    confirm() { const attemptId = draft?.methods[method].attemptId; if (attemptId && port) void run(() => port.confirmDuo(method, attemptId)); else setUnavailable(true); },
+    async start(selected: ProfileOnboardingMethod): Promise<DuoConfirmationScope | undefined> {
+      const latest = current.current.port, active = latest?.onboarding;
+      if (!latest || !active || latest.unavailable) return;
+      const result = active.methods[selected].state === "idle" ? await run(() => latest.start(selected)) : active;
+      if (result?.state !== "onboarding" || result.operationId !== active.operationId || result.profileId !== active.profileId) return;
+      const attempt = result.methods[selected];
+      if (attempt.state !== "pending" || !attempt.attemptId) return;
+      return { operationId: result.operationId, profileId: result.profileId, method: selected, attemptId: attempt.attemptId, generation: ++generation.current, authorityScope: latest.authorityScope };
+    },
+    confirm(scope: DuoConfirmationScope) {
+      if (!matchesConfirmation(scope)) { setUnavailable(true); return; }
+      const latest = current.current.port;
+      if (latest) void run(() => latest.confirmDuo(scope));
+    },
   };
 }

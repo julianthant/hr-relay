@@ -1,3 +1,4 @@
+import { OnboardingSetup } from "../../../../src/dashboard/surfaces/shell/onboarding-setup.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
@@ -156,5 +157,28 @@ it("returning to Details requires confirmed draft cancellation", async () => {
     allow = true;
     await act(async () => details().click());
     assert.equal(cancelled, 2); assert.deepEqual(transitions, ["signup"]);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+
+it("the served consent dialog closes when its displayed attempt is replaced", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const attemptId = "00000000-0000-4000-8000-000000000003";
+  const idle = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+  const draft = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
+    profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: { ...idle, state: "pending" as const, attemptId }, touch: idle } };
+  const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
+  let confirmed = 0;
+  const port: ServedOnboardingPort = { source: "served", onboarding: draft, validate: mockOnboardingPort.validate,
+    submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused,
+    async confirmDuo() { confirmed++; return draft; } };
+  try {
+    await act(async () => root.render(createElement(OnboardingSetup, { page: "duo", port })));
+    const buttons = host.querySelectorAll<HTMLButtonElement>("section button"); assert.equal(buttons.length, 2);
+    await act(async () => buttons[0]!.click());
+    assert.ok(document.querySelector('[role="dialog"]'));
+    await act(async () => root.render(createElement(OnboardingSetup, { page: "duo", port: { ...port, onboarding: { ...draft,
+      methods: { ...draft.methods, key: { ...draft.methods.key, attemptId: "00000000-0000-4000-8000-000000000004" } } } } })));
+    assert.equal(document.querySelector('[role="dialog"]'), null); assert.equal(confirmed, 0);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
