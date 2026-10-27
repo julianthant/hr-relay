@@ -78,7 +78,8 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
     assert(other);
     const target = destination === 'other-run' ? `&run=${other.runId}` : '';
     await act(async () => {
-      window.history.pushState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}${target}&section=logs`);
+      assert.deepEqual(window.history.state, { hrDashboardRouteCursor: 0 });
+      window.history.pushState({ hrDashboardRouteCursor: 1 }, '', `/?day=${FIXTURE_DAY_WIRE.day}${target}&section=logs`);
       window.dispatchEvent(new PopStateEvent('popstate'));
       await new Promise(resolve => setTimeout(resolve, 20));
     });
