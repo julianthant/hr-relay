@@ -190,4 +190,20 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
+  it("ordinary software-key window close does not invent a portal failure or erase pending custody", async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      await w.send("bind", BIND);
+      await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+        transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
+      await w.send("software-created", { credentialId: "public-id", requestId: randomUUID() });
+      await w.closeBrowser();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.deepEqual(w.failures, []);
+      assert.ok(w.calls.includes("unknown"));
+      assert.ok(!w.calls.includes("portal-accepted"));
+    } finally { await w.cleanup(); }
+  });
+
 });

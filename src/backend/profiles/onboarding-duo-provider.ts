@@ -252,7 +252,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           context.on("close", () => {
             session.contextClosed = true;
             if (!session.revoked) {
-              if (session.accepted) void close(session);
+              if (session.accepted || session.attempt.method === "key" && session.requestId) void close(session);
               else void reportFailure(session, new ProfileOnboardingDuoProviderError(session.capability ? "unknown" : "unavailable", "browser-lifetime")).then(() => close(session));
             }
           });
