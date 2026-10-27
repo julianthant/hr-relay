@@ -99,9 +99,9 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     };
     const read = () => availableFailure(buildReceiptFailureSection(deps, run.envelope.runId, "failure"));
     assert.deepEqual(read().rerunInput, { field: "documentNumber", expectedVersion: run.version });
-    failure = FailureRecordSchema.parse({ ...failure, writeState: "unknown" });
+    failure = FailureRecordSchema.parse({ ...failure, action: { ...failure.action, operation: "commit" }, writeState: "unknown" });
     assert.equal(read().rerunInput, undefined, "UNKNOWN is never offered a correction/retry");
-    failure = FailureRecordSchema.parse({ ...failure, writeState: "not-attempted", code: "UNEXPECTED_PAGE_STATE" });
+    failure = FailureRecordSchema.parse({ ...failure, action: { ...failure.action, operation: "read" }, writeState: "not-attempted", code: "UNEXPECTED_PAGE_STATE" });
     assert.equal(read().rerunInput, undefined, "a different failure is not a document correction");
     failure = FailureRecordSchema.parse({ ...failure, code: "DOCUMENT_UNAVAILABLE" });
     current = false;

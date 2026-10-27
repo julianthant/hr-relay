@@ -39,7 +39,7 @@ describe("worker-browser arms", () => {
   });
   it("refuses an unavailable parked-read owner without journaling, changing control authority or calling a runtime", async () => {
     const h = await createHarness();
-    testWorkerPorts(h.database, h.clock, { path: join(h.stateRoot, "kernel.sqlite"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
+    testWorkerPorts(h.database, h.clock, { path: join(h.stateRoot, "state.db"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
     const slot = h.database.authority.workerSlots.list(rejectActiveDescriptor.id)[0], lease = h.database.authority.workerLeases.get(slot.workerId);
     assert.ok(lease);
     const request = workerCommand("check-parked-write", { workerId: slot.workerId, workflowId: rejectActiveDescriptor.id, expectedVersion: lease.version,
@@ -59,7 +59,7 @@ describe("worker-browser arms", () => {
 
   it("writes pause/resume directives and reserves Stop for owner reset against exact membership", async () => {
     const harness = await createHarness();
-    testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "kernel.sqlite"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
+    testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "state.db"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
     const workerId = harness.database.authority.workerSlots.list(rejectActiveDescriptor.id)[0].workerId;
 
     const paused = await harness.kernel.executeWorkerPool(workerCommand("pause-worker", { workerId, expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 1 } }));

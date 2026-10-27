@@ -51,7 +51,7 @@ async function fixture(rows: number) {
   disposers.push(() => opened.close());
   const template = RunRecordSchema.parse(writeFixtureQueuedRun());
   const run = RunRecordSchema.parse({ ...template, envelope: { ...template.envelope, workflow: descriptor.id, descriptorVersion: descriptor.version,
-    contractFingerprint: descriptor.contractFingerprint, resolvedInstance: { ucpath: "production" }, dryRun: false },
+    contractFingerprint: descriptor.contractFingerprint, resolvedInstance: { ucpath: "prod" }, dryRun: false },
     input: { raw: TARGET, parsed: { schemaHash: deriveSchemaHash(canonical, "output"), value: TARGET, protectedBindings: [] },
       ingressSchemaHash: deriveSchemaHash(UcpathTerminationTargetSchema, "input") },
     lifecycle: { state: "parked-write", writeIntentId: UUID_8, intentGeneration: 1, parkedAt: NOW, code: "unknown", message: "Synthetic unknown write" }, version: 4 });
@@ -102,12 +102,20 @@ describe("held-only parked write checks", () => {
     const failures: readonly unknown[] = [new Error("synthetic-channel-scheduler-failure"), { code: "synthetic-non-error" }];
     for (const failure of failures) {
       const h = await fixture(1);
+      testWorkerPorts(h.database, h.clock, { path: h.path, descriptor, poolIndex: 1 });
+      const lease = h.database.authority.workerLeases.get(h.input.target.workerId), slot = h.database.authority.workerSlots.get(h.input.target.workerId);
+      assert.ok(lease); assert.ok(slot);
       const request = CommandRequestSchema.parse({ commandId: UUID_7, requestedAt: NOW, requestedBy: "local-operator", source: "run-detail",
-        family: "worker-browser", type: "check-parked-write", target: h.input.target });
+        family: "worker-browser", type: "check-parked-write", target: { ...h.input.target, expectedVersion: lease.version, processId: lease.processId,
+          startedAt: lease.lifecycle.startedAt, membershipRevision: slot.membershipRevision,
+          controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } } });
+      assert.equal(request.type, "check-parked-write");
+      if (request.type !== "check-parked-write") throw new Error("fixture-check-request");
       h.database.withAuthorityTransaction(r => {
         r.commands.insert(request);
+        r.workerLeases.reserveControl(request.target.workerId, request.target.controlBasis, request.commandId, NOW);
         r.workerControls.admit({ commandId: request.commandId, request, scope: "worker-pool:separations", executorId: UUID_6,
-          admittedAt: NOW, expiresAt: new Date(h.clock.nowMs() + 180_000).toISOString(), basisVersion: 1, phase: { state: "admitted" } });
+          admittedAt: NOW, expiresAt: new Date(h.clock.nowMs() + 180_000).toISOString(), basisVersion: request.target.expectedVersion, phase: { state: "admitted" } });
       });
       const before = canonicalJsonStringify([h.run, h.intent, h.attempt]);
       const channel = createWorkerBrowserChannel({ database: h.database, clock: h.clock, scheduler: { schedule: () => { throw failure; } } });
