@@ -9,7 +9,7 @@ import { openAuthorityHarness } from "../phase1f-executor-harness.js";
 
 
 export function createPoolRuntimeTestWorld() {
-  const disposers: (() => void)[] = [];
+  const disposers: (() => void | Promise<void>)[] = [];
 
   function workerBrowserCommand(request: unknown) {
     const parsed = CommandRequestSchema.parse(request);
@@ -46,8 +46,8 @@ export function createPoolRuntimeTestWorld() {
     { stage: "sigterm-sent", timeoutMs: 30_000 },
     { stage: "sigkill-sent" },
   ] as const;
-  const cleanup = () => {
-    for (const dispose of disposers.splice(0)) dispose();
+  const cleanup = async () => {
+    for (const dispose of disposers.splice(0)) await dispose();
   };
   return { disposers, workerBrowserCommand, admittedAdapterRoster, admitAdapterPlan, OBSERVED_GRACEFUL, STOP_ESCALATION, cleanup };
 }

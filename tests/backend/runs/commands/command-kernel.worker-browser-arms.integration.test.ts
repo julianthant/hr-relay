@@ -6,11 +6,12 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { HASH_A, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, createHarness, nextCommandId, applyCurrentSettings } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, nextCommandId, applyCurrentSettings } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

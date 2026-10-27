@@ -85,9 +85,9 @@ const fixtureParser: IntakeParser = Object.freeze({
 /* ── harness ─────────────────────────────────────────────────────────────── */
 
 const roots: string[] = [];
-const openDatabases: AuthorityDatabase[] = [];
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
+const openFixtures: Awaited<ReturnType<typeof openBoundDatabaseFixture>>[] = [];
+afterEach(async () => {
+  for (const fixture of openFixtures.splice(0)) await fixture.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -102,16 +102,8 @@ async function harness(sessionOverrides: Record<string, unknown> = {}, preReserv
   const opened = await openBoundDatabaseFixture("intake-arms-test", clock);
   const database = opened.database;
   const path = opened.path;
-  const close = database.close.bind(database);
-  let closed = false;
-  database.close = async () => {
-    if (closed) return;
-    closed = true;
-    close();
-    await opened.profile.close();
-  };
   roots.push(opened.profile.workspace);
-  openDatabases.push(database);
+  openFixtures.push(opened);
   // The config identity an intake fan-out stamps must name a stored snapshot.
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
 

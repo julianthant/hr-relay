@@ -17,9 +17,11 @@ import { type AuthorityDatabase } from "../../../support/helpers/synthetic-stora
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
+const profiles: { close(): Promise<void> }[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -63,7 +65,7 @@ const rejectActiveDescriptor = defineWorkflowDescriptor({
 
 const DESCRIPTOR_SET = [rejectActiveDescriptor, fixtureDescriptor];
 
-const { createHarness, nextCommandId, runCommand } = createKernelStubCommandFixtures({
+const { createHarness, nextCommandId, runCommand } = createKernelStubCommandFixtures({ profiles,
   roots,
   openDatabases,
   prefix: "hrauto-kernel-omission-",

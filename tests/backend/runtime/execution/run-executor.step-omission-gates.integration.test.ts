@@ -32,9 +32,9 @@ sessionFactoryHarness,
 sessionManagerFor,
 } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 const SIGNAL = new AbortController().signal;

@@ -28,9 +28,11 @@ const SUBMISSION = Object.freeze({
 
 const roots: string[] = [];
 const databases: AuthorityDatabase_m0[] = [];
+const profiles: { close(): Promise<void> }[] = [];
 
-const _afterEachFixture0 = () => {
+const _afterEachFixture0 = async () => {
   while (databases.length > 0) databases.pop()?.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   while (roots.length > 0) {
     const root = roots.pop();
     if (root !== undefined) rmSync_m0(root, { recursive: true, force: true });
@@ -44,8 +46,7 @@ async function openDatabase(): Promise<AuthorityDatabase_m0> {
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
-  const close = database.close.bind(database);
-  database.close = async () => { close(); await profile.close(); };
+  profiles.push(profile);
   databases.push(database);
   return database;
 }

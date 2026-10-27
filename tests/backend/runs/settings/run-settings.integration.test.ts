@@ -9,8 +9,8 @@ import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-ad
 
 {
 
-const cleanups: (() => void)[] = [];
-const _afterEachFixture0 = () => { vi.restoreAllMocks(); syncBuiltinESMExports(); for (const cleanup of cleanups.splice(0).reverse()) cleanup(); };
+const cleanups: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { vi.restoreAllMocks(); syncBuiltinESMExports(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); };
 
 describe("ordinary browser paths", () => {
 afterEach(_afterEachFixture0);
@@ -51,8 +51,8 @@ afterEach(_afterEachFixture0);
 
 {
 
-const cleanups: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const close of cleanups.splice(0).reverse()) close(); };
+const cleanups: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const close of cleanups.splice(0).reverse()) await close(); };
 async function fixture() { const f = await settingsFixture(); cleanups.push(f.close); return f; }
 it("independent connections observe complete before/after selections and exclude competing writers", async () => {
 try {
@@ -72,7 +72,7 @@ try {
   } finally { other.close(); }
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 }

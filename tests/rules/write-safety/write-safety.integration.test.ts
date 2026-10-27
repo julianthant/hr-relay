@@ -81,7 +81,7 @@ describe("D resolution command authority", () => {
 }
 
 {
-const disposers: (() => void)[] = [];
+const disposers: (() => void | Promise<void>)[] = [];
 async function harness(parallel = false) { const h = await sourceBoundHarness(parallel ? writeFixtureParallelDescriptor : writeFixtureDescriptor); disposers.push(h.dispose); return h; }
 async function completed(h: Awaited<ReturnType<typeof harness>>) {
   const run = h.start(h.proposal());
@@ -92,7 +92,7 @@ async function completed(h: Awaited<ReturnType<typeof harness>>) {
 }
 
 describe("source-bound repeat through planner, kernel, service and interpreter", () => {
-afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
+afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
 
 
   it("serializes distinct confirmations against an unresolved sibling and keeps orphan intents fenced", async () => {

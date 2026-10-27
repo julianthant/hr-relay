@@ -62,6 +62,7 @@ export function createCommandKernelTestWorld() {
   const roots: string[] = [];
 
   const openDatabases: AuthorityDatabase[] = [];
+  const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 
   function databasePath(name: string): string {
     const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-command-kernel-"));
@@ -192,14 +193,7 @@ export function createCommandKernelTestWorld() {
     );
     if (created !== undefined) {
       roots.push(created.workspace);
-      const close = database.close.bind(database);
-      let closed = false;
-      database.close = async () => {
-        if (closed) return;
-        closed = true;
-        close();
-        await created.close();
-      };
+      profiles.push(created);
     }
     openDatabases.push(database);
     if (options.profile === undefined) seedInitialSettingsRuntimeConfig(database, clock);
@@ -362,5 +356,5 @@ export function createCommandKernelTestWorld() {
 
   const _createPlan = createPlan;
 
-  return { roots, openDatabases, databasePath, createHarness, nextCommandId, rejectActiveDescriptor, createPlan, startCommand, commandFixture, runCommand, applyCurrentSettings, DESCRIPTOR_SET, _createPlan, identityCheckDescriptor, supersedeDescriptor, parallelDescriptor };
+  return { roots, openDatabases, profiles, databasePath, createHarness, nextCommandId, rejectActiveDescriptor, createPlan, startCommand, commandFixture, runCommand, applyCurrentSettings, DESCRIPTOR_SET, _createPlan, identityCheckDescriptor, supersedeDescriptor, parallelDescriptor };
 }

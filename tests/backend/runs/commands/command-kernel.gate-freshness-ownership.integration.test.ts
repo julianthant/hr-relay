@@ -18,11 +18,12 @@ import { defineWorkflowDescriptor, descriptorRuntimeNodes } from "../../../../sr
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, DESCRIPTOR_SET, createHarness, nextCommandId, _createPlan, startCommand } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, DESCRIPTOR_SET, createHarness, nextCommandId, _createPlan, startCommand } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 const externalGateInputSchema = z.strictObject({ token: z.string().min(1) });

@@ -4,11 +4,12 @@ import { rmSync } from "node:fs";
 import { afterEach, it } from "vitest";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, createHarness, createPlan, startCommand, applyCurrentSettings } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand, applyCurrentSettings } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

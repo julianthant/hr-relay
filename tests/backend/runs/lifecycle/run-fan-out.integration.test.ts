@@ -19,8 +19,10 @@ import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-ad
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
-afterEach(() => {
+const profiles: { close(): Promise<void> }[] = [];
+afterEach(async () => {
   for (const database of databases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -30,8 +32,7 @@ async function openDatabase(): Promise<AuthorityDatabase> {
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     manualClock(new Date(NOW)),
   );
-  const close = database.close.bind(database);
-  database.close = async () => { close(); await profile.close(); };
+  profiles.push(profile);
   seedSyntheticRuntimeConfig(database);
   databases.push(database);
   return database;

@@ -112,5 +112,5 @@ it("registers the real account adapter in run resources and persists canonical a
   assert.equal(checkpoint.contractFingerprint,descriptor.contractFingerprint);
   assert.ok(events.events().some(event=>event.t==="data.observed"));
   const calls=account.calls.filter(call=>call.url.endsWith("/responses"));assert.equal(calls.length,1);
- }finally{await sessions?.closeAll("worker-stop");await resources?.stop();await account.cleanup();await f.dispose();world.cleanup();}
+ }finally{await sessions?.closeAll("worker-stop");await resources?.stop();await account.cleanup();await f.dispose();await world.cleanup();}
 });

@@ -5,8 +5,8 @@ import { afterEach,it,vi } from "vitest";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); vi.restoreAllMocks(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); vi.restoreAllMocks(); });
 async function fixture(isolateBrowser = false) {
   const f = await settingsFixture(isolateBrowser); cleanups.push(f.close);
   const workers = [1, 2].map(poolIndex => testAdmittedWorker(f.database, f.clock,

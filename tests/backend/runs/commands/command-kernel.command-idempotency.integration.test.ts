@@ -10,11 +10,12 @@ import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createExplorerEditService } from "../../../../src/backend/runs/commands/explorer-edit-service.js";
 import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, createHarness, nextCommandId, createPlan, startCommand } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, nextCommandId, createPlan, startCommand } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

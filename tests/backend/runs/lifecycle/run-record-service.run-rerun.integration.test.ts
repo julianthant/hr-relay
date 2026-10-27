@@ -20,9 +20,9 @@ class Measure { observe() {} unobserve() {} disconnect() {} }
 Reflect.set(globalThis, "ResizeObserver", Measure);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;
-const cleanup: (() => void)[] = [];
+const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); window.sessionStorage.clear();
-  for (const dispose of cleanup.splice(0)) dispose(); });
+  for (const dispose of cleanup.splice(0)) await dispose(); });
 async function setup() { const h = await launchHarness(); cleanup.push(h.dispose); return h; }
 type Harness = Awaited<ReturnType<typeof setup>>;
 const text = () => document.body.textContent ?? "";

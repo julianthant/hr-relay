@@ -10,7 +10,7 @@ import { EXECUTOR_WORKER_ID, healthyCrmDriver, healthyUcpathDriver, personLookup
 
 const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
-afterEach(() => { vi.restoreAllMocks(); cleanup(); });
+afterEach(async () => { vi.restoreAllMocks(); await cleanup(); });
 
 describe("worker run loop", () => {
   it("drains two queued items sequentially — one active item — and closes sessions at stop", async () => {

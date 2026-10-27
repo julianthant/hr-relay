@@ -5,11 +5,12 @@ import { rmSync } from "node:fs";
 import { afterEach, it } from "vitest";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, createHarness } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, createHarness } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

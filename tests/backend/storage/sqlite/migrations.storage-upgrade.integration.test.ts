@@ -7,9 +7,9 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
-const cleanups: Array<() => void> = [];
+const cleanups: Array<() => void | Promise<void>> = [];
 const clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
-afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
+afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 async function fresh() {
   const f = await storageRecoveryFixture();
   cleanups.push(f.dispose);

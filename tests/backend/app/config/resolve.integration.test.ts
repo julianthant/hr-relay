@@ -330,8 +330,8 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
 }
 
 {
-const cleanups: (() => void)[] = [];
-const cleanupOriginalFixture = () => { for (const close of cleanups.splice(0).reverse()) close(); vi.restoreAllMocks(); };
+const cleanups: (() => void | Promise<void>)[] = [];
+const cleanupOriginalFixture = async () => { for (const close of cleanups.splice(0).reverse()) await close(); vi.restoreAllMocks(); };
 async function fixture(isolateBrowser = false) { const f = await settingsFixture(isolateBrowser); cleanups.push(f.close); return f; }
 
 it("saved idle cadence applies at the next boundary without retiming the pending wait", async () => {

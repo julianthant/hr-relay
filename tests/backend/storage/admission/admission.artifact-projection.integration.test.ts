@@ -48,10 +48,10 @@ sessionManagerFor,
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const artifactReadiness: Promise<void>[] = [];
-const disposers: (() => void)[] = [];
+const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
   await Promise.all(artifactReadiness.splice(0));
-  for (const dispose of disposers.splice(0)) dispose();
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 const SIGNAL = new AbortController().signal;

@@ -5,8 +5,8 @@ import { StartCommandRequestSchema } from "../../../../src/rules/commands/comman
 import { StartPlanIdSchema } from "../../../../src/rules/identity/ids.js";
 import { launchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
 
-const cleanup: (() => void)[] = [];
-afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); });
+const cleanup: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const dispose of cleanup.splice(0)) await dispose(); });
 function storage() { const data = new Map<string, string>(); return { data, getItem: (key: string) => data.get(key) ?? null,
   setItem: (key: string, value: string) => { data.set(key, value); }, removeItem: (key: string) => { data.delete(key); } }; }
 describe("minimal final submission recovery through production services", () => {

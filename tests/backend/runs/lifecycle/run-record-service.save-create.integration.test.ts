@@ -4,8 +4,8 @@ import { afterEach,it } from "vitest";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectActiveRunSettings } from "../../../../src/backend/runs/settings/run-settings.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
 async function fixture() { const f = await settingsFixture(); cleanups.push(f.close); return f; }
 function counts(f: Awaited<ReturnType<typeof fixture>>) {
   const db = new DatabaseSync(f.path, { readOnly: true });

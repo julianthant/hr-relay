@@ -24,11 +24,13 @@ const PLAN_TTL_MS = 10 * 60 * 1000;
 const PERSON_EID_MATCH_KEY = "eid:10873698";
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+const profiles: { close(): Promise<void> }[] = [];
 
-const { openDatabase, plannerDeps, baseRequest } = createPersonLookupStartFixtures(roots, databases, CLOCK, PLAN_TTL_MS);
+const { openDatabase, plannerDeps, baseRequest } = createPersonLookupStartFixtures(roots, databases, profiles, CLOCK, PLAN_TTL_MS);
 
-afterEach(() => {
+afterEach(async () => {
   while (databases.length > 0) databases.pop()?.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   while (roots.length > 0) {
     const root = roots.pop();
     if (root !== undefined) rmSync(root, { recursive: true, force: true });

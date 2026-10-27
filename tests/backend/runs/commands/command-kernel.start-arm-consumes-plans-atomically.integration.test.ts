@@ -6,11 +6,12 @@ import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { appliedRunIds, singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { HASH_A, NOW, UUID_4, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, supersedeDescriptor, parallelDescriptor, createHarness, createPlan, startCommand, applyCurrentSettings } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, rejectActiveDescriptor, supersedeDescriptor, parallelDescriptor, createHarness, createPlan, startCommand, applyCurrentSettings } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

@@ -17,8 +17,10 @@ import { type AuthorityDatabase } from "../../../support/helpers/synthetic-stora
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
-afterEach(() => {
+const profiles: { close(): Promise<void> }[] = [];
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -61,7 +63,7 @@ const descriptor = defineWorkflowDescriptor({
     }),
 });
 
-const { createHarness, nextCommandId, runCommand } = createKernelStubCommandFixtures({
+const { createHarness, nextCommandId, runCommand } = createKernelStubCommandFixtures({ profiles,
   roots,
   openDatabases,
   prefix: "hrauto-kernel-recovery-",

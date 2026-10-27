@@ -11,11 +11,12 @@ import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { roots, openDatabases, createHarness, nextCommandId } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, createHarness, nextCommandId } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

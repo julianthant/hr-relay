@@ -7,6 +7,7 @@ import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 export function createPersonLookupStartFixtures(
   roots: string[],
   databases: AuthorityDatabase[],
+  profiles: { close(): Promise<void> }[],
   clock: NonNullable<Parameters<typeof AuthorityDatabase.open>[1]>,
   planTtlMs: number,
 ) {
@@ -17,8 +18,7 @@ export function createPersonLookupStartFixtures(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
       clock,
     );
-    const close = database.close.bind(database);
-    database.close = async () => { close(); await profile.close(); };
+    profiles.push(profile);
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     databases.push(database);
     return database;

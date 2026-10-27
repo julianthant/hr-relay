@@ -24,8 +24,8 @@ import { WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contr
 import { mappedReadDescriptor,mappedTransactionHarness,rerunValuesDeps,rerunValuesHarness,valueShapeHarness } from "../../../support/fixtures/rerun-values-fixtures.js";
 import { absentProbeEvidence } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
 async function harness(writes = false) { const h = writes ? await sourceBoundHarness() : await rerunValuesHarness(); disposers.push(h.dispose); return h; }
 type Harness = Awaited<ReturnType<typeof harness>>;
 async function completed(h: Harness) { const queued = h.start(h.proposal()); assert.equal((await h.execute(queued)).state, "done"); return h.fresh(queued); }

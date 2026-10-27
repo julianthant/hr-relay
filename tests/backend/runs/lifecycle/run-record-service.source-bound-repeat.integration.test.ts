@@ -10,8 +10,8 @@ import { sourceBoundHarness } from "../../../support/fixtures/integration/source
 import { sourceBoundReadDescriptor,sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
 import { WriteFixtureProofSchema,absentProbeEvidence,buildWriteFixtureRegistry,writeFixtureDescriptor,writeFixtureDocumentDescriptor,writeFixtureMemoDescriptor,writeFixtureOmittableDescriptor,writeFixtureParallelDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
 async function harness(parallel = false) { const h = await sourceBoundHarness(parallel ? writeFixtureParallelDescriptor : writeFixtureDescriptor); disposers.push(h.dispose); return h; }
 async function completed(h: Awaited<ReturnType<typeof harness>>) {
   const run = h.start(h.proposal());

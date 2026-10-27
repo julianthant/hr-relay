@@ -39,10 +39,12 @@ const SUBMISSION = Object.freeze({
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+const profiles: { close(): Promise<void> }[] = [];
 const worlds: DashboardWorld[] = [];
 
 const _afterEachFixture0 = async () => {
   while (databases.length > 0) databases.pop()?.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   while (roots.length > 0) {
     const root = roots.pop();
     if (root !== undefined) rmSync(root, { recursive: true, force: true });
@@ -56,8 +58,7 @@ async function openDatabase(): Promise<AuthorityDatabase> {
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
-  const close = database.close.bind(database);
-  database.close = async () => { close(); await profile.close(); };
+  profiles.push(profile);
   databases.push(database);
   return database;
 }
@@ -189,11 +190,13 @@ const PERSON_EID_MATCH_KEY = "eid:10873698";
 const PERSON_NAME_MATCH_KEY = "name:battistessa, johnnie";
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+const profiles: { close(): Promise<void> }[] = [];
 
-const { openDatabase, plannerDeps, baseRequest } = createPersonLookupStartFixtures(roots, databases, CLOCK, PLAN_TTL_MS);
+const { openDatabase, plannerDeps, baseRequest } = createPersonLookupStartFixtures(roots, databases, profiles, CLOCK, PLAN_TTL_MS);
 
-const _afterEachFixture0 = () => {
+const _afterEachFixture0 = async () => {
   while (databases.length > 0) databases.pop()?.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   while (roots.length > 0) {
     const root = roots.pop();
     if (root !== undefined) rmSync(root, { recursive: true, force: true });

@@ -21,9 +21,9 @@ import {
 import { sequentialIdFactory, RUN_ID, WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 function deadlineInvocationIssues(content: string): readonly string[] {

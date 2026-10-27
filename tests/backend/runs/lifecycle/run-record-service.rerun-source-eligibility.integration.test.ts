@@ -12,8 +12,8 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { sourceBoundReadDescriptor,sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
 type Harness = Awaited<ReturnType<typeof sourceBoundHarness>>;
 async function harness() {
   const h = await sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores);

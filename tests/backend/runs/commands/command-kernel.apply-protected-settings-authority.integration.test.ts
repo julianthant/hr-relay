@@ -10,11 +10,12 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { HASH_A, NOW, UUID_4, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { roots, openDatabases, databasePath, createHarness, nextCommandId } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, databasePath, createHarness, nextCommandId } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

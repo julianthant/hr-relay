@@ -20,10 +20,12 @@ const CLOCK = manualClock(new Date(NOW));
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+const profiles: { close(): Promise<void> }[] = [];
 const worlds: DashboardWorld[] = [];
 
 afterEach(async () => {
   while (databases.length > 0) databases.pop()?.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   while (roots.length > 0) {
     const root = roots.pop();
     if (root !== undefined) rmSync(root, { recursive: true, force: true });
@@ -37,8 +39,7 @@ async function openDatabase(): Promise<AuthorityDatabase> {
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
-  const close = database.close.bind(database);
-  database.close = async () => { close(); await profile.close(); };
+  profiles.push(profile);
   databases.push(database);
   return database;
 }

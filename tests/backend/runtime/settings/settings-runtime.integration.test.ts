@@ -339,8 +339,8 @@ afterEach(_afterEachFixture0);
 
 {
 
-const cleanups: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const close of cleanups.splice(0).reverse()) close(); };
+const cleanups: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const close of cleanups.splice(0).reverse()) await close(); };
 async function fixture() { const f = await settingsFixture(); cleanups.push(f.close); return f; }
 function counts(f: Awaited<ReturnType<typeof fixture>>) {
   const db = new DatabaseSync(f.path, { readOnly: true });
@@ -361,7 +361,7 @@ try {
   assert.deepEqual(readSettings(f.database.authority), saved); assert.equal(f.database.getMeta().authorityGeneration, generation);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 it("refuses invalid and revision-conflicting saves with no partial authority", async () => {
@@ -373,7 +373,7 @@ try {
   assert.deepEqual(counts(f), before); assert.equal(f.database.getMeta().authorityGeneration, generation);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 it("clears overrides to host defaults and survives a real authority reopen with historical references", async () => {
@@ -393,7 +393,7 @@ try {
   } finally { reopened.close(); }
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 }

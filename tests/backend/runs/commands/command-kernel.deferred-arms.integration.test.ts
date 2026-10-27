@@ -5,11 +5,12 @@ import { afterEach, describe, it } from "vitest";
 import { PHASE1_DEFERRED_COMMAND_ARMS } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { type CommandRequest } from "../../../../src/rules/commands/commands.js";
 
-const { roots, openDatabases, createHarness, commandFixture } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, createHarness, commandFixture } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

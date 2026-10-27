@@ -25,6 +25,7 @@ export interface KernelStubHarness {
 export function createKernelStubCommandFixtures(input: {
   readonly roots: string[];
   readonly openDatabases: AuthorityDatabase[];
+  readonly profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[];
   readonly prefix: string;
   readonly migrationOwner: string;
   readonly resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined;
@@ -62,14 +63,7 @@ export function createKernelStubCommandFixtures(input: {
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: input.migrationOwner },
       clock,
     );
-    const close = database.close.bind(database);
-    let closed = false;
-    database.close = async () => {
-      if (closed) return;
-      closed = true;
-      close();
-      await profile.close();
-    };
+    input.profiles.push(profile);
     input.roots.push(profile.workspace);
     input.openDatabases.push(database);
     seedSyntheticRuntimeConfig(database);

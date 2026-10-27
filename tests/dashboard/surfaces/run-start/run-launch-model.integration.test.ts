@@ -11,8 +11,8 @@ import { DashboardDayWireSchema, QueueSurfaceWireSchema, type QueueSurfaceWire }
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { launchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
 async function setup(enqueue: Parameters<typeof launchHarness>[0] = "reject-active", overrides: Partial<DashboardClient> = {}) {
   const h = await launchHarness(enqueue); disposers.push(h.dispose);
   const client: DashboardClient = { ...h.client, ...overrides };

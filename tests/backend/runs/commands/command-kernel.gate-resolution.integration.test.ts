@@ -29,11 +29,12 @@ import { singleAppliedRunId } from "../../../support/fixtures/operator-command-f
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, identityCheckDescriptor, DESCRIPTOR_SET, createHarness, nextCommandId, _createPlan, startCommand } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, identityCheckDescriptor, DESCRIPTOR_SET, createHarness, nextCommandId, _createPlan, startCommand } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

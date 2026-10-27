@@ -5,8 +5,8 @@ import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
 async function fixture() { const f = await settingsFixture(); cleanups.push(f.close); return f; }
 for (const operation of ["retry", "restart"] as const) it(`${operation} selects saved configuration without changing inputs or source and replays exactly`, async () => {
   const f = await fixture(); const source = f.create();

@@ -39,9 +39,9 @@ const CLAIM_STALE_AFTER_MS = 60_000;
 const SOAK_WORKERS = 3;
 const SOAK_RUNS = 30;
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 async function sharedAuthority(): Promise<AuthorityHarness> {

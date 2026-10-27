@@ -21,7 +21,7 @@ import { happySessionHarness, ManualScheduler, openAuthorityHarness, recordingEm
 
 
 export function createCapabilityWiringTestWorld() {
-  const disposers: (() => void)[] = [];
+  const disposers: (() => void | Promise<void>)[] = [];
 
   const SIGNAL = new AbortController().signal;
 
@@ -206,8 +206,8 @@ export function createCapabilityWiringTestWorld() {
     if (claimed.state !== "applied") throw new Error(`claim outcome was ${claimed.state}`);
     return { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration } };
   }
-  const cleanup = () => {
-    for (const dispose of disposers.splice(0)) dispose();
+  const cleanup = async () => {
+    for (const dispose of disposers.splice(0)) await dispose();
   };
   return { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, queuedRunFor, wiringHarness, claim, cleanup };
 }

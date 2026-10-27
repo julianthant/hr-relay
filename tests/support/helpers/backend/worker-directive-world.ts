@@ -12,7 +12,7 @@ import { personLookupDescriptor } from "../registered-workflows.js";
 
 
 export function createWorkerDirectiveTestWorld() {
-  const disposers: (() => void)[] = [];
+  const disposers: (() => void | Promise<void>)[] = [];
 
   async function loopHarness(options: Readonly<{
     sessions?: SessionFactoryHarness;
@@ -48,8 +48,8 @@ export function createWorkerDirectiveTestWorld() {
     };
     return { authority, sessions, scheduler, emitter, stop, deps };
   }
-  const cleanup = () => {
-    for (const dispose of disposers.splice(0)) dispose();
+  const cleanup = async () => {
+    for (const dispose of disposers.splice(0)) await dispose();
   };
   return { disposers, loopHarness, cleanup };
 }

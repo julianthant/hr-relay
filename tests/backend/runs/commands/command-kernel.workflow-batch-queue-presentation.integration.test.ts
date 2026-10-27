@@ -7,11 +7,12 @@ import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js
 import { appliedRunIds } from "../../../support/fixtures/operator-command-fixtures.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, createHarness, createPlan, startCommand } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

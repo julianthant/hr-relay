@@ -26,11 +26,12 @@ import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflo
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { HASH_A, HASH_B, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, createHarness, createPlan, startCommand, runCommand } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand, runCommand } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -231,7 +232,7 @@ describe("run arms", () => {
 });
 
 
-const protectedFixtures = createKernelStubCommandFixtures({ roots, openDatabases,
+const protectedFixtures = createKernelStubCommandFixtures({ profiles, roots, openDatabases,
   prefix: "hrauto-protected-recovery-", migrationOwner: "protected-recovery-test",
   resolve: workflow => [personLookupDescriptor, separationsDescriptor].find(descriptor => descriptor.id === workflow) });
 const SUBJECT_BINDING = { kind: "test-data-local" as const, inputPath: "emplId" as const,
