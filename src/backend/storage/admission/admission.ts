@@ -18,6 +18,7 @@ import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 
+import type { PreparedProfileVerifier } from "../../profiles/verifier-store.js";
 import { assertFinishedProfileOnboarding, SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../../models/profiles/profile.js";
 import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, captureCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
@@ -434,10 +435,10 @@ export class RuntimeAdmission {
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
     (this.#authority as InstallationLease).publishProfileRegistry(expected, document);
   }
-  publishProfileRegistration(operation: SignUpOperation, witness: CommittedCredentialWitness): void {
+  publishProfileRegistration(operation: SignUpOperation, witness: CommittedCredentialWitness, verifier: PreparedProfileVerifier): void {
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
-    (this.#authority as InstallationLease).publishProfileRegistration(operation, witness);
+    (this.#authority as InstallationLease).publishProfileRegistration(operation, witness, verifier);
   }
   assertProfileCredentialKeyAnchor(profile: RuntimeAdmission, keyId: string): void {
     this.assertProfileCredentialKey(profile, join(this.#stateRoot, "machine", "credential-keys", `${profile.profileBinding.profileId}.json`));
@@ -567,6 +568,11 @@ export class RuntimeAdmission {
     this.assertLive();
     if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-owner-required");
     this.#authority.assertCredentialErasureHead?.(head);
+  }
+  assertDraftErasureJournalRecovery(profile: RuntimeAdmission, request: ErasureRequestIdentity, digest: string): void {
+    this.assertWritable(); profile.assertProfileInitialization();
+    if (this.#scope !== "installation" || profile.#profileParent !== this) throw new Error("profile-draft-erasure-owner-required");
+    (this.#authority as InstallationLease).assertDraftErasureJournalRecovery(profile.profileBinding.profileId, request, digest);
   }
   resumeCredentialErasure(request: ErasureRequestIdentity, head: CredentialErasureHead): void {
     this.assertCredentialErasure(request);
@@ -1264,7 +1270,15 @@ export class RuntimeAdmission {
       if (stable(current) !== identity || !noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-draft-authority-changed");
       assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
     };
-    return Object.freeze({ binding, generation, draftOperationId: operationId, assertHeld,
+    const assertPublicationRecovery = () => {
+      this.assertWritable();
+      if (profile.#released || profile.#profileParent !== this || profile.#scope !== "profile-initialization"
+        || !noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-draft-recovery-custody-expired");
+      const operation = (this.#authority as InstallationLease).assertDraftDuoPublicationRecovery(operationId, binding.profileId, generation);
+      if (stable(operation) !== identity) throw new Error("duo-draft-authority-changed");
+      assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
+    };
+    return Object.freeze({ binding, generation, draftOperationId: operationId, assertHeld, assertPublicationRecovery,
       readDuoContinuity: () => { assertHeld(); const operation = readOperation();
         if (operation.onboarding === undefined) throw new Error("duo-draft-operation-required");
         return operation.onboarding.duo;

@@ -705,10 +705,11 @@ portal acceptance and operator confirmation. Public method states display these 
 authorize publication. Each SIGN uses a distinct durable reservation nonce.
 
 Draft Duo publication resumes only its authenticated prior/next intent, including stopped recovery.
+The native onboarding Finish intent owns verifier and registry publication together; verifier preparation does not publish an account. Fresh database, key, protected credential and method witnesses precede that intent. Exact prior/next prefixes recover together, while a changed source remains HOLD.
 Finish recovery retains the exact Finish identity and immutable method receipts; it does not repeat
 enrollment or create a replacement generation. Pre-enrollment cancellation drains provider custody,
 retains its authenticated original encrypted apply as an explicitly owned transaction source, and
-uses canonical credential erasure. The durable abort intent owns full membership proof before source,
+uses canonical credential erasure. An exact draft-erasure intent retains journal/anchor custody until the final abort intent takes over; first-anchor recovery requires the authenticated absent prior anchor and exact expected next journal. The durable abort intent owns full membership proof before source,
 key and operation removal, in that order. Unknown copies, effects or closure retain HOLD.
 
 Stopped incomplete-profile reclassification requires the exact original apply, key and never-Duo

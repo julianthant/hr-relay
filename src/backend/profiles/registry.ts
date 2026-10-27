@@ -1,3 +1,4 @@
+import { assertPreparedProfileVerifierInput, type PreparedProfileVerifier } from "./verifier-store.js";
 import type { RuntimeAdmission } from "../storage/admission/admission.js";
 import { join } from "node:path";
 import { z } from "zod";
@@ -133,7 +134,7 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
     read(): ProfileRegistryDocument {
       return read();
     },
-    publishSignUp(operation: SignUpOperation, request: unknown): ProfileRegistryRow {
+    publishSignUp(operation: SignUpOperation, request: unknown, verifier: PreparedProfileVerifier): ProfileRegistryRow {
       return withProfileLock(root, () => {
         read();
         const file = readPrivateFile(join(root, "machine", "operations", `${operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
@@ -144,12 +145,15 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
         if (parsed.commandId !== pending.commandId || parsed.writeId !== pending.writeId || parsed.commandFingerprint !== pending.commandFingerprint
           || parsed.expectedRevision !== pending.expectedRevision || parsed.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH
           || parsed.updatedAt !== pending.createdAt) throw new Error("profile-signup-receipt-mismatch");
+        const email = parsed.entries.ucpathUserId, password = parsed.entries.ucpathPassword;
+        if (email === undefined || !("set" in email) || password === undefined || !("set" in password)) throw new Error("profile-verifier-protected-input-required");
+        assertPreparedProfileVerifierInput(verifier, email.set, password.set);
         const capability = admission.admitProfile(this.storageClaim(pending.profileId));
         try {
           const store = createCredentialStore({ admission: capability, stateRoot: capability.stateRoot, erasureJournalAdmission: admission,
             erasureJournalPath: join(root, "machine", "erasures", `${pending.profileId}.json`) });
           const witness = captureCommittedCredentialReplay(store, parsed);
-          admission.publishProfileRegistration(pending, witness);
+          admission.publishProfileRegistration(pending, witness, verifier);
         } finally { capability.release(); }
         const row = read().profiles.find(entry => entry.profileId === pending.profileId);
         if (row === undefined) throw new ProfileRegistryAuthorityError();

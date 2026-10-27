@@ -1,11 +1,11 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { ProfileVerifierDocumentSchema } from "../../models/profiles/profile.js";
 import { encodePrivate } from "../../rules/validation/private-equal.js";
 import {
-  CREDENTIAL_DIRECTORY_MODE,
+  readPrivateFile, CREDENTIAL_DIRECTORY_MODE,
   ensureChildDirectory,
   fsyncPath,
   replacePrivateFile,
@@ -22,6 +22,20 @@ import {
 
 
 type VerifierDocument = z.infer<typeof ProfileVerifierDocumentSchema>;
+export interface PreparedProfileVerifier { readonly profileId: string; }
+const preparedVerifiers = new WeakMap<PreparedProfileVerifier, { root: string; row: VerifierDocument["profiles"][number]; pepper: Buffer; assertCurrent(): void }>();
+export function verifyPreparedProfileVerifier(witness: PreparedProfileVerifier, machineRoot: string, profileId: string, expectedEmailKey: string) {
+  const issued = preparedVerifiers.get(witness);
+  if (issued === undefined || issued.root !== machineRoot || issued.row.profileId !== profileId || issued.row.emailKey !== expectedEmailKey) throw new Error("profile-verifier-publication-unissued");
+  issued.assertCurrent(); return issued.row;
+}
+export function assertPreparedProfileVerifierInput(witness: PreparedProfileVerifier, email: string, password: string): void {
+  const issued = preparedVerifiers.get(witness);
+  if (issued === undefined) throw new Error("profile-verifier-publication-unissued");
+  issued.assertCurrent();
+  if (emailKey(issued.pepper, email) !== issued.row.emailKey || !passwordMatches(password, issued.row)) throw new Error("profile-verifier-protected-input-mismatch");
+}
+
 
 export function createProfileVerifiers(machineRoot: string) {
   const directory = join(machineRoot, "machine");
@@ -73,6 +87,24 @@ export function createProfileVerifiers(machineRoot: string) {
     },
     emailKeyFor(email: string): string {
       return emailKey(pepper(), email);
+    },
+    prepare(profileId: string, email: string, password: string): PreparedProfileVerifier {
+      const created = createSyntheticVerifier(pepper(), email, password);
+      const document = readPrivateFile(documentPath, { label: "lock", maxBytes: 1_048_576 }), sourcePepper = readPrivateFile(pepperPath, { label: "lock", maxBytes: 32 });
+      if (document === undefined || sourcePepper === undefined || sourcePepper.bytes.length !== 32) throw new Error("profile-verifier-source-required");
+      const current = ProfileVerifierDocumentSchema.parse(JSON.parse(document.bytes.toString("utf8")));
+      if (current.profiles.some(entry => entry.profileId === profileId || entry.emailKey === created.emailKey)) throw new Error("profile verifier already exists");
+      const row = ProfileVerifierDocumentSchema.shape.profiles.element.parse({ profileId, ...created, consecutiveFailures: 0 });
+      const assertCurrent = () => {
+        for (const [path, before] of [[documentPath, document], [pepperPath, sourcePepper]] as const) {
+          const after = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
+          if (after === undefined || after.identity.device !== before.identity.device || after.identity.inode !== before.identity.inode
+            || createHash("sha256").update(after.bytes).digest("hex") !== createHash("sha256").update(before.bytes).digest("hex")) throw new Error("profile-verifier-publication-source-changed");
+        }
+      };
+      const witness = Object.freeze({ profileId });
+      preparedVerifiers.set(witness, { root: machineRoot, row, pepper: sourcePepper.bytes, assertCurrent });
+      assertCurrent(); return witness;
     },
     save(profileId: string, email: string, password: string): void {
       const created = createSyntheticVerifier(pepper(), email, password);

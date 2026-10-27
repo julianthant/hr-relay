@@ -4,12 +4,12 @@ import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 import { DuoContinuityRowSchema, DuoCredentialDocumentSchema, DuoDocumentEnvelopeSchema, DuoEnrollmentScopeSchema, DuoStoredCredentialSchema,
   type DuoContinuityRow, type DuoCredentialDocument, type DuoEnrollmentScope } from "../../../models/config/duo-credential-store.js";
-import type { ProfileRegistryDocument, SignUpOperation } from "../../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding, type ProfileRegistryDocument, type SignUpOperation } from "../../../models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { duoCredentialPurposeBinding, issueDuoCredentialPurpose, issueDraftDuoCredentialPurpose, openDuoCredentialDocument, sealDuoCredentialDocument,
+import { duoCredentialPurposeBinding, duoDraftPublicationRecoveryBinding, issueDuoCredentialPurpose, issueDraftDuoCredentialPurpose, openDuoCredentialDocument, sealDuoCredentialDocument,
   type DuoCredentialPurpose } from "./credential-store.js";
 import { ensureChildDirectory, fsyncPath, noSymlinkAncestry, readPrivateFile, writePrivateStage, type DirectoryIdentity } from "./credential-safe-file.js";
 
@@ -26,7 +26,7 @@ export interface IssuedDuoTransaction { readonly profileId: string }
 type PublicCredential = Readonly<{ credentialId: string; state: "pending" | "ready"; highWater: number }>;
 type Mutation = (document: DuoCredentialDocument | undefined) => Readonly<{ document?: DuoCredentialDocument; result: unknown }>;
 const transactions = new WeakMap<IssuedDuoTransaction, {
-  purpose: DuoCredentialPurpose; machineRoot: string; mutation: Mutation; used: boolean; publicationStarted: boolean; capture?: DuoPublicationCapture; ancestry: Map<string, DirectoryIdentity>;
+  purpose: DuoCredentialPurpose; draftOperationId?: string; machineRoot: string; mutation: Mutation; used: boolean; publicationStarted: boolean; capture?: DuoPublicationCapture; ancestry: Map<string, DirectoryIdentity>;
 }>();
 
 function identity(path: string) {
@@ -54,10 +54,11 @@ export function prepareIssuedDuoTransaction(transaction: IssuedDuoTransaction, m
   const { binding, generation, draftOperationId } = duoCredentialPurposeBinding(issued.purpose);
   const profile = registry.profiles.find(row => row.profileId === binding.profileId);
   if (draftOperationId !== undefined) {
-    if (draft?.operationId !== draftOperationId || draft.profileId !== binding.profileId || draft.phase !== "applying"
+    if (draft?.operationId !== draftOperationId || draft.profileId !== binding.profileId || draft.phase !== "applying" && draft.phase !== "publishing"
       || draft.onboarding?.generation !== generation || profile !== undefined
       || canonicalJsonStringify(draft.onboarding.duo) !== canonicalJsonStringify(prior)) throw new Error("duo-draft-authority-changed");
   } else if (draft !== undefined || registry.sessionGeneration !== generation || profile?.lifecycle !== "ready" || profile.credentialState !== "saved") throw new Error("duo-profile-authority-changed");
+  if (draft?.phase === "publishing") assertFinishedProfileOnboarding(draft);
   issued.used = true;
   const directory = join(machineRoot, "machine", "duo-credentials");
   if (!noSymlinkAncestry(directory, issued.ancestry) && prior.state !== "never-initialized") throw new Error("duo-document-required");
@@ -68,6 +69,7 @@ export function prepareIssuedDuoTransaction(transaction: IssuedDuoTransaction, m
   if (current !== undefined && (prior.state === "erased") !== (current.credentials.length === 0)) throw new Error("duo-continuity-state-mismatch");
   const outcome = issued.mutation(current);
   if (outcome.document === undefined) return undefined;
+  if (draft?.phase === "publishing") throw new Error("duo-finished-draft-mutation-refused");
   const nextDocument = DuoCredentialDocumentSchema.parse(outcome.document);
   if (nextDocument.revision !== prior.revision + 1 || nextDocument.profileId !== prior.profileId || !Number.isSafeInteger(nextDocument.revision)) throw new Error("duo-revision-invalid");
   ensureChildDirectory(join(machineRoot, "machine"), directory, "Duo credentials", 0o700, 0o700);
@@ -85,7 +87,7 @@ export function prepareIssuedDuoTransaction(transaction: IssuedDuoTransaction, m
 export function issuedDuoDraftOperation(transaction: IssuedDuoTransaction): string | undefined {
   const issued = transactions.get(transaction);
   if (issued === undefined) throw new Error("duo-transaction-unissued");
-  return duoCredentialPurposeBinding(issued.purpose).draftOperationId;
+  return issued.draftOperationId;
 }
 export function verifyIssuedDuoTransaction(transaction: IssuedDuoTransaction, capture: DuoPublicationCapture | undefined): void {
   const issued = transactions.get(transaction);
@@ -107,7 +109,7 @@ export function resumeIssuedDuoTransaction(transaction: IssuedDuoTransaction, ca
   const issued = transactions.get(transaction);
   if (issued === undefined || !issued.used || !issued.publicationStarted || issued.capture === undefined) throw new Error("duo-transaction-unissued");
   if (canonicalJsonStringify(issued.capture) !== canonicalJsonStringify(capture)) throw new Error("duo-publication-prior-changed");
-  const { binding } = duoCredentialPurposeBinding(issued.purpose);
+  const { binding } = issued.draftOperationId === undefined ? duoCredentialPurposeBinding(issued.purpose) : duoDraftPublicationRecoveryBinding(issued.purpose);
   if (binding.profileId !== capture.profileId || capture.prior.profileId !== capture.profileId || capture.next.profileId !== capture.profileId
     || capture.next.revision !== capture.prior.revision + 1) throw new Error("duo-profile-authority-changed");
 }
@@ -177,7 +179,7 @@ function createDuoStore(profile: RuntimeAdmission, machine: RuntimeAdmission, pu
     else profile.assertProfileInitialization();
     const transaction = Object.freeze({ profileId: binding.profileId });
     let outcome: Readonly<{ result: Result }> | undefined;
-    const issued = { purpose, machineRoot, mutation: (document: DuoCredentialDocument | undefined) => {
+    const issued = { purpose, ...(draftOperationId === undefined ? {} : { draftOperationId }), machineRoot, mutation: (document: DuoCredentialDocument | undefined) => {
       const result = mutation(document); outcome = result; return result;
     }, used: false, publicationStarted: false, ancestry };
     transactions.set(transaction, issued);
