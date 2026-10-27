@@ -21,6 +21,7 @@ export interface ServedOnboardingPort {
   readonly source: "served";
   readonly onboarding?: ProfileOnboardingState;
   readonly unavailable?: boolean;
+  readonly reauthenticationRequired?: boolean;
   readonly authorityScope?: object;
   complete(): Promise<PublicProfileState>;
   cancel(): Promise<PublicProfileState>;
@@ -84,7 +85,9 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
   });
 }
 
-export function duoSummary(methods: DuoMethods): string {
+export const duoMethodLabels = Object.freeze({ idle: "Not started", pending: "Waiting", complete: "Verified", unknown: "Needs review", unavailable: "Unavailable" });
+export function duoSummary(methods: DuoMethods, draft?: ProfileOnboardingState): string {
+  if (draft) return `Security key: ${duoMethodLabels[draft.methods.key.state]} · Touch ID: ${duoMethodLabels[draft.methods.touch.state]}`;
   if (methods.key && methods.touch) return "Security key and Touch ID ready";
   if (methods.key) return "Security key ready · Touch ID not added";
   if (methods.touch) return "Touch ID ready · Security key not added";
@@ -102,7 +105,7 @@ export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMetho
   latest.current = methods;
   const receive = useRef(onMethods);
   receive.current = onMethods;
-  const [status, setStatus] = useState<DuoBrowserStatus>("launching");
+  const [status, setStatus] = useState<DuoBrowserStatus>(source === "served" ? "waiting" : "launching");
   useEffect(() => {
     const message = (event: MessageEvent<unknown>) => {
       if (!child.current || event.origin !== location.origin || event.source !== child.current) return;
@@ -123,7 +126,7 @@ export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMetho
   }, [source, operationId]);
   return { status: source === "served" && operationId === undefined ? "error" as const : status, async open() {
     if (source === "served") {
-      if (!served || !operationId || served.unavailable) { setStatus("error"); return; }
+      if (!served || !operationId) { setStatus("error"); return; }
       setStatus("launching");
       try { const result = await served.showBrowser(); setStatus(result.state === "onboarding" ? "waiting" : "error"); }
       catch { setStatus("error"); }
@@ -189,15 +192,19 @@ export function useMockDuoSetup(enabled = true) {
 }
 
 export function usePublicProfileSession(client: DashboardClient, enabled: boolean) {
-  const [settlement, setSettlement] = useState<{ client: DashboardClient; state?: PublicProfileState; failure: boolean }>();
+  const [settlement, setSettlement] = useState<{ client: DashboardClient; state?: PublicProfileState; failure: boolean; reauthenticationRequired?: boolean }>();
   const state = enabled && settlement?.client === client ? settlement.state : undefined;
   const failure = enabled && settlement?.client === client && settlement.failure;
+  const reauthenticationRequired = enabled && settlement?.client === client && settlement.reauthenticationRequired === true;
   const generation = useRef(0);
   const live = useRef(false);
   const busy = useRef(false);
   const settle = useCallback((value: PublicProfileState) => {
-    setSettlement(current => ({ client, state: value.state === "refused" || value.state === "error"
-      ? current?.client === client && current.state?.state === "onboarding" ? current.state : value : value, failure: current?.client === client && current.state?.state === "onboarding" && (value.state === "refused" || value.state === "error") }));
+    setSettlement(current => {
+      const retained = current?.client === client && current.state?.state === "onboarding" && (value.state === "refused" || value.state === "error");
+      return { client, state: retained ? current.state : value, failure: retained,
+        reauthenticationRequired: retained && current.reauthenticationRequired };
+    });
   }, [client]);
   useEffect(() => {
     live.current = enabled; busy.current = false;
@@ -210,6 +217,14 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
     return () => { live.current = false; lifetime.current++; };
   }, [client, enabled, settle]);
   const onboarding = state?.state === "onboarding" ? state : undefined;
+  const settleRead = useCallback((value: PublicProfileState, expected: ProfileOnboardingState) => {
+    if (value.state !== "onboarding" || value.operationId !== expected.operationId || value.profileId !== expected.profileId) {
+      setSettlement(current => current?.client === client ? { ...current, failure: true,
+        reauthenticationRequired: value.state === "signed-out" || value.state === "refused" && value.code === "PROFILE_SESSION_STALE" } : current);
+      return;
+    }
+    settle(value);
+  }, [client, settle]);
   useEffect(() => {
     if (!enabled || !onboarding) return;
     let reading = false;
@@ -219,39 +234,45 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       const request = ++generation.current;
       void client.readProfileSession().then(value => {
         if (live.current && generation.current === request) {
-          if (value.state === "onboarding" && (value.operationId !== onboarding.operationId || value.profileId !== onboarding.profileId)
-            || value.state === "active" && value.profileId !== onboarding.profileId) {
-            setSettlement(current => current?.client === client ? { ...current, failure: true } : current); return;
-          }
-          settle(value);
+          if (value.state === "active" && value.profileId === onboarding.profileId) settle(value);
+          else settleRead(value, onboarding);
         }
       }, () => { if (live.current && generation.current === request) setSettlement(current => current?.client === client ? { ...current, failure: true } : current); }).finally(() => { reading = false; });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [client, enabled, onboarding, settle]);
-  const scope = useMemo(() => ({ client, operationId: onboarding?.operationId, failure }), [client, onboarding?.operationId, failure]);
+  }, [client, enabled, onboarding, settle, settleRead]);
+  const scope = useMemo(() => ({ client, operationId: onboarding?.operationId, profileId: onboarding?.profileId, failure, reauthenticationRequired }), [client, onboarding?.operationId, onboarding?.profileId, failure, reauthenticationRequired]);
   const currentScope = useRef(scope); currentScope.current = scope;
   const port = useMemo<ServedOnboardingPort>(() => {
-    const run = async (action: (port: ServedOnboardingPort) => Promise<PublicProfileState>) => {
-      if (!live.current || currentScope.current !== scope || failure && onboarding !== undefined) throw new Error("ONBOARDING_SCOPE_REPLACED");
+    const run = async (action: (port: ServedOnboardingPort) => Promise<PublicProfileState>, recover: "view" | "details" | undefined = undefined) => {
+      if (!live.current || currentScope.current !== scope || failure && onboarding !== undefined && !(recover === "view" || recover === "details" && reauthenticationRequired)) throw new Error("ONBOARDING_SCOPE_REPLACED");
       const request = ++generation.current;
       busy.current = true;
       try {
+        let draft = onboarding;
+        if (recover === "view" && failure && onboarding) {
+          const value = await client.readProfileSession();
+          if (!live.current || generation.current !== request || currentScope.current !== scope) throw new Error("ONBOARDING_SCOPE_REPLACED");
+          if (value.state !== "onboarding" || value.operationId !== onboarding.operationId || value.profileId !== onboarding.profileId) {
+            settleRead(value, onboarding); throw new Error("ONBOARDING_SCOPE_REPLACED");
+          }
+          draft = value;
+        }
         const result = await action(createServedOnboardingPort(client, value => {
           if (live.current && generation.current === request && currentScope.current === scope) settle(value);
-        }, onboarding));
+        }, draft));
         if (!live.current || generation.current !== request) throw new Error("ONBOARDING_SCOPE_REPLACED");
         return result;
       } finally { if (generation.current === request) busy.current = false; }
     };
-    return { source: "served", validate: validateOnboarding, onboarding, unavailable: Boolean(failure), authorityScope: scope,
-      submit: (step, details) => run(port => port.submit(step, details)),
+    return { source: "served", validate: validateOnboarding, onboarding, unavailable: Boolean(failure), reauthenticationRequired, authorityScope: scope,
+      submit: (step, details) => run(port => port.submit(step, details), step === "signup" ? "details" : undefined),
       complete: () => run(port => port.complete()), cancel: () => run(port => port.cancel()),
       cancelDuo: (method, attemptId) => run(port => port.cancelDuo(method, attemptId)),
-      showBrowser: () => run(port => port.showBrowser()), openPortal: () => run(port => port.openPortal()),
+      showBrowser: () => run(port => port.showBrowser(), "view"), openPortal: () => run(port => port.openPortal()),
       start: method => run(port => port.start(method)), confirmDuo: scope => run(port => port.confirmDuo(scope)),
     };
-  }, [client, onboarding, scope, settle, failure]);
+  }, [client, onboarding, scope, settle, settleRead, failure, reauthenticationRequired]);
   return { state, failure, port,
     claimExistingData: async (request: ProfileOwnerClaimRequest): Promise<PublicProfileState> => {
       if (!live.current || onboarding !== undefined || busy.current) throw new Error("ONBOARDING_SCOPE_REPLACED");

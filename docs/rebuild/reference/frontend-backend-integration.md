@@ -326,3 +326,13 @@ claim's stopped handoff verifies its backup, publishes its resumable native tran
 the same loopback port. Restart may finish only that original authorized transition; a flat source
 without a claim journal stays unclaimed. The resulting authority remains the existing private draft
 until genuine current Duo methods and explicit Finish complete.
+
+Show setup browser may refresh unavailable public authority with the current cookie, then shows only
+that same operation and profile. A signed-out or stale session requires the original Details through
+the existing sign-up route; it never cancels the retained draft. Unknown method outcomes stay unknown.
+Show focuses the owned extension tab or recreates that tab once in the same live context. A closed
+window is replaced only after the exact context close event, all tracked pages, the observed process,
+and startup, tab, portal and pump callbacks prove closure. A lost worker-stop acknowledgment during
+window shutdown is superseded only by that complete proof and validated owned-profile deletion;
+otherwise its cause and the closure failure remain uncertain and replacement is refused. Show never
+starts enrollment or submits SSO. Explicit Open Duo retains the existing once-per-context login path.
