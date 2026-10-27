@@ -195,6 +195,9 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const keyCapture: { capability?: DraftDuoCapability } = {};
     let providerActive = false, closedAttempts = 0;
     const onboardingDuo: ProfileOnboardingDuoProvider = {
+      async showBrowser(owner) { owner.assertCurrent(); },
+      async openPortal(owner) { owner.assertCurrent(); },
+      async closeBrowser() { return { state: "closed" }; },
       async start(attempt, bind, _reportFailure) {
         assert.equal(providerActive, false); providerActive = true;
         const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,

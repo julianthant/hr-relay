@@ -123,6 +123,9 @@ const failedBoundProfileFixtures = new Set<Readonly<{
 
 export function syntheticOnboardingDuo(accountName: () => string): ProfileOnboardingDuoProvider {
   return {
+    async showBrowser(owner) { owner.assertCurrent(); },
+    async openPortal(owner) { owner.assertCurrent(); },
+    async closeBrowser() { return { state: "closed" }; },
     async start(attempt, bind, _reportFailure) {
       const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
         accountName: accountName(), origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
