@@ -53,13 +53,19 @@ it("real Relay UI and private draft log in once in a separate same-window Duo ta
   const draft = profile.session.signUp({ firstName: "Synthetic", lastName: "Operator", email: "synthetic-user@ucsd.edu", password: "synthetic-password", createdAt: systemClock.now().toISOString() });
   assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("fixture draft required");
   const read = () => profile.session.readOnboarding(draft.token, draft.operationId);
+  let failure: unknown;
   try {
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
     assert.ok(context);
     assert.equal(launches, 1); assert.equal(context.pages().length, 1); assert.equal(acquisitions, 0); assert.equal(read().methods.key.state, "idle");
-    const setup = context.pages()[0]; assert.ok(setup);
+    let setup = context.pages()[0]; assert.ok(setup);
     assert.match(setup.url(), /^chrome-extension:\/\/[^/]+\/src\/options\.html$/);
-    await expect(setup.locator("#globalStatus")).toHaveText("Duo setup in progress");
+    await expect(setup.locator("#globalStatus")).toHaveText("Sign-in methods not started");
+    await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    await expect(setup.locator(".brand small")).toHaveText("Relay sign-in setup");
+    await expect(setup.locator("footer > span:last-child")).toHaveText("Private Relay sign-in methods.");
+    await expect(setup.locator("#connection h3")).toHaveText("Set up a sign-in method");
+    await expect(setup.locator("#connection > p").first()).toContainText("same window");
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId); assert.equal(launches, 1);
     await setup.getByRole("button", { name: "Open duo.ucsd.edu", exact: true }).click();
     await expect(setup.locator("#openLogin")).toBeEnabled();
@@ -74,7 +80,7 @@ it("real Relay UI and private draft log in once in a separate same-window Duo ta
     await profile.session.openOnboardingPortal(draft.token, draft.operationId); assert.equal(context.pages().length, 2); assert.equal(acquisitions, 1);
     for (const [method, value] of [["key", "usb"], ["touch", "internal"]] as const) {
       await setup.locator("#transport").selectOption(value);
-      await setup.getByRole("button", { name: "Start capture", exact: true }).click();
+      await setup.getByRole("button", { name: "Set up selected method", exact: true }).click();
       await expect(setup.locator("#cancelCapture")).toBeEnabled();
       assert.equal(read().methods[method].state, "pending");
       await setup.getByRole("button", { name: "Cancel capture", exact: true }).click();
@@ -86,10 +92,32 @@ it("real Relay UI and private draft log in once in a separate same-window Duo ta
     await portal.goto("https://foreign.invalid/");
     await assert.rejects(profile.session.openOnboardingPortal(draft.token, draft.operationId));
     assert.equal(submissions, 1); assert.equal(acquisitions, 1); assert.equal(context.pages().length, 2);
+    await setup.getByRole("button", { name: "Open duo.ucsd.edu", exact: true }).click();
+    await expect(setup.locator("#message")).toContainText("Duo could not complete this setup action");
+    await setup.evaluate(() => new Promise<void>(resolve => {
+      const list = document.getElementById("accountList"); if (!list) throw new Error("fixture method list missing");
+      const observer = new MutationObserver(() => { observer.disconnect(); resolve(); });
+      observer.observe(list, { childList: true });
+    }));
+    await expect(setup.locator("#message")).toContainText("Duo could not complete this setup action");
+    const methodsBeforeReopen = read().methods;
+    await setup.close();
+    await Promise.all([profile.session.showOnboardingBrowser(draft.token, draft.operationId), profile.session.showOnboardingBrowser(draft.token, draft.operationId)]);
+    assert.equal(launches, 1); assert.equal(context.pages().length, 2);
+    setup = context.pages().find(page => page !== portal)!; assert.ok(setup);
+    await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
+    assert.equal(acquisitions, 1); assert.equal(submissions, 1); assert.deepEqual(read().methods, methodsBeforeReopen);
+    await context.close();
+    await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
+    assert.equal(launches, 2); assert.equal(context.pages().length, 1);
+    assert.equal(acquisitions, 1); assert.equal(submissions, 1); assert.deepEqual(read().methods, methodsBeforeReopen);
+    await expect(context.pages()[0].getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
     assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });
     assert.ok(owner); const stale = owner; assert.throws(() => stale.assertCurrent()); await assert.rejects(stale.acquireCredentials());
     assert.equal(machine.readProfileRegistry().profiles.length, 0);
-  } finally {
-    try { await profile.close(); } finally { await context?.close(); machine.release(); }
-  }
+  } catch (error) { failure = error; }
+  try { await profile.close(); }
+  catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "onboarding fixture and cleanup failed"); }
+  finally { try { await context?.close(); } finally { machine.release(); } }
+  if (failure !== undefined) throw new Error("onboarding fixture failed", { cause: failure });
 });

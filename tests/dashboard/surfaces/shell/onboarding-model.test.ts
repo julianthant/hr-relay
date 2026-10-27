@@ -328,3 +328,78 @@ it("focuses a distinct-window opener and tolerates a missing opener", async () =
     vi.restoreAllMocks(); host.remove(); frame.remove();
   }
 });
+
+
+for (const recovery of ["same", "foreign-operation", "foreign-profile", "signed-out", "refused", "stale", "network", "logout", "unmount"] as const) it(`reopen refreshes unavailable authority before show and rejects ${recovery} drift`, async () => {
+  vi.useFakeTimers();
+  const draft = { ...onboardingDraft(), methods: { key: { ...draftMethod("unknown"), attemptId: "00000000-0000-4000-8000-000000000003" }, touch: draftMethod() } };
+  const paths: string[] = [];
+  const refresh = Promise.withResolvers<Response>();
+  let reads = 0, signups = 0;
+  let polled: unknown = draft;
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async url => {
+    const path = new URL(url).pathname; paths.push(path);
+    if (path.endsWith("/logout")) return Response.json({ state: "signed-out" });
+    if (path.endsWith("/sign-up") && ++signups === 1 && recovery === "stale") return Response.json({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
+    if (path.endsWith("/state")) {
+      reads++;
+      if (reads === 1) return Response.json(draft);
+      if (reads === 2) throw new Error("synthetic offline");
+      return reads === 3 ? refresh.promise : Response.json(polled);
+    }
+    return Response.json(draft);
+  } });
+  const host = document.createElement("div"), root = createRoot(host);
+  let session!: ReturnType<typeof usePublicProfileSession>, browser!: ReturnType<typeof useDuoBrowser>;
+  function Probe() {
+    session = usePublicProfileSession(client, true);
+    browser = useDuoBrowser({ key: false, touch: false }, () => {}, "served", session.port.onboarding?.operationId, session.port);
+    return null;
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    assert.equal(session.failure, true);
+    const staleShow = session.port.showBrowser.bind(session.port);
+    let opened!: Promise<void>;
+    await act(async () => { opened = browser.open(); });
+    assert.equal(reads, 3);
+    assert.equal(paths.some(path => path.endsWith("/browser")), false);
+    if (recovery === "logout") await act(async () => session.logout());
+    if (recovery === "unmount") await act(async () => root.unmount());
+    const response = recovery === "foreign-operation" ? { ...draft, operationId: "00000000-0000-4000-8000-000000000004" }
+      : recovery === "foreign-profile" ? { ...draft, profileId: "00000000-0000-4000-8000-000000000004" }
+      : recovery === "signed-out" ? { state: "signed-out" }
+      : recovery === "refused" ? { state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }
+      : recovery === "stale" ? { state: "refused", code: "PROFILE_SESSION_STALE" } : draft;
+    await act(async () => { if (recovery === "network") refresh.reject(new Error("synthetic offline")); else refresh.resolve(Response.json(response)); await opened; });
+    const shows = paths.filter(path => path.endsWith("/browser"));
+    assert.equal(shows.length, recovery === "same" ? 1 : 0);
+    assert.equal(paths.some(path => /\/(start|confirm|cancel)$/.test(path)), false);
+    if (recovery === "same") {
+      assert.equal(session.failure, false);
+      assert.deepEqual(session.port.onboarding?.methods.key, draft.methods.key);
+      await assert.rejects(staleShow());
+      polled = { state: "active", profileId: draft.profileId, epoch: 1, duoState: "ready" };
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      assert.equal(session.state?.state, "active");
+    } else if (!["logout", "unmount"].includes(recovery)) {
+      assert.equal(session.failure, true);
+      if (["stale", "signed-out"].includes(recovery)) {
+        assert.ok("reauthenticationRequired" in session.port && session.port.reauthenticationRequired);
+        const before = paths.length;
+        await assert.rejects(session.port.start("key"));
+        assert.equal(paths.length, before);
+        await act(async () => { await session.port.submit("signup", { firstName: "Original", lastName: "Operator", email: "original@ucsd.edu", password: "original-synthetic-password" }); });
+        assert.equal(paths.at(-1), "/api/v1/profile/sign-up");
+        if (recovery === "stale") {
+          assert.equal(session.failure, true);
+          assert.ok("reauthenticationRequired" in session.port && session.port.reauthenticationRequired);
+          await act(async () => { await session.port.submit("signup", { firstName: "Original", lastName: "Operator", email: "original@ucsd.edu", password: "original-synthetic-password" }); });
+        }
+        assert.equal(session.failure, false);
+        assert.deepEqual(session.port.onboarding?.methods.key, draft.methods.key);
+      }
+    }
+  } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
+});

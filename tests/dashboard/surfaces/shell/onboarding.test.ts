@@ -182,3 +182,33 @@ it("the served consent dialog closes when its displayed attempt is replaced", as
     assert.equal(document.querySelector('[role="dialog"]'), null); assert.equal(confirmed, 0);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+
+it("unknown enrollment copy never directs adding the uncertain method again", async () => {
+  const host = document.createElement("div"), root = createRoot(host);
+  const method = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+  const onboarding = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const,
+    methods: { key: { ...method, state: "unknown" as const, attemptId: "00000000-0000-4000-8000-000000000003" }, touch: method } };
+  const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
+  const port: ServedOnboardingPort = { source: "served", onboarding, unavailable: true, validate: mockOnboardingPort.validate,
+    showBrowser: unavailable, openPortal: unavailable, complete: unavailable, cancel: unavailable, cancelDuo: unavailable, start: unavailable, confirmDuo: unavailable, submit: unavailable };
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
+    assert.match(host.textContent ?? "", /Security key outcome unknown/);
+    assert.match(host.textContent ?? "", /Do not add this method again/);
+    assert.doesNotMatch(host.textContent ?? "", /Security key is next|Start with a security key|then add a security key|Security key and Touch ID not added/);
+    const steps: string[] = [];
+    const stalePort = { ...port, reauthenticationRequired: true, cancel: async () => { throw new Error("must not cancel stale draft"); } };
+    await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep(step) { steps.push(step); }, onDashboard() {}, port: stalePort })));
+    assert.match(host.textContent ?? "", /original profile details/);
+    const recover = [...host.querySelectorAll("button")].find(button => button.textContent === "Return to your details"); assert.ok(recover);
+    await act(async () => recover.click());
+    assert.deepEqual(steps, ["signup"]);
+    for (const state of ["pending", "unavailable"] as const) {
+      const currentPort = { ...port, unavailable: false, onboarding: { ...onboarding, methods: { ...onboarding.methods, key: { ...onboarding.methods.key, state } } } };
+      await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: currentPort })));
+      assert.match(host.textContent ?? "", state === "pending" ? /Security key is waiting for Duo/ : /Security key is unavailable/);
+      assert.doesNotMatch(host.textContent ?? "", /Start with a security key|Next, add a security key/);
+    }
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
