@@ -45,7 +45,7 @@ it("uses server authentication for Duo access and keeps a refused served login o
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const transitions: string[] = [];
-  const port: ServedOnboardingPort = { source: "served", validate: (step, details) => mockOnboardingPort.validate(step, details),
+  const port: ServedOnboardingPort = { source: "served", showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), validate: (step, details) => mockOnboardingPort.validate(step, details),
     async complete() { throw new Error("not called"); }, async cancel() { throw new Error("not called"); }, async cancelDuo() { throw new Error("not called"); },
     async start() { throw new Error("not called"); }, async confirmDuo() { throw new Error("not called"); },
     async submit() { return { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" }; } };
@@ -78,7 +78,7 @@ it("Ready only dispatches Finish and does not navigate on refusal or uncertain c
     profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
   let completed = 0, navigated = 0, uncertain = false;
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
-  const port: ServedOnboardingPort = { source: "served", onboarding, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { source: "served", showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: mockOnboardingPort.validate,
     submit: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused,
     async complete() { completed++; if (uncertain) throw new Error("lost response"); return { state: "refused", code: "PROFILE_TRANSITION_BLOCKED" }; },
   };
@@ -103,7 +103,7 @@ it("Finish navigates only after the matching active completion settles", async (
     profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
   const reply = Promise.withResolvers<import("../../../../src/models/profiles/public-profile.js").PublicProfileState>();
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
-  const port: ServedOnboardingPort = { source: "served", onboarding, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { source: "served", showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: mockOnboardingPort.validate,
     submit: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, complete: () => reply.promise };
   let navigated = 0;
   try {
@@ -123,7 +123,7 @@ it("a late Finish result cannot navigate a replacement draft", async () => {
     profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
   const reply = Promise.withResolvers<import("../../../../src/models/profiles/public-profile.js").PublicProfileState>();
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
-  const port: ServedOnboardingPort = { source: "served", onboarding: draft, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { source: "served", showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding: draft, validate: mockOnboardingPort.validate,
     submit: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, complete: () => reply.promise };
   let navigated = 0;
   const props = { step: "ready" as const, onStep() {}, onDashboard() { navigated++; } };
@@ -144,7 +144,7 @@ it("returning to Details requires confirmed draft cancellation", async () => {
     profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: method, touch: method } };
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   let allow = false, cancelled = 0;
-  const port: ServedOnboardingPort = { source: "served", onboarding, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { source: "served", showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: mockOnboardingPort.validate,
     submit: unused, complete: unused, cancelDuo: unused, start: unused, confirmDuo: unused,
     async cancel() { cancelled++; return allow ? { state: "signed-out" } : { state: "refused", code: "PROFILE_TRANSITION_BLOCKED" }; } };
   const transitions: OnboardingStep[] = [];
@@ -169,7 +169,7 @@ it("the served consent dialog closes when its displayed attempt is replaced", as
     profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: { ...idle, state: "pending" as const, attemptId }, touch: idle } };
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   let confirmed = 0;
-  const port: ServedOnboardingPort = { source: "served", onboarding: draft, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { source: "served", showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding: draft, validate: mockOnboardingPort.validate,
     submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused,
     async confirmDuo() { confirmed++; return draft; } };
   try {

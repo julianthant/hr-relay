@@ -33,6 +33,8 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   completeProfileOnboarding(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   cancelProfileOnboardingDuo(request: CancelProfileOnboardingDuoRequest): Promise<PublicProfileState>;
   cancelProfileOnboarding(request: CancelProfileOnboardingRequest): Promise<PublicProfileState>;
+  showProfileOnboardingBrowser(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
+  openProfileOnboardingPortal(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   startProfileOnboardingDuo(request: StartProfileOnboardingDuoRequest): Promise<PublicProfileState>;
   confirmProfileOnboardingDuo(request: ConfirmProfileOnboardingDuoRequest): Promise<PublicProfileState>;
   reportError(report: DashboardErrorReport): Promise<void>;
@@ -83,6 +85,16 @@ export function createDashboardClient(input: Readonly<{
     async cancelProfileOnboarding(request) {
       return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/cancel", {
         method: "POST", body: JSON.stringify(CancelProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
+    async showProfileOnboardingBrowser(request) {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/browser", {
+        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
+    async openProfileOnboardingPortal(request) {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/portal", {
+        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
       })).body);
     },
     async startProfileOnboardingDuo(request) {

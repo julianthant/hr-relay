@@ -1,3 +1,12 @@
+const initial = await chrome.runtime.sendMessage({ type: 'STATE' });
+if (initial?.success && initial.result?.relaySetup === true) {
+  const { mountRelayOptions } = await import('./relay-options.js');
+  await mountRelayOptions(initial.result.profile);
+} else if (chrome.runtime.getManifest().background.service_worker === 'src/relay-background.js') {
+  document.getElementById('globalStatus').textContent = 'Setup unavailable';
+  document.getElementById('globalDetail').textContent = 'Return to Relay to check the original draft.';
+  document.getElementById('addAccount').disabled = true;
+} else {
 const $ = id => document.getElementById(id);
 if (chrome.runtime.getURL('').startsWith('safari-web-extension://')) {
   $('installInstructions').textContent = 'Open the Safari app package, then enable Duo Autopilot in Safari Settings → Extensions. This local build needs Allow unsigned extensions in Developer settings. Allow access to your Duo site, then reload the Duo page.';
@@ -165,3 +174,5 @@ window.addEventListener('focus', () => { if (state) void refresh().catch(error =
 async function refresh() { state = await request('STATE'); render(); }
 await refresh().catch(error => { $('globalStatus').textContent='Could not load accounts'; $('globalDetail').textContent='Reload the extension, then reopen this page.'; message(error.message,true); $('addAccount').disabled=true; });
 setInterval(() => { if (state?.enrollment && state.enrollment.expiresAt <= Date.now()) void refresh().catch(error => message(error.message,true)); },1000);
+
+}

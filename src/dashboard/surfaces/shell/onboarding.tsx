@@ -30,7 +30,7 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
   const [loginError, setLoginError] = useState("");
   const [attempts, setAttempts] = useState(0);
   const [seconds, setSeconds] = useState(0);
-  const browser = useDuoBrowser(methods, setMethods, port.source, draft?.operationId);
+  const browser = useDuoBrowser(methods, setMethods, port.source, draft?.operationId, port.source === "served" ? port : undefined);
   const launching = browser.status === "launching", closed = browser.status === "browser-closed", failed = browser.status === "error";
   const heading = useRef<HTMLHeadingElement>(null);
   const form = useRef<HTMLFormElement>(null);

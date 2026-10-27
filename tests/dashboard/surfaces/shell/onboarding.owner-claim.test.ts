@@ -13,6 +13,7 @@ it("uses an explicit claim action and stable request identity without dispatchin
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   const claims: ProfileOwnerClaimRequest[] = []; let signupCalls = 0;
   const port: ServedOnboardingPort = { source: "served", validate: mockOnboardingPort.validate,
+    async showBrowser() { throw new Error("not called"); }, async openPortal() { throw new Error("not called"); },
     async submit() { signupCalls++; return { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" }; },
     async complete() { throw new Error("not called"); }, async cancel() { throw new Error("not called"); },
     async cancelDuo() { throw new Error("not called"); }, async start() { throw new Error("not called"); }, async confirmDuo() { throw new Error("not called"); } };

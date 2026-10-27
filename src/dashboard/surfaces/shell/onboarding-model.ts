@@ -25,6 +25,8 @@ export interface ServedOnboardingPort {
   complete(): Promise<PublicProfileState>;
   cancel(): Promise<PublicProfileState>;
   cancelDuo(method: ProfileOnboardingMethod, attemptId: string): Promise<PublicProfileState>;
+  showBrowser(): Promise<PublicProfileState>;
+  openPortal(): Promise<PublicProfileState>;
   start(method: ProfileOnboardingMethod): Promise<PublicProfileState>;
   confirmDuo(scope: DuoConfirmationScope): Promise<PublicProfileState>;
   validate(this: void, step: "login" | "signup", details: OnboardingDetails): OnboardingErrors;
@@ -66,6 +68,8 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
     async complete() { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); const result = await client.completeProfileOnboarding({ operationId: onboarding.operationId }); return accept(result, true); },
     async cancel() { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); const result = await client.cancelProfileOnboarding({ operationId: onboarding.operationId }); return accept(result); },
     async cancelDuo(method, attemptId) { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); return accept(await client.cancelProfileOnboardingDuo({ operationId: onboarding.operationId, method, attemptId })); },
+    async showBrowser() { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); return accept(await client.showProfileOnboardingBrowser({ operationId: onboarding.operationId })); },
+    async openPortal() { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); return accept(await client.openProfileOnboardingPortal({ operationId: onboarding.operationId })); },
     async start(method) { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); const result = await client.startProfileOnboardingDuo({ operationId: onboarding.operationId, method }); return accept(result); },
     async confirmDuo(scope) {
       if (!onboarding || scope.operationId !== onboarding.operationId || scope.profileId !== onboarding.profileId) throw new Error("ONBOARDING_SCOPE_REPLACED");
@@ -92,7 +96,7 @@ export function parseDuoMessage(value: unknown): DuoMethods | undefined {
   if (typeof value !== "object" || value === null || !("type" in value) || value.type !== "hub-duo-mock" || !("key" in value) || !("touch" in value)) return;
   if (typeof value.key === "boolean" && typeof value.touch === "boolean") return { key: value.key, touch: value.touch };
 }
-export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMethods) => void, source: "mock" | "served" = "mock", operationId?: string) {
+export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMethods) => void, source: "mock" | "served" = "mock", operationId?: string, served?: ServedOnboardingPort) {
   const child = useRef<Window | null>(null);
   const latest = useRef(methods);
   latest.current = methods;
@@ -117,7 +121,14 @@ export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMetho
     if (source === "mock") window.addEventListener("message", message);
     return () => { window.clearInterval(timer); window.removeEventListener("message", message); window.removeEventListener("pagehide", close); close(); };
   }, [source, operationId]);
-  return { status: source === "served" && operationId === undefined ? "error" as const : status, open() {
+  return { status: source === "served" && operationId === undefined ? "error" as const : status, async open() {
+    if (source === "served") {
+      if (!served || !operationId || served.unavailable) { setStatus("error"); return; }
+      setStatus("launching");
+      try { const result = await served.showBrowser(); setStatus(result.state === "onboarding" ? "waiting" : "error"); }
+      catch { setStatus("error"); }
+      return;
+    }
     if (child.current && !child.current.closed) { child.current.focus(); return; }
     child.current = window.open(`${location.pathname}?onboardingSetup=fast`, "hub-duo-setup", "popup,width=1200,height=900");
     setStatus(child.current ? "launching" : "error");
@@ -237,6 +248,7 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       submit: (step, details) => run(port => port.submit(step, details)),
       complete: () => run(port => port.complete()), cancel: () => run(port => port.cancel()),
       cancelDuo: (method, attemptId) => run(port => port.cancelDuo(method, attemptId)),
+      showBrowser: () => run(port => port.showBrowser()), openPortal: () => run(port => port.openPortal()),
       start: method => run(port => port.start(method)), confirmDuo: scope => run(port => port.confirmDuo(scope)),
     };
   }, [client, onboarding, scope, settle, failure]);
@@ -292,11 +304,7 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
     cancel() { const attemptId = draft?.methods[method].attemptId; if (port && attemptId) void run(() => port.cancelDuo(method, attemptId)); },
     open(capture: boolean) {
       if (!port || !draft || port.unavailable) return;
-      if (!capture) {
-        if (child.current && !child.current.closed) { child.current.focus(); return; }
-        child.current = window.open(`${location.pathname}?onboardingSetup=duo`, "hub-duo-devices", "popup,width=900,height=800");
-        setUnavailable(child.current === null); return;
-      }
+      if (!capture) { void run(() => port.openPortal()); return; }
       if (draft.methods[method].state === "idle") void run(() => port.start(method));
     },
     async start(selected: ProfileOnboardingMethod): Promise<DuoConfirmationScope | undefined> {

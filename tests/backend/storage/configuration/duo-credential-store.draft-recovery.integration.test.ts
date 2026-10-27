@@ -13,10 +13,11 @@ import assert from "node:assert/strict";
 import { it, vi } from "vitest";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDraftDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
-import type { ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
+import type { DraftDuoBrowserOwner, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
+import { ProfileOnboardingDuoProviderError } from "../../../../src/backend/profiles/onboarding-duo-provider.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 
@@ -37,13 +38,39 @@ function draftFixture() {
   const base = privateDraftFixture(), { root, machine, profile, draft } = base;
   const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(draft.profileId));
   const store = createDraftDuoCredentialStore(admission, machine, draft.operationId, 1, systemClock), pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const armedAt = systemClock.nowMs();
   const input = { credentialId: randomUUID(), scope: { armId: randomUUID(), contextId: randomBytes(16).toString("hex"), tabId: 1, accountId: randomUUID(),
-    origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com", armedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 600_000).toISOString() },
+    origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com", armedAt: new Date(armedAt).toISOString(), expiresAt: new Date(armedAt + 600_000).toISOString() },
     privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
     publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64") };
   store.enroll(input); store.confirm(input.credentialId, input.scope);
   return { ...base, admission, store, input, async close() { admission.release(); await profile.close(); machine.release(); rmSync(root, { recursive: true }); } };
 }
+
+it("viewing an actual draft creates no attempt and unknown enrollment cannot be rearmed by viewing or opening its browser", async () => {
+  let browser: DraftDuoBrowserOwner | undefined, starts = 0;
+  const f = privateDraftFixture({
+    async showBrowser(owner) { owner.assertCurrent(); browser = owner; },
+    async openPortal(owner) { owner.assertCurrent(); },
+    async closeBrowser() { return { state: "closed" }; },
+    async start(_attempt, _bind, reportFailure) { starts++; await reportFailure(new ProfileOnboardingDuoProviderError("unknown", "provider")); },
+    async cancel() { return { state: "closed" }; },
+  });
+  try {
+    await f.profile.session.showOnboardingBrowser(f.draft.token, f.draft.operationId);
+    await f.profile.session.openOnboardingPortal(f.draft.token, f.draft.operationId);
+    assert.equal(starts, 0); assert.ok(browser);
+    const pending = await f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key");
+    assert.equal(pending.methods.key.state, "unknown");
+    await f.profile.session.showOnboardingBrowser(f.draft.token, f.draft.operationId);
+    await f.profile.session.openOnboardingPortal(f.draft.token, f.draft.operationId);
+    await assert.rejects(f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key"));
+    assert.equal(starts, 1); assert.equal(browser.readState().methods.key.state, "unknown");
+    assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
+    await assert.rejects(f.profile.close(), error => error instanceof RuntimeCustodyUncertainError
+      && error.errors.some(cause => cause instanceof AggregateError && cause.message === "profile-onboarding-custody-unproved"));
+  } finally { f.machine.release(); }
+});
 
 for (const boundary of ["intent", "rename", "operation", "continuity", "unlink"] as const) {
   it(`recovers the exact draft Duo transaction after ${boundary} without publishing a profile`, async () => {
@@ -143,6 +170,9 @@ for (const boundary of ["source", "journal", "erase", "intent", "source-unlink",
 async function readyFixture() {
   let active = false;
   const provider: ProfileOnboardingDuoProvider = {
+    async showBrowser(owner) { owner.assertCurrent(); },
+    async openPortal(owner) { owner.assertCurrent(); },
+    async closeBrowser() { return { state: "closed" }; },
     async start(attempt, bind, _reportFailure) {
       assert.equal(active, false); active = true;
       const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
