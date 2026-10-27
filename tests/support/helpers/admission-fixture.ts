@@ -4,7 +4,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../src/backend/app/composition/profile-credential-inventory.js";
 import { systemClock, type Clock } from "../../../src/rules/time/clock.js";
-import { createProfileVerifiers } from "../../../src/backend/profiles/verifier-store.js";
+import { createProfileVerifiers } from "../../../src/backend/storage/configuration/verifier-store.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { tmpdir } from "node:os";
 import { createProfileSession } from "../../../src/backend/profiles/profile-session.js";

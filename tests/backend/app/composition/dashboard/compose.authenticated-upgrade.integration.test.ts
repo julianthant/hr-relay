@@ -23,7 +23,7 @@ import { AuthorityDatabase, inspectNativeAuthority } from "../../../../../src/ba
 import { readProfileDatabaseBinding } from "../../../../../src/backend/storage/sqlite/profile-local-databases.js";
 import { createProfileSession, consumeAuthenticatedProfileUpgrade } from "../../../../../src/backend/profiles/profile-session.js";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
-import { createProfileVerifiers } from "../../../../../src/backend/profiles/verifier-store.js";
+import { createProfileVerifiers } from "../../../../../src/backend/storage/configuration/verifier-store.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../../support/helpers/admission-fixture.js";
 import { createSettingsApplicationExecutor } from "../../../../../src/backend/runs/commands/settings-service.js";
 import { executeSettingsCommand } from "../../../../../src/backend/runs/commands/command-kernel.js";

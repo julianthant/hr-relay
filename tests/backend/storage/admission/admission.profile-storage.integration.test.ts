@@ -15,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { z } from "zod";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createProfileVerifiers } from "../../../../src/backend/profiles/verifier-store.js";
+import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";

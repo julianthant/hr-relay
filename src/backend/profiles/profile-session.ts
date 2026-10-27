@@ -38,7 +38,7 @@ import {
 import { assessCredentialInventory, type CredentialInventory } from "./credential-inventory.js";
 import { createProfileRegistry, withProfileLock, ProfileRegistryAuthorityError } from "./registry.js";
 import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../models/profiles/profile.js";
-import { createProfileVerifiers } from "./verifier-store.js";
+import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
 import { ProfileOnboardingStateSchema, type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";

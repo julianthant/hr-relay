@@ -2,15 +2,15 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { ProfileVerifierDocumentSchema } from "../../models/profiles/profile.js";
-import { encodePrivate } from "../../rules/validation/private-equal.js";
+import { ProfileVerifierDocumentSchema } from "../../../models/profiles/profile.js";
+import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import {
   readPrivateFile, CREDENTIAL_DIRECTORY_MODE,
   ensureChildDirectory,
   fsyncPath,
   replacePrivateFile,
   writePrivateStage,
-} from "../storage/configuration/credential-safe-file.js";
+} from "./credential-safe-file.js";
 import {
   createSyntheticVerifier,
   emailKey,

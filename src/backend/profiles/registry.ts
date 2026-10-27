@@ -1,4 +1,4 @@
-import { assertPreparedProfileVerifierInput, type PreparedProfileVerifier } from "./verifier-store.js";
+import { assertPreparedProfileVerifierInput, type PreparedProfileVerifier } from "../storage/configuration/verifier-store.js";
 import type { RuntimeAdmission } from "../storage/admission/admission.js";
 import { join } from "node:path";
 import { z } from "zod";

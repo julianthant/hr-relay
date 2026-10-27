@@ -7,7 +7,7 @@ import {
 } from "./credential-safe-file.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { CredentialInitializationSchema, ProfileVerifierDocumentSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, LogoutOperationSchema, type LogoutOperation, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
-import { emailKey, passwordMatches } from "../../profiles/synthetic-verifier.js";
+import { emailKey, passwordMatches } from "./synthetic-verifier.js";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { linkSync, lstatSync, mkdirSync, readdirSync, renameSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";

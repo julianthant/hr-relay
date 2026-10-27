@@ -23,7 +23,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../.
 import { migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createProfileVerifiers } from "../../../../src/backend/profiles/verifier-store.js";
+import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
 import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js";
 import { RunRecordService, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectActiveRunSettings, selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
