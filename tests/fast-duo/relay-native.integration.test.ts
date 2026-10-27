@@ -47,7 +47,7 @@ it("real extension isolated native create uses page RP/origin and ignores forged
         senderIdentity: sender.id === chrome.runtime.id,
         topFrame: sender.frameId === 0,
         activeDocument: sender.documentLifecycle === 'active',
-        documentUuid: typeof sender.documentId === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sender.documentId),
+        documentToken: typeof sender.documentId === 'string' && /^[0-9a-f]{32}$/i.test(sender.documentId),
         localhost: parsedUrl?.hostname === 'localhost',
         senderOrigin: sender.origin === parsedUrl?.origin,
         requestOrigin: message.request?.origin === sender.origin,
@@ -55,7 +55,7 @@ it("real extension isolated native create uses page RP/origin and ignores forged
       };
       realmGuardFailures.push(Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name));
       if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || sender.documentLifecycle !== 'active'
-        || typeof sender.documentId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sender.documentId)
+        || typeof sender.documentId !== 'string' || !/^[0-9a-f]{32}$/i.test(sender.documentId)
         || new URL(sender.url).hostname !== 'localhost' || sender.origin !== new URL(sender.url).origin
         || message.request?.origin !== sender.origin || message.request?.rpId !== 'localhost') {
         sendResponse({ success: false }); return false;
@@ -158,7 +158,7 @@ it("real extension isolated native create uses page RP/origin and ignores forged
     assert.equal(actualReceipts[0]?.sender.documentId, actualReceipts[1]?.sender.documentId);
     for (const receipt of actualReceipts) {
       assert.equal(receipt.sender.id, extensionId);
-      assert.match(receipt.sender.documentId, /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
+      assert.match(receipt.sender.documentId, /^[0-9a-f]{32}$/i);
       assert.equal(receipt.sender.origin, origin);
       assert.equal(receipt.sender.url, `${origin}/`);
       assert.equal(receipt.sender.frameId, 0);

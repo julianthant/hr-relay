@@ -1,5 +1,5 @@
 import { request as httpRequest } from "node:http";
-import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
+import { randomBytes, createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { runSecureEnvironmentBootstrap } from "../../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
@@ -197,7 +197,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const onboardingDuo: ProfileOnboardingDuoProvider = {
       async start(attempt, bind, _reportFailure) {
         assert.equal(providerActive, false); providerActive = true;
-        const capability = await bind({ contextId: randomUUID(), tabId: attempt.method === "key" ? 1 : 2,
+        const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
           accountName: "fixture@ucsd.edu", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
         const credentialId = attempt.method === "key" ? "fixture-software-key" : "fixture-native-touch";
         if (attempt.method === "key") {

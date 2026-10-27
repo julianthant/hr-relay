@@ -5,7 +5,7 @@ import { createRelayWorker } from '../src/relay-background.js';
 const ORIGIN = 'https://test.duosecurity.com';
 const ACCOUNT = '00000000-0000-4000-8000-000000000001';
 const CHALLENGE = Buffer.from('synthetic-enrollment-challenge').toString('base64');
-const DOCUMENT = '00000000-0000-4000-8000-000000000007';
+const DOCUMENT = 'A0000000000040008000000000000007';
 const SENDER = { id: 'owned-extension', frameId: 0, origin: ORIGIN, documentId: DOCUMENT, documentLifecycle: 'active', url: `${ORIGIN}/setup`, tab: { id: 7 } };
 function world() {
   let saved = {};
@@ -118,6 +118,8 @@ for (const [label, sender, request] of [
   ['foreign origin', { ...SENDER, url: 'https://example.org/setup' }, enrollment()],
   ['subframe', { ...SENDER, frameId: 1 }, enrollment()],
   ['missing document', { ...SENDER, documentId: undefined }, enrollment()],
+  ['malformed document', { ...SENDER, documentId: 'x'.repeat(32) }, enrollment()],
+  ['hyphenated document', { ...SENDER, documentId: '00000000-0000-4000-8000-000000000007' }, enrollment()],
   ['inactive document', { ...SENDER, documentLifecycle: 'cached' }, enrollment()],
   ['forged tab', { ...SENDER, tab: { id: '7' } }, enrollment()],
   ['wrong RP', SENDER, { ...enrollment(), request: { ...enrollment().request, rpId: 'example.org' } }],
@@ -296,7 +298,7 @@ for (const kind of ['bind', 'persist', 'software-created', 'reserve', 'exact-req
       request = await w.worker.next();
       if (request.kind !== kind) w.worker.reply(request.id, { ok: true, value: request.kind === 'bind' ? { accountId: ACCOUNT } : request.kind === 'reserve' ? { count: 12 } : { revision: 1 } });
     } while (request.kind !== kind);
-    if (drift === 'document') w.scope.documentId = crypto.randomUUID();
+    if (drift === 'document') w.scope.documentId = crypto.randomUUID().replaceAll('-', '');
     if (drift === 'navigation') w.scope.url = `${ORIGIN}/other`;
     if (drift === 'account') { w.scope.accountNames = ['other@example.edu']; w.scope.accountRevision++; }
     if (drift === 'account-returned') w.scope.accountRevision += 2;
