@@ -173,6 +173,22 @@ describe("served Logs decision authority", () => {
     assert.equal(sent.length, 0);
   });
 
+  it("refuses a retained confirmation callback after its hook owner unmounts", async () => {
+    const gate = servedGate(fixtures.ONE_CLICK);
+    const selected = selectionAt(3);
+    const requested: (() => void)[] = [];
+    const sent: CommandRequest[] = [];
+    const h = await harness(gateClient(gate, selected, sent), (_pending, onConfirmed) => { requested.push(onConfirmed); });
+    await h.render(selected);
+    await act(async () => h.state?.onDecision?.(gate.gateId, gateLogActions(gate)[0], {}));
+    assert.equal(requested.length, 1);
+    await act(async () => root?.unmount());
+    root = undefined;
+    await act(async () => { requested[0](); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(sent.length, 0);
+    assert.deepEqual(h.outcomes.map(outcome => [outcome.kind, outcome.kind === "refused" ? outcome.reason : undefined]), [["refused", "not-attempted"]]);
+  });
+
   it("offers a name-mismatch gate as a pick and never a rejection", () => {
     assert.equal(gateLogActions(servedGate(fixtures.NAME_MISMATCH))[0]?.input?.kind, "candidate");
     const oneClick = servedGate(fixtures.ONE_CLICK);

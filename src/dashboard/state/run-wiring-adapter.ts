@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DashboardClientError } from "../client/errors.js";
 import type { ConfirmedActionEvent } from "../../models/events/confirmed-action.js";
 import type { DashboardClient } from "../client/index.js";
@@ -444,7 +444,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const currentCommandOwner = useRef(commandOwner);
   currentCommandOwner.current = commandOwner;
   const mounted = useRef(false);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const bindingRef = useRef(binding);
   bindingRef.current = binding;
   const [command, setCommand] = useState<{ owner: GateCommandOwner; envelope: CommandRequest; state: "pending" | "uncertain" | "refused" | "settled"; feedback?: string }>();
@@ -494,7 +494,9 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     || matchesGate(attempt.envelope) || (attempt.state === "settled" && attempt.envelope.family === "gate" && detailGate?.state === "resolved"
       && detailGate.nodeId?.valueOf() === attempt.envelope.target.gateId.valueOf()), [matchesGate, detailGate]);
   const send = useCallback(async (envelope: CommandRequest, replay = false) => {
-    if (binding === undefined || binding.scope.client !== client || bindingRef.current?.scope !== binding.scope) return;
+    if (!mounted.current || currentCommandOwner.current !== commandOwner || binding === undefined
+      || binding.scope.client !== client || bindingRef.current?.scope !== binding.scope
+      || envelope.requestedBy !== binding.scope.actorId || envelope.family !== "gate" || envelope.target.runId !== commandOwner.runId) return;
     setCommand({ owner: commandOwner, envelope, state: "pending" });
     const options = { scope: binding.scope, readback: (input: CommandRequest, reply: Parameters<typeof verifyShellCommandEffect>[3]) => verifyShellCommandEffect(client, binding.authority.day, input, reply),
       publish: (outcome: CommandOutcome) => {
@@ -517,7 +519,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   }, [commandOwner, send]);
   const dispatchIfGateCurrent = useRef<(envelope: CommandRequest) => void>(() => undefined);
   dispatchIfGateCurrent.current = (envelope: CommandRequest) => {
-    if (value.state === "loaded" && matchesGate(envelope) && !(commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) {
+    if (mounted.current && currentCommandOwner.current === commandOwner && envelope.family === "gate" && envelope.target.runId === commandOwner.runId
+      && value.state === "loaded" && matchesGate(envelope) && !(commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) {
       dispatch(envelope);
       return;
     }

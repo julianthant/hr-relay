@@ -44,7 +44,7 @@ it('shows the day-loading failure for a selected run instead of calling the run 
   assert.equal(text.includes('is not in the loaded queue'), false);
 });
 
-it('approves a Logs identity decision only through the served confirmation dialog', async () => {
+for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps a Logs confirmation bound to its mounted run: ${destination}`, async () => {
   const run = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === FIXTURE_IDS.openGateRun);
   assert(run);
   const { app } = createFixtureBff();
@@ -73,6 +73,21 @@ it('approves a Logs identity decision only through the served confirmation dialo
   assert.ok(dialog.textContent?.includes('Approve this identity'), dialog.textContent ?? '');
   const confirm = [...dialog.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Approve');
   assert(confirm);
+  if (destination !== 'confirm') {
+    const other = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId !== run.runId);
+    assert(other);
+    const target = destination === 'other-run' ? `&run=${other.runId}` : '';
+    await act(async () => {
+      window.history.pushState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}${target}&section=logs`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      await new Promise(resolve => setTimeout(resolve, 20));
+    });
+    assert.equal(block.isConnected, false, 'the confirmation owner was unmounted by history navigation');
+    assert.ok(document.querySelector('[role="dialog"]')?.textContent?.includes('Approve this identity'), 'exercise the retained confirmation');
+    await act(async () => { confirm.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
+    assert.equal(sent.length, 0, 'a retained confirmation cannot dispatch after its Logs owner unmounted');
+    return;
+  }
   await act(async () => { confirm.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
   assert.equal(sent.length, 1);
   const envelope = sent[0];
