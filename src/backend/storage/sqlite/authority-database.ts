@@ -10,7 +10,7 @@ import { terminalDelegationDependencyRecord } from "../../../models/run/result.j
 import { delegationJoinDisposition } from "../../../rules/workflow/dependencies.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
-import { authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, type RuntimeProcessLockHandle, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
+import { authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, type RuntimeProcessLockHandle, type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
@@ -56,7 +56,7 @@ import { ConfirmationPublicationSchema, confirmationPublicationFromRow, type Con
 import { timelineAppendContent, timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
-import { withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
+import { withReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { TimelinePageRequestSchema } from "../../../models/events/timeline.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";
@@ -1404,6 +1404,29 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   }
 }
 
+function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>) {
+  const settings = readAppSettings(database);
+  const settingsAuthority = settings === undefined
+    ? Object.freeze({ state: "never-initialized" as const })
+    : Object.freeze({ state: "initialized" as const, record: settings });
+  const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
+    .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
+  const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
+  const browsers = database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow);
+  const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
+  const controls = database.prepare("SELECT * FROM worker_controls ORDER BY command_id").all().map(row => {
+    const record = workerControlFromRow(row), authenticated = readWorkerControl(database, record.commandId);
+    if (authenticated === undefined) throw new Error("worker-control-command-binding-mismatch");
+    return authenticated;
+  });
+  const reservations = readWorkerReservationCustody(database, slots, controls);
+  const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
+  const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
+  const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
+  const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
+  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+}
+
 function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, backup = false): void {
   if (backup) requireRuntimeAdmission(admission).assertStoppedAuthorityBackup(path, processLockRoot);
   else requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(path, processLockRoot);
@@ -1843,26 +1866,18 @@ export class AuthorityDatabase implements Disposable {
       if (inspection.schemaVersion === 6
         ? inspection.installationId !== undefined || inspection.profileId !== undefined
         : inspection.installationId !== binding?.installationId || inspection.profileId !== binding?.profileId) throw new Error("profile-maintenance-binding-mismatch");
-      const settings = readAppSettings(database);
-      const settingsAuthority = settings === undefined
-        ? Object.freeze({ state: "never-initialized" as const })
-        : Object.freeze({ state: "initialized" as const, record: settings });
-      const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
-        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
-      const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
-      const browsers = database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow);
-      const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
-      const controls = database.prepare("SELECT * FROM worker_controls ORDER BY command_id").all().map(row => {
-        const record = workerControlFromRow(row), authenticated = readWorkerControl(database, record.commandId);
-        if (authenticated === undefined) throw new Error("worker-control-command-binding-mismatch");
-        return authenticated;
-      });
-      const reservations = readWorkerReservationCustody(database, slots, controls);
-      const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
-      const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
-      const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
-      const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
-      return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+      return maintenanceInventory(database, inspection);
+    });
+  }
+
+  static readFlatBackupRecoveryInventory(path: string, restore: RestoreAdmissionHandle) {
+    assertRuntimeRestoreAdmission(restore, join(dirname(path), "locks"));
+    return withReadonlyAuthoritySnapshot(path, database => {
+      const inspection = inspectNativeAuthority(database, 6);
+      if (inspection.installationId !== undefined || inspection.profileId !== undefined) throw new Error("flat-backup-recovery-binding-refused");
+      const facts = maintenanceInventory(database, inspection);
+      assertRuntimeRestoreAdmission(restore, join(dirname(path), "locks"));
+      return { inspection, facts };
     });
   }
 

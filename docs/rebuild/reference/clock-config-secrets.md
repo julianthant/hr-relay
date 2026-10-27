@@ -760,6 +760,16 @@ reuse that allocation. Only that validated installation backup root is excluded 
 source census. Later owner claim creates and verifies its own current backup, and binds the retained
 CLI backup reference into its immutable claim receipt. Erasure inventory follows that exact
 reference and keeps the protected copies unresolved; it neither guesses ownership nor deletes them.
+A genuinely abandoned admission mutex can be recovered for this exact stopped flat source after a
+completed backup, an exact declared copy prefix, or an empty installation allocation. Recovery
+revalidates source, native backup, private copies and allocation membership at each custody barrier;
+active or unknown custody and changed or unsupported evidence refuse. Its receipt binds the exact
+allocation and source-record digest. Only that validated new receipt and owner archive are excluded
+when comparing the original allocation baseline; the immutable source record is never rewritten.
+An empty allocation's first backup and a later owner-claim backup retain the recovery history normally.
+Unproved source closure retains restore custody. Bound or otherwise advanced source shapes outside
+this finite recovery remain refused with their evidence intact.
+
 There is no CLI owner claim or flat restore authority. Genuine dashboard owner proof and consent,
 private onboarding, both real Duo methods and explicit Finish remain required.
 

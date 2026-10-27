@@ -1,7 +1,7 @@
 import type { RuntimeAdmission } from "./admission.js";
 import { FlatProfileClaimSchema, FlatProfileClaimReceiptSchema, verifyFlatProfileClaim, settleFlatProfileClaim, type FlatProfileClaimWitness } from "../maintenance/flat-profile-claim.js";
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
-import { verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup.js";
+import { FlatBackupRecoveryBindingSchema, observeFlatBackupMutexRecovery, verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { readPrivateFile, writePrivateStage, fsyncPath } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, unpublishedDraftAbortMembership, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
@@ -709,7 +709,7 @@ function mutex<T>(control: string, callback: () => T): T {
   if (result === undefined) throw new Error("installation-mutex-result-missing");
   return result.value;
 }
-const MutexOwnerSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
+export const MutexOwnerSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
   phase: z.literal("admitting"), pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema });
 function assertLiveObservationMutex(control: string): void {
   const path = join(control, "admission-mutex"), before = lstatMaybe(path);
@@ -752,12 +752,12 @@ function assertLiveObservationMutex(control: string): void {
 const OwnerMutexRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
   pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema,
   installationId: z.uuid(), generation: NonNegativeIntSchema, ownerFile: z.string().min(1),
-  ownerSha256: z.string().regex(/^[0-9a-f]{64}$/u), recoveredAt: z.iso.datetime() });
+  ownerSha256: z.string().regex(/^[0-9a-f]{64}$/u), recoveredAt: z.iso.datetime(), flatBackup: FlatBackupRecoveryBindingSchema.optional() });
 
 const EmptyMutexRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1), custody: z.literal("empty"),
   acquisitionId: z.uuid(), installationId: z.uuid(), generation: NonNegativeIntSchema,
-  directoryDevice: NonNegativeIntSchema, directoryInode: NonNegativeIntSchema, recoveredAt: z.iso.datetime() });
-const MutexRecoveryReceiptSchema = z.union([OwnerMutexRecoveryReceiptSchema, EmptyMutexRecoveryReceiptSchema]);
+  directoryDevice: NonNegativeIntSchema, directoryInode: NonNegativeIntSchema, recoveredAt: z.iso.datetime(), flatBackup: FlatBackupRecoveryBindingSchema.optional() });
+export const MutexRecoveryReceiptSchema = z.union([OwnerMutexRecoveryReceiptSchema, EmptyMutexRecoveryReceiptSchema]);
 
 /** Explicit offline recovery. The restore lock serializes recoveries; the occupied mutex excludes ordinary admission until the final rename. */
 export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: RestoreAdmissionHandle,
@@ -772,7 +772,7 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   privateDirectory(mutexPath);
   const mutexBefore = lstatSync(mutexPath);
   const allowedControl = new Set(["installation.json", "locator.json", "leases", "admission-mutex",
-    "admission-mutex-recovery", "profile-registry.json", RECEIPTS]);
+    "admission-mutex-recovery", "profile-registry.json", "storage-backups", RECEIPTS]);
   if (readdirSync(control).some(entry => !allowedControl.has(entry))) fail("unexpected installation control entry");
   const entries = readdirSync(mutexPath);
   const empty = expectedPid === "empty";
@@ -793,20 +793,27 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
       || observed.identity.platform === owner.processIdentity.platform
         && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
   }
-  const leases = join(control, "leases");
-  privateDirectory(leases);
-  for (const leaseName of readdirSync(leases)) {
-    if (!/^[-0-9a-f]+\.json$/u.test(leaseName)) fail("unexpected lease entry");
-    const lease = readStrict(join(leases, leaseName), LeaseSchema);
-    const observation = observeProcessIdentity(lease.pid);
-    if (observation.state !== "gone" && (observation.state !== "alive"
-      || observation.identity.platform === lease.processIdentity.platform
-        && observation.identity.startToken === lease.processIdentity.startToken)) fail("installation lease may still be live");
+  const acquisitionId = owner?.acquisitionId ?? randomUUID();
+  function assertLeasesStopped(): void {
+    const leases = join(control, "leases");
+    privateDirectory(leases);
+    for (const leaseName of readdirSync(leases)) {
+      if (!/^[-0-9a-f]+\.json$/u.test(leaseName)) fail("unexpected lease entry");
+      const lease = readStrict(join(leases, leaseName), LeaseSchema);
+      const observation = observeProcessIdentity(lease.pid);
+      if (observation.state !== "gone" && (observation.state !== "alive"
+        || observation.identity.platform === lease.processIdentity.platform
+          && observation.identity.startToken === lease.processIdentity.startToken)) fail("installation lease may still be live");
+    }
   }
+  assertLeasesStopped();
   if (lstatMaybe(join(control, "journal.json"))) fail("pending installation journal blocks mutex recovery");
   const locator = readLocator(control, workspace);
-  readMachineRegistry(control, locator, false);
-  const machineWitness = profileObservation(control, locator);
+  const storageBackups = join(control, "storage-backups");
+  const flatWitness = lstatMaybe(storageBackups) === undefined ? undefined
+    : observeFlatBackupMutexRecovery(workspace, locator, restore, acquisitionId);
+  if (flatWitness === undefined) readMachineRegistry(control, locator, false);
+  const machineWitness = flatWitness === undefined ? profileObservation(control, locator) : undefined;
   const processLockRoot = fixedLockRoot(workspace);
   const lockSnapshot = observeRuntimeLockSnapshot({ processLockRoot,
     sourceDatabaseIdentity: "0".repeat(64) });
@@ -819,8 +826,20 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   function assertCustody(): void {
     const currentLocator = readLocator(control, workspace);
     if (canonicalJsonStringify(currentLocator) !== canonicalJsonStringify(locator)) fail("installation locator changed during recovery");
-    readMachineRegistry(control, currentLocator, false);
-    if (profileObservation(control, currentLocator) !== machineWitness) fail("profile registry changed during mutex recovery");
+    if (flatWitness === undefined) {
+      if (lstatMaybe(storageBackups) !== undefined) fail("flat-backup-recovery-membership-changed");
+      readMachineRegistry(control, currentLocator, false);
+      if (profileObservation(control, currentLocator) !== machineWitness) fail("profile registry changed during mutex recovery");
+    } else {
+      assertLeasesStopped();
+      if (owner !== undefined) {
+        const observed = observeProcessIdentity(owner.pid);
+        if (observed.state !== "gone" && (observed.state !== "alive"
+          || observed.identity.platform === owner.processIdentity.platform && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
+      }
+      if (readdirSync(control).some(entry => !allowedControl.has(entry))
+        || canonicalJsonStringify(observeFlatBackupMutexRecovery(workspace, currentLocator, restore, acquisitionId)) !== canonicalJsonStringify(flatWitness)) fail("flat-backup-recovery-source-changed");
+    }
     privateDirectory(mutexPath);
     const directory = lstatSync(mutexPath);
     const currentEntries = readdirSync(mutexPath);
@@ -837,15 +856,14 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   const history = join(control, "admission-mutex-recovery");
   if (lstatMaybe(history) === undefined) { mkdirSync(history, { mode: 0o700 }); syncDir(control); }
   privateDirectory(history);
-  const acquisitionId = owner?.acquisitionId ?? randomUUID();
   const receipt = MutexRecoveryReceiptSchema.parse(owner === undefined ? {
     schemaVersion: 1, custody: "empty", acquisitionId, installationId: locator.installationId,
     generation: locator.generation, directoryDevice: mutexBefore.dev, directoryInode: mutexBefore.ino,
-    recoveredAt: systemClock.now().toISOString(),
+    ...(flatWitness === undefined ? {} : { flatBackup: flatWitness.binding }), recoveredAt: systemClock.now().toISOString(),
   } : { schemaVersion: 1, acquisitionId, pid: owner.pid,
     processIdentity: owner.processIdentity, installationId: locator.installationId,
     generation: locator.generation, ownerFile: name,
-    ownerSha256: createHash("sha256").update(bytes!).digest("hex"), recoveredAt: systemClock.now().toISOString() });
+    ownerSha256: createHash("sha256").update(bytes!).digest("hex"), ...(flatWitness === undefined ? {} : { flatBackup: flatWitness.binding }), recoveredAt: systemClock.now().toISOString() });
   const destination = join(history, acquisitionId);
   const receiptPath = join(history, `${acquisitionId}.json`);
   if (lstatMaybe(destination)) fail("recovery archive already exists");
@@ -854,8 +872,10 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
     if (canonicalJsonStringify({ ...existing, recoveredAt: receipt.recoveredAt })
       !== canonicalJsonStringify(receipt)) fail("recovery receipt changed");
   } else atomicJson(receiptPath, receipt);
+  const recoveryReceipt = flatWitness === undefined ? undefined : controlUpgradeFile(receiptPath);
   assertRestoreHeld(workspace, restore);
   assertCustody();
+  if (recoveryReceipt !== undefined && !sameControlUpgradeFile(receiptPath, recoveryReceipt)) fail("flat-backup-recovery-receipt-changed");
   renameSync(mutexPath, destination);
   syncDir(history);
   syncDir(control);
@@ -910,8 +930,12 @@ export function recoverAbandonedAdmissionMutexAtStartup(workspacePath: string): 
     || observed.identity.platform === owner.processIdentity.platform
       && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
   const restore = acquireRuntimeRestoreAdmission({ processLockRoot: fixedLockRoot(workspace), pid: process.pid });
+  let retain = false;
   try { recoverAbandonedAdmissionMutex(workspace, restore, owner.pid); }
-  finally { restore.release(); }
+  catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) { retain = true; throw retainAuthoritySourceClosure([error], { restore }); }
+    throw error;
+  } finally { if (!retain) restore.release(); }
 }
 
 function activeLeases(control: string): readonly z.infer<typeof LeaseSchema>[] {

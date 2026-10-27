@@ -52,8 +52,12 @@ export async function runSecureEnvironmentBootstrap(
       || !/^[1-9]\d*$/u.test(entrypointArgs[3] ?? ""))) throw new Error("storage recover-admission usage: --pid <abandoned-owner-pid> | --empty");
     const recover = dependencies.runAdmissionRecovery ?? ((root: string, expectedPid: number | "empty") => {
       const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), pid: process.pid });
+      let retain = false;
       try { return recoverAbandonedAdmissionMutex(root, restore, expectedPid); }
-      finally { restore.release(); }
+      catch (error) {
+        if (error instanceof AuthoritySourceClosureUnprovedError) { retain = true; throw retainAuthoritySourceClosure([error], { restore }); }
+        throw error;
+      } finally { if (!retain) restore.release(); }
     });
     const result = recover(workspace, empty ? "empty" : Number(entrypointArgs[3]));
     process.stdout.write(`storage admission recovered: ${result.acquisitionId}; receipt ${result.receiptPath}\n`);
