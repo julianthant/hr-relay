@@ -21,6 +21,7 @@ import type { RunDetailQueryDeps, RunDetailTrustDeps } from "../run-detail-types
 import { requireTrustRun, assertTrustEvidenceIdentity } from "../../trust/run-reader.js";
 import { DiagnosticBundleCorruptError } from "../../commands/refusals.js";
 import { availableSections } from "./availability.js";
+import { descriptorRuntimeNodes } from "../../../../workflow-kit/workflow.js";
 
 export type ReceiptFailureSection = "receipt" | "failure";
 
@@ -90,9 +91,18 @@ export function buildReceiptFailureSection(
     traceId: failure.traceId, spanPath: source.spanPath,
     ...(failure.nodeId === undefined ? {} : { nodeId: failure.nodeId }),
   } };
+  const descriptor = deps.canonical?.descriptors.resolve(authority.envelope.workflow);
+  const failedNode = descriptor === undefined ? undefined : descriptorRuntimeNodes(descriptor).find(node => node.id === failure.nodeId);
+  const canCorrectDocument = authority.envelope.workflow === "separations" && failure.code === "DOCUMENT_UNAVAILABLE"
+    && failure.writeState === "not-attempted" && failure.taskId === "kuali/read-separation-document"
+    && failedNode?.kind === "task" && failedNode.uses.id === failure.taskId
+    && descriptor?.version === authority.envelope.descriptorVersion && descriptor.contractFingerprint === authority.envelope.contractFingerprint
+    && descriptor.surfaces.inputRun?.parser.rules.some(rule => rule.emit === "documentNumber"
+      && rule.when.kind === "pattern" && rule.when.pattern === "document-number");
   return RunDetailSectionResponseSchema.parse({
     section: "failure",
-    payload: { state: "available", value: { ...native, ...failureDetailWire(
+    payload: { state: "available", value: { ...native,
+      ...(canCorrectDocument ? { rerunInput: { field: "documentNumber", expectedVersion: authority.version } } : {}), ...failureDetailWire(
       runId,
       failure,
       trust,

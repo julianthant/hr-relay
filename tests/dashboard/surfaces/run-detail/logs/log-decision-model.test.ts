@@ -17,7 +17,7 @@ function button(label: string) { const el = [...document.querySelectorAll("butto
 
 describe("approved log decisions", () => {
   it("requires only the selected continuation answer", () => {
-    const action = example("parked").decision.actions?.[0]; assert.ok(action);
+    const action = example("parked").decision.actions?.find(item => item.id === "parked-0"); assert.ok(action);
     assert.equal(decisionAnswerValid(action, {}), false);
     assert.equal(decisionAnswerValid(action, { outcome: "present", transaction: " " }), false);
     assert.equal(decisionAnswerValid(action, { outcome: "absent" }), true);
@@ -29,6 +29,28 @@ describe("approved log decisions", () => {
     const candidate = example("review-candidates").decision.actions?.[0]; assert.ok(candidate);
     assert.equal(decisionAnswerValid(candidate, { candidate: "DEMO-unlisted" }), false);
     assert.equal(decisionAnswerValid(candidate, { candidate: "DEMO-2196" }), true);
+    const eid = example("employee-not-found").decision.actions?.find(item => item.input?.kind === "text"); assert.ok(eid);
+    for (const value of ["", "   ", "1023456", "1023456a"]) assert.equal(decisionAnswerValid(eid, { text: value }), false);
+    assert.equal(decisionAnswerValid(eid, { text: " 10873698 " }), true);
+    assert.match(decisionActionResult(eid, { text: " 10873698 " }).message, /^Employee ID: 10873698\. /u);
+  });
+  it("offers Check again beside every manual entry when Relay cannot find something", () => {
+    for (const id of ["parked", "employee-not-found", "document-not-found"]) {
+      assert.deepEqual(example(id).decision.actions?.map(action => action.label).slice(0, 1), ["Check again"], id);
+    }
+  });
+  it("collects a typed value with its hint and submits only the trimmed text", async () => {
+    const calls: unknown[] = [];
+    await mount("employee-not-found", (action, answer) => calls.push([action.id, answer]));
+    await act(async () => button("Enter EID").click());
+    assert.equal(button("Continue run").disabled, true);
+    assert.match(document.body.textContent ?? "", /Employee ID required/u);
+    const input = document.querySelector('[role="dialog"] input') as HTMLInputElement;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "10873698"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    assert.equal(button("Continue run").disabled, false);
+    assert.match(document.body.textContent ?? "", /Relay reads this EID in UCPath before continuing/u);
+    await act(async () => button("Continue run").click());
+    assert.deepEqual(calls, [["employee-not-found-enter", { text: "10873698" }]]);
   });
   it("never offers a submit retry while the result is unknown", () => {
     for (const id of ["parked", "verification", "park-unavailable", "failure-attempting", "failure-unknown", "failure-unavailable", "screenshot-unavailable"]) {

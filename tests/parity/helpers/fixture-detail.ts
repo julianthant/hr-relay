@@ -18,7 +18,7 @@ export const {
 
 export {
   FIXTURE_IDENTITY_GATE,
-  FIXTURE_IDENTITY_GATE_TYPED_EID,
+  FIXTURE_IDENTITY_GATE_NAME_MISMATCH,
   FIXTURE_PARKED_WRITE,
 } from "./run-detail/gates-park.js";
 export { FIXTURE_RUN_DETAILS } from "./run-detail/timeline.js";

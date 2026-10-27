@@ -266,6 +266,31 @@ runtime admission. Shutdown does not create a backup.
 `src/backend/storage/sqlite/runtime-process-locks.ts` owns acquisition-specific process records
 and OS process-birth checks. Database closure precedes their release.
 
+An abandoned bound-worker process record can be settled only by explicit offline
+`storage recover-worker-process --acquisition <uuid> --plan --json`, followed by
+`--acquisition <uuid> --capture <digest> --apply --json`. Plan reads existing custody without
+acquiring admission, opening SQLite or creating files. Apply requires the exact capture under fixed
+restore admission and exclusive installation custody. This finite path supports an established
+canonical flat native6 installation without profile-registry evidence; it does not authenticate an
+owner or initialize a registry.
+
+Recovery preserves the original bytes, physical file identity and nullable `releasedAt`. Its separate
+immutable receipt binds the entire original record, canonical root and owner/locator witnesses,
+fresh gone-owner and process/open-file/cwd observations, and independently closed native
+lease/browser/Duo/control/run/write custody. Unresolved HR writes remain held. Changed sources,
+unknown observations or failed resource closure refuse. Existing backup and claim consumers retain
+their current native and owner proofs. Finite stopped device recertification still requires released
+worker records.
+
+Receipts live in the fixed lock root's `worker-process-recovery/` directory. Publication uses a
+private staged file, no-overwrite link, stage removal and directory fsync. A crash before the sole
+final name is durable, partial bytes, an extra stage or multiple links refuses; it is never cleaned
+up automatically. A complete sole final receipt is independently authenticated on fresh reads,
+including exact original bytes/inode and current owning witnesses; no private flag or claimed prior
+readback grants authority. A publisher that fails readback or custody release reports failure even
+if a complete receipt remains available for independent verification. Receipt proof describes the
+historical process closure event; it never replaces a consumer's current database/resource guards.
+
 ## 7. Verification owners
 
 Tests mirror implementation under `tests/backend/runtime/` and `tests/backend/storage/sqlite/`.

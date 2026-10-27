@@ -5,7 +5,7 @@ import { createGatesParkSetup } from "../../../support/helpers/dashboard/profile
 
 export const {
   FIXTURE_IDENTITY_GATE,
-  FIXTURE_IDENTITY_GATE_TYPED_EID,
+  FIXTURE_IDENTITY_GATE_NAME_MISMATCH,
   FIXTURE_PARKED_WRITE,
   FIXTURE_GATE_PARK_SECTIONS
 } = createGatesParkSetup( {

@@ -37,10 +37,29 @@ describe("worker-browser arms", () => {
     assert.equal(harness.database.authority.workerPools.get("kernel-reject")?.desiredWorkers, 2);
     assert.deepEqual(harness.workerCalls, ["plan:plan-worker-count"]);
   });
+  it("refuses an unavailable parked-read owner without journaling, changing control authority or calling a runtime", async () => {
+    const h = await createHarness();
+    testWorkerPorts(h.database, h.clock, { path: join(h.stateRoot, "state.db"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
+    const slot = h.database.authority.workerSlots.list(rejectActiveDescriptor.id)[0], lease = h.database.authority.workerLeases.get(slot.workerId);
+    assert.ok(lease);
+    const request = workerCommand("check-parked-write", { workerId: slot.workerId, workflowId: rejectActiveDescriptor.id, expectedVersion: lease.version,
+      controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision }, membershipRevision: slot.membershipRevision,
+      processId: lease.processId, startedAt: lease.lifecycle.startedAt, installationId: UUID_4, profileId: UUID_4, itemId: UUID_4, runId: UUID_4, runVersion: 1,
+      runAttempt: 1, traceId: "wf-090000-2222", nodeId: "submit-write", writeIntentId: UUID_4, intentVersion: 1, intentGeneration: 1,
+      writeAttemptId: UUID_4, bindingProofDigest: HASH_A, occurrenceKeyDigest: HASH_A });
+    const before = h.database.authority.workerLeases.get(slot.workerId);
+    const result = await h.kernel.executeWorkerPool({ ...request, source: "run-detail" });
+    assert.equal(result.state, "rejected");
+    if (result.state !== "rejected") throw new Error("unavailable read owner was admitted");
+    assert.equal(result.code, "capability-unavailable"); assert.equal(result.message, "PARKED_CHECK_UNAVAILABLE");
+    assert.deepEqual(h.database.authority.workerLeases.get(slot.workerId), before);
+    assert.equal(h.database.authority.workerControls.get(request.commandId), undefined);
+    assert.deepEqual(h.workerCalls, []); assert.deepEqual(h.writeCalls, []);
+  });
 
   it("writes pause/resume directives and reserves Stop for owner reset against exact membership", async () => {
     const harness = await createHarness();
-    testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "kernel.sqlite"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
+    testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "state.db"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
     const workerId = harness.database.authority.workerSlots.list(rejectActiveDescriptor.id)[0].workerId;
 
     const paused = await harness.kernel.executeWorkerPool(workerCommand("pause-worker", { workerId, expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 1 } }));

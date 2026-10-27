@@ -1,4 +1,5 @@
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema } from "../../rules/commands/commands.js";
 import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
 import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
@@ -573,6 +574,7 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
 /** The failure section serves CONTENT, not a pointer; every field below is one the schema itself made display-safe. */
 export const FailureDetailWireSchema = z.strictObject({
   native: NativeRunEventWireSchema.optional(),
+  rerunInput: z.strictObject({ field: z.literal("documentNumber"), expectedVersion: PositiveIntSchema }).optional(),
   display: FailureDisplaySchema.optional(),
   resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
   runId: RunIdSchema,
@@ -617,6 +619,10 @@ export const FailureDetailWireSchema = z.strictObject({
   ]),
   occurredAt: IsoInstantSchema,
 }).superRefine((failure, context) => {
+  if (failure.rerunInput !== undefined && (failure.workflowId !== "separations" || failure.code !== "DOCUMENT_UNAVAILABLE"
+    || failure.taskId !== "kuali/read-separation-document" || failure.nodeId === undefined || failure.writeState !== "not-attempted")) {
+    context.addIssue({ code: "custom", path: ["rerunInput"], message: "document correction requires an exact read failure before any write" });
+  }
   if (failure.sameFingerprintSeen < 1) {
     context.addIssue({
       code: "custom",
@@ -775,6 +781,11 @@ export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
 
 /** The parked-write section: a `parked-write` run is the one lifecycle whose ordinary controls are REFUSED BY NAME, because a fenced write may already exist in a real HR system. */
 export const ParkedWriteDetailWireSchema = z.strictObject({
+  check: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("available"), target: ParkedWriteCheckTargetSchema }),
+    z.strictObject({ state: z.literal("unavailable"), code: z.literal("PARKED_CHECK_UNAVAILABLE") }),
+  ]).optional(),
+  lastCheck: ParkedWriteCheckResultSchema.optional(),
   native: NativeRunEventWireSchema.optional(),
   runId: RunIdSchema,
   writeIntentId: WriteIntentIdSchema,
@@ -797,6 +808,14 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
     /* An interactive control exists only because the SERVER described it; both typed resolutions are always served for a parked run, because hiding either would pre-decide the operator's question. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
 }).superRefine((parked, context) => {
+  for (const target of [parked.check?.state === "available" ? parked.check.target : undefined, parked.lastCheck?.target]) {
+    if (target !== undefined && (target.runId !== parked.runId || target.writeIntentId !== parked.writeIntentId
+      || target.intentGeneration !== parked.generation || target.runAttempt !== parked.runAttempt
+      || parked.native === undefined || target.traceId !== parked.native.traceId || target.nodeId !== parked.native.nodeId
+      || target.runAttempt !== parked.native.attempt)) {
+      context.addIssue({ code: "custom", message: "a parked check must name this exact retained write and native occurrence" });
+    }
+  }
   if (Date.parse(parked.parkedAt) < Date.parse(parked.fencedAt)) {
     context.addIssue({
       code: "custom",
@@ -845,10 +864,13 @@ export const IdentityGateDetailWireSchema = z.strictObject({
   packet: IdentityEvidencePacketSchema,
   options: z.array(IdentityGateOptionWireSchema).min(1),
     /* The SERVER decides how much ceremony the decision costs, so a surface cannot quietly turn a risky approval into one click. */
-  approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
+  approvalShape: z.enum(["one-click", "choose-a-candidate"]),
   /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
 }).superRefine((gate, context) => {
+  if (gate.approvalShape !== (gate.options.length > 1 ? "choose-a-candidate" : "one-click")) {
+    context.addIssue({ code: "custom", path: ["approvalShape"], message: "presentation must match the shown candidate count" });
+  }
   const eids = gate.options.map(({ eid }) => eid);
   if (new Set(eids).size !== eids.length) {
     context.addIssue({ code: "custom", path: ["options"], message: "gate options must be unique by EID" });

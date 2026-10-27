@@ -29,8 +29,9 @@ import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app
 import { CommandResultSchema, CommandRequestSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
-import { RunIdSchema } from "../../../src/rules/identity/ids.js";
+import { RunIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
+import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const OTHER = "00000000-0000-4000-8000-000000000002";
@@ -108,10 +109,12 @@ describe("served Logs wiring", () => {
     assert.equal(projection.steps[0].entries[1].id, "stream/1");
   });
   it("refuses wrong run/revision/attempt and foreign action evidence", async () => {
-    for (const changed of [detail(selection(OTHER)), { ...detail(), rowRevision: selection().row.rowRevision + 1 }, { ...detail(), header: { ...detail().header, attempt: 2 } }]) {
+    for (const changed of [detail(selection(OTHER)), { ...detail(), header: { ...detail().header, attempt: 2 } }]) {
       const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : changed);
       await assert.rejects(() => readRunLogs(client, selection(), new AbortController().signal), /IDENTITY_MISMATCH/);
     }
+    const ahead = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : { ...detail(), rowRevision: selection().row.rowRevision + 1 });
+    await assert.rejects(() => readRunLogs(ahead, selection(), new AbortController().signal), /RUN_DETAIL_REVISION_AHEAD/);
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...page(), confirmedActions: [action(OTHER)] } } : detail());
     await assert.rejects(() => readRunLogs(client, selection(), new AbortController().signal), /ACTION_IDENTITY_MISMATCH/);
   });
@@ -214,17 +217,16 @@ describe("served Logs wiring", () => {
     const mismatch = { ...snapshot, logs: { ...snapshot.logs, operationStructure: { ...snapshot.logs.operationStructure, observations: [{ ...observation, occurrence: OperationActionObservationWireSchema.parse({ ...observation, occurrence: { ...observation.occurrence, occurrence: 2 } }).occurrence }] } } };
     assert.equal(projectRunLogs(mismatch, client).steps[0].entries.length, 1);
   });
-  it("exposes supported gate approvals and refuses typed IDs, rejection text and confirmation-copy downgrades", () => {
+  it("exposes gate approvals as a pick or a confirm, with or without served confirmation, and never a rejection", () => {
     const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
-    for (const packet of [fixtures.ONE_CLICK, fixtures.CHOOSE, fixtures.TYPE_EID]) {
+    for (const packet of [fixtures.ONE_CLICK, fixtures.CHOOSE, fixtures.NAME_MISMATCH]) {
       const gate = fixtures.gateDetail(packet);
       const approval = identityApprovalAction("Approve");
       const actions = gateLogActions({ ...gate, actions: [approval] });
-      if (gate.approvalShape === "type-the-eid") assert.deepEqual(actions, []);
-      else if (gate.approvalShape === "choose-a-candidate") assert.equal(actions[0]?.input?.kind, "candidate");
+      if (gate.approvalShape === "choose-a-candidate") assert.equal(actions[0]?.input?.kind, "candidate");
       else assert.equal(actions[0]?.input, undefined);
       assert.deepEqual(gateLogActions({ ...gate, actions: [{ ...approval, resolution: "rejected" }] }), []);
-      assert.deepEqual(gateLogActions({ ...gate, actions: [{ ...approval, confirm: { title: "Confirm", body: "Exact confirmation", confirmLabel: "Approve", tone: "neutral" } }] }), []);
+      assert.deepEqual(gateLogActions({ ...gate, actions: [{ ...approval, confirm: { title: "Confirm", body: "Exact confirmation", confirmLabel: "Approve", tone: "neutral" } }] }), actions);
     }
   });
   it("retains exact parked UNKNOWN identity with no submission control", async () => {
@@ -237,7 +239,7 @@ describe("served Logs wiring", () => {
     const projection = projectRunLogs(snapshot, client);
     const entry = projection.steps.find(step => step.id === FIXTURE_PARKED_WRITE.writeIntentId)?.entries[0];
     assert.equal(entry?.id, FIXTURE_PARKED_WRITE.writeIntentId); assert.equal(entry?.kind, "decision");
-    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.equal(entry.decision.actions, undefined); assert.match(entry.decision.footer ?? "", /Resolution unavailable/); }
+    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.equal(entry.decision.actions, undefined); assert.equal(entry.decision.footer, formatErrorCatalogFailure(createErrorCatalogFailure("PARKED_CHECK_UNAVAILABLE", {})).text); }
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
     assert.match(document.body.textContent ?? "", /Write parked/);
     assert.equal(document.querySelector('article[aria-label="Write parked"]')?.querySelectorAll("button").length, 0);
@@ -245,6 +247,89 @@ describe("served Logs wiring", () => {
     assert.ok(jump);
     await act(async () => jump.click());
     assert.equal(writes, 0);
+  });
+  it("presents one held-only check without operator proof fields or applied evidence", async () => {
+    const native = nativeOf(RUN, 40);
+    const target = { workerId: "person-lookup-worker-1", workflowId: selection().row.workflowId, expectedVersion: 2,
+      controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: AT,
+      installationId: OTHER, profileId: NOTE, itemId: OTHER, runId: RUN, runVersion: selection().row.rowRevision,
+      runAttempt: FIXTURE_PARKED_WRITE.runAttempt, traceId: native.traceId, nodeId: native.nodeId, writeIntentId: FIXTURE_PARKED_WRITE.writeIntentId,
+      intentVersion: 1, intentGeneration: FIXTURE_PARKED_WRITE.generation, writeAttemptId: NOTE, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
+    const lastCheck = { commandId: NOTE, requestedBy: "local-operator", target, observedAt: AT, held: true, provenance: "system-probe",
+      state: "ambiguous", code: "PARKED_CHECK_OCCURRENCE_UNPROVED", probeTaskId: "ucpath/match-existing-termination", evidenceDigest: "c".repeat(64) };
+    const parked = RunDetailSectionResponseSchema.parse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native,
+      check: { state: "available", target }, lastCheck } });
+    const servedDetail = RunDetailWireSchema.parse({ ...detail(), availableSections: ["logs", "parked-write"] });
+    const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : path.endsWith("/parked-write") ? parked : servedDetail);
+    const snapshot = await readRunLogs(client, selection(), new AbortController().signal);
+    const entry = projectRunLogs(snapshot, client).steps.find(step => step.id === FIXTURE_PARKED_WRITE.writeIntentId)?.entries[0];
+    assert.equal(entry?.kind, "decision");
+    if (entry?.kind !== "decision") throw new Error("parked decision absent");
+    assert.equal(entry.decision.state, "parked");
+    assert.deepEqual(entry.decision.actions?.map(action => action.id), ["parked-check"]);
+    assert.equal(entry.decision.actions?.[0].input, undefined);
+    assert.equal(entry.decision.message, formatErrorCatalogFailure(createErrorCatalogFailure("PARKED_CHECK_OCCURRENCE_UNPROVED", {})).text);
+    assert.match(entry.decision.footer ?? "", /write remains held/i);
+    const request = CommandRequestSchema.parse({ commandId: NOTE, requestedBy: "local-operator", requestedAt: AT, source: "run-detail",
+      family: "worker-browser", type: "check-parked-write", target });
+    const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId,
+      affectedTargets: [{ family: "worker-browser", workerId: target.workerId }, { family: "run", runId: RUN }] });
+    assert.equal((await verifyShellCommandEffect(client, "2026-08-03", request, reply)).state, "matched");
+    assert.equal((await verifyShellCommandEffect(client, "2026-08-03", CommandRequestSchema.parse({ ...request, commandId: OTHER }), reply)).state, "mismatch");
+    const foreignProfile = CommandRequestSchema.parse({ ...request, target: { ...target, profileId: RUN } });
+    assert.equal((await verifyShellCommandEffect(client, "2026-08-03", foreignProfile, reply)).state, "mismatch");
+    assert.equal(RunDetailSectionResponseSchema.safeParse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native,
+      check: { state: "available", target: { ...target, writeAttemptId: "invalid" } } } }).success, false);
+    assert.equal(RunDetailSectionResponseSchema.safeParse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native,
+      check: { state: "available", target: { ...target, runAttempt: target.runAttempt + 1 } } } }).success, false);
+  });
+  it("dispatches the mounted Check again once and confirms only its exact held readback", async () => {
+    const h = await launchHarness();
+    try {
+      const selected = { ...selection(), row: { ...selection().row, workflowId: WorkflowIdSchema.parse("separations") } };
+      const native = nativeOf(RUN, 40);
+      const target = { workerId: "separations-worker-1", workflowId: selected.row.workflowId, expectedVersion: 2,
+        controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: AT,
+        installationId: OTHER, profileId: NOTE, itemId: OTHER, runId: RUN, runVersion: selected.row.rowRevision,
+        runAttempt: FIXTURE_PARKED_WRITE.runAttempt, traceId: native.traceId, nodeId: native.nodeId, writeIntentId: FIXTURE_PARKED_WRITE.writeIntentId,
+        intentVersion: 1, intentGeneration: FIXTURE_PARKED_WRITE.generation, writeAttemptId: NOTE, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
+      const servedDetail = RunDetailWireSchema.parse({ ...detail(selected), availableSections: ["logs", "parked-write"] });
+      const sent: CommandRequest[] = [], outcomes: CommandOutcome[] = [];
+      let lastCheck: unknown, release!: () => void, refreshed = 0;
+      const client: DashboardClient = { ...h.client, runDetail: async () => servedDetail,
+        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section, payload: page() }
+          : { section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native, check: { state: "available", target },
+            ...(lastCheck === undefined ? {} : { lastCheck }) } }),
+        executeCommand: async raw => {
+          const envelope = CommandRequestSchema.parse(raw); sent.push(envelope);
+          await new Promise<void>(resolve => { release = resolve; });
+          lastCheck = { commandId: envelope.commandId, requestedBy: envelope.requestedBy, target, observedAt: AT, held: true,
+            provenance: "system-probe", state: "ambiguous", code: "PARKED_CHECK_OCCURRENCE_UNPROVED",
+            probeTaskId: "ucpath/match-existing-termination", evidenceDigest: "c".repeat(64) };
+          return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId,
+            affectedTargets: [{ family: "worker-browser", workerId: target.workerId }, { family: "run", runId: RUN }] });
+        } };
+      const scope = { ...h.binding.scope, client };
+      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope),
+        feedback: outcome => { outcomes.push(outcome); }, authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client },
+          dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
+      await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+        children: createElement(LogSample, { selection: selected }) }) }));
+      const block = document.querySelector('article[aria-label="Write parked"]'); assert.ok(block);
+      const check = [...block.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Check again");
+      assert.ok(check); assert.equal(check.disabled, false); assert.equal(block.querySelectorAll("input").length, 0);
+      await act(async () => check.click());
+      assert.equal(sent.length, 1); assert.equal(sent[0].type, "check-parked-write");
+      assert.deepEqual(sent[0].target, target); assert.equal(sent[0].source, "run-detail"); assert.equal(sent[0].requestedBy, scope.actorId);
+      assert.equal(check.disabled, true); assert.match(document.body.textContent ?? "", /Pending/);
+      assert.equal(refreshed, 0); assert.equal(outcomes.length, 0);
+      await act(async () => check.click()); assert.equal(sent.length, 1);
+      await act(async () => release());
+      assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1);
+      assert.equal(sent.length, 1); assert.equal(block.getAttribute("data-decision-state"), "parked");
+      assert.match(block.textContent ?? "", /write remains held/i);
+      assert.equal(document.querySelector('[role="dialog"]'), null);
+    } finally { await h.dispose(); }
   });
   it("keeps failed-write uncertainty and failure identity separate from retry permission", async () => {
     const original = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;

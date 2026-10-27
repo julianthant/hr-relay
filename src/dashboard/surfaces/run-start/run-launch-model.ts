@@ -20,13 +20,14 @@ import type { z } from "zod";
 export type RerunLaunchSource = z.infer<typeof RerunValuesRequestSchema> & { readonly label?: string; readonly traceId?: string };
 
 /** The host owns focus transfer, independently of date/history and Settings state. */
-export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {
+export function useRunLaunch(initialOpen: boolean, mainRegionId: string, authority?: object) {
   const navigation = useViewNavigation();
   const [localOpen, setLocalOpen] = useState(initialOpen);
   const open = navigation?.start ?? localOpen;
   const routeSetStart = navigation?.setStart;
   const setOpen = useCallback((next: boolean) => routeSetStart ? routeSetStart(next) : setLocalOpen(next), [routeSetStart]);
   const [routedRerunSource, setRerunSource] = useViewState("launchRerun", undefined);
+  const [rerunDraft, setRerunDraft] = useState<{ source: RerunLaunchSource; text: string; authority: object | undefined }>();
   // Route updates re-parse the whole view, so keep the source's identity while its value is unchanged.
   const rerunKey = routedRerunSource === undefined ? undefined : JSON.stringify(routedRerunSource);
   const rerunSource = useMemo(() => rerunKey === undefined ? undefined : JSON.parse(rerunKey) as RerunLaunchSource, [rerunKey]);
@@ -39,10 +40,11 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {
     launcher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }, []);
   const openStart = useCallback(() => { intakeHandoff.current = false; launcher.current = null; setRerunSource(undefined); setOpen(true); }, [setOpen, setRerunSource]);
-  const openRerun = useCallback((source: RerunLaunchSource) => {
+  const openRerun = useCallback((source: RerunLaunchSource, text?: string) => {
     rememberLauncher();
+    setRerunDraft(text === undefined ? undefined : { source, text, authority });
     setRerunSource(source); setOpen(true);
-  }, [rememberLauncher, setOpen, setRerunSource]);
+  }, [rememberLauncher, setOpen, setRerunSource, authority]);
   const closeFocus = useCallback((event: Event) => {
     event.preventDefault();
     if (mounted.current && !intakeHandoff.current) {
@@ -51,7 +53,9 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {
     }
   }, [mainRegionId]);
   const handOffToIntake = useCallback(() => { intakeHandoff.current = true; }, []);
-  return { open, setOpen, openStart, openRerun, rerunSource, closeFocus, handOffToIntake, rememberLauncher };
+  const rerunInputText = rerunDraft?.authority === authority && rerunDraft?.source.runId === rerunSource?.runId
+    && rerunDraft?.source.expectedVersion === rerunSource?.expectedVersion ? rerunDraft?.text : undefined;
+  return { open, setOpen, openStart, openRerun, rerunSource, rerunInputText, closeFocus, handOffToIntake, rememberLauncher };
 }
 
 export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]): readonly RunStartWorkflow[] {
@@ -211,7 +215,7 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
     const entry = liveRuns.get(runId);
     const row = snapshots.find(snapshot => snapshot.day.valueOf() === entry?.partitionDay.valueOf())?.queueSurfaces.find(row => row.runId === runId);
     if (row === undefined || entry === undefined || row.workflowId !== command.target.workflowId || row.itemId !== entry.itemId
-      || row.attempt !== entry.attempt || row.rowRevision.valueOf() !== entry.rowRevision.valueOf()) return { state: "mismatch", evidence };
+      || row.attempt !== entry.attempt || row.rowRevision.valueOf() < entry.rowRevision.valueOf()) return { state: "mismatch", evidence };
     if (!originMatches(row)) {
       const prior = superseded.find(target => target.runId === runId);
       if (prior === undefined || row.traceId !== prior.traceId || row.attempt !== prior.attempt || row.rowRevision !== prior.version + 1

@@ -1,5 +1,6 @@
 import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { execFileSync, fork, spawnSync } from "node:child_process";
+import nativeChildProcess from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
@@ -7,6 +8,8 @@ import { z } from "zod";
 import nativeFs, { readdirSync, writeFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { randomBytes, generateKeyPairSync, randomUUID } from "node:crypto";
+import nativeCrypto from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -19,6 +22,7 @@ import { createDraftDuoCredentialStore } from "../../../../src/backend/storage/c
 import type { DraftDuoBrowserOwner, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
 import { ProfileOnboardingDuoProviderError } from "../../../../src/backend/profiles/onboarding-duo-provider.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
+import { issueDraftDuoCredentialPurpose, openDuoCredentialDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 
 function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider) {
@@ -46,6 +50,119 @@ function draftFixture() {
   store.enroll(input); store.confirm(input.credentialId, input.scope);
   return { ...base, admission, store, input, async close() { admission.release(); await profile.close(); machine.release(); rmSync(root, { recursive: true }); } };
 }
+
+it("opens draft Duo documents with two fresh isolated binding observations per independent read", async () => {
+  const f = draftFixture();
+  try {
+    const purpose = issueDraftDuoCredentialPurpose(f.admission, f.machine, f.draft.operationId, 1);
+    const bytes = readFileSync(join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`));
+    const revision = f.store.read().revision, spawn = nativeChildProcess.spawnSync, decipher = nativeCrypto.createDecipheriv;
+    let observations = 0, decryptions = 0, requiredObservations = 0;
+    const spy = vi.spyOn(nativeChildProcess, "spawnSync").mockImplementation((...args: Parameters<typeof spawn>) => {
+      if (Array.isArray(args[1]) && args[1].includes(join(f.admission.stateRoot, "state.db"))) observations++;
+      return spawn(...args);
+    });
+    const decipherSpy = vi.spyOn(nativeCrypto, "createDecipheriv").mockImplementation((...args: Parameters<typeof decipher>) => {
+      assert.ok(observations >= requiredObservations, "current DB binding must be checked before decrypting credential material");
+      decryptions++;
+      return decipher(...args);
+    });
+    syncBuiltinESMExports();
+    try {
+      for (let read = 1; read <= 2; read++) {
+        requiredObservations = observations + 1;
+        assert.equal(openDuoCredentialDocument(purpose, bytes, revision).credentials[0]?.credentialId, f.input.credentialId);
+        assert.equal(observations, read * 2);
+      }
+      assert.ok(decryptions > 0);
+    } finally { spy.mockRestore(); decipherSpy.mockRestore(); syncBuiltinESMExports(); }
+  } finally { await f.close(); }
+});
+
+for (const boundary of ["binding-child-before", "binding-child-after", "key-read", "current-document-read", "final-document-read", "decrypt", "between-reads"] as const) {
+  it(`refuses draft stable identity drift at ${boundary} while opening Duo material`, async () => {
+    const f = draftFixture();
+    const operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
+    const original = readFileSync(operationPath);
+    try {
+      const purpose = issueDraftDuoCredentialPurpose(f.admission, f.machine, f.draft.operationId, 1);
+      const documentPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`);
+      const bytes = readFileSync(documentPath), revision = f.store.read().revision;
+      const target = nativeFs.statSync(boundary === "key-read"
+        ? join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`) : documentPath);
+      let fired = false;
+      const mutate = () => {
+        if (fired) return;
+        fired = true;
+        const operation = SignUpOperationSchema.parse(JSON.parse(original.toString("utf8")));
+        writeFileSync(operationPath, JSON.stringify({ ...operation, commandFingerprint: "b".repeat(64) }));
+      };
+      const spawn = nativeChildProcess.spawnSync, read = nativeFs.readFileSync, decipher = nativeCrypto.createDecipheriv;
+      let children = 0, documentReads = 0;
+      const spawnSpy = vi.spyOn(nativeChildProcess, "spawnSync").mockImplementation((...args: Parameters<typeof spawn>) => {
+        const result = spawn(...args);
+        if (Array.isArray(args[1]) && args[1].includes(join(f.admission.stateRoot, "state.db"))) {
+          children++;
+          if (boundary === "binding-child-before" && children === 1 || boundary === "binding-child-after" && children === 2) mutate();
+        }
+        return result;
+      });
+      const decipherSpy = vi.spyOn(nativeCrypto, "createDecipheriv").mockImplementation((...args: Parameters<typeof decipher>) => {
+        const result = decipher(...args);
+        if (boundary === "decrypt") mutate();
+        return result;
+      });
+      const readSpy = vi.spyOn(nativeFs, "readFileSync").mockImplementation((...args: Parameters<typeof read>) => {
+        const result = read(...args);
+        if ((boundary === "key-read" || boundary === "current-document-read" || boundary === "final-document-read") && typeof args[0] === "number") {
+          const observed = nativeFs.fstatSync(args[0]);
+          if (observed.dev === target.dev && observed.ino === target.ino) {
+            documentReads++;
+            if (boundary !== "final-document-read" || documentReads === 2) mutate();
+          }
+        }
+        return result;
+      });
+      syncBuiltinESMExports();
+      try {
+        if (boundary === "between-reads") {
+          assert.equal(openDuoCredentialDocument(purpose, bytes, revision).credentials[0]?.credentialId, f.input.credentialId);
+          mutate();
+        }
+        assert.throws(() => openDuoCredentialDocument(purpose, bytes, revision), (error: unknown) => error instanceof Error
+          && /^(?:duo-draft-authority-changed|runtime-control: profile-registry-(?:continuity-mismatch|observation-changed))$/u.test(error.message));
+        assert.equal(fired, true);
+      } finally { spawnSpy.mockRestore(); readSpy.mockRestore(); decipherSpy.mockRestore(); syncBuiltinESMExports(); }
+    } finally { writeFileSync(operationPath, original); await f.close(); }
+  });
+}
+
+it("rejects database schema drift introduced by the final canonical Duo document read", async () => {
+  const f = draftFixture();
+  const db = new DatabaseSync(join(f.admission.stateRoot, "state.db"));
+  const version = db.prepare("PRAGMA user_version").get()?.user_version;
+  assert.equal(typeof version, "number");
+  try {
+    const purpose = issueDraftDuoCredentialPurpose(f.admission, f.machine, f.draft.operationId, 1);
+    const documentPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`);
+    const bytes = readFileSync(documentPath), target = nativeFs.statSync(documentPath), revision = f.store.read().revision;
+    const read = nativeFs.readFileSync;
+    let reads = 0;
+    const spy = vi.spyOn(nativeFs, "readFileSync").mockImplementation((...args: Parameters<typeof read>) => {
+      const result = read(...args);
+      if (typeof args[0] === "number") {
+        const observed = nativeFs.fstatSync(args[0]);
+        if (observed.dev === target.dev && observed.ino === target.ino && ++reads === 2) db.exec("PRAGMA user_version=0");
+      }
+      return result;
+    });
+    syncBuiltinESMExports();
+    try {
+      assert.throws(() => openDuoCredentialDocument(purpose, bytes, revision), /profile-database-schema-mismatch/u);
+      assert.equal(reads, 2);
+    } finally { spy.mockRestore(); syncBuiltinESMExports(); }
+  } finally { db.exec(`PRAGMA user_version=${String(version)}`); db.close(); await f.close(); }
+});
 
 it("viewing an actual draft creates no attempt and unknown enrollment cannot be rearmed by viewing or opening its browser", async () => {
   let browser: DraftDuoBrowserOwner | undefined, starts = 0;

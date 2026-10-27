@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createPrivateKey, createPublicKey } from 'node:crypto';
 import { createRelayWorker } from '../src/relay-background.js';
 
 const ORIGIN = 'https://test.duosecurity.com';
@@ -90,18 +91,25 @@ test('real software engine waits for native pending ACK and ceremony ACK; sessio
   const w = world();
   await w.worker.install({ method: 'key', nowMs: 1000 });
   let settled = false;
-  const result = w.worker.receive(enrollment(), SENDER).then(value => { settled = true; return value; });
+  const message = enrollment();
+  const result = w.worker.receive(message, SENDER).then(value => { settled = true; return value; });
   await acknowledge(w.worker, 'bind', { accountId: ACCOUNT });
   const persist = await w.worker.next();
   assert.equal(persist.kind, 'persist');
   assert.ok(persist.data.privateKeyPkcs8);
   assert.ok(persist.data.publicKeySpki);
+  for (const field of ['privateKeyPkcs8', 'publicKeySpki']) assert.equal(Buffer.from(persist.data[field], 'base64').toString('base64'), persist.data[field]);
+  assert.match(persist.data.credentialId, /^[A-Za-z0-9_-]+$/);
+  const privateKey = createPrivateKey({ key: Buffer.from(persist.data.privateKeyPkcs8, 'base64'), format: 'der', type: 'pkcs8' });
+  assert.deepEqual(createPublicKey(privateKey).export({ format: 'der', type: 'spki' }), Buffer.from(persist.data.publicKeySpki, 'base64'));
   assert.equal(settled, false);
   w.worker.reply(persist.id, { ok: true, value: { revision: 1 } });
   const ceremony = await acknowledge(w.worker, 'software-created', { observed: true });
   const credential = await result;
   assert.equal(credential.ok, true);
-  assert.equal(ceremony.data.credentialId, credential.credentialId);
+  assert.equal(ceremony.data.credentialId, persist.data.credentialId);
+  assert.equal(ceremony.data.credentialId, Buffer.from(credential.credentialId, 'base64').toString('base64url'));
+  assert.deepEqual(Buffer.from(persist.data.credentialId, 'base64url'), Buffer.from(credential.credentialId, 'base64'));
   assert.ok(!('privateKeyPkcs8' in credential) && !('privateKey' in credential));
   assert.equal(w.state().autopilotV1.credentials[0].status, 'pending');
   assert.equal(w.state().autopilotV1.accounts[0].id, ACCOUNT);
@@ -111,10 +119,15 @@ test('real software engine waits for native pending ACK and ceremony ACK; sessio
     allowCredentials: [credential.credentialId], usernames: ['alex@example.edu'],
   } }, SENDER);
   const reserved = await acknowledge(w.worker, 'reserve', { count: 100 });
-  assert.equal(reserved.data.credentialId, credential.credentialId);
-  await acknowledge(w.worker, 'exact-request', { observed: true });
+  assert.equal(reserved.data.credentialId, persist.data.credentialId);
+  const exact = await acknowledge(w.worker, 'exact-request', { observed: true });
+  assert.equal(exact.data.credentialId, persist.data.credentialId);
   const assertion = await sign;
   assert.ok(assertion.signature);
+  const portal = w.worker.receive({ type: 'RELAY_PORTAL_ACCEPTED', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: message.request.requestId } }, SENDER);
+  const accepted = await acknowledge(w.worker, 'portal-accepted', { observed: true });
+  assert.equal(accepted.data.credentialId, persist.data.credentialId);
+  await portal;
   assert.equal(w.state().autopilotV1.credentials[0].signCount, 100);
   await w.worker.stop();
   assert.equal(w.cleared(), true);
@@ -144,13 +157,16 @@ test('Touch ID never calls software enrollment/signing; native observation and p
   assert.deepEqual(await operation, { native: true, requestId: message.request.requestId });
   assert.equal(w.state().autopilotV1.credentials.length, 0);
   assert.deepEqual(await w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com' } }, SENDER), { passThrough: true });
-  const receipt = { origin: ORIGIN, rpId: 'duosecurity.com', requestId: message.request.requestId, credentialId: 'native-public-id', attachment: 'platform' };
+  const receipt = { origin: ORIGIN, rpId: 'duosecurity.com', requestId: message.request.requestId, credentialId: '+/8=', attachment: 'platform' };
   const native = w.worker.receive({ type: 'RELAY_NATIVE_CREATED', request: receipt }, SENDER);
   const request = await acknowledge(w.worker, 'native-created', { observed: true });
   assert.deepEqual(Object.keys(request.data).sort(), ['credentialId', 'requestId']);
+  assert.equal(request.data.credentialId, '-_8');
+  assert.deepEqual(Buffer.from(request.data.credentialId, 'base64url'), Buffer.from(receipt.credentialId, 'base64'));
   await native;
   const portal = w.worker.receive({ type: 'RELAY_PORTAL_ACCEPTED', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: receipt.requestId } }, SENDER);
-  await acknowledge(w.worker, 'portal-accepted', { observed: true });
+  const accepted = await acknowledge(w.worker, 'portal-accepted', { observed: true });
+  assert.equal(accepted.data.credentialId, request.data.credentialId);
   await portal;
   await w.worker.stop();
 });
@@ -419,6 +435,54 @@ test('native browser refusal has no software fallback or successful ceremony', a
   assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 0);
   assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_FAILED').length, 1);
   assert.equal(w.output.at(-1).success, false);
+});
+
+test('page realm creates and reads software credentials with browser readonly prototype getters', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { runInNewContext } = await import('node:vm');
+  class Response {}
+  class Attestation extends Response {}
+  class Assertion extends Response {}
+  class Credential {}
+  for (const [prototype, fields] of [
+    [Response.prototype, ['clientDataJSON']], [Attestation.prototype, ['attestationObject']],
+    [Assertion.prototype, ['authenticatorData', 'signature', 'userHandle']],
+    [Credential.prototype, ['id', 'rawId', 'type', 'authenticatorAttachment', 'response']],
+  ]) for (const field of fields) Object.defineProperty(prototype, field, { get() { throw new TypeError('Illegal invocation'); } });
+  let listener;
+  const requests = [];
+  const result = { ok: true, credentialId: '+/8=', clientDataJSON: 'AQ==', attestationObject: 'Ag==', authData: 'Aw==',
+    publicKeySpki: 'BA==', authenticatorData: 'BQ==', signature: 'Bg==', userHandle: 'Bw==', transport: 'usb' };
+  const window = { addEventListener: (_type, callback) => { listener = callback; }, postMessage: message => {
+    requests.push(message);
+    listener({ source: window, origin: ORIGIN, data: { type: 'RELAY_DUO_RESPONSE', id: message.id, success: true, result } });
+  } };
+  const credentials = { create: () => assert.fail('unexpected native create'), get: () => assert.fail('unexpected native get') };
+  runInNewContext(await readFile(new URL('../src/relay-inpage.js', import.meta.url), 'utf8'), {
+    window, location: { origin: ORIGIN, hostname: 'test.duosecurity.com' }, navigator: { credentials },
+    crypto, Uint8Array, btoa, atob, DOMException, PublicKeyCredential: Credential,
+    AuthenticatorAttestationResponse: Attestation, AuthenticatorAssertionResponse: Assertion,
+  });
+  const created = await credentials.create({ publicKey: { rp: { id: 'duosecurity.com' }, challenge: new Uint8Array([8]),
+    user: { name: 'alex@example.edu', id: new Uint8Array([9]) }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }] } });
+  const signed = await credentials.get({ publicKey: { rpId: 'duosecurity.com', challenge: new Uint8Array([10]),
+    allowCredentials: [{ type: 'public-key', id: created.rawId }] } });
+  for (const credential of [created, signed]) {
+    assert.ok(credential instanceof Credential); assert.equal(credential.id, '-_8');
+    assert.deepEqual(Buffer.from(credential.rawId), Buffer.from('+/8=', 'base64'));
+    assert.equal(credential.type, 'public-key'); assert.equal(credential.authenticatorAttachment, 'cross-platform');
+    assert.deepEqual(Buffer.from(credential.response.clientDataJSON), Buffer.from([1]));
+    assert.equal(Object.keys(credential.getClientExtensionResults()).length, 0);
+  }
+  assert.ok(created.response instanceof Attestation); assert.ok(signed.response instanceof Assertion);
+  assert.deepEqual(Buffer.from(created.response.attestationObject), Buffer.from([2]));
+  assert.deepEqual(Buffer.from(created.response.getAuthenticatorData()), Buffer.from([3]));
+  assert.deepEqual(Buffer.from(created.response.getPublicKey()), Buffer.from([4]));
+  assert.deepEqual(Array.from(created.response.getTransports()), ['usb']); assert.equal(created.response.getPublicKeyAlgorithm(), -7);
+  assert.deepEqual(Buffer.from(signed.response.authenticatorData), Buffer.from([5]));
+  assert.deepEqual(Buffer.from(signed.response.signature), Buffer.from([6]));
+  assert.deepEqual(Buffer.from(signed.response.userHandle), Buffer.from([7]));
+  assert.equal(requests[1].request.allowCredentials[0], '+/8=');
 });
 
 for (const invalid of ['origin', 'challenge', 'type', 'attachment', 'rpHash']) test(`native ${invalid} mismatch cannot produce a ceremony`, async () => {

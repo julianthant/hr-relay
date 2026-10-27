@@ -57,7 +57,7 @@ export async function fixtureDuoCeremonyGates(
 export function duoCeremonyGatesOver(
   database: AuthorityDatabase,
   clock: Clock,
-  scheduler: MonotonicDeadlineScheduler,
+  scheduler: MonotonicDeadlineScheduler = realScheduler,
   options: Readonly<{ sessionAcquireMs?: number; graceMs?: number; pollIntervalMs?: number }> = {},
 ): DuoCeremonyGateFactory {
   return createDuoCeremonyGateFactory({

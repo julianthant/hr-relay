@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DashboardClientError } from "../client/errors.js";
 import type { ConfirmedActionEvent } from "../../models/events/confirmed-action.js";
 import type { DashboardClient } from "../client/index.js";
@@ -17,10 +17,17 @@ import { appendLogPage, logRowsOf, type NotePage } from "../surfaces/run-detail/
 import type { LogEntry, LogScreenshot, LogStep } from "../surfaces/run-detail/logs/log-feed-model.js";
 import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/logs/log-timeline-model.js";
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
+import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
+import type { RerunLaunchSource } from "../surfaces/run-start/run-launch-model.js";
+import { KualiDocumentNumberSchema } from "../../models/ui/kuali-document-identity.js";
 import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
 
 class RunLogIdentityError extends Error {
   readonly code = "LOGS_IDENTITY_REFUSED";
+}
+
+class RunLogSelectionBehindError extends RunLogIdentityError {
+  override name = "RunLogSelectionBehindError";
 }
 
 function requireNative(value: NativeRunEventWire | undefined): NativeRunEventWire {
@@ -41,8 +48,9 @@ export interface RunLogSnapshot {
 export async function readRunLogs(client: RunReads, selection: LogSelection, signal: AbortSignal): Promise<RunLogSnapshot> {
   const { row } = selection;
   const detail = await client.runDetail(row.runId, signal);
-  if (detail.runId !== row.runId || detail.rowRevision !== row.rowRevision || detail.header.traceId !== row.traceId
+  if (detail.runId !== row.runId || detail.rowRevision < row.rowRevision || detail.header.traceId !== row.traceId
     || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
+  if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError("RUN_DETAIL_REVISION_AHEAD");
   signal.throwIfAborted();
   if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
   const section = await client.runSection(row.runId, "logs", undefined, signal);
@@ -312,22 +320,32 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   for (const section of sections) {
     if (section.section === "parked-write") {
       const write = section.payload;
+      const checked = write.lastCheck;
+      const message = checked === undefined ? write.parkedMessage
+        : formatErrorCatalogFailure(createErrorCatalogFailure(checked.code, {})).text;
       order.set(write.writeIntentId, requireNative(write.native).order); node.set(write.writeIntentId, requireNative(write.native).nodeId);
       steps.push({ id: write.writeIntentId, time: fmtActionClock(write.parkedAt), title: "Write parked", system: write.system,
         entries: [{ kind: "decision", id: write.writeIntentId, time: fmtActionClock(write.parkedAt), decision: { title: "Write parked", state: "parked",
-          message: write.parkedMessage, footer: "Resolution unavailable: this panel cannot collect the required write proof." } }] });
+          message, footer: write.check?.state === "available" ? "Check target state. The write remains held." : formatErrorCatalogFailure(createErrorCatalogFailure("PARKED_CHECK_UNAVAILABLE", {})).text,
+          ...(write.check?.state !== "available" ? {} : { actions: [{ id: "parked-check", label: "Check again", result: { title: "Check target state", message: "The write remains held." } }] }) } }] });
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
       const resolution = resolveErrorCatalogFailure(failure, "http-response");
       const message = resolution.state === "resolved" ? resolution.text : resolution.catalogFault.text;
+      const correction = failure.rerunInput;
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
       steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
         entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
           state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, caution: `Write state: ${failure.writeState}`,
-          footer: "Resolution unavailable: this panel cannot collect a failure annotation." } }] });
+          ...(correction === undefined ? { footer: "Resolution unavailable: this panel cannot collect a failure annotation." } : {
+            footer: "Review a corrected document number in Rerun before starting new work.",
+            actions: [{ id: `${failure.failureId}:documentNumber`, label: "Enter document number", primary: true,
+              input: { kind: "text", label: "Document number", placeholder: "Kuali document number", pattern: "^\\d{3,8}$" },
+              result: { title: "Review corrected input", message: "Review the document number in Rerun." } }],
+          }) } }] });
     } else if (section.section === "identity-gate" && section.payload.state === "available") {
       const gate = section.payload.value;
-      const ceremony = identityCeremonyFor(gate, "approved");
+      const ceremony = identityCeremonyFor(gate);
       order.set(gate.gateId, requireNative(gate.native).order); node.set(gate.gateId, requireNative(gate.native).nodeId);
       steps.push({ id: gate.gateId, time: fmtActionClock(gate.parkedAt), title: gate.label,
         entries: [{ kind: "decision", id: gate.gateId, time: fmtActionClock(gate.parkedAt), decision: { title: gate.label, state: "review",
@@ -335,7 +353,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
           comparison: gate.packet.comparisons.map(comparison => ({ label: comparison.field, expected: comparison.documentValue, observed: comparison.ucpathValue })),
           ...(ceremony.kind === "confirm" ? { field: { label: "Approving employee", value: `${ceremony.option.displayName} · ${directIdentifierDisplay(ceremony.option.eid)}`,
             outcome: `${ceremony.option.chosenFrom} · ${ceremony.option.origin}` } } : {}),
-          footer: "Some resolutions are unavailable: this panel cannot collect typed identity or rejection text.", actions: detail.gate.state === "open" && detail.gate.nodeId === gate.gateId && detail.captures !== undefined && detail.captures.state !== "error" ? gateLogActions(gate) : undefined } }] });
+          actions: detail.gate.state === "open" && detail.gate.nodeId === gate.gateId && detail.captures !== undefined && detail.captures.state !== "error" ? gateLogActions(gate) : undefined } }] });
     }
   }
   const decisionEvents = new Set(sections.flatMap(section => section.section === "identity-gate" && section.payload.state === "available"
@@ -393,8 +411,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
 
 export function gateLogActions(gate: IdentityGateDetailWire): readonly LogDecisionAction[] {
   return gate.actions.flatMap(action => {
-    if (action.kind !== "command" || action.command !== "resolve-gate" || action.resolution !== "approved" || action.confirm !== undefined) return [];
-    const ceremony = identityCeremonyFor(gate, "approved");
+    if (action.kind !== "command" || action.command !== "resolve-gate" || action.resolution !== "approved") return [];
+    const ceremony = identityCeremonyFor(gate);
     if (ceremony.kind !== "choose" && ceremony.kind !== "confirm") return [];
     return [{ id: action.key, label: action.label, primary: action.intent === "primary", result: { title: action.label, message: "" },
       ...(ceremony.kind === "choose" ? { input: { kind: "candidate" as const, question: gate.label, candidates: ceremony.options.map(option => ({
@@ -414,17 +432,23 @@ interface GateCommandOwner {
   readonly scope: CommandExecutionScope | undefined;
 }
 
-export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined) {
+/** Shows the served confirmation for a decision and calls `onConfirmed` only when the operator confirms it. */
+export type RunWiringConfirm = (pending: PendingCommand, onConfirmed: () => void) => void;
+export type RunWiringRerun = (source: RerunLaunchSource, text: string) => void;
+
+export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm, rerun?: RunWiringRerun) {
   const { row } = selection;
   const request = useMemo(() => ({ client, runId: row.runId, revision: row.rowRevision, day: binding?.authority.day, selection: { row, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
-    epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request }), [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.request]);
+    epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state,
+    dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
+  [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
   [client, row.runId, binding?.authority.day, binding?.authority.epoch, binding?.authority.dayState.request, binding?.scope]);
   const currentCommandOwner = useRef(commandOwner);
   currentCommandOwner.current = commandOwner;
   const mounted = useRef(false);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const bindingRef = useRef(binding);
   bindingRef.current = binding;
   const [command, setCommand] = useState<{ owner: GateCommandOwner; envelope: CommandRequest; state: "pending" | "uncertain" | "refused" | "settled"; feedback?: string }>();
@@ -432,17 +456,26 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   commandRef.current = command;
   const active = useRef(request);
   active.current = request;
+  const refreshBudget = useMemo(() => ({ client, runId: row.runId, actorId: binding?.scope.actorId,
+    epoch: binding?.authority.epoch, day: binding?.authority.day, revisions: new Set<number>() }),
+  [client, row.runId, binding?.scope.actorId, binding?.authority.epoch, binding?.authority.day]);
   const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>({ request, value: { state: "loading" } });
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
-    && settled.request.epoch === request.epoch;
+    && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
   const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
     : { state: "loading", ...(sameRun && settled.value.snapshot ? { snapshot: settled.value.snapshot } : {}) }, [settled, request, sameRun]);
   useEffect(() => {
+    if (request.dayState !== undefined && request.dayState !== "loaded") return;
     const controller = new AbortController();
     void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
       if (active.current === request && !controller.signal.aborted) setSettled({ request, value: { state: "loaded", snapshot } });
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
+      if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && !refreshBudget.revisions.has(request.revision)) {
+        refreshBudget.revisions.add(request.revision);
+        request.refreshDay();
+        return;
+      }
       const error = cause instanceof RunLogIdentityError || (cause instanceof DashboardClientError && cause.code === "LOGS_IDENTITY_REFUSED")
         ? formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text
         : cause instanceof DashboardClientError && cause.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED"
@@ -454,7 +487,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         ...(current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
     return () => controller.abort();
-  }, [client, request, row.runId]);
+  }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
   const detailGate = value.snapshot?.detail.gate;
   const matchesGate = useCallback((envelope: CommandRequest) => envelope.family === "gate" && gate?.section === "identity-gate" && gate.payload.state === "available"
@@ -465,14 +498,17 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     || matchesGate(attempt.envelope) || (attempt.state === "settled" && attempt.envelope.family === "gate" && detailGate?.state === "resolved"
       && detailGate.nodeId?.valueOf() === attempt.envelope.target.gateId.valueOf()), [matchesGate, detailGate]);
   const send = useCallback(async (envelope: CommandRequest, replay = false) => {
-    if (binding === undefined || binding.scope.client !== client || bindingRef.current?.scope !== binding.scope) return;
+    const targetRun = envelope.family === "gate" || envelope.family === "worker-browser" && envelope.type === "check-parked-write" ? envelope.target.runId : undefined;
+    if (!mounted.current || currentCommandOwner.current !== commandOwner || binding === undefined
+      || binding.scope.client !== client || bindingRef.current?.scope !== binding.scope
+      || envelope.requestedBy !== binding.scope.actorId || targetRun !== commandOwner.runId) return;
     setCommand({ owner: commandOwner, envelope, state: "pending" });
     const options = { scope: binding.scope, readback: (input: CommandRequest, reply: Parameters<typeof verifyShellCommandEffect>[3]) => verifyShellCommandEffect(client, binding.authority.day, input, reply),
       publish: (outcome: CommandOutcome) => {
         if (!mounted.current) return;
         setCommand(current => current?.owner !== commandOwner ? current : { owner: commandOwner, envelope,
           state: outcome.kind === "uncertain" ? "uncertain" : outcome.kind === "refused" ? "refused" : "settled",
-          feedback: outcome.kind === "confirmed" ? "Decision confirmed" : "feedback" in outcome ? outcome.feedback.text : undefined });
+          feedback: outcome.kind === "confirmed" ? envelope.family === "worker-browser" && envelope.type === "check-parked-write" ? "Check finished · Write held" : "Decision confirmed" : "feedback" in outcome ? outcome.feedback.text : undefined });
         if (currentCommandOwner.current !== commandOwner) return;
         const currentBinding = bindingRef.current;
         if (currentBinding === undefined) return;
@@ -482,8 +518,43 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     if (replay) await binding.executor.replay(envelope.commandId, options);
     else await binding.executor.execute(envelope, options);
   }, [binding, client, commandOwner]);
+  const dispatch = useCallback((envelope: CommandRequest) => {
+    commandRef.current = { owner: commandOwner, envelope, state: "pending" };
+    void send(envelope);
+  }, [commandOwner, send]);
+  const dispatchIfGateCurrent = useRef<(envelope: CommandRequest) => void>(() => undefined);
+  dispatchIfGateCurrent.current = (envelope: CommandRequest) => {
+    if (mounted.current && currentCommandOwner.current === commandOwner && envelope.family === "gate" && envelope.target.runId === commandOwner.runId
+      && value.state === "loaded" && matchesGate(envelope) && !(commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) {
+      dispatch(envelope);
+      return;
+    }
+    bindingRef.current?.feedback({ kind: "refused", commandId: envelope.commandId, reason: "not-attempted",
+      feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})) });
+  };
   const onDecision = useCallback((id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => {
     if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) return;
+    const parked = value.snapshot.sections.find(section => section.section === "parked-write");
+    if (parked?.section === "parked-write" && parked.payload.writeIntentId === id) {
+      const write = parked.payload;
+      if (action.id !== "parked-check" || write.check?.state !== "available" || write.check.target.runId !== row.runId
+        || write.check.target.runVersion.valueOf() !== row.rowRevision.valueOf() || write.check.target.runAttempt !== row.attempt
+        || write.check.target.traceId !== row.traceId || write.runId !== row.runId || write.runAttempt !== row.attempt) return;
+      dispatch(CommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId,
+        source: "run-detail", family: "worker-browser", type: "check-parked-write", target: write.check.target }));
+      return;
+    }
+    const failed = value.snapshot.sections.find(section => section.section === "failure");
+    if (failed?.section === "failure" && failed.payload.state === "available" && failed.payload.value.failureId === id) {
+      const failure = failed.payload.value;
+      const text = KualiDocumentNumberSchema.safeParse(answer.text?.trim());
+      if (rerun !== undefined && row.status === "failed" && failure.rerunInput?.field === "documentNumber" && failure.rerunInput.expectedVersion.valueOf() === row.rowRevision.valueOf()
+        && failure.runId === row.runId && failure.traceId === row.traceId && failure.attempt === row.attempt
+        && failure.writeState === "not-attempted" && action.id === `${failure.failureId}:documentNumber` && text.success) {
+        rerun({ runId: row.runId, expectedVersion: failure.rerunInput.expectedVersion, label: row.title, traceId: String(row.traceId) }, text.data);
+      }
+      return;
+    }
     const section = value.snapshot.sections.find(section => section.section === "identity-gate");
     if (section?.section !== "identity-gate" || section.payload.state !== "available" || section.payload.value.gateId !== id) return;
     const gate = section.payload.value;
@@ -497,15 +568,19 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       ...(answer.candidate === undefined ? {} : { gateAnswer: { decision: "approved", eid: answer.candidate } }) });
     if (composed.state !== "ready") return;
     const envelope = CommandRequestSchema.parse(composed.request);
-    commandRef.current = { owner: commandOwner, envelope, state: "pending" };
-    void send(envelope);
-  }, [value, binding, commandOwner, row.runId, send, commandApplies]);
-  const newest = binding?.executor.retainedAttempts().findLast(attempt => attempt.request.family === "gate"
+    if (descriptor.confirm === undefined) { dispatch(envelope); return; }
+    if (confirm === undefined) return;
+    confirm({ action: descriptor, target: { runId: row.runId, expectedVersion: gate.expectedVersion }, subject: row.title, traceId: String(row.traceId),
+      workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId, requestedAt: envelope.requestedAt,
+      triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null }, () => dispatchIfGateCurrent.current(envelope));
+  }, [value, binding, commandOwner, row, selection.workflowLabel, dispatch, commandApplies, confirm, rerun]);
+  const newest = binding?.executor.retainedAttempts().findLast(attempt => (attempt.request.family === "gate" || attempt.request.family === "worker-browser" && attempt.request.type === "check-parked-write")
     && attempt.request.target.runId === row.runId && attempt.request.requestedBy === binding.scope.actorId
     && attempt.scope.client === binding.scope.client && attempt.scope.authority === binding.scope.authority && attempt.scope.dayRequest === binding.scope.dayRequest);
-  const retained = newest?.request.family === "gate" && (newest.state === "pending" || newest.outcome?.kind === "uncertain"
+  const retained = (newest?.request.family === "gate" || newest?.request.family === "worker-browser" && newest.request.type === "check-parked-write") && (newest.state === "pending" || newest.outcome?.kind === "uncertain"
     || (newest.outcome?.kind === "refused" && matchesGate(newest.request))) ? newest : undefined;
-  const retainedEnvelope = retained?.request.family === "gate" ? retained.request : undefined;
+  const retainedEnvelope = retained?.request.family === "gate" || retained?.request.family === "worker-browser" && retained.request.type === "check-parked-write"
+    ? retained.request : undefined;
   const retainedState = retained === undefined ? undefined : retained.state === "pending" ? "pending" : retained.outcome?.kind === "refused" ? "refused" : "uncertain";
   const retainedFeedback = retained?.outcome?.kind === "uncertain" || retained?.outcome?.kind === "refused" ? retained.outcome.feedback.text : undefined;
   const retainedCommand = useMemo(() => retainedEnvelope === undefined || retainedState === undefined ? undefined

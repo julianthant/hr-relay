@@ -17,6 +17,7 @@ import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "n
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot, inspectStoppedDeviceRecertificationCustody, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
+  captureWorkerProcessRecoveryFile, readProcessCustodyFile, WorkerProcessRecoveryCaptureSchema,
   assertRuntimeRestoreAdmission, type ProcessStartIdentity, type RestoreAdmissionHandle, authoritySourceDatabaseIdentity, RUNTIME_PROCESS_LOCK_NAMES, runtimeProcessLockIsActive, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
@@ -3461,6 +3462,38 @@ export function prepareStoppedDeviceRecertification(lease: InstallationLease, re
       if (lstatMaybe(intentPath)) { unlinkSync(intentPath); syncDir(control); }
       readMachineRegistry(control, locator, false);
     } });
+}
+
+export function inspectFlatWorkerProcessRecovery(workspacePath: string, acquisitionId: string) {
+  const workspace = realpathSync(workspacePath), control = join(workspace, CONTROL);
+  if (resolve(workspacePath) !== workspace) fail("worker-process-recovery-workspace-unsafe");
+  assertNoSymlinkComponents(control); privateDirectory(control);
+  const locator = readLocator(control, workspace), state = join(workspace, rebuildRuntimeIsolation.stateRoot),
+    artifacts = join(workspace, rebuildRuntimeIsolation.artifactRoot), locks = fixedLockRoot(workspace);
+  if (locator.stateRoot !== state || locator.artifactRoot !== artifacts
+    || [join(state, "machine"), join(state, "profiles"), ...["journal.json", "profile-registry.json", "profile-flat-claim.json", "profile-publication.json", "profile-owner-claims"]
+      .map(name => join(control, name))].some(path => lstatMaybe(path) !== undefined)) fail("worker-process-recovery-flat-source-unproved");
+  const witnesses = [join(control, "installation.json"), join(control, "locator.json"), join(state, MARKER), join(artifacts, MARKER)]
+    .map(path => readProcessCustodyFile(path).witness);
+  return WorkerProcessRecoveryCaptureSchema.parse({ workspace, installationId: locator.installationId, processLockRoot: locks,
+    ...captureWorkerProcessRecoveryFile(locks, acquisitionId), witnesses,
+    roots: [state, artifacts, locks].map(path => {
+      assertNoSymlinkComponents(path);
+      const stat = lstatSync(path);
+      if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o022) !== 0
+        || process.getuid !== undefined && stat.uid !== process.getuid()) fail("worker-process-recovery-root-unsafe");
+      return { path, device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid };
+    }) });
+}
+
+export function assertFlatWorkerProcessRecoveryHeld(lease: InstallationLease, restore: RestoreAdmissionHandle, acquisitionId: string) {
+  assertInstallationLease(lease);
+  if (lease.mode !== "exclusive") fail("worker-process-recovery-exclusive-required");
+  const workspace = lease.readInstallationContext().workspace;
+  assertRestoreHeld(workspace, restore);
+  const capture = inspectFlatWorkerProcessRecovery(workspace, acquisitionId);
+  if (!equalLocator(readLocator(join(workspace, CONTROL), workspace), lease.locator)) fail("worker-process-recovery-locator-changed");
+  return capture;
 }
 
 export function assertStoppedMachineMaintenance(lease: InstallationLease, restore: RestoreAdmissionHandle): void {

@@ -63,7 +63,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "4d8fbac7c75ee223447c0b5beff6eba816af4d69364be6e55ad5ee0b1738bdc6",
+      "sha256": "02bddff973345ab7a5acb754a245c8fda5bb16b5b3c76e61cecf1ae538173602",
     "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate."
   },
   {
@@ -118,8 +118,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "sha256": "5103d20ea27cad73d607637b25218a0de9fe82d0c0062445430f9d7ca9c4d2a6",
-    "reason": "Failed admission releases custody only after the opened resource closes successfully; close and release failures remain aggregate errors, uncertain resources keep their custody, and the original admission error always rejects."
+    "sha256": "14c9bdd05629c805aa7b0d9c6bd95bdd5d757d1b0e9e951ec0153c07d5bd9fa1",
+    "reason": "Failed admission releases custody only after the opened resource closes successfully; close and release failures retain custody and original errors. Descriptor-bound worker/recovery reads aggregate any read and close failures, then rethrow; receipt absence alone preserves ordinary stale-owner refusal."
   },
   {
     "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
@@ -143,8 +143,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "f5aa1a473db2743a5ecac3219c979d515662be7ab2d9851ddf1346ea0e291740",
-    "reason": "An unproved source closure keeps the stopped machine-control admission and rethrows; release runs only when that custody was not retained."
+    "sha256": "8b79e55e0adbac3481d69c020e4e29b0c73f8f65baea1e092bd8593c6eb0fd15",
+    "reason": "An unproved source closure keeps stopped maintenance custody and rethrows; release runs only when custody was not retained. Offline process-recovery failure prints the catalogued refusal and rethrows the same error, including retained-resource identity."
   },
   {
     "path": "src/backend/storage/configuration/duo-credential-store.ts",

@@ -1,5 +1,6 @@
 import { createService } from './service.js';
 import { isDuoOrigin, normalizeUsername } from './accounts.js';
+import { base64ToBytes, bytesToBase64url } from './crypto.js';
 
 const accountKey = name => normalizeUsername(name).replace(/^([^@]+)@ucsd\.edu$/, '$1');
 const canonicalJson = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
@@ -21,7 +22,8 @@ export function createRelayWorker(api) {
   const replies = new Map();
   const call = (kind, data) => new Promise((resolve, reject) => {
     if (stopped) { reject(new Error('ONBOARDING_DUO_REVOKED')); return; }
-    const request = { id: crypto.randomUUID(), kind, data };
+    const request = { id: crypto.randomUUID(), kind, data: data.credentialId === undefined ? data
+      : { ...data, credentialId: bytesToBase64url(base64ToBytes(data.credentialId)) } };
     replies.set(request.id, { resolve, reject });
     if (waiter) { const receive = waiter; waiter = undefined; receive(request); }
     else requests.push(request);

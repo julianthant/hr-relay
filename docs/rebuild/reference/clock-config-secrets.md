@@ -340,7 +340,11 @@ and `machine/duo-purpose-backups`. It refuses a symlink, hard link, same-digest 
 authenticated envelope for that profile and purpose. Explicit purpose backups live only under
 `machine/duo-purpose-backups/<profileId>/<revision>.json`. The purpose decrypt owner freshly binds the
 actual runtime profile, current continuity and canonical document's physical witness before returning
-credential material. The current authenticated retired identities keep erased credentials revoked even
+credential material. Each open checks complete custody and continuity before key access and after
+the final key/document reread. Each boundary uses a fresh isolated database-binding observation and
+rechecks current authority after the child exits; draft authority includes stable operation identity,
+generation, registry absence and explicit Finish proof for publication. The current authenticated
+retired identities keep erased credentials revoked even
 after a different valid enrollment; fresh and earlier genuine purposes cannot decrypt those managed
 backups. A missing or corrupt current witness refuses instead of supplying an empty retired set.
 Same-enrollment backups remain readable, and restore still refuses a backup that would lower a burned
@@ -713,6 +717,11 @@ existing setup page. Open duo.ucsd.edu opens a separate tab in that same context
 original protected Details only after verifying the exact UCSD SSO document and form controls,
 then submits that pinned POST form once. Reopening focuses the owned tab; failed initialization
 remains refused and never resubmits. Login does not prove either enrollment method or MFA completion.
+An active attempt's lost stop acknowledgement retains uncertain custody until that exact attempt's
+startup, reporting, UNKNOWN retention and callbacks settle within its closure deadline. Only the
+same owned browser's complete context, page, process and callback closure plus profile deletion
+can then supersede that stop failure. Other failures refuse replacement; reopening never retries
+or confirms an enrollment.
 The extension UI receives public draft status and exact attempt commands, never login credentials.
 Before enrollment capture is armed, verified native Duo documents may query capability support or
 pass a sign-in request to the captured browser implementation. This path exposes no software key,

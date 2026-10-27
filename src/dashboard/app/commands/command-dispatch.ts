@@ -1,4 +1,5 @@
 import type { DashboardClient } from "../../client/index.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { CommandRequest, CommandResult, BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
 import type { DashboardDayWire, QueueSurfaceWire } from "../../../models/dashboard/projection.js";
 import type { CommandReadbackVerification } from "./command-executor.js";
@@ -68,14 +69,13 @@ function composeGateResult(
     };
   }
   const served = gate.value;
-  const { resolution } = action;
-  if (resolution === undefined) {
+  if (action.resolution !== "approved") {
     return {
       state: "refused",
-      reason: `the served gate action ${action.key} names no typed resolution`,
+      reason: `the served gate action ${action.key} is not an approval`,
     };
   }
-  const ceremony = identityCeremonyFor(served, resolution);
+  const ceremony = identityCeremonyFor(served);
   if (ceremony.kind === "unsupported") return { state: "refused", reason: ceremony.reason };
 
   // The ONE ceremony whose answer is a served fact: the server said one click,
@@ -89,48 +89,24 @@ function composeGateResult(
         + "the identity-approval dialog owns that answer and nothing here may author it",
     };
   }
-  if (decided.decision !== resolution) {
-    return {
-      state: "refused",
-      reason: `the operator answered "${decided.decision}" and the control pressed was `
-        + `"${resolution}"; nothing is sent while the two disagree`,
-    };
-  }
 
-  const problem = identityDraftProblem(ceremony, {
-    eid: decided.decision === "approved" ? decided.eid : "",
-    reason: decided.decision === "rejected" ? decided.reason : "",
-  });
+  const problem = identityDraftProblem(ceremony, decided.eid);
   if (problem !== undefined) return { state: "refused", reason: problem };
 
-  const value = ((): Record<string, unknown> | undefined => {
-    if (decided.decision === "rejected") {
-      return {
-        decision: "rejected",
-        reason: decided.reason.trim(),
-        evidenceDigest: served.evidenceDigest,
-      };
-    }
-    const option = optionFor(served.options, decided.eid);
-    // `identityDraftProblem` already refused an unshown EID on every approval
-// ceremony, so this is unreachable — and it refuses rather than asserting
-    if (option === undefined) {
-      return undefined;
-    }
-    return {
-      decision: "approved",
-      eid: option.eid,
-      chosenFrom: option.chosenFrom,
-      evidenceDigest: served.evidenceDigest,
-    };
-  })();
-  if (value === undefined) {
+  const option = optionFor(served.options, decided.eid);
+  if (option === undefined) {
     return {
       state: "refused",
-      reason: `EID ${decided.decision === "approved" ? directIdentifierDisplay(decided.eid) : "unavailable"} is not among the candidates `
+      reason: `EID ${directIdentifierDisplay(decided.eid)} is not among the candidates `
         + "this packet served, so there is no `chosenFrom` label to record it under",
     };
   }
+  const value = {
+    decision: "approved",
+    eid: option.eid,
+    chosenFrom: option.chosenFrom,
+    evidenceDigest: served.evidenceDigest,
+  };
 
   return {
     state: "ready",
@@ -260,6 +236,21 @@ export async function verifyShellCommandEffect(
       : request.type === "notification-unsnooze" ? row.state !== "snoozed"
       : row.state === "snoozed" && row.snoozedUntil !== undefined && Date.parse(row.snoozedUntil) > Date.parse(request.requestedAt);
     return matches ? { state: "matched", evidence: row } : mismatch(row);
+  }
+  if (request.family === "worker-browser" && request.type === "check-parked-write") {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 2
+      || !reply.affectedTargets.some(target => target.family === "run" && target.runId === request.target.runId)
+      || !reply.affectedTargets.some(target => target.family === "worker-browser" && target.workerId === request.target.workerId)) return mismatch(reply);
+    const detail = await client.runDetail(request.target.runId);
+    if (detail.runId !== request.target.runId || detail.rowRevision.valueOf() !== request.target.runVersion.valueOf() || detail.header.traceId !== request.target.traceId || detail.header.attempt !== request.target.runAttempt
+      || detail.header.workflowId !== request.target.workflowId || !detail.availableSections.includes("parked-write")) return mismatch(detail);
+    const section = await client.runSection(request.target.runId, "parked-write");
+    if (section.section !== "parked-write") return mismatch(section);
+    const write = section.payload, observed = write.lastCheck;
+    return write.runId === request.target.runId && write.writeIntentId === request.target.writeIntentId
+      && write.generation === request.target.intentGeneration && write.runAttempt === request.target.runAttempt
+      && observed?.commandId === request.commandId && observed.requestedBy === request.requestedBy && observed.held
+      && canonicalJsonStringify(observed.target) === canonicalJsonStringify(request.target) ? { state: "matched", evidence: observed } : mismatch(section);
   }
   if (request.family === "gate") {
     const detail = await client.runDetail(request.target.runId);

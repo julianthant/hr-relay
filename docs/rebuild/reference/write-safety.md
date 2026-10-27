@@ -182,6 +182,10 @@ An UNKNOWN submission never authorizes generic retry, another occurrence, cancel
 
 ## 4.1 Parked-write resolution
 
+The dashboard's `check-parked-write` command uses an existing idle worker's control journal and session owner to run only the registered target-system idempotency read. Admission binds the installation, profile, operator, worker lifetime and control revision, run version, original intent generation and attempt, node, binding and occurrence digest. The service rechecks retained write authority after reading and closes its sessions before acknowledging. A deadline or unproved closure retains uncertainty. The journal keeps schema-bound system evidence; the dashboard receives only the held status and evidence digest. All results leave the run and intent parked. A matching target state without original-attempt attribution is ambiguous, and absence never invokes the confirmed-absent or recovery path.
+
+The check retains its actual registered task callback across task deadlines and command cancellation. Browser closure does not prove that callback exited: the worker control and retained configuration remain owned until callback settlement, including after a failed close. Expired or cancelled checks cannot publish late success.
+
 The command kernel accepts `resolve-write-present` and `resolve-write-absent` only for the current `parked-write` run and `parked` intent. Requests bind run version, intent ID, generation, original attempt ID, binding digest, and `occurrenceKeyDigest`. A stale request or mismatched target changes nothing.
 
 `createWriteResolutionExecutor` provides two arms:
@@ -226,13 +230,13 @@ Confirmed-action publication is separate from settlement. `run-executor.ts` publ
 
 The post-gate task verifies the packet digest, approved EID membership, and `chosenFrom` label. It refuses an EID the packet never showed. A supplied-EID packet cannot consume an operator result. Rejection is a failed identity verification and cannot reach a write.
 
-`identity-evidence.ts` produces the decision packet, disagreements-first comparisons, and server-owned `approvalShape`. The packet includes the write plan from `write-plan.ts`; its digest binds the planned values as well as identity. Protected timekeeper values use retained protected-input binding identity in this packet and its digest.
+`identity-evidence.ts` produces the decision packet, disagreements-first comparisons, and persisted risk `approvalShape`, including `type-the-eid`. The gate projection separately derives its presentation `approvalShape`: `choose-a-candidate` when it shows several approvable EIDs, otherwise `one-click`. Disagreeing fields make the served approval confirmation destructive. This presentation does not change the canonical packet, approved subject, schema bindings or evidence digest, and requires a fresh operator confirmation. The packet includes the write plan from `write-plan.ts`; its digest binds the planned values as well as identity. Protected timekeeper values use retained protected-input binding identity in this packet and its digest.
 
 The actual `IdentityApprovalResultSchema` carries the decision, selected EID, choice origin, and evidence digest, or a rejection reason. Actor and instant come from the durable `GateResultRecord` written by the command kernel. Approval cannot be inferred from a browser observation. Fresh staged-page binding remains required in both identity branches.
 
 ### 14.6 Approval ceremony risks
 
-Risk 1 is a client that downgrades the server's required identity ceremony to one-click approval. `src/dashboard/surfaces/run-detail/identity/identity-ceremony.ts` accepts the served `one-click`, `choose-a-candidate`, or `type-the-eid` shape and refuses unknown or contradictory packets. Candidate choice has no default selection. Only the operator's decision is composed locally; the EID origin and evidence digest come from the served packet.
+Risk 1 is a client that downgrades the server's required identity ceremony to one-click approval. `src/dashboard/surfaces/run-detail/identity/identity-ceremony.ts` accepts the served `one-click` or `choose-a-candidate` shape and refuses unknown or contradictory packets. Candidate choice has no default selection. The dashboard serves and composes approvals only; it offers no rejection. Only the operator's decision is composed locally; the EID origin and evidence digest come from the served packet.
 
 `src/rules/separations/identity-approval.ts` remains the authority: an unshown EID, changed evidence digest, contradictory origin, rejection, or missing required approval refuses before a write. Fresh page binding separately prevents an approved person from being replaced by a different staged subject.
 

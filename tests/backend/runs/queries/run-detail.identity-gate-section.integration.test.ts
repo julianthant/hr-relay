@@ -20,7 +20,9 @@ type RunCheckpointRecord,
 import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/separations/match-identity.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
-import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
+import { ApprovedIdentitySubjectSchema, IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
+import { VerifyIdentityApprovalOutputSchema } from "../../../../src/models/workflows/separations/verify-identity-approval.js";
+import { IdentityGateDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import type { IdentityEvidencePacket } from "../../../../src/rules/separations/identity-evidence.js";
 import {
 buildIdentityEvidencePacket,
@@ -31,7 +33,7 @@ import { BUILD_MANIFEST,resolveTaskImplFingerprint } from "../../../../src/workf
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import {
 FIXTURE_IDENTITY_GATE,
-FIXTURE_IDENTITY_GATE_TYPED_EID,
+FIXTURE_IDENTITY_GATE_NAME_MISMATCH,
 } from "../../../support/fixtures/dashboard/fixture-day.js";
 import { fixtureIdentityGateActions } from "../../../support/fixtures/dashboard/fixture-gate.js";
 import {
@@ -287,7 +289,34 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.equal(value.expectedVersion, 4);
     assert.deepEqual(value.packet, packet);
     assert.equal(value.evidenceDigest, deriveIdentityEvidenceDigest(packet));
-    assert.equal(value.approvalShape, packet.approvalShape);
+    assert.equal(packet.approvalShape, "type-the-eid");
+    assert.equal(value.packet.approvalShape, "type-the-eid");
+    assert.equal(value.approvalShape, "one-click");
+    assert.equal(value.actions[0]?.label, "Approve this person");
+    const approve = value.actions[0];
+    assert.ok(approve?.kind === "command" && approve.confirm, "the presentation still requires fresh operator confirmation");
+    assert.equal(IdentityGateDetailWireSchema.safeParse({ ...value, approvalShape: "choose-a-candidate" }).success, false);
+  });
+
+  it("reads a pre-existing typed-risk approved subject without rewriting its packet or digest", async () => {
+    const w = await world();
+    seed(w);
+    const packet = packetOf();
+    const evidenceDigest = deriveIdentityEvidenceDigest(packet);
+    const subject = ApprovedIdentitySubjectSchema.parse({ authority: "operator-approval", emplId: packet.emplId,
+      chosenFrom: "checked", evidenceDigest, ucpathName: packet.ucpathName, nameTier: packet.nameTier, approvalShape: "type-the-eid" });
+    const storedOutput = VerifyIdentityApprovalOutputSchema.parse({ documentNumber: packet.documentNumber, approved: subject, jobs: packet.jobs });
+    putCheckpoint(w, checkpointOf(packet));
+    const payload = gateSection(w);
+    assert.equal(payload.state, "available");
+    if (payload.state !== "available") throw new Error("gate unavailable");
+    assert.deepEqual(payload.value.packet, packet);
+    assert.equal(payload.value.evidenceDigest, evidenceDigest);
+    assert.equal(payload.value.approvalShape, "one-click");
+    assert.deepEqual(VerifyIdentityApprovalOutputSchema.parse(JSON.parse(JSON.stringify(storedOutput))), storedOutput);
+    assert.equal(storedOutput.approved.authority, "operator-approval");
+    assert.equal(storedOutput.approved.evidenceDigest, evidenceDigest);
+    assert.equal(deriveIdentityEvidenceDigest(packet), evidenceDigest);
   });
 
   it("publishes the exact gate-result schema hash the kernel will demand", async () => {
@@ -344,13 +373,11 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
       payload.value.options.map(({ eid, chosenFrom }) => ({ eid, chosenFrom })),
       [{ eid: EID, chosenFrom: "checked" }],
     );
-    // A name-resolved EID requires the explicit typed-EID ceremony even when
-    // the search returned exactly one candidate.
-    assert.equal(payload.value.approvalShape, "type-the-eid");
-    assert.equal(payload.value.actions.length, 2);
+    // One candidate is a confirm even when the names differ; the confirm turns destructive instead.
+    assert.equal(payload.value.approvalShape, "one-click");
     assert.deepEqual(
       payload.value.actions.map((action) => action.kind === "command" ? action.resolution : undefined),
-      ["approved", "rejected"],
+      ["approved"],
     );
     const approve = payload.value.actions[0];
     assert.equal(approve?.kind === "command" ? approve.confirm?.tone : undefined, "destructive");
@@ -358,7 +385,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
 
 
   it("pins the parity fixture's gate descriptors and option labels to this query's", async () => {
-    for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_TYPED_EID]) {
+    for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_NAME_MISMATCH]) {
       const w = await world();
       seed(w);
       putCheckpoint(w, checkpointOf(fixture.packet));
