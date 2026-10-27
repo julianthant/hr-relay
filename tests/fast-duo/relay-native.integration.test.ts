@@ -33,7 +33,21 @@ it("real extension isolated native create uses page RP/origin and ignores forged
   }), { mode: 0o600 });
   await writeFile(join(extension, "background.js"), `
     globalThis.realmReceipts = [];
+    globalThis.realmGuardFailures = [];
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      let parsedUrl;
+      try { parsedUrl = new URL(sender.url); } catch { parsedUrl = undefined; }
+      const checks = {
+        senderIdentity: sender.id === chrome.runtime.id,
+        topFrame: sender.frameId === 0,
+        activeDocument: sender.documentLifecycle === 'active',
+        documentUuid: typeof sender.documentId === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sender.documentId),
+        localhost: parsedUrl?.hostname === 'localhost',
+        senderOrigin: sender.origin === parsedUrl?.origin,
+        requestOrigin: message.request?.origin === sender.origin,
+        localhostRp: message.request?.rpId === 'localhost',
+      };
+      realmGuardFailures.push(Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name));
       if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || sender.documentLifecycle !== 'active'
         || typeof sender.documentId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sender.documentId)
         || new URL(sender.url).hostname !== 'localhost' || sender.origin !== new URL(sender.url).origin
@@ -120,7 +134,9 @@ it("real extension isolated native create uses page RP/origin and ignores forged
     assert.ok(Array.isArray(value));
     const output = (value as { id: string; success: boolean; result: { clientDataJSON: string; authData: string; native: boolean; credentialId: string } }[]).find(reply => reply.id === "real-native");
     assert.ok(output);
-    assert.equal(output.success, true, JSON.stringify({ success: output.success, nativeCredentials, receiptTypes: (await receipts()).map(receipt => receipt.type) }));
+    const guardFailures: unknown = await worker.evaluate(() => Reflect.get(globalThis, "realmGuardFailures") as unknown);
+    assert.ok(Array.isArray(guardFailures));
+    assert.equal(output.success, true, JSON.stringify({ success: output.success, nativeCredentials, receiptTypes: (await receipts()).map(receipt => receipt.type), guardFailures }));
     assert.equal(output.result.native, true);
     const clientData = JSON.parse(Buffer.from(output.result.clientDataJSON, "base64").toString("utf8")) as { origin: string; challenge: string; type: string };
     assert.equal(clientData.origin, origin);
