@@ -717,3 +717,19 @@ witnesses plus fresh canonical SQLite counts including deleted runs, write attem
 artifacts. It withdraws registry/verifier publication into a private draft while preserving the same
 database and key. Missing, corrupt, unsupported or nonzero activity refuses; this is not a generic
 legacy owner claim or an automatic startup conversion.
+
+Explicit existing-data claims use the profile claim action and the existing application maintenance
+handoff. The supported bound source is a native9 historical saved profile with its original
+authenticated credential apply, matching verifier and protected inputs, no previous erasure or Duo
+publication, and proved closed resource custody. Retained terminal runs, settings and files are not
+required to be empty. Wrong-owner, foreign binding, active or UNKNOWN write custody and unsupported
+history refuse. Ordinary signup cannot resume a claim, and draft cancellation cannot erase claimed
+data. Flat pre-profile installations still require their separate stopped transition.
+
+`storage/maintenance/existing-data-backup.ts` verifies a native SQLite backup and separate private
+copies of profile files, keys, verifier, pepper and installation control before publication changes.
+The claim operation pins that backup; its native publication journal recovers exact prefixes and
+retains an immutable claim receipt. Repeating a completed backup verifies and reuses it. The database,
+protected document, key and historical identities remain unchanged. The claim grants only the
+existing private onboarding authority: genuine method receipts and explicit Finish still govern
+publication. Retained recovery copies prevent a successful logout erasure claim.

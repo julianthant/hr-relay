@@ -1,4 +1,5 @@
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
+import { verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { readPrivateFile, writePrivateStage } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, unpublishedDraftAbortMembership, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
@@ -205,6 +206,7 @@ export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator
   assertDraftDuoPublicationRecovery(operationId: string, profileId: string, generation: number): z.infer<typeof SignUpOperationSchema>;
   abortUnpublishedProfile(witness: UnpublishedDraftAbortWitness): void;
   reclassifyIncompleteProfile(witness: IncompleteProfileDraftWitness): void;
+  claimExistingProfileData(witness: IncompleteProfileDraftWitness): void;
   commitProfileDuoIntent(transaction: IssuedDuoTransaction): void;
   capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(): void }>;
   captureStoppedProfileUpgrade(profileId: string): Readonly<{ assertHeld(): void }>;
@@ -218,7 +220,7 @@ export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator
   publishProfileCredentialInitialization(profileId: string, witness: CommittedCredentialInitialization): void;
   publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, witness: CommittedCredentialWitness, verifier: PreparedProfileVerifier): void;
   publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void;
-  beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding">): z.infer<typeof SignUpOperationSchema>;
+  beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "ownerClaim">): z.infer<typeof SignUpOperationSchema>;
   publishProfileOperation(operation: ProfileOperation | string, keyStage?: CommittedCredentialKeyStage): void;
   readProfileCredentialKeyStage(operation: z.infer<typeof SignUpOperationSchema>): CredentialKeyStagePublication | undefined;
   readInstallationContext(): Readonly<{ workspace: string; locator: RuntimeLocator; receipts: readonly RelocationCompletionReceipt[] }>;
@@ -1655,6 +1657,10 @@ function assertDraftErasureSource(locator: RuntimeLocator, document: ProfileRegi
 function settleIncompleteProfileDraft(control: string, locator: RuntimeLocator,
   intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "incomplete-profile-draft" }>): void {
   const { capture, prior, priorDocument, document, priorVerifiers, verifiers } = intent, operation = capture.operation;
+  if (operation.ownerClaim !== undefined) {
+    const backup = verifyExistingDataBackupFiles(operation.ownerClaim, readInstallation(control, dirname(dirname(control))).workspace, locator.installationId);
+    if (backup.profileId !== operation.profileId) fail("existing-data-backup-owner-refused");
+  }
   const target = priorDocument.profiles.find(row => row.profileId === operation.profileId), binding = capture.key.binding;
   if (intent.installationId !== locator.installationId || binding.installationId !== locator.installationId || binding.profileId !== operation.profileId
     || target === undefined || target.registration.onboardingCompletion !== undefined || target.duoState !== "not-set-up" || target.migratedFromLegacy !== undefined
@@ -1692,6 +1698,14 @@ function settleIncompleteProfileDraft(control: string, locator: RuntimeLocator,
   if (verifierPrior) atomicJson(verifierPath, verifiers);
   if (isPrior) atomicJson(registryPath, document);
   atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, registryPath, document, nextErasures, nextDuo));
+  if (operation.ownerClaim !== undefined) {
+    const receiptPath = join(dirname(operation.ownerClaim.backupPath), "claim.json");
+    const receipt = { schemaVersion: 1, installationId: locator.installationId, profileId: operation.profileId,
+      operationId: operation.operationId, registryBeforeDigest: prior.digest, backup: operation.ownerClaim };
+    const existing = readPrivateFile(receiptPath, { label: "lock", maxBytes: 1_048_576 });
+    if (existing === undefined) atomicJson(receiptPath, receipt);
+    else if (canonicalJsonStringify(JSON.parse(existing.bytes.toString("utf8"))) !== canonicalJsonStringify(receipt)) fail("existing-data-claim-receipt-changed");
+  }
   unlinkSync(join(control, "profile-publication.json")); syncDir(control);
 }
 
@@ -2206,6 +2220,27 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         assertHeld();
       });
     }
+  function reclassifyDraft(witness: IncompleteProfileDraftWitness, claiming: boolean): void {
+    mutex(control, () => {
+      assertHeld();
+      if (mode !== "exclusive") fail("profile-incomplete-stopped-authority-required");
+      const before = readMachineRegistry(control, locator), capture = verifyIncompleteProfileDraft(witness, locator.stateRoot);
+      if ((capture.operation.ownerClaim !== undefined) !== claiming) fail("existing-data-owner-claim-required");
+      const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
+      if (!prior.erasures.some(row => row.profileId === capture.operation.profileId && row.originOperationId === capture.operation.operationId
+        && canonicalJsonStringify(row.credentialKey) === canonicalJsonStringify(capture.key))) fail("profile-incomplete-key-anchor-changed");
+      const priorVerifiers = readProfileEvidence(join(locator.stateRoot, "machine", "profile-verifiers.json"), ProfileVerifierDocumentSchema);
+      const intent = ProfilePublicationSchema.parse({ kind: "incomplete-profile-draft", schemaVersion: 1, installationId: locator.installationId, prior, capture,
+        priorDocument: before, document: { ...before, profiles: before.profiles.filter(row => row.profileId !== capture.operation.profileId), activeProfileId: before.activeProfileId === capture.operation.profileId ? null : before.activeProfileId,
+          sessionGeneration: before.sessionGeneration + 1 }, priorVerifiers,
+        verifiers: { ...priorVerifiers, profiles: priorVerifiers.profiles.filter(row => row.profileId !== capture.operation.profileId) } });
+      if (intent.kind !== "incomplete-profile-draft") fail("profile-incomplete-reclassification-invalid");
+      verifyIncompleteProfileDraft(witness, locator.stateRoot);
+      atomicJson(join(control, "profile-publication.json"), intent);
+      settleIncompleteProfileDraft(control, locator, intent);
+      readMachineRegistry(control, locator, false); assertHeld();
+    });
+  }
   const shared = Object.freeze({
     mode,
     locator: publicLocator,
@@ -2269,26 +2304,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       return operation;
     },
     commitProfileDuo(transaction: IssuedDuoTransaction) { publishIssuedDuo(transaction, "settle"); },
-    reclassifyIncompleteProfile(witness: IncompleteProfileDraftWitness) {
-      mutex(control, () => {
-        assertHeld();
-        if (mode !== "exclusive") fail("profile-incomplete-stopped-authority-required");
-        const before = readMachineRegistry(control, locator), capture = verifyIncompleteProfileDraft(witness, locator.stateRoot);
-        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        if (!prior.erasures.some(row => row.profileId === capture.operation.profileId && row.originOperationId === capture.operation.operationId
-          && canonicalJsonStringify(row.credentialKey) === canonicalJsonStringify(capture.key))) fail("profile-incomplete-key-anchor-changed");
-        const priorVerifiers = readProfileEvidence(join(locator.stateRoot, "machine", "profile-verifiers.json"), ProfileVerifierDocumentSchema);
-        const intent = ProfilePublicationSchema.parse({ kind: "incomplete-profile-draft", schemaVersion: 1, installationId: locator.installationId, prior, capture,
-          priorDocument: before, document: { ...before, profiles: before.profiles.filter(row => row.profileId !== capture.operation.profileId), activeProfileId: before.activeProfileId === capture.operation.profileId ? null : before.activeProfileId,
-            sessionGeneration: before.sessionGeneration + 1 }, priorVerifiers,
-          verifiers: { ...priorVerifiers, profiles: priorVerifiers.profiles.filter(row => row.profileId !== capture.operation.profileId) } });
-        if (intent.kind !== "incomplete-profile-draft") fail("profile-incomplete-reclassification-invalid");
-        verifyIncompleteProfileDraft(witness, locator.stateRoot);
-        atomicJson(join(control, "profile-publication.json"), intent);
-        settleIncompleteProfileDraft(control, locator, intent);
-        readMachineRegistry(control, locator, false); assertHeld();
-      });
-    },
+    reclassifyIncompleteProfile(witness: IncompleteProfileDraftWitness) { reclassifyDraft(witness, false); },
+    claimExistingProfileData(witness: IncompleteProfileDraftWitness) { reclassifyDraft(witness, true); },
     abortUnpublishedProfile(witness: UnpublishedDraftAbortWitness) {
       mutex(control, () => {
         assertHeld();
@@ -2519,7 +2536,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     },
     publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument) { publishRegistry(expected, document); },
     publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, witness: CommittedCredentialWitness, verifier: PreparedProfileVerifier) { publishRegistry(undefined, undefined, { operation, witness, verifier }); },
-    beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding">) {
+    beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "ownerClaim">) {
+      if ("ownerClaim" in fields) fail("existing-data-owner-claim-required");
       const profileId = randomUUID();
       const operation = SignUpOperationSchema.parse({ ...fields, credentialInitialization: fields.credentialInitialization ?? { mode: "initial", keyId: randomUUID(), phase: "admitted" }, schemaVersion: 1, kind: "sign-up", phase: "applying",
         operationId: randomUUID(), profileId, commandId: randomUUID(), writeId: randomUUID(),

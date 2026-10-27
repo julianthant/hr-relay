@@ -1,5 +1,5 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
-import { captureIncompleteProfileDraft, CredentialErasureHeadSchema, erasureRequestIdentity } from "../configuration/credential-store.js";
+import { captureIncompleteProfileDraft, verifyExistingDataOwner, CredentialErasureHeadSchema, erasureRequestIdentity, type ExistingDataOwnerWitness } from "../configuration/credential-store.js";
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import type { UnpublishedDraftAbortWitness, CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness, CommittedCredentialInitialization, CommittedCredentialKeyStage, CredentialKeyStagePublication } from "../configuration/credential-store.js";
@@ -459,7 +459,7 @@ export class RuntimeAdmission {
     this.assertProfileCredentialKey(profile, join(this.#stateRoot, "machine", "credential-keys", `${profile.profileBinding.profileId}.json`));
     (this.#authority as InstallationLease).publishProfileCredentialInitialization(profile.profileBinding.profileId, witness);
   }
-  beginProfileSignUp(fields: Omit<SignUpOperation, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding">): SignUpOperation {
+  beginProfileSignUp(fields: Omit<SignUpOperation, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "ownerClaim">): SignUpOperation {
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
     return (this.#authority as InstallationLease).beginProfileSignUp(fields);
@@ -1339,6 +1339,35 @@ export class RuntimeAdmission {
     return new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => this.readInstallationContext() },
       root, join(root, "artifacts"), [join(root, "state.db")], "stopped-incomplete-profile-inventory", "exclusive", this.#locator, binding, this);
   }
+  async forStoppedExistingDataBackup(witness: ExistingDataOwnerWitness): Promise<RuntimeAdmission> {
+    const { lease, restore } = this.#stoppedDuoRecovery();
+    const owner = verifyExistingDataOwner(witness, this);
+    if (owner.profileId === undefined) throw new Error("existing-data-flat-transition-required");
+    const readonly = this.forStoppedIncompleteProfileInventory(owner.profileId);
+    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+    let source: ReturnType<typeof AuthorityDatabase.inspectExistingReadOnly>;
+    try { source = AuthorityDatabase.inspectExistingReadOnly(readonly, join(readonly.stateRoot, "state.db")); }
+    catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: readonly });
+      readonly.release(); throw error;
+    }
+    readonly.release();
+    const root = join(this.stateRoot, "profiles", owner.profileId), path = join(root, "state.db");
+    const processLockRoot = join(lease.readInstallationContext().workspace, rebuildRuntimeIsolation.processLockRoot);
+    const registry = canonicalJsonStringify(this.readProfileRegistry()), physical = lstatSync(path);
+    const assertHeld = () => {
+      this.assertLive(); assertStoppedMachineMaintenance(lease, restore); verifyExistingDataOwner(witness, this);
+      if (canonicalJsonStringify(this.readProfileRegistry()) !== registry) throw new Error("existing-data-owner-source-changed");
+      const current = lstatSync(path);
+      if (current.dev !== physical.dev || current.ino !== physical.ino || current.size !== physical.size
+        || current.mtimeMs !== physical.mtimeMs || current.ctimeMs !== physical.ctimeMs) throw new Error("existing-data-owner-source-changed");
+    };
+    assertHeld();
+    return new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release() {} },
+      root, join(root, "artifacts"), [path], "profile-ready-upgrade", "exclusive", this.#locator,
+      { installationId: this.locator.installationId, profileId: owner.profileId }, this, undefined,
+      { sourcePath: path, processLockRoot, sourceSchemaVersion: 9, qualification: { current: { kind: "qualified", sourceFingerprint: source.authorityContentFingerprint } } });
+  }
   async reclassifyIncompleteProfileAsDraft(profileId: string): Promise<void> {
     const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
     const { lease } = this.#stoppedDuoRecovery(), admission = this.forStoppedIncompleteProfileInventory(profileId);
@@ -1349,6 +1378,38 @@ export class RuntimeAdmission {
       const witness = captureIncompleteProfileDraft(this, admission, assertEmpty);
       lease.reclassifyIncompleteProfile(witness);
     } finally { admission.release(); }
+  }
+  async claimExistingProfileData(owner: ExistingDataOwnerWitness, claimId: string, clock: Clock): Promise<SignUpOperation> {
+    const { lease } = this.#stoppedDuoRecovery();
+    const { backupExistingData } = await import("../maintenance/existing-data-backup.js");
+    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
+    const backupAdmission = await this.forStoppedExistingDataBackup(owner);
+    let backup: Awaited<ReturnType<typeof backupExistingData>>;
+    try { backup = await backupExistingData(this, backupAdmission, owner, claimId, clock); }
+    catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
+      backupAdmission.release(); throw error;
+    }
+    backupAdmission.release();
+    if (owner.profileId === undefined) throw new Error("existing-data-flat-transition-required");
+    const inventory = this.forStoppedIncompleteProfileInventory(owner.profileId);
+    try {
+      const witness = captureIncompleteProfileDraft(this, inventory, () => assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(inventory)), { owner, backup });
+      lease.claimExistingProfileData(witness);
+    } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: inventory });
+      inventory.release(); throw error;
+    }
+    inventory.release();
+    const operations = join(this.stateRoot, "machine", "operations");
+    const matches = readdirSync(operations).filter(name => name.endsWith(".json")).map(name => {
+      const file = readPrivateFile(join(operations, name), { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) throw new Error("existing-data-claim-readback-unproved");
+      return SignUpOperationSchema.parse(JSON.parse(file.bytes.toString("utf8")));
+    }).filter(operation => operation.ownerClaim?.claimId === claimId);
+    if (matches.length !== 1 || matches[0] === undefined) throw new Error("existing-data-claim-readback-unproved");
+    return matches[0];
   }
   assertStoppedIncompleteProfileInventory(): void {
     this.assertLive();

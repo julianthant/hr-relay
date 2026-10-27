@@ -11,17 +11,17 @@ import { buildExtractionInstruction } from "../../../../models/ocr/instruction.j
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
 import { failureStatus } from "../../../transports/http/routes/failure-status.js";
 import { randomUUID } from "node:crypto";
-import { acquireSharedRuntimeAdmission, acquireExclusiveRuntimeAdmission, ProfileUpgradeSourceRefusalError } from "../../../storage/admission/admission.js";
+import { RuntimeAdmission, acquireSharedRuntimeAdmission, acquireExclusiveRuntimeAdmission, ProfileUpgradeSourceRefusalError } from "../../../storage/admission/admission.js";
 import { upgradeReadyProfileStorage } from "../../../storage/maintenance/upgrade.js";
 import { Hono } from "hono";
-import { ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfileOnboardingStateSchema, CompleteProfileOnboardingRequestSchema,
+import { ProfileOwnerClaimRequestSchema, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfileOnboardingStateSchema, CompleteProfileOnboardingRequestSchema,
   CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema,
   CancelProfileOnboardingDuoRequestSchema, PublicProfileStateSchema, type PublicProfileState } from "../../../../models/profiles/public-profile.js";
 import { ConfigSchema } from "../../../../models/config/schema.js";
 import { ensureChildDirectory } from "../../../storage/configuration/credential-safe-file.js";
 import { createProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo-provider.js";
 import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
-import { consumeAuthenticatedProfileUpgrade, type ActiveProfileSession, type AuthenticatedProfileUpgrade, type ProfileUpgradeRequired } from "../../../profiles/profile-session.js";
+import { consumeAuthenticatedProfileOwnerClaim, isAuthenticatedProfileOwnerClaim, consumeAuthenticatedProfileUpgrade, type ActiveProfileSession, type AuthenticatedProfileUpgrade, type ProfileUpgradeRequired } from "../../../profiles/profile-session.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
 import { staticBundleHandler } from "../../../transports/http/static-bundle.js";
@@ -91,7 +91,6 @@ import { BackupServiceStateWireSchema, type BackupServiceStateWire } from "../..
 import { AuthorityDatabase, AuthorityHealthPreflightRunner, summarizeBackupHealth } from "../../../storage/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../../storage/sqlite/runtime-process-locks.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
-import { type RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
 import { createNoteTimelineWriter, type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
@@ -1038,12 +1037,18 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       const port = current.port, facts = current.hostFacts;
       await current.stop();
       if (shutdownRequested) return;
-      const exclusive = acquireExclusiveRuntimeAdmission(context.workspace);
+      const claiming = isAuthenticatedProfileOwnerClaim(authorization);
+      const exclusive = claiming ? RuntimeAdmission.acquireStoppedMachineControlMaintenance(context.workspace) : acquireExclusiveRuntimeAdmission(context.workspace);
       exclusiveOwner = exclusive;
       try {
-        const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
-        const report = await upgradeReadyProfileStorage(exclusive, claim, { plan: false, hostFacts: facts }, clock);
-        if (report.state !== "upgraded" || report.fromSchemaVersion !== 8 || report.toSchemaVersion !== 9) throw new Error("profile-upgrade-readback-unproved");
+        if (claiming) {
+          const claim = consumeAuthenticatedProfileOwnerClaim(authorization, exclusive);
+          await exclusive.claimExistingProfileData(claim.owner, claim.claimId, clock);
+        } else {
+          const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
+          const report = await upgradeReadyProfileStorage(exclusive, claim, { plan: false, hostFacts: facts }, clock);
+          if (report.state !== "upgraded" || report.fromSchemaVersion !== 8 || report.toSchemaVersion !== 9) throw new Error("profile-upgrade-readback-unproved");
+        }
       } catch (error) {
         if (!(error instanceof AuthoritySourceClosureUnprovedError)) {
           try { exclusive.release(); exclusiveOwner = undefined; }
@@ -1192,6 +1197,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   });
   app.use("/api/v1/profile/sign-in", operatorMutationIngressGuard);
   app.use("/api/v1/profile/sign-up", operatorMutationIngressGuard);
+  app.use("/api/v1/profile/claim-existing-data", operatorMutationIngressGuard);
   app.use("/api/v1/profile/logout", operatorMutationIngressGuard);
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
   const mountActive = async (result: ActiveProfileSession): Promise<PublicProfileState> => {
@@ -1213,11 +1219,12 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
   };
-  const activate = async (request: Request, signup: boolean): Promise<PublicProfileState | ProfileUpgradeRequired> => {
+  const activate = async (request: Request, signup: boolean, claiming = false): Promise<PublicProfileState | ProfileUpgradeRequired> => {
     if (transitioning || selection !== undefined || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
     transitioning = true;
     try {
       const result = await (async () => {
+        if (claiming) return profile.session.claimExistingData({ ...ProfileOwnerClaimRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
         if (signup) return profile.session.signUp({ ...ProfileSignUpRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
         const fields = { ...ProfileLoginRequestSchema.parse(await request.json()), at: clock.now().toISOString() };
         const signed = profile.session.signIn(fields);
@@ -1238,8 +1245,8 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       return mountActive(result);
     } finally { if (!upgradePending) transitioning = false; }
   };
-  const admitProfile = async (signup: boolean, request: Request) => {
-    const activated = await activate(request, signup);
+  const admitProfile = async (signup: boolean, request: Request, claiming = false) => {
+    const activated = await activate(request, signup, claiming);
     const result = PublicProfileStateSchema.parse(activated.state === "refused" ? { state: activated.state, code: activated.code } : activated);
     return { result, session: result.state === "active" ? selection : undefined,
       upgrade: activated.state === "refused" && "upgrade" in activated ? activated.upgrade : undefined };
@@ -1254,6 +1261,13 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   app.post("/api/v1/profile/sign-up", async c => {
     const admitted = await admitProfile(true, c.req.raw);
     if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+    if (admitted.result.state === "onboarding" && onboardingSelection !== undefined) c.header("set-cookie", `${onboardingCookieName}=${onboardingSelection.sessionId}; HttpOnly; SameSite=Strict; Path=/api/v1/profile`);
+    const response = c.json(admitted.result);
+    if (admitted.upgrade !== undefined) scheduleUpgrade(admitted.upgrade, listener.committedResponse(response));
+    return response;
+  });
+  app.post("/api/v1/profile/claim-existing-data", async c => {
+    const admitted = await admitProfile(false, c.req.raw, true);
     if (admitted.result.state === "onboarding" && onboardingSelection !== undefined) c.header("set-cookie", `${onboardingCookieName}=${onboardingSelection.sessionId}; HttpOnly; SameSite=Strict; Path=/api/v1/profile`);
     const response = c.json(admitted.result);
     if (admitted.upgrade !== undefined) scheduleUpgrade(admitted.upgrade, listener.committedResponse(response));

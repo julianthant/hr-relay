@@ -1,4 +1,5 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
+import { assertNoRetainedOwnerClaimBackup } from "../../storage/maintenance/existing-data-backup.js";
 import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, credentialCopyProcessCustody, assertCredentialCopyResourcesClosed } from "../../storage/maintenance/profile-inventory.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames, deriveAuthorityUpgradePlanDigest } from "../../storage/sqlite/migrations.js";
@@ -221,6 +222,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
     assertProcessRoot();
     const enumerate = () => {
       admission.assertLive();
+      assertNoRetainedOwnerClaimBackup(input.machine, admission.profileBinding.profileId);
       assertProcessRoot();
       const profileRoot = admission.stateRoot;
       const processCustody = owner.kind === "ordinary" ? credentialCopyProcessCustody(input) : observeStoppedControlProcessCustody(processLockRoot, admission, input.clock);
@@ -351,6 +353,7 @@ export function composeProfileCredentialInventory(input: Readonly<{ machine: Run
   const root = input.admission.stateRoot, profileId = input.admission.profileBinding.profileId;
   const enumerate = () => input.database.withAuthorityReadSnapshot(() => {
     input.admission.assertLive();
+    assertNoRetainedOwnerClaimBackup(input.machine, profileId);
     const custody = input.database.readProfileResourceCustody();
     const saved = readSettings(input.database.authority);
     const savedBrowserRoot = resolveConfigWithProvenance(saved.settings, input.hostFacts, input.clock,

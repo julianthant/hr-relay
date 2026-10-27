@@ -190,7 +190,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
         <OnboardingSetup page={route.onboardingSetup} port={publicProfile.port} />
       ) : profileSource === "served" && (publicProfile.failure || session !== undefined && (session.state !== "active" || session.duoState !== "ready")) ? (
         <Onboarding step={session?.state === "onboarding" ? session.step : session?.state === "active" ? "duo" : route.onboarding === "signup" ? "signup" : "login"}
-          authenticated={session?.state === "active"} port={publicProfile.port}
+          authenticated={session?.state === "active"} port={publicProfile.port} claimExistingData={publicProfile.claimExistingData}
           problem={publicProfile.failure ? operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE")
             : session?.state === "refused" || session?.state === "error" ? operatorFailureSentence(session.code)
               : session?.state === "cancelling" ? operatorFailureSentence("PROFILE_LOGOUT_BLOCKED") : undefined}

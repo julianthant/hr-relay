@@ -8,6 +8,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
   createCredentialStore,
+  captureExistingDataOwner, verifyExistingDataOwner, type ExistingDataOwnerWitness,
   credentialMigrationSource,
   captureReadyUpgradeCredentialSource,
   inspectCredentialCopy,
@@ -57,6 +58,16 @@ export class ProfileUpgradeUnavailableError extends Error {
 }
 
 export interface AuthenticatedProfileUpgrade { readonly profileId: string; }
+const authenticatedOwnerClaims = new WeakMap<AuthenticatedProfileUpgrade, { owner: ExistingDataOwnerWitness; claimId: string; registry: string; machineRoot: string }>();
+export function isAuthenticatedProfileOwnerClaim(authorization: AuthenticatedProfileUpgrade): boolean { return authenticatedOwnerClaims.has(authorization); }
+export function consumeAuthenticatedProfileOwnerClaim(authorization: AuthenticatedProfileUpgrade, machine: RuntimeAdmission) {
+  const issued = authenticatedOwnerClaims.get(authorization);
+  if (issued === undefined || issued.machineRoot !== machine.stateRoot) throw new ProfileSessionRefusedError("PROFILE_OWNER_CLAIM_UNAVAILABLE");
+  authenticatedOwnerClaims.delete(authorization);
+  machine.assertExclusive(); verifyExistingDataOwner(issued.owner, machine);
+  if (canonicalJsonStringify(machine.readProfileRegistry()) !== issued.registry) throw new ProfileSessionRefusedError("PROFILE_OWNER_CLAIM_UNAVAILABLE");
+  return { owner: issued.owner, claimId: issued.claimId };
+}
 const authenticatedUpgrades = new WeakMap<AuthenticatedProfileUpgrade, (machine: RuntimeAdmission) => RegisteredProfileStorageClaim>();
 export function consumeAuthenticatedProfileUpgrade(authorization: AuthenticatedProfileUpgrade, machine: RuntimeAdmission): RegisteredProfileStorageClaim {
   const consume = authenticatedUpgrades.get(authorization);
@@ -444,7 +455,7 @@ export function createProfileSession(input: {
     readonly email: string;
     readonly password: string;
     readonly createdAt: string;
-  }, names: ReturnType<typeof deriveProfileNames>): OnboardingProfileSession | ProfileRefusal {
+  }, names: ReturnType<typeof deriveProfileNames>, claiming = false): OnboardingProfileSession | ProfileRefusal {
     admission.assertWritable();
     const selection = registry.read();
     if (selection.activeProfileId !== null || readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_TRANSITION_BLOCKED");
@@ -455,6 +466,8 @@ export function createProfileSession(input: {
       return refusal("PROFILE_OTHER_EMAIL");
     }
     let operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.emailKey === emailKey);
+    if (operation?.ownerClaim !== undefined && !claiming) return refusal("PROFILE_TRANSITION_BLOCKED");
+    if (claiming && operation?.ownerClaim === undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
     if (operation === undefined) {
       operation = admission.beginProfileSignUp({
         emailKey, firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
@@ -469,7 +482,8 @@ export function createProfileSession(input: {
     if (operation.firstName !== names.firstName || operation.lastName !== names.lastName) return refusal("PROFILE_SIGN_IN_REFUSED");
     registry.ensureRoot(operation.profileId);
     const store = storeFor(operation.profileId);
-    if (operation.phase === "applying") store.migrateHistory({ operation });
+    if (operation.phase === "applying" && !(claiming && operation.credentialInitialization?.phase === "document-published"
+      && credentialMigrationSource(store).state === "current")) store.migrateHistory({ operation });
     operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operation?.operationId) ?? operation;
     let revision = operation.expectedRevision;
     if (revision === undefined) {
@@ -680,6 +694,37 @@ export function createProfileSession(input: {
       admission.assertWritable();
       return withProfileLock(machineRoot, () => signUpLocked(fields, names));
     },
+    claimExistingData(fields: { firstName: string; lastName: string; email: string; password: string; claimId: string; claimExistingData: true; createdAt: string }): OnboardingProfileSession | ProfileRefusal | ProfileUpgradeRequired {
+      let names: ReturnType<typeof deriveProfileNames>;
+      try { names = deriveProfileNames(fields.firstName, fields.lastName); }
+      catch (error) { if (error instanceof ProfileNameValidationError) return refusal("PROFILE_NAME_REFUSED"); throw error; }
+      const at = IsoInstantSchema.parse(fields.createdAt), claimId = z.uuid().parse(fields.claimId);
+      if (fields.claimExistingData !== true) return refusal("PROFILE_OWNER_CLAIM_REQUIRED");
+      return withProfileLock(machineRoot, () => {
+        admission.assertWritable();
+        const emailKey = verifiers.emailKeyFor(fields.email);
+        const draft = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.emailKey === emailKey && entry.ownerClaim !== undefined);
+        if (draft !== undefined) {
+          return signUpLocked(fields, names, true);
+        }
+        const identified = verifiers.identify(fields.email);
+        if (identified === "unknown") return refusal("PROFILE_SIGN_IN_REFUSED");
+        const registry = admission.readProfileRegistry(), row = registry.profiles.find(entry => entry.profileId === identified.profileId);
+        if (row === undefined || row.registration.onboardingCompletion !== undefined || row.firstName !== names.firstName || row.lastName !== names.lastName
+          || row.timekeeperName !== names.timekeeperName || registry.activeProfileId !== null && registry.activeProfileId !== row.profileId
+          || row.lifecycle !== "ready" || row.credentialState !== "saved" || sessions.size > 0 || readOperations().length !== 0 || upgradeRequested) return refusal("PROFILE_OWNER_CLAIM_UNAVAILABLE");
+        const nowMs = Date.parse(at);
+        if (verifiers.locked(row.profileId, nowMs)) return refusal("PROFILE_SIGN_IN_REFUSED");
+        if (!verifiers.passwordMatches(row.profileId, fields.password)) { verifiers.recordFailure(row.profileId, nowMs); return refusal("PROFILE_SIGN_IN_REFUSED"); }
+        let owner: ExistingDataOwnerWitness;
+        try { owner = captureExistingDataOwner(admission, fields, row.profileId); }
+        catch (error) { if (error instanceof AuthoritySourceClosureUnprovedError) throw error; return refusal("PROFILE_OWNER_CLAIM_UNAVAILABLE"); }
+        const authorization = Object.freeze({ profileId: row.profileId });
+        authenticatedOwnerClaims.set(authorization, { owner, claimId, registry: canonicalJsonStringify(registry), machineRoot });
+        upgradeRequested = true;
+        return { ...refusal("PROFILE_OWNER_CLAIM_STARTING"), upgrade: authorization };
+      });
+    },
     assertOnboardingAbort(token: string, operationId: string): void {
       withProfileLock(machineRoot, () => requireOnboarding(token, operationId, true));
     },
@@ -727,7 +772,7 @@ export function createProfileSession(input: {
       });
     },
     async cancelOnboarding(token: string, operationId: string): Promise<{ readonly state: "signed-out" }> {
-      requireOnboarding(token, operationId, true);
+      if (requireOnboarding(token, operationId, true).ownerClaim !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
       await onboarding.drain(operationId);
       return withProfileLock(machineRoot, () => {
         let operation = requireOnboarding(token, operationId, true);

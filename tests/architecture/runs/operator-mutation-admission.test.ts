@@ -1,5 +1,8 @@
 import { dashboardRouteSource } from "../dashboard/helpers/dashboard-route-source.js";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import { describe, it } from "vitest";
 
 
@@ -94,6 +97,13 @@ describe("operator mutation admission", () => {
     const audit = auditOperatorMutationAdmission(source, ADMITTED_MUTATIONS);
     assert.deepEqual(audit.violations, []);
     assert.deepEqual([...audit.mutations].sort(), Object.keys(ADMITTED_MUTATIONS).sort());
+  });
+
+  it("admits the public profile and explicit owner-claim routes before request-body effects", () => {
+    const publicSource = readFileSync(resolve(REPO_ROOT, "src/backend/app/composition/dashboard/compose.ts"), "utf8");
+    const table = Object.fromEntries(["sign-in", "sign-up", "claim-existing-data", "logout", "onboarding/duo/start", "onboarding/duo/confirm",
+      "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete"].map(path => [`/api/v1/profile/${path}`, { guard: "operatorMutationIngressGuard" as const }]));
+    assert.deepEqual(auditOperatorMutationAdmission(publicSource, table).violations, []);
   });
 
   it("catches an unguarded route, a late guard, a wrong guard, a missing inline door, a stale row and every unclassified registration shape", () => {

@@ -1,4 +1,4 @@
-import { CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+import { ProfileOwnerClaimRequestSchema, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type ProfileOwnerClaimRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 import { DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /** The ONE typed dashboard client (ref frontend-backend-integration) */
@@ -25,6 +25,7 @@ export type {
 } from "../../models/dashboard/search.js";
 
 export interface DashboardClient extends DashboardQueries, DashboardCommands {
+  claimExistingProfileData(request: ProfileOwnerClaimRequest): Promise<PublicProfileState>;
   readProfileSession(): Promise<PublicProfileState>;
   signInProfile(request: ProfileLoginRequest): Promise<PublicProfileState>;
   signUpProfile(request: ProfileSignUpRequest): Promise<PublicProfileState>;
@@ -48,6 +49,11 @@ export function createDashboardClient(input: Readonly<{
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
   const client: DashboardClient = Object.freeze<DashboardClient>({
+    async claimExistingProfileData(request: ProfileOwnerClaimRequest) {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/claim-existing-data", {
+        method: "POST", body: JSON.stringify(ProfileOwnerClaimRequestSchema.parse(request)),
+      })).body);
+    },
     async readProfileSession() {
       return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/state")).body);
     },

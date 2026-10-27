@@ -1,5 +1,5 @@
 import type { DashboardClient } from "../../client/index.js";
-import type { ConfirmProfileOnboardingDuoRequest, ProfileOnboardingState, ProfileOnboardingMethod, PublicProfileState } from "../../../models/profiles/public-profile.js";
+import type { ProfileOwnerClaimRequest, ConfirmProfileOnboardingDuoRequest, ProfileOnboardingState, ProfileOnboardingMethod, PublicProfileState } from "../../../models/profiles/public-profile.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type OnboardingStep = "login" | "signup" | "duo" | "ready";
@@ -241,6 +241,16 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
     };
   }, [client, onboarding, scope, settle, failure]);
   return { state, failure, port,
+    claimExistingData: async (request: ProfileOwnerClaimRequest): Promise<PublicProfileState> => {
+      if (!live.current || onboarding !== undefined || busy.current) throw new Error("ONBOARDING_SCOPE_REPLACED");
+      const issued = ++generation.current; busy.current = true;
+      try {
+        const value = await client.claimExistingProfileData(request);
+        if (!live.current || generation.current !== issued || currentScope.current !== scope) throw new Error("ONBOARDING_SCOPE_REPLACED");
+        if (value.state !== "onboarding" && value.state !== "refused" && value.state !== "error") throw new Error("ONBOARDING_DRAFT_REQUIRED");
+        settle(value); return value;
+      } finally { if (generation.current === issued) busy.current = false; }
+    },
     logout: async (): Promise<void> => {
       const request = ++generation.current; busy.current = true;
       try { const value = await client.logOutProfile(); if (live.current && generation.current === request) settle(value); }
