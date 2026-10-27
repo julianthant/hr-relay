@@ -12,19 +12,19 @@ import { selectedLogPresentation, selectedLogSample, type LogSelection } from ".
 import { continuedLookupTimeline } from "./log-selected-fixture.js";
 import type { LogTimelineStage } from "./log-timeline-model.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
-import { projectRunLogs, useRunWiring } from "../../../state/run-wiring-adapter.js";
+import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogSkeleton } from "../../shared/loading/loading.js";
 import { queueRunHeader } from "../run-header-model.js";
 
-export function LogSample({ selection, nowIso, source = "served", initialStepId }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource; initialStepId?: string }) {
-  if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} />;
+export function LogSample({ selection, nowIso, source = "served", initialStepId, confirm }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource; initialStepId?: string; confirm?: RunWiringConfirm }) {
+  if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} confirm={confirm} />;
   return <PreviewLogSample selection={selection} nowIso={nowIso} />;
 }
 
-function ServedLogSample({ selection, nowIso, initialStepId }: { selection: LogSelection; nowIso?: string; initialStepId?: string }) {
+function ServedLogSample({ selection, nowIso, initialStepId, confirm }: { selection: LogSelection; nowIso?: string; initialStepId?: string; confirm?: RunWiringConfirm }) {
   const client = useDashboardClient();
   const binding = useDashboardCommandBinding();
-  const resource = useRunWiring(client, selection, binding);
+  const resource = useRunWiring(client, selection, binding, confirm);
   const logsReadFailedTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_READ_FAILED_TITLE", {})).text;
   const logsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_UNAVAILABLE_TITLE", {})).text;
   const confirmedActionsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE", {})).text;

@@ -13,6 +13,7 @@ import { commandSaveState, settingsSaveProblem } from "../surfaces/settings/edit
 import { useInboxWiring } from "../state/inbox-wiring-adapter.js";
 import { useSearchWiring } from "../state/search-wiring-adapter.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
+import type { RunWiringConfirm } from "../state/run-wiring-adapter.js";
 import { useWorkspaceSearchData } from "../surfaces/shell/search/search-wiring-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { dsLayer } from "../ds/theme/tokens.js";
@@ -383,7 +384,7 @@ function LoadedApp({
   }, [railPreview, servedOpenStart, openMockLaunch, activeWorkflowId, setRoute]);
   const openRerun = launch.openRerun;
 
-  const [pendingCommand, setPendingCommand] = useState<(PendingCommand & { readonly scope: CommandExecutionScope }) | null>(null);
+  const [pendingCommand, setPendingCommand] = useState<(PendingCommand & { readonly scope: CommandExecutionScope; readonly onConfirmed?: () => void }) | null>(null);
   /** the run whose name is being edited; `null` while the dialog is shut */
   const [pendingRename, setPendingRename] = useState<(PendingRename & { readonly scope: CommandExecutionScope }) | null>(null);
   /** Keep partial batch results until dismissed so every outcome can be read. */
@@ -626,6 +627,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     },
     [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso, openRerun, unresolvedRunAction, commandScope],
   );
+
+  const confirmLogDecision = useCallback<RunWiringConfirm>((pending, onConfirmed) => setPendingCommand({ ...pending, scope: commandScope, onConfirmed }), [commandScope]);
 
   const runQueueAction = useCallback(
     (action: ActionDescriptorWire, target: ActionTarget): void => {
@@ -1019,7 +1022,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
               onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => completeReview(railRow.id, "discard")} onRestore={() => completeReview(railRow.id, "restore")}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
-              <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={workflowComposition.logsSources ? workflowSource(selectedRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
+              <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={workflowComposition.logsSources ? workflowSource(selectedRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}
@@ -1079,8 +1082,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         pending={pendingCommand}
         onCancel={() => setPendingCommand(null)}
         onConfirm={(confirmed) => {
-          if (!currentCommandConfirmation(currentCommandScope.current, pendingConfirmation.current.command, confirmed)) return;
+          const current = pendingConfirmation.current.command;
+          if (!currentCommandConfirmation(currentCommandScope.current, current, confirmed)) return;
           setPendingCommand(null);
+          if (current?.onConfirmed !== undefined) { current.onConfirmed(); return; }
           dispatchCommand(confirmed.action, confirmed.target, {
             source: confirmed.source,
             commandId: confirmed.commandId,
