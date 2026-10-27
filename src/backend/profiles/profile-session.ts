@@ -714,7 +714,7 @@ export function createProfileSession(input: {
         const pending = requireOnboarding(token, operationId);
         if (pending.onboarding === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
         if (pending.onboarding.finish === undefined) writeOperation({ ...pending, onboarding: { ...pending.onboarding,
-          finish: { finishId: randomUUID(), finishedAt: (input.clock ?? systemClock).now().toISOString() } } });
+          finish: { finishId: randomUUID(), finishedAt: IsoInstantSchema.parse((input.clock ?? systemClock).now().toISOString()) } } });
         const published = registry.read().profiles.find(row => row.profileId === pending.profileId);
         const operation = published === undefined ? onboarding.verifyFinish(operationId) : pending;
         if (published !== undefined) { assertPublishedFinish(operation, published.registration); releaseOrdinary(operation.profileId); }

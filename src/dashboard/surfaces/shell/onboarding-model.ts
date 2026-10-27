@@ -8,7 +8,7 @@ export type OnboardingErrors = Partial<Record<keyof OnboardingDetails, string>>;
 export type DuoMethods = { key: boolean; touch: boolean };
 export interface MockOnboardingPort {
   readonly source: "mock";
-  validate(step: "login" | "signup", details: OnboardingDetails): OnboardingErrors;
+  validate(this: void, step: "login" | "signup", details: OnboardingDetails): OnboardingErrors;
   login(details: OnboardingDetails): "accepted" | "unknown-email" | "incorrect-password";
   confirm(method: keyof DuoMethods, current: DuoMethods): DuoMethods;
 }
@@ -27,7 +27,7 @@ export interface ServedOnboardingPort {
   cancelDuo(method: ProfileOnboardingMethod, attemptId: string): Promise<PublicProfileState>;
   start(method: ProfileOnboardingMethod): Promise<PublicProfileState>;
   confirmDuo(scope: DuoConfirmationScope): Promise<PublicProfileState>;
-  validate(step: "login" | "signup", details: OnboardingDetails): OnboardingErrors;
+  validate(this: void, step: "login" | "signup", details: OnboardingDetails): OnboardingErrors;
   submit(step: "login" | "signup", details: OnboardingDetails): Promise<PublicProfileState>;
 }
 export type OnboardingPort = MockOnboardingPort | ServedOnboardingPort;
@@ -191,11 +191,12 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
   useEffect(() => {
     live.current = enabled; busy.current = false;
     if (!enabled) return;
+    const lifetime = generation;
     const request = ++generation.current;
     void client.readProfileSession().then(value => {
       if (live.current && generation.current === request) settle(value);
     }, () => { if (live.current && generation.current === request) setSettlement({ client, failure: true }); });
-    return () => { live.current = false; generation.current++; };
+    return () => { live.current = false; lifetime.current++; };
   }, [client, enabled, settle]);
   const onboarding = state?.state === "onboarding" ? state : undefined;
   useEffect(() => {
@@ -263,7 +264,7 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
       && active?.operationId === scope.operationId && active.profileId === scope.profileId
       && active.methods[scope.method].state === "pending" && active.methods[scope.method].attemptId === scope.attemptId;
   };
-  useEffect(() => { generation.current++; setPending(false); setUnavailable(false); return () => { generation.current++; child.current?.close(); child.current = null; }; }, [draft?.operationId, port?.authorityScope]);
+  useEffect(() => { const lifetime = generation; generation.current++; setPending(false); setUnavailable(false); return () => { lifetime.current++; child.current?.close(); child.current = null; }; }, [draft?.operationId, port?.authorityScope]);
   const run = async (action: () => Promise<PublicProfileState>) => {
     if (pending || !port) return;
     const request = ++generation.current; setPending(true); setUnavailable(false);
@@ -277,7 +278,7 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
   return { methods: { key: draft?.methods.key.state === "complete", touch: draft?.methods.touch.state === "complete" },
     connected: draft !== undefined && !port?.unavailable, unavailable: unavailable || port?.unavailable || draft?.methods[method].state === "unknown" || draft?.methods[method].state === "unavailable", listening: pending || draft?.methods[method].state === "pending", method, setMethod(next: ProfileOnboardingMethod) { if (next !== current.current.method) generation.current++; setMethod(next); }, matchesConfirmation,
     dismissConfirmation(scope: DuoConfirmationScope) { if (scope.generation === generation.current) generation.current++; },
-    returnToParent() { window.opener?.focus(); },
+    returnToParent() { const opener: unknown = window.opener; if (opener instanceof Window) opener.focus(); },
     cancel() { const attemptId = draft?.methods[method].attemptId; if (port && attemptId) void run(() => port.cancelDuo(method, attemptId)); },
     open(capture: boolean) {
       if (!port || !draft || port.unavailable) return;

@@ -1,3 +1,4 @@
+import { z } from "zod";
 // @vitest-environment jsdom
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import assert from "node:assert/strict";
@@ -171,7 +172,7 @@ it("served Duo keeps partial completion and unknown custody under server authori
     draft = { ...draft, methods: { key: draftMethod("complete"), touch: draftMethod("unknown") } };
     await act(async () => root.render(createElement(Probe)));
     assert.deepEqual(setup.methods, { key: true, touch: false });
-    await act(async () => { setup.start("touch"); window.dispatchEvent(new MessageEvent("message", { data: { type: "duo-methods", key: true, touch: true } })); });
+    await act(async () => { await setup.start("touch"); window.dispatchEvent(new MessageEvent("message", { data: { type: "duo-methods", key: true, touch: true } })); });
     assert.equal(calls, 1); assert.equal(setup.methods.touch, false);
   } finally { await act(async () => root.unmount()); }
 });
@@ -197,7 +198,7 @@ it("exact-attempt cancellation preserves the other method and rejects premature 
   let activate = false;
   const requests: unknown[] = [];
   const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async (_url, init) => {
-    requests.push(JSON.parse(String(init?.body)));
+    requests.push(JSON.parse(z.string().parse(init?.body)));
     return Response.json(activate ? { state: "active", profileId: draft.profileId, epoch: 1, duoState: "ready" }
       : { ...draft, methods: { ...draft.methods, touch: draftMethod("unknown") } });
   } });
@@ -236,13 +237,13 @@ it("confirmation retains the displayed attempt and rejects replacement, expiry, 
   let authorityScope = {}, signedOut = false;
   const requests: unknown[] = [];
   const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async (_url, init) => {
-    requests.push(JSON.parse(String(init?.body))); return Response.json(draft);
+    requests.push(JSON.parse(z.string().parse(init?.body))); return Response.json(draft);
   } });
   let setup!: ReturnType<typeof useServedDuoSetup>;
   function Probe() { setup = useServedDuoSetup(signedOut ? undefined : { ...createServedOnboardingPort(client, () => {}, draft), authorityScope }); return null; }
   try {
     await act(async () => root.render(createElement(Probe)));
-    const oldConfirm = setup.confirm;
+    const oldConfirm = setup.confirm.bind(setup);
     let displayed!: Awaited<ReturnType<typeof setup.start>>;
     await act(async () => { displayed = await setup.start("key"); });
     assert.ok(displayed); assert.equal(displayed.attemptId, firstAttempt);

@@ -407,7 +407,7 @@ afterEach(_afterEachFixture0);
     finally { database.close(); }
     assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), false);
     const profile = profiles.find(value => value.workspace === p.repoRoot); assert.ok(profile);
-    profile.finish();
+    await profile.finish();
     admissions.set(p.repoRoot, profile.admission);
     assert.equal(boundProfileCredentials(profile.admission).read().revision, 1);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], CLOCK, p.repoRoot);

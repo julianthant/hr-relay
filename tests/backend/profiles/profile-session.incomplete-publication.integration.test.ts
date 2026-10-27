@@ -1,3 +1,4 @@
+import { ProfileVerifierDocumentSchema } from "../../../src/models/profiles/profile.js";
 import { DatabaseSync } from "node:sqlite";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
 import { initialSettingsFileRecord } from "../../../src/models/config/settings.js";
@@ -25,7 +26,6 @@ import { acquireEntrypointAdmission } from "../../../src/backend/storage/admissi
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { composeProfileRuntime } from "../../../src/backend/app/composition/storage-compose.js";
-import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
@@ -47,7 +47,7 @@ it("withdraws only the historical incomplete publication into a same-key private
   assert.throws(() => readonly.assertWritable()); assert.throws(() => readonly.assertProfileRuntime()); assert.throws(() => readonly.assertCredentialRead()); readonly.release();
   await machine.reclassifyIncompleteProfileAsDraft(f.profileId);
   assert.equal(machine.readProfileRegistry().profiles.length, 0); assert.equal(machine.readProfileRegistry().activeProfileId, null);
-  assert.equal(JSON.parse(readFileSync(f.verifierPath, "utf8")).profiles.length, 0);
+  assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(f.verifierPath, "utf8"))).profiles.length, 0);
   assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true); assert.equal(readFileSync(f.databasePath).equals(f.databaseBytes), true); assert.equal(readFileSync(f.protectedPath).equals(f.protectedBytes), true);
   const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(f.operationPath, "utf8")));
   assert.equal(operation.operationId, f.operation.operationId); assert.equal(operation.commandId, f.operation.commandId); assert.equal(operation.writeId, f.operation.writeId);
@@ -82,7 +82,7 @@ for (const boundary of ["intent", "operation", "verifier", "registry", "continui
     finally { renameSpy.mockRestore(); unlinkSpy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(fired, true); machine.release();
     const recovered = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root);
-    assert.equal(recovered.readProfileRegistry().profiles.length, 0); assert.equal(JSON.parse(readFileSync(f.verifierPath, "utf8")).profiles.length, 0);
+    assert.equal(recovered.readProfileRegistry().profiles.length, 0); assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(f.verifierPath, "utf8"))).profiles.length, 0);
     assert.equal(SignUpOperationSchema.parse(JSON.parse(readFileSync(f.operationPath, "utf8"))).profileId, f.profileId);
     assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true); assert.equal(readFileSync(f.databasePath).equals(f.databaseBytes), true); assert.equal(readFileSync(f.protectedPath).equals(f.protectedBytes), true);
     assert.equal(existsSync(intentPath), false); recovered.release(); await f.close();
@@ -167,7 +167,7 @@ function seedClosedHistoricalActivity(f: Awaited<ReturnType<typeof historicalPre
     if (kind === "unknown") {
       const attempt = WriteAttemptRecordSchema.parse({ ...fixture.attempt, outcome: { state: "parked", code: "unknown", message: "Historical outcome remains unknown", authorityReason: reason } });
       raw.prepare("INSERT INTO write_intents (id,system,idempotency_key,idempotency_key_digest,status,generation,run_id,payload_json,publication_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,NULL,?,?)")
-        .run(intent.writeIntentId, intent.system, intent.idempotencyKey, intent.idempotencyKeyDigest, intent.status, intent.generation, intent.runId,
+        .run(intent.writeIntentId, intent.system, intent.idempotencyKey, intent.idempotencyKeyDigest, intent.status, intent.generation, runId,
           canonicalJsonStringify(intent), intent.createdAt, intent.updatedAt);
       raw.prepare("INSERT INTO write_attempts (id,intent_id,generation,run_id,payload_json,created_at) VALUES (?,?,?,?,?,?)")
         .run(attempt.writeAttemptId, attempt.writeIntentId, attempt.generation, attempt.runId, canonicalJsonStringify(attempt), attempt.recordedAt);

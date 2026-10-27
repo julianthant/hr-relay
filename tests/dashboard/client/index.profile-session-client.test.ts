@@ -1,3 +1,4 @@
+import { z } from "zod";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
@@ -23,7 +24,7 @@ it("keeps onboarding commands in the canonical transport with validated scoped b
   const operationId = "00000000-0000-4000-8000-000000000001", attemptId = "00000000-0000-4000-8000-000000000002";
   const calls: { path: string; body: unknown }[] = [];
   const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async (url, init) => {
-    calls.push({ path: new URL(url).pathname, body: JSON.parse(String(init?.body)) });
+    calls.push({ path: new URL(url).pathname, body: JSON.parse(z.string().parse(init?.body)) });
     return Response.json({ state: "signed-out" });
   } });
   await client.startProfileOnboardingDuo({ operationId, method: "key" });

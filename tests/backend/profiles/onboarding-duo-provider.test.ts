@@ -1,3 +1,4 @@
+import { z } from "zod";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync, realpathSync, unlinkSync, symlinkSync, linkSync } from "node:fs";
@@ -61,7 +62,7 @@ function world(method: "key" | "touch" = "key") {
       assert.equal(readFileSync(join(input.extensionDirectory, "LICENSE"), "utf8"), "synthetic license fixture");
       assert.equal(readFileSync(join(input.extensionDirectory, "THIRD_PARTY_NOTICES.md"), "utf8"), "synthetic notices fixture");
       assert.equal(input.headless, false);
-      const preferences = JSON.parse(readFileSync(join(profile, "Default", "Preferences"), "utf8"));
+      const preferences = z.strictObject({ credentials_enable_service: z.boolean(), profile: z.strictObject({ password_manager_enabled: z.boolean() }) }).parse(JSON.parse(readFileSync(join(profile, "Default", "Preferences"), "utf8")));
       assert.equal(preferences.credentials_enable_service, false);
       assert.equal(preferences.profile.password_manager_enabled, false);
       return context;

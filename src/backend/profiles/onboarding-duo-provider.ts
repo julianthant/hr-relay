@@ -110,34 +110,36 @@ function stageRelayExtension(sourceRoot: string, destination: string): void {
 
 export function createProfileOnboardingDuoProvider(options: OnboardingDuoProviderOptions): ProfileOnboardingDuoProvider {
   const browserLauncher = options.launcher ?? launcher;
-  const observe = browserLauncher.observeProcess ?? observeOwnedProcess;
-  let active: {
+  const observe = browserLauncher.observeProcess?.bind(browserLauncher) ?? observeOwnedProcess;
+  type ProviderSession = {
     attempt: DraftDuoAttempt; profileDirectory: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
     capability?: DraftDuoCapability; credentialId?: string; requestId?: string; accepted: boolean; revoked: boolean;
     contextClosed: boolean; launchStarted: boolean; process?: ReturnType<typeof observe>; startup?: Promise<void>; pump?: Promise<void>;
     reportFailure: (error: Error) => Promise<void>; reporting?: Promise<void>; failure?: ProfileOnboardingDuoProviderError; retentionFailed?: boolean; expiry?: ReturnType<typeof setTimeout>; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
   };
 
-  function current(session: NonNullable<typeof active>): void {
+  let active: ProviderSession | undefined;
+
+  function current(session: ProviderSession): void {
     if (active !== session || session.revoked || options.clock.nowMs() >= Date.parse(session.attempt.expiresAt)) throw new ProfileOnboardingDuoProviderError("refused", "revoked");
     session.capability?.assertCurrent();
   }
 
-  async function observedCurrent(session: NonNullable<typeof active>): Promise<void> {
+  async function observedCurrent(session: ProviderSession): Promise<void> {
     current(session);
     if (!session.worker) throw new ProfileOnboardingDuoProviderError("unknown", "scope");
     await workerCall(session.worker, "assertContext");
     current(session);
   }
 
-  async function scoped<T>(session: NonNullable<typeof active>, operation: () => Promise<T>): Promise<T> {
+  async function scoped<T>(session: ProviderSession, operation: () => Promise<T>): Promise<T> {
     await observedCurrent(session);
     const result = await operation();
     await observedCurrent(session);
     return result;
   }
 
-  async function dispatch(session: NonNullable<typeof active>, request: BrokerRequest): Promise<unknown> {
+  async function dispatch(session: ProviderSession, request: BrokerRequest): Promise<unknown> {
     current(session);
     if (request.kind === "bind") throw new ProfileOnboardingDuoProviderError("refused", "scope");
     const capability = session.capability;
@@ -159,7 +161,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (!Number.isSafeInteger(reservation.count) || reservation.count <= provisioned.highWater || reservation.count >= 0xffffffff) throw new ProfileOnboardingDuoProviderError("unknown", "counter");
       return reservation;
     }
-    if (request.kind === "native-failed" || request.kind === "scope-lost") throw new ProfileOnboardingDuoProviderError("unknown", "provider");
+    if (!("credentialId" in request.data)) throw new ProfileOnboardingDuoProviderError("unknown", "provider");
     const { credentialId, requestId } = request.data;
     if (request.kind === "software-created" || request.kind === "native-created") {
       const native = request.kind === "native-created";
@@ -178,7 +180,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     return { observed: true };
   }
 
-  function reportFailure(session: NonNullable<typeof active>, error: unknown): Promise<void> {
+  function reportFailure(session: ProviderSession, error: unknown): Promise<void> {
     if (session.reporting) return session.reporting;
     session.revoked = true;
     clearTimeout(session.expiry);
@@ -197,7 +199,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     return session.reporting;
   }
 
-  async function close(session: NonNullable<typeof active>): Promise<Readonly<{ state: "closed" | "uncertain" }>> {
+  async function close(session: ProviderSession): Promise<Readonly<{ state: "closed" | "uncertain" }>> {
     if (session.close) return session.close;
     session.revoked = true;
     clearTimeout(session.expiry);
@@ -254,7 +256,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         const root = lstatSync(options.browserRoot);
         if (!root.isDirectory() || root.isSymbolicLink() || root.uid !== process.getuid?.() || (root.mode & 0o077) !== 0) throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root");
       } catch (error) { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root", error); }
-      const session: NonNullable<typeof active> = { attempt, profileDirectory: mkdtempSync(join(options.browserRoot, "onboarding-")),
+      const session: ProviderSession = { attempt, profileDirectory: mkdtempSync(join(options.browserRoot, "onboarding-")),
         reportFailure: onFailure, accepted: false, revoked: false, contextClosed: false, launchStarted: false };
       active = session;
       session.startup = (async () => {
@@ -332,7 +334,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         await reportFailure(session, error instanceof ProfileOnboardingDuoProviderError ? error
           : new ProfileOnboardingDuoProviderError(session.launchStarted ? "unknown" : "unavailable", "provider", error));
         await close(session);
-        throw session.failure;
+        throw session.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider", error);
       }
     },
     async cancel(attempt: DraftDuoAttempt): Promise<Readonly<{ state: "closed" | "uncertain" }>> {
@@ -340,7 +342,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (canonicalJsonStringify(active.attempt) !== canonicalJsonStringify(attempt)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
       const session = active;
       const result = await close(session);
-      if (result.state === "uncertain" && session.failure) throw session.failure;
+      if (result.state === "uncertain" && session.failure) throw session.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider", error);
       return result;
     },
   });

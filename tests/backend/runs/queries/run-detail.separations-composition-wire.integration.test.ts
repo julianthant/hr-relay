@@ -78,10 +78,10 @@ const { plan } = createSeparationStartFixtures(openDatabase, CLOCK);
 
 describe("separations — start planning through the existing service", () => {
 
-  it("gives an explicit re-read its OWN item, which is §'the re-run wall' item 2's whole point", () => {
+  it("gives an explicit re-read its OWN item, which is §'the re-run wall' item 2's whole point", async () => {
     try {
     // Checkpoint keys omit run id, so repeated runs can replay the same item node evidence.
-    const planned = plan([
+    const planned = await plan([
       SUBMISSION,
       { ...SUBMISSION, reRead: { ordinal: 1, reason: "the department corrected the last day worked" } },
     ]);
@@ -92,7 +92,7 @@ describe("separations — start planning through the existing service", () => {
   } catch (error) { throw retainWireFailure(error); }
   });
 
-  it("dry-run stops at the first transaction node", () => {
+  it("dry-run stops at the first transaction node", async () => {
     try {
     const support = workflowDryRunSupport(separationsDescriptor);
     assert.deepEqual(support, { state: "supported", stopsAt: "clear-pending" });
@@ -107,7 +107,7 @@ describe("separations — start planning through the existing service", () => {
         String(node.id),
       );
     }
-    assert.equal(plan([SUBMISSION], true).planned.length, 1);
+    assert.equal((await plan([SUBMISSION], true)).planned.length, 1);
   } catch (error) { throw retainWireFailure(error); }
   });
 });

@@ -219,7 +219,7 @@ it("publishes ready only from an exact actual credential witness and rechecks po
     const original = path + ".held";
     const store = createCredentialStore({ admission: setup, stateRoot: setup.stateRoot, erasureJournalAdmission: f.machine,
       erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${draft.profileId}.json`) });
-    const publish = RuntimeAdmission.prototype.publishProfileRegistration;
+    const publish = RuntimeAdmission.prototype.publishProfileRegistration.bind(f.machine);
     const changed = vi.spyOn(RuntimeAdmission.prototype, "publishProfileRegistration").mockImplementation(function(this: RuntimeAdmission, operation, witness, verifier) {
       if (this === f.machine) {
         const request = ProtectedSettingsApplyInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
@@ -228,12 +228,13 @@ it("publishes ready only from an exact actual credential witness and rechecks po
           entries: { ucpathUserId: { set: f.fields.email }, ucpathPassword: { set: f.fields.password },
             timekeeperName: { set: deriveProfileNames(f.fields.firstName, f.fields.lastName).timekeeperName } } });
         assert.throws(() => captureCommittedCredentialReplay({ ...store }, request), /profile-signup-credential-store-unissued/u);
-        assert.throws(() => publish.call(this, operation, { ...witness }, verifier), /profile-signup-receipt-mismatch/u);
-        assert.throws(() => publish.call(this, { ...operation, writeId: randomUUID() }, witness, verifier), /profile-signup-intent-mismatch/u);
+        assert.throws(() => publish( operation, { ...witness }, verifier), /profile-signup-receipt-mismatch/u);
+        assert.throws(() => publish( { ...operation, writeId: randomUUID() }, witness, verifier), /profile-signup-intent-mismatch/u);
         renameSync(path, original);
         writeFileSync(path, readFileSync(original), { mode: 0o600 });
       }
-      return publish.call(this, operation, witness, verifier);
+      assert.equal(this, f.machine);
+      return publish(operation, witness, verifier);
     });
     try {
       await assert.rejects(f.session.completeOnboarding(draft.token, draft.operationId), /profile-signup-database-changed/u);

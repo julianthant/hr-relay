@@ -139,14 +139,14 @@ export function ensureChildDirectory(
 }
 
 interface PrivateFileOptions {
-  readonly label: "protected.json" | "lock" | "ChatGPT" | "Duo credential" | "erasure journal";
+  readonly label: "protected.json" | "lock" | "ChatGPT" | "Duo credential" | "erasure journal" | "authority database";
   readonly maxBytes: number;
   readonly allowedLinkCounts?: readonly number[];
 }
 
 export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: DirectoryIdentity; stat: Stats } | undefined {
   const { label, maxBytes, allowedLinkCounts = [1] } = options;
-  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential" || label === "erasure journal";
+  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || label === "authority database";
   const unavailable = lock ? "directory-integrity: credential lock is unavailable" : `credential store ${label} is unavailable`;
   const invalid = lock ? "directory-integrity: credential lock permissions or identity are invalid" : `directory-integrity: ${label} permissions or identity are invalid`;
   let pathStatus;

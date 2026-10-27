@@ -149,7 +149,7 @@ it("returning to Details requires confirmed draft cancellation", async () => {
     async cancel() { cancelled++; return allow ? { state: "signed-out" } : { state: "refused", code: "PROFILE_TRANSITION_BLOCKED" }; } };
   const transitions: OnboardingStep[] = [];
   const props = { port, step: "duo" as const, onStep(step: OnboardingStep) { transitions.push(step); }, onDashboard() { throw new Error("early dashboard"); } };
-  const details = () => { const buttons = host.querySelectorAll<HTMLButtonElement>("ol button"); assert.equal(buttons.length, 3); return buttons[0]!; };
+  const details = () => { const buttons = host.querySelectorAll<HTMLButtonElement>("ol button"); assert.equal(buttons.length, 3); return buttons[0]; };
   try {
     await act(async () => root.render(createElement(Onboarding, props)));
     await act(async () => details().click());
@@ -175,7 +175,7 @@ it("the served consent dialog closes when its displayed attempt is replaced", as
   try {
     await act(async () => root.render(createElement(OnboardingSetup, { page: "duo", port })));
     const buttons = host.querySelectorAll<HTMLButtonElement>("section button"); assert.equal(buttons.length, 2);
-    await act(async () => buttons[0]!.click());
+    await act(async () => buttons[0].click());
     assert.ok(document.querySelector('[role="dialog"]'));
     await act(async () => root.render(createElement(OnboardingSetup, { page: "duo", port: { ...port, onboarding: { ...draft,
       methods: { ...draft.methods, key: { ...draft.methods.key, attemptId: "00000000-0000-4000-8000-000000000004" } } } } })));

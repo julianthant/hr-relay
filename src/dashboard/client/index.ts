@@ -47,7 +47,7 @@ export function createDashboardClient(input: Readonly<{
   const transport = createDashboardTransport(input);
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
-  const client: DashboardClient = Object.freeze({
+  const client: DashboardClient = Object.freeze<DashboardClient>({
     async readProfileSession() {
       return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/state")).body);
     },

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { z } from "zod";
 import { DuoEnrollmentScopeSchema } from "../../models/config/duo-credential-store.js";
 import { assertFinishedProfileOnboarding, type SignUpDuoAttempt, type SignUpOperation } from "../../models/profiles/profile.js";
@@ -81,7 +82,7 @@ export function createProfileOnboarding(input: {
         return { operation: { ...operation, onboarding: { ...draft, attempts: draft.attempts.map(entry => entry.attemptId === attempt.attemptId
           ? { ...entry, state: kind === "unknown" ? "unknown" as const : "closed" as const } : entry) } }, result: undefined };
       });
-    } catch (failure) { retainedFailures.push(error, failure); throw new AggregateError([error, failure], "profile-onboarding-failure-retention-unproved"); }
+    } catch (failure) { retainedFailures.push(error, failure); throw new AggregateError([error, failure], "profile-onboarding-failure-retention-unproved", { cause: failure }); }
     const lease = leases.get(attempt.attemptId); if (lease !== undefined) lease.revoked = true;
   }
   async function bind(attempt: DraftDuoAttempt, observed: DraftDuoObservedContext): Promise<DraftDuoCapability> {
@@ -96,7 +97,7 @@ export function createProfileOnboarding(input: {
     const assertCurrent = () => { const latest = current(attempt).receipt;
       if (JSON.stringify(latest.scope) !== JSON.stringify(scope)) return unavailable();
     };
-    const capability: DraftDuoCapability = Object.freeze({ attempt, scope, assertCurrent,
+    const capability: DraftDuoCapability = Object.freeze<DraftDuoCapability>({ attempt, scope, assertCurrent,
       async persistPending(credential) {
         assertCurrent(); if (attempt.method !== "key") return unavailable();
         const latest = current(attempt).operation;
@@ -168,7 +169,7 @@ export function createProfileOnboarding(input: {
         const attempt: DraftDuoAttempt = Object.freeze({ operationId, profileId: operation.profileId, accountId: draft.accountId,
           generation: draft.generation, attemptId: randomUUID(), method, expiresAt: new Date(input.clock.nowMs() + 600_000).toISOString() });
         return { operation: { ...operation, onboarding: { ...draft, attempts: [...draft.attempts, {
-          attemptId: attempt.attemptId, generation: attempt.generation, method, expiresAt: attempt.expiresAt, state: "pending" as const }] } }, result: attempt };
+          attemptId: attempt.attemptId, generation: attempt.generation, method, expiresAt: IsoInstantSchema.parse(attempt.expiresAt), state: "pending" as const }] } }, result: attempt };
       });
       leases.set(attempt.attemptId, { revoked: false, closed: false, attempt });
       try { await provider.start(attempt, observed => bind(attempt, observed), error => reportFailure(attempt, error)); }
@@ -178,16 +179,16 @@ export function createProfileOnboarding(input: {
         try { await owner.cancelAttempt(operationId, method, attempt.attemptId); }
         catch (cleanup) {
           retainedFailures.push(error, cleanup);
-          throw new AggregateError([error, cleanup], "profile-onboarding-provider-closure-unproved");
+          throw new AggregateError([error, cleanup], "profile-onboarding-provider-closure-unproved", { cause: cleanup });
         }
-        if (error instanceof Error && input.failureKind(error) === "unavailable") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-        if (error instanceof Error && input.failureKind(error) === "refused") throw new ProfileSessionRefusedError("PROFILE_SIGN_IN_REFUSED");
+        if (error instanceof Error && input.failureKind(error) === "unavailable") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE", { cause: error });
+        if (error instanceof Error && input.failureKind(error) === "refused") throw new ProfileSessionRefusedError("PROFILE_SIGN_IN_REFUSED", { cause: error });
         throw error;
       }
     },
     confirm(operationId: string, method: ProfileOnboardingMethod, attemptId: string): void {
       const lease = leases.get(attemptId); if (lease === undefined || lease.attempt.operationId !== operationId || lease.attempt.method !== method) return unavailable();
-      updateAttempt(lease.attempt, (_operation, receipt) => ({ receipt: { ...receipt, operatorConfirmedAt: input.clock.now().toISOString() }, result: undefined }));
+      updateAttempt(lease.attempt, (_operation, receipt) => ({ receipt: { ...receipt, operatorConfirmedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) }, result: undefined }));
       settleAttempt(lease.attempt);
     },
     async cancelAttempt(operationId: string, method: ProfileOnboardingMethod, attemptId: string): Promise<void> {
@@ -204,7 +205,7 @@ export function createProfileOnboarding(input: {
         return { operation: { ...latest, onboarding: { ...current, attempts: current.attempts.map(entry => {
           if (entry.attemptId !== attemptId) return entry;
           if (closure.state !== "closed" || entry.state === "unknown" || entry.scope !== undefined && entry.state !== "complete") return { ...entry, state: "unknown" as const };
-          return { ...entry, state: entry.state === "complete" ? "complete" as const : "closed" as const, providerClosedAt: input.clock.now().toISOString() };
+          return { ...entry, state: entry.state === "complete" ? "complete" as const : "closed" as const, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) };
         }) } }, result: undefined };
       });
       if (closure.state !== "closed") return unavailable();
@@ -224,7 +225,7 @@ export function createProfileOnboarding(input: {
         input.update(operationId, latest => { const current = requiredDraft(latest);
           if (current.generation !== draft.generation) return unavailable();
           return { operation: { ...latest, onboarding: { ...current, attempts: current.attempts.map(entry => entry.attemptId === receipt.attemptId
-            ? { ...entry, providerClosedAt: input.clock.now().toISOString() } : entry) } }, result: undefined };
+            ? { ...entry, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) } : entry) } }, result: undefined };
         });
       }
     },

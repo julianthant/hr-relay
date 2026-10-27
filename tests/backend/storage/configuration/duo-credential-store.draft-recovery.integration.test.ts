@@ -1,3 +1,4 @@
+import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { execFileSync, fork, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
@@ -134,7 +135,7 @@ for (const boundary of ["source", "journal", "erase", "intent", "source-unlink",
     }
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(keyPath), false); assert.equal(existsSync(intentPath), false);
     assert.equal(existsSync(protectedPath), true);
-    assert.equal(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "profile-verifiers.json"), "utf8")).profiles.length, 0);
+    assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true });
   });
 }
@@ -167,7 +168,7 @@ async function readyFixture() {
   }
   assert.equal(f.profile.session.readOnboarding(f.draft.token, f.draft.operationId).step, "ready");
   assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
-  assert.equal(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "profile-verifiers.json"), "utf8")).profiles.length, 0);
+  assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
   return f;
 }
 
@@ -203,7 +204,7 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
       processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
     const published = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId);
     if (published === undefined) {
-      assert.equal(JSON.parse(readFileSync(verifierPath, "utf8")).profiles.length, 0);
+      assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 0);
       const resumed = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
         password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
       if (resumed.state !== "onboarding") throw new Error("fixture genuine Finish resume required");
@@ -215,7 +216,7 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
     }
     const row = machine.readProfileRegistry().profiles.find(entry => entry.profileId === f.draft.profileId);
     assert.equal(row?.registration.onboardingCompletion?.finishId, finishId);
-    assert.equal(JSON.parse(readFileSync(verifierPath, "utf8")).profiles.length, 1);
+    assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 1);
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(intentPath), false);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true });
   });
@@ -295,7 +296,7 @@ for (const boundary of ["source-fsync", "protected-stage"] as const) {
     const processRow = execFileSync("/bin/ps", ["-p", String(ready.pid), "-o", "pid=,ppid=,pgid="], { encoding: "utf8" }).trim().split(/\s+/u).map(Number);
     assert.deepEqual(processRow, [ready.pid, process.pid, ready.pid]);
     child.send("cancel");
-    const [code, signal] = await closed; assert.equal(code, 97); assert.equal(signal, null); assert.equal(child.connected, false); assert.equal(stderrBytes, 0);
+    const [code, signal] = z.tuple([z.number().nullable(), z.string().nullable()]).parse(await closed); assert.equal(code, 97); assert.equal(signal, null); assert.equal(child.connected, false); assert.equal(stderrBytes, 0);
     const proof = z.object({ boundary: z.literal(boundary), pid: z.number(), identity: ProcessStartIdentitySchema }).parse(JSON.parse(readFileSync(join(f.root, "onboarding-process-loss.json"), "utf8")));
     assert.equal(proof.pid, ready.pid); assert.deepEqual(proof.identity, identity.identity); assert.equal(observeProcessIdentity(ready.pid).state, "gone");
     const groups = execFileSync("/bin/ps", ["-axo", "pgid="], { encoding: "utf8" }).trim().split(/\s+/u);

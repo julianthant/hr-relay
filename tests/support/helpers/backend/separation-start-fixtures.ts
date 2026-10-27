@@ -15,10 +15,10 @@ import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 
 import type { Clock } from "../../../../src/rules/time/clock.js";
 
-export function createSeparationStartFixtures(openDatabase: () => AuthorityDatabase, CLOCK: Clock) {
-  function plan(submissions: readonly unknown[], dryRun = false) {
+export function createSeparationStartFixtures(openDatabase: () => Promise<AuthorityDatabase>, CLOCK: Clock) {
+  async function plan(submissions: readonly unknown[], dryRun = false) {
     return planStart(
-      { protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }), authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000 },
+      { protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }), authority: await openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000 },
       {
         descriptor: separationsDescriptor,
         submissions,

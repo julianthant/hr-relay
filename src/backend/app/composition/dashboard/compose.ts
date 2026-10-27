@@ -1283,10 +1283,11 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   });
   app.post("/api/v1/profile/onboarding/complete", async c => {
     const request = CompleteProfileOnboardingRequestSchema.parse(await c.req.json());
-    if (selection !== undefined && completedDraft?.operationId === request.operationId && cookieOf(c.req.raw, onboardingCookieName) === completedDraft.sessionId) {
-      c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
-      return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: selection.profileId, epoch: selection.epoch,
-        duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === selection.profileId)?.duoState }));
+    const completedSelection = selection;
+    if (completedSelection !== undefined && completedDraft?.operationId === request.operationId && cookieOf(c.req.raw, onboardingCookieName) === completedDraft.sessionId) {
+      c.header("set-cookie", `${cookieName}=${completedSelection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+      return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: completedSelection.profileId, epoch: completedSelection.epoch,
+        duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === completedSelection.profileId)?.duoState }));
     }
     const draft = currentOnboarding(c.req.raw, request.operationId);
     transitioning = true;
