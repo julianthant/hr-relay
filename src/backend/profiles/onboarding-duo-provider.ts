@@ -300,13 +300,13 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
                 await observedCurrent(session);
                 const capability = await bindObservedContext({ contextId: request.data.documentId, tabId: request.data.tabId, accountName: request.data.username,
                   origin: request.data.origin, rpId: request.data.rpId });
-                await observedCurrent(session);
                 if (canonicalJsonStringify(capability.attempt) !== canonicalJsonStringify(attempt)
                   || capability.scope.contextId !== request.data.documentId || capability.scope.tabId !== request.data.tabId
                   || capability.scope.accountId !== attempt.accountId || capability.scope.origin !== request.data.origin
                   || capability.scope.rpId !== request.data.rpId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
                 capability.assertCurrent();
                 session.capability = capability;
+                await observedCurrent(session);
                 result = { accountId: attempt.accountId };
               } else result = await dispatch(session, request);
               await observedCurrent(session);
