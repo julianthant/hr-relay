@@ -242,7 +242,7 @@ export async function verifyShellCommandEffect(
       || !reply.affectedTargets.some(target => target.family === "run" && target.runId === request.target.runId)
       || !reply.affectedTargets.some(target => target.family === "worker-browser" && target.workerId === request.target.workerId)) return mismatch(reply);
     const detail = await client.runDetail(request.target.runId);
-    if (detail.runId !== request.target.runId || detail.rowRevision !== request.target.runVersion || detail.header.traceId !== request.target.traceId || detail.header.attempt !== request.target.runAttempt
+    if (detail.runId !== request.target.runId || detail.rowRevision.valueOf() !== request.target.runVersion.valueOf() || detail.header.traceId !== request.target.traceId || detail.header.attempt !== request.target.runAttempt
       || detail.header.workflowId !== request.target.workflowId || !detail.availableSections.includes("parked-write")) return mismatch(detail);
     const section = await client.runSection(request.target.runId, "parked-write");
     if (section.section !== "parked-write") return mismatch(section);

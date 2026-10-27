@@ -441,7 +441,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const request = useMemo(() => ({ client, runId: row.runId, revision: row.rowRevision, day: binding?.authority.day, selection: { row, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
     epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state,
     dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
-  [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.scope.actorId, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
+  [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
   [client, row.runId, binding?.authority.day, binding?.authority.epoch, binding?.authority.dayState.request, binding?.scope]);
@@ -538,7 +538,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     if (parked?.section === "parked-write" && parked.payload.writeIntentId === id) {
       const write = parked.payload;
       if (action.id !== "parked-check" || write.check?.state !== "available" || write.check.target.runId !== row.runId
-        || write.check.target.runVersion !== row.rowRevision || write.check.target.runAttempt !== row.attempt
+        || write.check.target.runVersion.valueOf() !== row.rowRevision.valueOf() || write.check.target.runAttempt !== row.attempt
         || write.check.target.traceId !== row.traceId || write.runId !== row.runId || write.runAttempt !== row.attempt) return;
       dispatch(CommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId,
         source: "run-detail", family: "worker-browser", type: "check-parked-write", target: write.check.target }));
@@ -548,10 +548,10 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     if (failed?.section === "failure" && failed.payload.state === "available" && failed.payload.value.failureId === id) {
       const failure = failed.payload.value;
       const text = KualiDocumentNumberSchema.safeParse(answer.text?.trim());
-      if (rerun !== undefined && row.status === "failed" && failure.rerunInput?.field === "documentNumber" && failure.rerunInput.expectedVersion === row.rowRevision
+      if (rerun !== undefined && row.status === "failed" && failure.rerunInput?.field === "documentNumber" && failure.rerunInput.expectedVersion.valueOf() === row.rowRevision.valueOf()
         && failure.runId === row.runId && failure.traceId === row.traceId && failure.attempt === row.attempt
         && failure.writeState === "not-attempted" && action.id === `${failure.failureId}:documentNumber` && text.success) {
-        rerun({ runId: row.runId, expectedVersion: row.rowRevision, label: row.title, traceId: String(row.traceId) }, text.data);
+        rerun({ runId: row.runId, expectedVersion: failure.rerunInput.expectedVersion, label: row.title, traceId: String(row.traceId) }, text.data);
       }
       return;
     }
@@ -579,7 +579,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     && attempt.scope.client === binding.scope.client && attempt.scope.authority === binding.scope.authority && attempt.scope.dayRequest === binding.scope.dayRequest);
   const retained = (newest?.request.family === "gate" || newest?.request.family === "worker-browser" && newest.request.type === "check-parked-write") && (newest.state === "pending" || newest.outcome?.kind === "uncertain"
     || (newest.outcome?.kind === "refused" && matchesGate(newest.request))) ? newest : undefined;
-  const retainedEnvelope = retained?.request;
+  const retainedEnvelope = retained?.request.family === "gate" || retained?.request.family === "worker-browser" && retained.request.type === "check-parked-write"
+    ? retained.request : undefined;
   const retainedState = retained === undefined ? undefined : retained.state === "pending" ? "pending" : retained.outcome?.kind === "refused" ? "refused" : "uncertain";
   const retainedFeedback = retained?.outcome?.kind === "uncertain" || retained?.outcome?.kind === "refused" ? retained.outcome.feedback.text : undefined;
   const retainedCommand = useMemo(() => retainedEnvelope === undefined || retainedState === undefined ? undefined

@@ -41,8 +41,8 @@ describe("THE run/queue projection", () => {
       expiresAt: instantOffsetOf(0, 180_000), basisVersion: 2, phase: { state: "succeeded", startedAt: at, completedAt: at,
         acknowledgement: { kind: "parked-write-check", result, evidence: { schemaHash: HASH_A, value: { privateEvidence: "PRIVATE_PROBE_CANARY" } } } } });
     w.authority.workerControls = () => [control];
-    w.projection.rebuild();
-    const day = w.projection.day(DAY), observed = day.workerOperations[0];
+    w.projection.rebuildFromTimeline();
+    const day = w.projection.buildDashboardDayWire(DAY), observed = day.workerOperations[0];
     assert.equal(observed.phase.state, "succeeded");
     if (observed.phase.state !== "succeeded" || observed.phase.acknowledgement.kind !== "parked-write-check") throw new Error("held check result absent");
     assert.equal(observed.phase.acknowledgement.result.held, true);

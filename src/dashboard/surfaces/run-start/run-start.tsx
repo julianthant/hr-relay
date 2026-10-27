@@ -1034,6 +1034,7 @@ export function RunStartSurfaces({
   onOpenIntake,
   onCloseAutoFocus,
   rerunSource,
+  rerunInputText,
   previewLaunch,
   previewRuns,
   onSubmitPreview,
@@ -1047,6 +1048,7 @@ export function RunStartSurfaces({
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
+  rerunInputText?: string;
   previewLaunch?: Readonly<{ workflowId: MockWorkflowId; source?: MockRun }>;
   previewRuns?: readonly MockRun[];
   onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
@@ -1062,6 +1064,7 @@ export function RunStartSurfaces({
       onOpenIntake={onOpenIntake}
       onCloseAutoFocus={onCloseAutoFocus}
       rerunSource={rerunSource}
+      rerunInputText={rerunInputText}
       previewLaunch={previewLaunch}
       previewRuns={previewRuns}
       onSubmitPreview={onSubmitPreview}

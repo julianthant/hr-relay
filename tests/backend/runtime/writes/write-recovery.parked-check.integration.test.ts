@@ -66,6 +66,7 @@ async function fixture(rows: number) {
     generation: 1, runId: run.envelope.runId, runAttempt: run.envelope.attempt, bindingProof: proof, bindingProofDigest: deriveWriteBindingProofDigest(proof),
     fencedAt: NOW, version: 1, createdAt: NOW, updatedAt: NOW, status: "parked", parkedCode: "unknown", message: "Synthetic unknown write",
     authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "synthetic") });
+  assert.ok(intent.status === "parked");
   const attempt = WriteAttemptRecordSchema.parse({ writeAttemptId: UUID_5, writeIntentId: UUID_8, generation: 1, runId: run.envelope.runId,
     runAttempt: run.envelope.attempt, leaseId: UUID_6, bindingProof: proof, bindingProofDigest: intent.bindingProofDigest, fencedAt: NOW,
     outcome: { state: "parked", code: "unknown", message: "Synthetic unknown write", authorityReason: intent.authorityReason }, recordedAt: NOW });
@@ -97,6 +98,29 @@ async function fixture(rows: number) {
 }
 
 describe("held-only parked write checks", () => {
+  it("preserves channel Error identity and non-Error causes without changing held authority", async () => {
+    const failures: readonly unknown[] = [new Error("synthetic-channel-scheduler-failure"), { code: "synthetic-non-error" }];
+    for (const failure of failures) {
+      const h = await fixture(1);
+      const request = CommandRequestSchema.parse({ commandId: UUID_7, requestedAt: NOW, requestedBy: "local-operator", source: "run-detail",
+        family: "worker-browser", type: "check-parked-write", target: h.input.target });
+      h.database.withAuthorityTransaction(r => {
+        r.commands.insert(request);
+        r.workerControls.admit({ commandId: request.commandId, request, scope: "worker-pool:separations", executorId: UUID_6,
+          admittedAt: NOW, expiresAt: new Date(h.clock.nowMs() + 180_000).toISOString(), basisVersion: 1, phase: { state: "admitted" } });
+      });
+      const before = canonicalJsonStringify([h.run, h.intent, h.attempt]);
+      const channel = createWorkerBrowserChannel({ database: h.database, clock: h.clock, scheduler: { schedule: () => { throw failure; } } });
+      await assert.rejects(channel.check(request.commandId), error => {
+        assert.ok(error instanceof Error);
+        if (failure instanceof Error) assert.equal(error, failure);
+        else { assert.equal(error.message, "parked-check-channel-failed"); assert.equal(error.cause, failure); }
+        return true;
+      });
+      assert.equal(canonicalJsonStringify([h.run, h.intent, h.attempt]), before);
+      assert.deepEqual(h.events, []);
+    }
+  });
   for (const scenario of ["deadline", "late-rejection", "expiry", "stop", "closure"] as const) it(`retains the actual registered read through ${scenario} until callback settlement`, async () => {
     const h = await fixture(1), scheduler = new ManualScheduler(h.clock), controller = new AbortController();
     let resolveRead!: () => void, rejectRead!: (error: Error) => void;

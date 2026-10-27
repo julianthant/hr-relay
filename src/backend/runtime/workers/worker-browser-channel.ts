@@ -38,7 +38,7 @@ export function createWorkerBrowserChannel(input: Readonly<{
             throw new WorkerControlRefusal("worker-control-expired-before-effect");
           }
           input.scheduler.schedule(Math.min(deadline, input.clock.monotonicMs() + 50), poll);
-        } catch (error) { reject(error); }
+        } catch (error) { reject(error instanceof Error ? error : new Error("parked-check-channel-failed", { cause: error })); }
       };
       poll();
     });
