@@ -53,6 +53,24 @@ function entries(root: string, inventoryPath: string) {
   visit(root); return result;
 }
 
+export function verifyFlatProfileClaimBackup(reference: ExistingDataBackup, workspace: string, installationId: string,
+  profileId: string, operation?: SignUpOperation) {
+  const backup = verifyExistingDataBackupFiles(reference, workspace, installationId);
+  if (backup.sourceStateRoot === undefined) return undefined;
+  const receipt = FlatProfileClaimReceiptSchema.parse(JSON.parse(bytes(join(dirname(reference.backupPath), "flat.json")).toString("utf8")));
+  if (receipt.installationId !== installationId || receipt.profileId !== profileId || receipt.operation.profileId !== profileId || backup.profileId !== profileId
+    || receipt.sourceStateRoot !== backup.sourceStateRoot || canonicalJsonStringify(receipt.operation.ownerClaim) !== canonicalJsonStringify(reference)) throw new Error("existing-data-flat-receipt-changed");
+  if (operation !== undefined) {
+    const identity = (value: SignUpOperation) => ({ operationId: value.operationId, profileId: value.profileId, commandId: value.commandId,
+      writeId: value.writeId, commandFingerprint: value.commandFingerprint, expectedRevision: value.expectedRevision,
+      firstName: value.firstName, lastName: value.lastName, emailKey: value.emailKey, createdAt: value.createdAt, ownerClaim: value.ownerClaim,
+      mode: value.credentialInitialization?.mode, keyId: value.credentialInitialization?.keyId,
+      source: value.credentialInitialization?.mode === "proven-v2" ? value.credentialInitialization.source : undefined });
+    if (canonicalJsonStringify(identity(operation)) !== canonicalJsonStringify(identity(receipt.operation))) throw new Error("existing-data-flat-operation-changed");
+  }
+  return { backup, receipt };
+}
+
 export function readFlatProfileClaimReceipt(admission: RuntimeAdmission, operation?: SignUpOperation) {
   requireRuntimeAdmission(admission).assertLive();
   const context = admission.readInstallationContext();
@@ -63,20 +81,8 @@ export function readFlatProfileClaimReceipt(admission: RuntimeAdmission, operati
     return { claimId: z.uuid().parse(root.slice(root.lastIndexOf("/") + 1)), backupPath: path, backupDigest: hash(raw) };
   }) : [operation.ownerClaim];
   const receipts = references.flatMap(reference => {
-    const backup = verifyExistingDataBackupFiles(reference, context.workspace, context.locator.installationId);
-    if (backup.sourceStateRoot === undefined) return [];
-    const receipt = FlatProfileClaimReceiptSchema.parse(JSON.parse(bytes(join(dirname(reference.backupPath), "flat.json")).toString("utf8")));
-    if (receipt.installationId !== context.locator.installationId || receipt.profileId !== profileId || backup.profileId !== profileId
-      || receipt.sourceStateRoot !== backup.sourceStateRoot || canonicalJsonStringify(receipt.operation.ownerClaim) !== canonicalJsonStringify(reference)) throw new Error("existing-data-flat-receipt-changed");
-    if (operation !== undefined) {
-      const identity = (value: SignUpOperation) => ({ operationId: value.operationId, profileId: value.profileId, commandId: value.commandId,
-        writeId: value.writeId, commandFingerprint: value.commandFingerprint, expectedRevision: value.expectedRevision,
-        firstName: value.firstName, lastName: value.lastName, emailKey: value.emailKey, createdAt: value.createdAt, ownerClaim: value.ownerClaim,
-        mode: value.credentialInitialization?.mode, keyId: value.credentialInitialization?.keyId,
-        source: value.credentialInitialization?.mode === "proven-v2" ? value.credentialInitialization.source : undefined });
-      if (canonicalJsonStringify(identity(operation)) !== canonicalJsonStringify(identity(receipt.operation))) throw new Error("existing-data-flat-operation-changed");
-    }
-    return [receipt];
+    const verified = verifyFlatProfileClaimBackup(reference, context.workspace, context.locator.installationId, profileId, operation);
+    return verified === undefined ? [] : [verified.receipt];
   });
   if (receipts.length > 1) throw new Error("existing-data-flat-receipt-ambiguous");
   return receipts[0];

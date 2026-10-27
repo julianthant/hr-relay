@@ -1,7 +1,7 @@
 import type { RuntimeAdmission } from "./admission.js";
 import { FlatProfileClaimSchema, FlatProfileClaimReceiptSchema, verifyFlatProfileClaim, settleFlatProfileClaim, type FlatProfileClaimWitness } from "../maintenance/flat-profile-claim.js";
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
-import { observeFlatBackupMutexRecovery, verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup.js";
+import { observeBoundRetainedBackupMutexRecovery, observeFlatBackupMutexRecovery, verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, unpublishedDraftAbortMembership, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
@@ -799,7 +799,7 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   privateDirectory(mutexPath);
   const mutexBefore = lstatSync(mutexPath);
   const allowedControl = new Set(["installation.json", "locator.json", "leases", "admission-mutex",
-    "admission-mutex-recovery", "profile-registry.json", "storage-backups", "device-recertification-receipt.json", RECEIPTS]);
+    "admission-mutex-recovery", "profile-registry.json", "storage-backups", "profile-owner-claims", "device-recertification-receipt.json", RECEIPTS]);
   if (readdirSync(control).some(entry => !allowedControl.has(entry))) fail("unexpected installation control entry");
   const entries = readdirSync(mutexPath);
   const empty = expectedPid === "empty";
@@ -839,10 +839,21 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   const recertificationPath = join(control, "device-recertification-receipt.json");
   const recertification = completedDeviceRecertificationReceipt(control, locator);
   const storageBackups = join(control, "storage-backups");
-  const flatWitness = lstatMaybe(storageBackups) === undefined ? undefined
+  const unbound = lstatMaybe(join(locator.stateRoot, "machine")) === undefined && lstatMaybe(join(control, "profile-registry.json")) === undefined;
+  const flatWitness = lstatMaybe(storageBackups) === undefined || !unbound ? undefined
     : observeFlatBackupMutexRecovery(workspace, locator, restore, acquisitionId);
-  if (flatWitness === undefined) readMachineRegistry(control, locator, false);
+  const registry = flatWitness === undefined ? readMachineRegistry(control, locator, false) : undefined;
   const machineWitness = flatWitness === undefined ? profileObservation(control, locator) : undefined;
+  function observeRetainedBackup(document: ProfileRegistryDocument): string | undefined {
+    if (lstatMaybe(storageBackups) === undefined) {
+      if (lstatMaybe(join(control, "profile-owner-claims")) !== undefined) fail("storage-backup-claim-unowned");
+      return undefined;
+    }
+    const operations = profileOperationInventory(locator.stateRoot).map(entry => readProfileEvidence(
+      join(locator.stateRoot, "machine", "operations", `${entry.operationId}.json`), ProfileOperationSchema));
+    return observeBoundRetainedBackupMutexRecovery(workspace, locator, document, operations, restore);
+  }
+  const retainedWitness = registry === undefined ? undefined : observeRetainedBackup(registry);
   const processLockRoot = fixedLockRoot(workspace);
   const lockSnapshot = observeRuntimeLockSnapshot({ processLockRoot,
     sourceDatabaseIdentity: "0".repeat(64) });
@@ -858,18 +869,20 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
     const currentLocator = readLocator(control, workspace);
     if (canonicalJsonStringify(currentLocator) !== canonicalJsonStringify(locator)) fail("installation locator changed during recovery");
     if (flatWitness === undefined) {
-      if (lstatMaybe(storageBackups) !== undefined) fail("flat-backup-recovery-membership-changed");
-      readMachineRegistry(control, currentLocator, false);
+      const currentRegistry = readMachineRegistry(control, currentLocator, false);
       if (profileObservation(control, currentLocator) !== machineWitness) fail("profile registry changed during mutex recovery");
-    } else {
+      if (observeRetainedBackup(currentRegistry) !== retainedWitness) fail("storage-backup-recovery-changed");
+    }
+    if (flatWitness !== undefined || retainedWitness !== undefined) {
       assertLeasesStopped();
       if (owner !== undefined) {
         const observed = observeProcessIdentity(owner.pid);
         if (observed.state !== "gone" && (observed.state !== "alive"
           || observed.identity.platform === owner.processIdentity.platform && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
       }
-      if (readdirSync(control).some(entry => !allowedControl.has(entry))
-        || canonicalJsonStringify(observeFlatBackupMutexRecovery(workspace, currentLocator, restore, acquisitionId)) !== canonicalJsonStringify(flatWitness)) fail("flat-backup-recovery-source-changed");
+      if (readdirSync(control).some(entry => !allowedControl.has(entry))) fail("unexpected installation control entry");
+      if (flatWitness !== undefined
+        && canonicalJsonStringify(observeFlatBackupMutexRecovery(workspace, currentLocator, restore, acquisitionId)) !== canonicalJsonStringify(flatWitness)) fail("flat-backup-recovery-source-changed");
     }
     privateDirectory(mutexPath);
     const directory = lstatSync(mutexPath);
@@ -906,7 +919,7 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
     expectedReceipt = existing;
   } else atomicJson(receiptPath, receipt);
   let recoveryReceipt: ReturnType<typeof controlUpgradeFile> | undefined;
-  if (flatWitness !== undefined) {
+  if (flatWitness !== undefined || retainedWitness !== undefined) {
     const file = readPrivateFile(receiptPath, { label: "lock", maxBytes: 1_048_576 });
     if (file === undefined) fail("flat-backup-recovery-receipt-changed");
     const published = MutexRecoveryReceiptSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));

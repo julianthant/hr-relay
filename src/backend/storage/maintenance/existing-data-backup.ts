@@ -12,8 +12,8 @@ import { z } from "zod";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, statDirectory } from "../configuration/credential-safe-file.js";
 import type { ExistingDataOwnerWitness } from "../configuration/credential-store.js";
-import type { SignUpOperation } from "../../../models/profiles/profile.js";
-import { FlatProfileClaimReceiptSchema } from "./flat-profile-claim.js";
+import type { ProfileRegistryDocument, ProfileOperation, SignUpOperation } from "../../../models/profiles/profile.js";
+import { verifyFlatProfileClaimBackup } from "./flat-profile-claim.js";
 import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -136,10 +136,8 @@ export function ownerClaimRecoveryCopies(machine: RuntimeAdmission, profileId: s
       const backup = BackupSchema.parse(JSON.parse(file(join(path, "backup.json")).bytes.toString("utf8")));
       if (backup.storageBackup === undefined) continue;
       const reference = { claimId: backup.claimId, backupPath: join(path, "backup.json"), backupDigest: hash(file(join(path, "backup.json")).bytes) };
-      const receipt = FlatProfileClaimReceiptSchema.parse(JSON.parse(file(join(path, "flat.json")).bytes.toString("utf8")));
-      if (receipt.installationId !== machine.locator.installationId || receipt.profileId !== profileId
-        || receipt.sourceStateRoot !== backup.sourceStateRoot || receipt.operation.profileId !== profileId || canonicalJsonStringify(receipt.operation.ownerClaim) !== canonicalJsonStringify(reference)) throw new Error("storage-backup-claim-binding-refused");
-      const retained = retainedStorageBackup(machine, backup.storageBackup);
+      if (verifyFlatProfileClaimBackup(reference, context.workspace, machine.locator.installationId, profileId) === undefined) throw new Error("storage-backup-claim-binding-refused");
+      const retained = retainedStorageBackup(context.workspace, machine.locator.installationId, backup.storageBackup);
       if (retained === undefined) throw new Error("storage-backup-required");
       copies.push(dirname(retained.backupPath));
     }
@@ -215,6 +213,9 @@ export async function backupExistingData(machine: RuntimeAdmission, admission: R
 }
 
 function verifyCopies(root: string, files: readonly z.infer<typeof FileSchema>[]) {
+  const directories = new Set([""]);
+  for (const entry of files) for (let path = dirname(entry.path); path !== "."; path = dirname(path)) directories.add(path);
+  if (unpublishedDraftAbortMembership(join(root, "files")).some(entry => entry.directory && !directories.has(entry.path))) throw new Error("existing-data-backup-membership-changed");
   const actual = inventory(join(root, "files"), "").map(entry => ({ path: entry.file.path, digest: entry.file.digest })).sort((a, b) => a.path.localeCompare(b.path));
   const expected = files.map(entry => ({ path: entry.path, digest: entry.digest })).sort((a, b) => a.path.localeCompare(b.path));
   if (new Set(files.map(entry => entry.path)).size !== files.length || canonicalJsonStringify(actual) !== canonicalJsonStringify(expected)) throw new Error("existing-data-backup-changed");
@@ -263,7 +264,7 @@ async function writeCoupledBackup(machine: RuntimeAdmission, admission: RuntimeA
       || prior.sourceFingerprint !== current.authorityContentFingerprint || prior.sourceGeneration !== current.authorityGeneration) throw new Error("existing-data-backup-source-changed");
   }
   const storageRoot = join(controlRoot, "storage-backups", machine.locator.installationId);
-  const storageBackup = root === storageRoot ? undefined : retainedStorageBackup(machine);
+  const storageBackup = root === storageRoot ? undefined : retainedStorageBackup(context.workspace, machine.locator.installationId);
   if (flat && storageBackup !== undefined) {
     const retained = StorageBackupSchema.parse(JSON.parse(file(storageBackup.backupPath).bytes.toString("utf8")));
     verifyStoppedBackupManifestAtPath(admission, retained.authorityManifest, AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db")));
@@ -328,34 +329,31 @@ async function writeCoupledBackup(machine: RuntimeAdmission, admission: RuntimeA
     sourceDigest: hash(sourceRecord), source, census, databases, storageBackup, verifySource };
 }
 
-function storageBackupRoot(machine: RuntimeAdmission): string {
-  const context = machine.readInstallationContext();
-  if (context === undefined) throw new Error("existing-data-backup-installation-required");
-  return join(context.workspace, ".tracker", "control", "storage-backups", machine.locator.installationId);
-}
-
-function retainedStorageBackup(machine: RuntimeAdmission, reference?: z.infer<typeof StorageBackupReferenceSchema>) {
-  const root = storageBackupRoot(machine);
+function retainedStorageBackup(workspace: string, installationId: string, reference?: z.infer<typeof StorageBackupReferenceSchema>) {
+  const root = join(workspace, ".tracker", "control", "storage-backups", installationId);
   if (lstatSync(dirname(root), { throwIfNoEntry: false }) === undefined) {
     if (reference !== undefined) throw new Error("storage-backup-required");
     return undefined;
   }
   noSymlinkAncestry(root, new Map());
   statDirectory(dirname(root), "storage backups", 0o700); statDirectory(root, "storage backup", 0o700);
-  if (canonicalJsonStringify(readdirSync(dirname(root))) !== canonicalJsonStringify([machine.locator.installationId])) throw new Error("storage-backup-membership-refused");
+  if (canonicalJsonStringify(readdirSync(dirname(root))) !== canonicalJsonStringify([installationId])) throw new Error("storage-backup-membership-refused");
   const path = join(root, "backup.json"), bytes = file(path).bytes;
   const backup = StorageBackupSchema.parse(JSON.parse(bytes.toString("utf8")));
-  const context = machine.readInstallationContext();
-  if (context === undefined || backup.installationId !== machine.locator.installationId || backup.sourceStateRoot !== join(context.workspace, rebuildRuntimeIsolation.stateRoot)
+  if (backup.installationId !== installationId || backup.sourceStateRoot !== join(workspace, rebuildRuntimeIsolation.stateRoot)
     || reference !== undefined && (reference.backupPath !== path || reference.backupDigest !== hash(bytes))) throw new Error("storage-backup-binding-refused");
   if (hash(file(join(root, "source.json")).bytes) !== backup.sourceDigest) throw new Error("storage-backup-source-changed");
   if (canonicalJsonStringify(readdirSync(root).sort()) !== canonicalJsonStringify(["backup.json", "files", "source.json"])) throw new Error("storage-backup-membership-refused");
+  const source = SourceRecordSchema.parse(JSON.parse(file(join(root, "source.json")).bytes.toString("utf8")));
+  if (source.installationId !== installationId || source.sourceStateRoot !== backup.sourceStateRoot
+    || canonicalJsonStringify(source.files.map(({ mode: _mode, ...entry }) => entry)) !== canonicalJsonStringify(backup.files)) throw new Error("storage-backup-source-changed");
   verifyCopies(root, backup.files);
   const authorityDirectory = join(backup.sourceStateRoot, "backups", "authority");
   if (dirname(backup.authorityManifest) !== authorityDirectory) throw new Error("storage-backup-authority-refused");
   const copiedManifest = join(root, "files", "profile", "backups", "authority", basename(backup.authorityManifest));
   const manifestBytes = file(copiedManifest).bytes, manifest = AuthorityBackupManifestSchema.parse(JSON.parse(manifestBytes.toString("utf8")));
   if (manifest.schemaVersion !== 6 || manifest.installationId !== undefined || manifest.profileId !== undefined
+    || manifest.authorityContentFingerprint !== source.sourceFingerprint || manifest.authorityGeneration !== source.sourceGeneration
     || basename(backup.authorityManifest) !== `${manifest.backupFileName}.manifest.json` || hash(manifestBytes) !== backup.authorityDigest
     || hash(file(join(dirname(copiedManifest), manifest.backupFileName)).bytes) !== manifest.sha256) throw new Error("storage-backup-authority-refused");
   return { backupPath: path, backupDigest: hash(bytes) };
@@ -364,12 +362,14 @@ function retainedStorageBackup(machine: RuntimeAdmission, reference?: z.infer<ty
 export async function backupFlatStorage(admission: RuntimeAdmission, clock: Clock) {
   if (!admission.isFlatBackup()) throw new Error("flat-backup-authority-required");
   await inspectCoupledBackupSource(admission, true, clock);
-  const root = storageBackupRoot(admission);
+  const context = admission.readInstallationContext();
+  if (context === undefined) throw new Error("existing-data-backup-installation-required");
+  const root = join(context.workspace, ".tracker", "control", "storage-backups", admission.locator.installationId);
   mkdirSync(root, { recursive: true, mode: 0o700 }); noSymlinkAncestry(root, new Map());
   statDirectory(dirname(root), "storage backups", 0o700); statDirectory(root, "storage backup", 0o700);
   if (readdirSync(dirname(root)).some(name => name !== admission.locator.installationId)
     || readdirSync(root).some(name => !["source.json", "files", "backup.json"].includes(name))) throw new Error("storage-backup-membership-refused");
-  if (lstatSync(join(root, "backup.json"), { throwIfNoEntry: false }) !== undefined) retainedStorageBackup(admission);
+  if (lstatSync(join(root, "backup.json"), { throwIfNoEntry: false }) !== undefined) retainedStorageBackup(context.workspace, admission.locator.installationId);
   const coupled = await writeCoupledBackup(admission, admission, root, true, clock);
   const record = StorageBackupSchema.parse({ schemaVersion: 1, installationId: admission.locator.installationId,
     sourceStateRoot: admission.stateRoot, authorityManifest: coupled.authorityManifest, authorityDigest: coupled.authorityDigest,
@@ -377,7 +377,7 @@ export async function backupFlatStorage(admission: RuntimeAdmission, clock: Cloc
   const bytes = Buffer.from(canonicalJsonStringify(record)), path = join(root, "backup.json");
   if (lstatSync(path, { throwIfNoEntry: false }) === undefined) { writePrivateStage(path, bytes); fsyncPath(root); fsyncPath(dirname(root)); }
   else if (!file(path).bytes.equals(bytes)) throw new Error("storage-backup-changed");
-  retainedStorageBackup(admission);
+  retainedStorageBackup(context.workspace, admission.locator.installationId);
   coupled.verifySource(); admission.assertLive();
   return { manifests: [AuthorityBackupManifestSchema.parse(JSON.parse(file(record.authorityManifest).bytes.toString("utf8")))],
     coupledBackup: { backupPath: path, backupDigest: hash(bytes) } };
@@ -420,6 +420,50 @@ function coupledSourceRecord(installationId: string, profileRoot: string,
     databases: profileAuthorityFileWitnesses(profileRoot).map(entry => ({ ...entry,
       ...(entry.file === undefined ? {} : { mode: file(join(profileRoot, `state.db${entry.suffix}`), "authority database").stat.mode }) })),
     files: census().map(entry => ({ ...entry.file, mode: file(entry.path, existingDataFileLabel(entry.file.path)).stat.mode })) }));
+}
+
+export function observeBoundRetainedBackupMutexRecovery(workspace: string, locator: RuntimeLocator,
+  document: ProfileRegistryDocument, operations: readonly ProfileOperation[], restore: RestoreAdmissionHandle) {
+  const control = join(workspace, ".tracker", "control"), claims = join(control, "profile-owner-claims");
+  if (locator.stateRoot !== join(workspace, rebuildRuntimeIsolation.stateRoot)
+    || locator.artifactRoot !== join(workspace, rebuildRuntimeIsolation.artifactRoot)) throw new Error("storage-backup-source-refused");
+  const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
+  assertRuntimeRestoreAdmission(restore, processLockRoot);
+  const locks = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: "0".repeat(64) });
+  const orphans = inspectRuntimeProcessOrphans(processLockRoot);
+  if (Object.values(locks.processLocks).some(lock => lock.state !== "stopped") || orphans.staleServerRecords > 0 || orphans.staleWorkerRecords > 0) throw new Error("storage-backup-process-custody-refused");
+  noSymlinkAncestry(claims, new Map()); statDirectory(claims, "owner claims", 0o700);
+  const names = readdirSync(claims);
+  if (names.length !== 1) throw new Error("storage-backup-claim-membership-refused");
+  const name = z.uuid().parse(names[0]), root = join(claims, name), intent = claimIntent(claims, name);
+  if (intent === undefined || intent.claimId !== name || intent.installationId !== locator.installationId
+    || intent.sourceStateRoot !== join(workspace, rebuildRuntimeIsolation.stateRoot)) throw new Error("storage-backup-claim-binding-refused");
+  if (canonicalJsonStringify(readdirSync(root).sort()) !== canonicalJsonStringify(["backup.json", "files", "flat.json", "intent.json", "source.json"])) throw new Error("storage-backup-claim-membership-refused");
+  const reference = { claimId: name, backupPath: join(root, "backup.json"), backupDigest: hash(file(join(root, "backup.json")).bytes) };
+  const draft = operations.filter((operation): operation is SignUpOperation => operation.kind === "sign-up" && operation.profileId === intent.profileId);
+  const registered = document.profiles.filter(row => row.profileId === intent.profileId);
+  if (draft.length + registered.length !== 1) throw new Error("storage-backup-claim-owner-refused");
+  const verified = verifyFlatProfileClaimBackup(reference, workspace, locator.installationId, intent.profileId, draft[0]);
+  if (verified === undefined || verified.backup.storageBackup === undefined) throw new Error("storage-backup-claim-binding-refused");
+  const { backup, receipt } = verified, registration = registered[0]?.registration;
+  if (receipt.operation.profileId !== intent.profileId || draft[0] !== undefined
+    && canonicalJsonStringify(draft[0].ownerClaim) !== canonicalJsonStringify(reference)
+    || registration !== undefined && (registration.onboardingCompletion === undefined
+      || registration.operationId !== receipt.operation.operationId || registration.commandId !== receipt.operation.commandId
+      || registration.writeId !== receipt.operation.writeId)) throw new Error("storage-backup-claim-owner-refused");
+  const source = SourceRecordSchema.parse(JSON.parse(file(join(root, "source.json")).bytes.toString("utf8")));
+  if (source.installationId !== locator.installationId || source.sourceStateRoot !== intent.sourceStateRoot
+    || source.sourceFingerprint !== intent.sourceFingerprint || source.sourceGeneration !== intent.sourceGeneration
+    || canonicalJsonStringify(source.files.map(({ mode: _mode, ...entry }) => entry)) !== canonicalJsonStringify(backup.files)
+    || !source.files.some(entry => entry.path === "profile/credentials/protected.json" && entry.digest === intent.credentialFile.digest
+      && entry.device === intent.credentialFile.device && entry.inode === intent.credentialFile.inode)) throw new Error("storage-backup-claim-source-refused");
+  const retained = retainedStorageBackup(workspace, locator.installationId, backup.storageBackup);
+  if (retained === undefined) throw new Error("storage-backup-required");
+  const roots = [claims, dirname(dirname(retained.backupPath))];
+  const observation = canonicalJsonStringify({ copies: roots.map(path => ({ path, membership: unpublishedDraftAbortMembership(path), files: inventory(path, "") })),
+    authorityHistory: unpublishedDraftAbortMembership(join(locator.stateRoot, "profiles", intent.profileId, "backups", "authority")) });
+  assertRuntimeRestoreAdmission(restore, processLockRoot);
+  return observation;
 }
 
 export function observeFlatBackupMutexRecovery(workspace: string, locator: RuntimeLocator, restore: RestoreAdmissionHandle,
