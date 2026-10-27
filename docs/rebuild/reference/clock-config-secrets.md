@@ -745,6 +745,24 @@ claim and target identities across interrupted copying and fresh browser request
 copies and SQLite backups are verified and reused. A proved empty allocation is an unfinished
 allocation, never a completed backup.
 
+The explicit `npm run cli -- storage backup [--json]` command also accepts that stopped adopted
+native6 flat source without login. A separate internal `flat-backup` admission permits source
+inspection and the existing verified SQLite writer, with no profile binding, owner witness,
+ready-upgrade, claim, account or migration authority. Bound-profile backup behavior stays unchanged.
+The command uses the same coupled-copy writer as the owner claim. Raw copies complement the
+verified SQLite backup and never replace it.
+
+The private receipt and companions live under
+`.tracker/control/storage-backups/<installationId>/`. A source record binds database generation,
+fingerprint, file identities, modes, bytes and membership. An exact interrupted copying prefix can
+resume; a completed backup with missing, extra or corrupt files refuses. A changed source cannot
+reuse that allocation. Only that validated installation backup root is excluded from the coupled
+source census. Later owner claim creates and verifies its own current backup, and binds the retained
+CLI backup reference into its immutable claim receipt. Erasure inventory follows that exact
+reference and keeps the protected copies unresolved; it neither guesses ownership nor deletes them.
+There is no CLI owner claim or flat restore authority. Genuine dashboard owner proof and consent,
+private onboarding, both real Duo methods and explicit Finish remain required.
+
 Claim admission and movement retain safe ordinary file modes, including `0644` databases, admitted
 browser/artifact/log/scratch data and reports/downloads/onboarding documents. Reads preserve source
 bytes, mode and inode and refuse links, foreign owners and group/world-writable files. Credentials,

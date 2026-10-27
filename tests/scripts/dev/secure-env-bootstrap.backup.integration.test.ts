@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, it } from "vitest";
+import { createHistoricalFlatProfileFixture } from "../../support/fixtures/storage/historical-flat-profile-fixture.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/backup-service.js";
@@ -72,4 +73,27 @@ it.each(["server", "workers", "geocode"] as const)("refuses a CLI backup while %
     assert.equal(existsSync(fixture.backupDirectory), false);
     assert.deepEqual(readFileSync(authorityPath), before);
   } finally { lock.release(); }
+});
+
+it("runs the unchanged explicit CLI backup on a stopped adopted flat source without login or profile publication", () => {
+  const f = createHistoricalFlatProfileFixture();
+  try {
+    cpSync(join(repositoryRoot, "src"), join(f.workspace, "src"), { recursive: true });
+    mkdirSync(join(f.workspace, "scripts", "dev"), { recursive: true });
+    cpSync(join(repositoryRoot, "scripts", "dev", "secure-env-bootstrap.ts"), join(f.workspace, "scripts", "dev", "secure-env-bootstrap.ts"));
+    mkdirSync(join(f.workspace, "config"));
+    for (const name of ["runtime-isolation.json", "test-data.json"]) cpSync(join(repositoryRoot, "config", name), join(f.workspace, "config", name));
+    symlinkSync(join(repositoryRoot, "node_modules"), join(f.workspace, "node_modules"));
+    const paths = [f.databasePath, f.protectedPath, f.artifact, f.reportPath], before = paths.map(path => readFileSync(path));
+    const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],
+      { cwd: f.workspace, encoding: "utf8", timeout: 20_000 });
+    assert.equal(result.status, 0, `${result.error?.message ?? ""}\n${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /backup: verified/u); assert.match(result.stdout, /private coupled companions/u);
+    const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
+    assert.equal(manifests.length, 1);
+    assert.equal(parseBackupManifestFile(join(f.stateRoot, "backups", "authority", manifests[0] ?? "")).schemaVersion, 6);
+    for (const [index, path] of paths.entries()) assert.deepEqual(readFileSync(path), before[index]);
+    for (const path of [join(f.stateRoot, "profiles"), join(f.stateRoot, "machine"), join(f.workspace, ".tracker", "control", "profile-registry.json"),
+      join(f.workspace, ".tracker", "control", "profile-owner-claims"), join(f.workspace, ".tracker", "control", "profile-flat-claim.json")]) assert.equal(existsSync(path), false);
+  } finally { f.close(); }
 });

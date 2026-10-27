@@ -3,9 +3,10 @@ import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry } from "../configuration/credential-safe-file.js";
+import { readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, statDirectory } from "../configuration/credential-safe-file.js";
 import type { ExistingDataOwnerWitness } from "../configuration/credential-store.js";
 import type { SignUpOperation } from "../../../models/profiles/profile.js";
+import { FlatProfileClaimReceiptSchema } from "./flat-profile-claim.js";
 import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -14,8 +15,15 @@ import type { Clock } from "../../../rules/time/clock.js";
 const DigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
 const RelativePathSchema = z.string().min(1).refine(value => !value.startsWith("/") && !value.includes("\\") && value.split("/").every(part => part !== "" && part !== "." && part !== ".."));
 const FileSchema = z.strictObject({ path: RelativePathSchema, digest: DigestSchema, device: z.number().int().nonnegative(), inode: z.number().int().nonnegative() });
-const BackupSchema = z.strictObject({ schemaVersion: z.literal(1), claimId: z.uuid(), installationId: z.uuid(), profileId: z.uuid(),
-  sourceStateRoot: z.string().min(1).optional(), authorityManifest: z.string().min(1), authorityDigest: DigestSchema, files: z.array(FileSchema) });
+const SourceRecordSchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(), sourceStateRoot: z.string().min(1),
+  sourceFingerprint: DigestSchema, sourceGeneration: z.number().int().safe().nonnegative(),
+  databases: z.array(z.strictObject({ suffix: z.enum(["", "-wal", "-shm", "-journal"]), file: FileSchema.omit({ path: true }).optional(), mode: z.number().int().nonnegative().optional() })),
+  files: z.array(FileSchema.extend({ mode: z.number().int().nonnegative() })) });
+const StorageBackupReferenceSchema = z.strictObject({ backupPath: z.string().min(1), backupDigest: DigestSchema });
+const CoupledBackupSchema = z.strictObject({ authorityManifest: z.string().min(1), authorityDigest: DigestSchema, files: z.array(FileSchema) });
+const StorageBackupSchema = CoupledBackupSchema.extend({ schemaVersion: z.literal(1), installationId: z.uuid(), sourceStateRoot: z.string().min(1), sourceDigest: DigestSchema });
+const BackupSchema = CoupledBackupSchema.extend({ schemaVersion: z.literal(1), claimId: z.uuid(), installationId: z.uuid(), profileId: z.uuid(),
+  storageBackup: StorageBackupReferenceSchema.optional(), sourceDigest: DigestSchema, sourceStateRoot: z.string().min(1).optional() });
 const BackupIntentSchema = z.strictObject({ schemaVersion: z.literal(1), claimId: z.uuid(), installationId: z.uuid(), profileId: z.uuid(),
   credentialFile: FileSchema.omit({ path: true }), keyFile: FileSchema.omit({ path: true }).optional(), sourceStateRoot: z.string().min(1).optional(),
   sourceFingerprint: DigestSchema, sourceGeneration: z.number().int().safe().nonnegative(), registryDigest: DigestSchema.optional() }).refine(value => value.sourceStateRoot === undefined
@@ -45,6 +53,7 @@ function inventory(root: string, prefix: string, excluded: ReadonlySet<string> =
   const result: Array<{ path: string; file: z.infer<typeof FileSchema> }> = [];
   const walk = (directory: string, relative: string) => {
     noSymlinkAncestry(directory, new Map());
+    if (prefix === "") statDirectory(directory, "backup copy", 0o700);
     for (const name of readdirSync(directory).sort()) {
       const local = relative === "" ? name : `${relative}/${name}`;
       if (excluded.has(local)) continue;
@@ -68,9 +77,8 @@ export function verifyExistingDataBackupFiles(reference: ExistingDataBackup, wor
   const backup = BackupSchema.parse(JSON.parse(bytes.toString("utf8")));
   if (backup.claimId !== reference.claimId || backup.installationId !== installationId
     || new Set(backup.files.map(entry => entry.path)).size !== backup.files.length) throw new Error("existing-data-backup-binding-refused");
-  const copies = inventory(join(root, "files"), "").map(entry => ({ path: entry.file.path, digest: entry.file.digest })).sort((a, b) => a.path.localeCompare(b.path));
-  const expected = backup.files.map(entry => ({ path: entry.path, digest: entry.digest })).sort((a, b) => a.path.localeCompare(b.path));
-  if (canonicalJsonStringify(copies) !== canonicalJsonStringify(expected)) throw new Error("existing-data-backup-changed");
+  verifyCopies(root, backup.files);
+  if (hash(file(join(root, "source.json")).bytes) !== backup.sourceDigest) throw new Error("existing-data-backup-source-changed");
   const machineRoot = join(workspace, rebuildRuntimeIsolation.stateRoot);
   if (backup.sourceStateRoot !== undefined && backup.sourceStateRoot !== machineRoot) throw new Error("existing-data-backup-path-refused");
   const manifestRoot = join(backup.sourceStateRoot ?? join(machineRoot, "profiles", backup.profileId), "backups", "authority");
@@ -116,6 +124,19 @@ export function ownerClaimRecoveryCopies(machine: RuntimeAdmission, profileId: s
     if (intent.claimId !== name || intent.installationId !== machine.locator.installationId) throw new Error("existing-data-backup-binding-refused");
     if (intent.profileId === profileId && (scope === "all" || intent.sourceStateRoot !== undefined)) copies.push(path);
   }
+  if (scope === "all") {
+    for (const path of [...copies]) {
+      const backup = BackupSchema.parse(JSON.parse(file(join(path, "backup.json")).bytes.toString("utf8")));
+      if (backup.storageBackup === undefined) continue;
+      const reference = { claimId: backup.claimId, backupPath: join(path, "backup.json"), backupDigest: hash(file(join(path, "backup.json")).bytes) };
+      const receipt = FlatProfileClaimReceiptSchema.parse(JSON.parse(file(join(path, "flat.json")).bytes.toString("utf8")));
+      if (receipt.installationId !== machine.locator.installationId || receipt.profileId !== profileId
+        || receipt.sourceStateRoot !== backup.sourceStateRoot || receipt.operation.profileId !== profileId || canonicalJsonStringify(receipt.operation.ownerClaim) !== canonicalJsonStringify(reference)) throw new Error("storage-backup-claim-binding-refused");
+      const retained = retainedStorageBackup(machine, backup.storageBackup);
+      if (retained === undefined) throw new Error("storage-backup-required");
+      copies.push(dirname(retained.backupPath));
+    }
+  }
   return copies;
 }
 
@@ -136,31 +157,10 @@ export function verifyExistingDataBackup(reference: ExistingDataBackup, owner: E
 
 export async function backupExistingData(machine: RuntimeAdmission, admission: RuntimeAdmission, owner: ExistingDataOwnerWitness, claimId: string, clock: Clock): Promise<ExistingDataBackup> {
   const { verifyExistingDataOwner, profileAuthorityFileWitnesses } = await import("../configuration/credential-store.js");
-  const { backupStoppedAuthority } = await import("./upgrade.js");
-  const { verifyStoppedBackupManifestAtPath } = await import("../sqlite/backup-service.js");
-  const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
-  const { assertCredentialCopyResourcesClosed, enumerateProfileCredentialMembership } = await import("./profile-inventory.js");
   machine.assertExclusive(); admission.assertReadyStoppedProfileUpgradeOwner(machine);
   const ownership = verifyExistingDataOwner(owner, machine), context = machine.readInstallationContext();
   if (context === undefined || ownership.profileId !== undefined && ownership.profileId !== admission.profileBinding.profileId) throw new Error("existing-data-backup-owner-refused");
-  const sourceFacts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
-  assertCredentialCopyResourcesClosed(sourceFacts);
-  if (ownership.profileId === undefined && sourceFacts.slots.some(slot => slot.retiredAt === null)) throw new Error("existing-data-flat-worker-custody-unsupported");
-  {
-    const settings = sourceFacts.settingsAuthority.state === "initialized"
-      ? sourceFacts.settingsAuthority.record.saved?.settings ?? sourceFacts.settingsAuthority.record.initialization.settings.settings : undefined;
-    const membership = enumerateProfileCredentialMembership(admission, sourceFacts, settings?.paths?.browserProfileRoot ?? join(admission.stateRoot, "browsers"));
-    const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path, AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db"))));
-    if (backups.length !== membership.backupPaths.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("existing-data-backup-source-membership-unproved");
-    const { decodeStoredArtifact } = await import("../artifacts/content-addressed-artifact-writer.js");
-    for (const reference of sourceFacts.artifactReferences) {
-      const stored = decodeStoredArtifact(JSON.parse(file(join(admission.artifactRoot, `${reference.sha256}.artifact`), existingDataFileLabel(`profile/artifacts/${reference.sha256}.artifact`)).bytes.toString("utf8")), reference.sha256);
-      if (canonicalJsonStringify(stored.ref) !== canonicalJsonStringify(reference)) throw new Error("existing-data-artifact-reference-mismatch");
-    }
-  }
-  const processLockRoot = join(context.workspace, rebuildRuntimeIsolation.processLockRoot);
-  const authorityDirectory = join(admission.stateRoot, "backups", "authority");
-  const current = AuthorityDatabase.inspectStoppedUpgrade(admission, join(admission.stateRoot, "state.db"), processLockRoot, clock);
+  const { current } = await inspectCoupledBackupSource(admission, ownership.profileId === undefined, clock);
   const controlRoot = join(context.workspace, ".tracker", "control"), claimsRoot = join(controlRoot, "profile-owner-claims");
   const flat = ownership.profileId === undefined;
   if (!flat && ownership.key === undefined) throw new Error("existing-data-backup-key-required");
@@ -189,6 +189,104 @@ export async function backupExistingData(machine: RuntimeAdmission, admission: R
   mkdirSync(root, { recursive: true, mode: 0o700 }); noSymlinkAncestry(root, new Map());
   if (lstatSync(intentPath, { throwIfNoEntry: false }) === undefined) writePrivateStage(intentPath, Buffer.from(canonicalJsonStringify({ ...intentSource, claimId: canonicalClaimId })));
   fsyncPath(root); fsyncPath(claimsRoot); fsyncPath(controlRoot);
+  const coupled = await writeCoupledBackup(machine, admission, root, flat, clock);
+  const { authorityManifest, source, census, databases } = coupled;
+  const profileRoot = admission.stateRoot;
+  const backup = BackupSchema.parse({ schemaVersion: 1, claimId: canonicalClaimId, installationId: machine.locator.installationId,
+    profileId: intentSource.profileId, ...(flat ? { sourceStateRoot: admission.stateRoot } : {}), authorityManifest, authorityDigest: coupled.authorityDigest, sourceDigest: coupled.sourceDigest,
+    ...(!flat || coupled.storageBackup === undefined ? {} : { storageBackup: coupled.storageBackup }), files: coupled.files });
+  const bytes = Buffer.from(canonicalJsonStringify(backup)), backupPath = join(root, "backup.json");
+  if (lstatSync(backupPath, { throwIfNoEntry: false }) === undefined) { writePrivateStage(backupPath, bytes); fsyncPath(root); fsyncPath(dirname(root)); }
+  else if (hash(file(backupPath).bytes) !== hash(bytes)) throw new Error("existing-data-backup-copy-changed");
+  const reference = Object.freeze({ claimId: canonicalClaimId, backupPath, backupDigest: hash(bytes) });
+  issuedBackups.set(reference, { owner, machine, source, census, verifyOwner: () => {
+    verifyExistingDataOwner(owner, machine); coupled.verifySource();
+    if (canonicalJsonStringify(profileAuthorityFileWitnesses(profileRoot)) !== databases) throw new Error("existing-data-backup-source-changed");
+  } });
+  verifyExistingDataBackup(reference, owner, machine);
+  return reference;
+}
+
+function verifyCopies(root: string, files: readonly z.infer<typeof FileSchema>[]) {
+  const actual = inventory(join(root, "files"), "").map(entry => ({ path: entry.file.path, digest: entry.file.digest })).sort((a, b) => a.path.localeCompare(b.path));
+  const expected = files.map(entry => ({ path: entry.path, digest: entry.digest })).sort((a, b) => a.path.localeCompare(b.path));
+  if (new Set(files.map(entry => entry.path)).size !== files.length || canonicalJsonStringify(actual) !== canonicalJsonStringify(expected)) throw new Error("existing-data-backup-changed");
+}
+
+async function inspectCoupledBackupSource(admission: RuntimeAdmission, flat: boolean, clock: Clock) {
+  const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+  const { assertCredentialCopyResourcesClosed, enumerateProfileCredentialMembership } = await import("./profile-inventory.js");
+  const { verifyStoppedBackupManifestAtPath } = await import("../sqlite/backup-service.js");
+  const context = admission.readInstallationContext();
+  if (context === undefined) throw new Error("existing-data-backup-installation-required");
+  const processLockRoot = join(context.workspace, rebuildRuntimeIsolation.processLockRoot);
+  const sourceFacts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
+  assertCredentialCopyResourcesClosed(sourceFacts);
+  if (flat && sourceFacts.slots.some(slot => slot.retiredAt === null)) throw new Error("existing-data-flat-worker-custody-unsupported");
+  {
+    const settings = sourceFacts.settingsAuthority.state === "initialized"
+      ? sourceFacts.settingsAuthority.record.saved?.settings ?? sourceFacts.settingsAuthority.record.initialization.settings.settings : undefined;
+    const membership = enumerateProfileCredentialMembership(admission, sourceFacts, settings?.paths?.browserProfileRoot ?? join(admission.stateRoot, "browsers"));
+    const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path, AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db"))));
+    if (backups.length !== membership.backupPaths.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("existing-data-backup-source-membership-unproved");
+    const { decodeStoredArtifact } = await import("../artifacts/content-addressed-artifact-writer.js");
+    for (const reference of sourceFacts.artifactReferences) {
+      const stored = decodeStoredArtifact(JSON.parse(file(join(admission.artifactRoot, `${reference.sha256}.artifact`), existingDataFileLabel(`profile/artifacts/${reference.sha256}.artifact`)).bytes.toString("utf8")), reference.sha256);
+      if (canonicalJsonStringify(stored.ref) !== canonicalJsonStringify(reference)) throw new Error("existing-data-artifact-reference-mismatch");
+    }
+  }
+  const current = AuthorityDatabase.inspectStoppedUpgrade(admission, join(admission.stateRoot, "state.db"), processLockRoot, clock);
+  if (flat) {
+    if (admission.stateRoot !== join(context.workspace, rebuildRuntimeIsolation.stateRoot) || admission.artifactRoot !== join(admission.stateRoot, "artifacts")) throw new Error("flat-backup-source-refused");
+    const expectedPaths = { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot,
+      browserProfileRoot: join(admission.stateRoot, "browsers"), duoCredential: join(admission.stateRoot, "credentials", "duo-webauthn.json"),
+      reportsDir: join(context.workspace, "data", "reports"), downloadsDir: join(context.workspace, "data", "downloads"),
+      onboardingDocsDir: join(context.workspace, "data", "onboarding"), i9CheckTrackerPath: join(context.workspace, "data", "reports", "i9-check-tracker.xlsx") };
+    if (sourceFacts.configSnapshots.some(snapshot => {
+      const { duoExtensionDir: _extension, ...paths } = snapshot.config.paths;
+      return canonicalJsonStringify(paths) !== canonicalJsonStringify(expectedPaths);
+    })) throw new Error("existing-data-flat-custom-paths-unsupported");
+    const settings = sourceFacts.settingsAuthority;
+    if (settings.state !== "initialized" || settings.record.active === null) throw new Error("existing-data-flat-settings-unavailable");
+    const active = settings.record.active;
+    if (Object.keys((settings.record.saved?.settings ?? settings.record.initialization.settings.settings).paths ?? {}).length !== 0) throw new Error("existing-data-flat-custom-paths-unsupported");
+    if (!sourceFacts.configSnapshots.some(snapshot => snapshot.configSnapshotId === active.configSnapshotId && snapshot.fingerprint === active.configFingerprint)) throw new Error("existing-data-flat-settings-unavailable");
+  }
+  return { current, processLockRoot };
+}
+
+async function writeCoupledBackup(machine: RuntimeAdmission, admission: RuntimeAdmission, root: string, flat: boolean, clock: Clock) {
+  const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+  const { backupStoppedAuthority } = await import("./upgrade.js");
+  const { verifyStoppedBackupManifestAtPath } = await import("../sqlite/backup-service.js");
+  const { profileAuthorityFileWitnesses } = await import("../configuration/credential-store.js");
+  const { assertCredentialCopyResourcesClosed } = await import("./profile-inventory.js");
+  const context = admission.readInstallationContext();
+  if (context === undefined) throw new Error("existing-data-backup-installation-required");
+  const { current, processLockRoot } = await inspectCoupledBackupSource(admission, flat, clock);
+  const authorityDirectory = join(admission.stateRoot, "backups", "authority"), controlRoot = join(context.workspace, ".tracker", "control");
+  const sourcePath = join(root, "source.json");
+  if (lstatSync(sourcePath, { throwIfNoEntry: false }) !== undefined) {
+    const prior = SourceRecordSchema.parse(JSON.parse(file(sourcePath).bytes.toString("utf8")));
+    if (prior.installationId !== machine.locator.installationId || prior.sourceStateRoot !== admission.stateRoot
+      || prior.sourceFingerprint !== current.authorityContentFingerprint || prior.sourceGeneration !== current.authorityGeneration) throw new Error("existing-data-backup-source-changed");
+  }
+  const storageRoot = join(controlRoot, "storage-backups", machine.locator.installationId);
+  const storageBackup = root === storageRoot ? undefined : retainedStorageBackup(machine);
+  if (flat && storageBackup !== undefined) {
+    const retained = StorageBackupSchema.parse(JSON.parse(file(storageBackup.backupPath).bytes.toString("utf8")));
+    verifyStoppedBackupManifestAtPath(admission, retained.authorityManifest, AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db")));
+    if (hash(file(retained.authorityManifest).bytes) !== retained.authorityDigest) throw new Error("storage-backup-authority-refused");
+  }
+  const profileRoot = admission.stateRoot;
+  const databases = canonicalJsonStringify(profileAuthorityFileWitnesses(profileRoot));
+  const census = () => [
+    ...inventory(profileRoot, "profile", new Set(["state.db", "state.db-wal", "state.db-shm", "state.db-journal", ...(flat ? ["locks"] : [])])),
+    ...(flat ? [] : inventory(join(machine.stateRoot, "machine"), "machine")),
+    ...(flat && lstatSync(join(context.workspace, "data"), { throwIfNoEntry: false }) !== undefined ? inventory(join(context.workspace, "data"), "workspace-data") : []),
+    ...inventory(controlRoot, "control", new Set(["leases", "admission-mutex", "profile-owner-claims", ...(root === storageRoot || storageBackup !== undefined ? [`storage-backups/${machine.locator.installationId}`] : [])])),
+  ];
+  census();
   let authorityManifest: string | undefined;
   if (lstatSync(authorityDirectory, { throwIfNoEntry: false }) !== undefined) {
     for (const name of readdirSync(authorityDirectory).sort()) {
@@ -199,22 +297,25 @@ export async function backupExistingData(machine: RuntimeAdmission, admission: R
     }
   }
   if (authorityManifest === undefined) {
-    const backed = await backupStoppedAuthority(admission, admission.stateRoot, clock, processLockRoot, machine.maintenanceRestore());
+    const backed = await backupStoppedAuthority(admission, admission.stateRoot, clock, processLockRoot, admission.maintenanceRestore() ?? machine.maintenanceRestore());
     if (backed.manifests.length !== 1 || backed.manifests[0] === undefined) throw new Error("existing-data-backup-single-authority-required");
     authorityManifest = join(authorityDirectory, `${backed.manifests[0].backupFileName}.manifest.json`);
   }
   verifyStoppedBackupManifestAtPath(admission, authorityManifest, AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db")));
   const afterBackup = AuthorityDatabase.inspectStoppedUpgrade(admission, join(admission.stateRoot, "state.db"), processLockRoot, clock);
   if (afterBackup.authorityContentFingerprint !== current.authorityContentFingerprint || afterBackup.authorityGeneration !== current.authorityGeneration) throw new Error("existing-data-backup-source-changed");
-  const profileRoot = admission.stateRoot;
-  const databases = canonicalJsonStringify(profileAuthorityFileWitnesses(profileRoot));
-  const census = () => [
-    ...inventory(profileRoot, "profile", new Set(["state.db", "state.db-wal", "state.db-shm", "state.db-journal", ...(flat ? ["locks"] : [])])),
-    ...(flat ? [] : inventory(join(machine.stateRoot, "machine"), "machine")),
-    ...(flat && lstatSync(join(context.workspace, "data"), { throwIfNoEntry: false }) !== undefined ? inventory(join(context.workspace, "data"), "workspace-data") : []),
-    ...inventory(controlRoot, "control", new Set(["leases", "admission-mutex", "profile-owner-claims"])),
-  ];
   const source = census();
+  const sourceRecordBytes = () => Buffer.from(canonicalJsonStringify({ schemaVersion: 1, installationId: machine.locator.installationId,
+    sourceStateRoot: admission.stateRoot, sourceFingerprint: current.authorityContentFingerprint, sourceGeneration: current.authorityGeneration,
+    databases: profileAuthorityFileWitnesses(profileRoot).map(entry => ({ ...entry,
+      ...(entry.file === undefined ? {} : { mode: file(join(profileRoot, `state.db${entry.suffix}`), "authority database").stat.mode }) })),
+    files: census().map(entry => ({ ...entry.file, mode: file(entry.path, existingDataFileLabel(entry.file.path)).stat.mode })) }));
+  const sourceRecord = sourceRecordBytes();
+  const verifySource = () => { if (!sourceRecordBytes().equals(sourceRecord)) throw new Error("existing-data-backup-source-changed"); };
+  if (lstatSync(sourcePath, { throwIfNoEntry: false }) === undefined) {
+    if (lstatSync(join(root, "files"), { throwIfNoEntry: false }) !== undefined || lstatSync(join(root, "backup.json"), { throwIfNoEntry: false }) !== undefined) throw new Error("existing-data-backup-source-required");
+    writePrivateStage(sourcePath, sourceRecord); fsyncPath(root);
+  } else if (!file(sourcePath).bytes.equals(sourceRecord)) throw new Error("existing-data-backup-source-changed");
   for (const entry of source) {
     const bytes = file(entry.path, existingDataFileLabel(entry.file.path)).bytes;
     if (hash(bytes) !== entry.file.digest) throw new Error("existing-data-backup-source-changed");
@@ -231,17 +332,66 @@ export async function backupExistingData(machine: RuntimeAdmission, admission: R
     for (let directory = dirname(join(root, "files", entry.file.path)); directory.startsWith(`${root}/`); directory = dirname(directory)) directories.add(directory);
   }
   for (const directory of [...directories].sort((a, b) => b.length - a.length)) fsyncPath(directory);
-  const backup = BackupSchema.parse({ schemaVersion: 1, claimId: canonicalClaimId, installationId: machine.locator.installationId,
-    profileId: intentSource.profileId, ...(flat ? { sourceStateRoot: admission.stateRoot } : {}), authorityManifest, authorityDigest: hash(file(authorityManifest).bytes), files: source.map(entry => entry.file) });
-  const bytes = Buffer.from(canonicalJsonStringify(backup)), backupPath = join(root, "backup.json");
-  if (lstatSync(backupPath, { throwIfNoEntry: false }) === undefined) { writePrivateStage(backupPath, bytes); fsyncPath(root); fsyncPath(dirname(root)); }
-  else if (hash(file(backupPath).bytes) !== hash(bytes)) throw new Error("existing-data-backup-copy-changed");
-  const reference = Object.freeze({ claimId: canonicalClaimId, backupPath, backupDigest: hash(bytes) });
-  issuedBackups.set(reference, { owner, machine, source, census, verifyOwner: () => {
-    verifyExistingDataOwner(owner, machine);
-    if (canonicalJsonStringify(profileAuthorityFileWitnesses(profileRoot)) !== databases) throw new Error("existing-data-backup-source-changed");
-  } });
-  verifyExistingDataBackup(reference, owner, machine);
+  verifyCopies(root, source.map(entry => entry.file));
+  if (canonicalJsonStringify(census()) !== canonicalJsonStringify(source)
+    || canonicalJsonStringify(profileAuthorityFileWitnesses(profileRoot)) !== databases) throw new Error("existing-data-backup-source-changed");
+  verifySource(); admission.assertLive();
   assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
-  return reference;
+  return { authorityManifest, authorityDigest: hash(file(authorityManifest).bytes), files: source.map(entry => entry.file),
+    sourceDigest: hash(sourceRecord), source, census, databases, storageBackup, verifySource };
+}
+
+function storageBackupRoot(machine: RuntimeAdmission): string {
+  const context = machine.readInstallationContext();
+  if (context === undefined) throw new Error("existing-data-backup-installation-required");
+  return join(context.workspace, ".tracker", "control", "storage-backups", machine.locator.installationId);
+}
+
+function retainedStorageBackup(machine: RuntimeAdmission, reference?: z.infer<typeof StorageBackupReferenceSchema>) {
+  const root = storageBackupRoot(machine);
+  if (lstatSync(dirname(root), { throwIfNoEntry: false }) === undefined) {
+    if (reference !== undefined) throw new Error("storage-backup-required");
+    return undefined;
+  }
+  noSymlinkAncestry(root, new Map());
+  statDirectory(dirname(root), "storage backups", 0o700); statDirectory(root, "storage backup", 0o700);
+  if (canonicalJsonStringify(readdirSync(dirname(root))) !== canonicalJsonStringify([machine.locator.installationId])) throw new Error("storage-backup-membership-refused");
+  const path = join(root, "backup.json"), bytes = file(path).bytes;
+  const backup = StorageBackupSchema.parse(JSON.parse(bytes.toString("utf8")));
+  const context = machine.readInstallationContext();
+  if (context === undefined || backup.installationId !== machine.locator.installationId || backup.sourceStateRoot !== join(context.workspace, rebuildRuntimeIsolation.stateRoot)
+    || reference !== undefined && (reference.backupPath !== path || reference.backupDigest !== hash(bytes))) throw new Error("storage-backup-binding-refused");
+  if (hash(file(join(root, "source.json")).bytes) !== backup.sourceDigest) throw new Error("storage-backup-source-changed");
+  if (canonicalJsonStringify(readdirSync(root).sort()) !== canonicalJsonStringify(["backup.json", "files", "source.json"])) throw new Error("storage-backup-membership-refused");
+  verifyCopies(root, backup.files);
+  const authorityDirectory = join(backup.sourceStateRoot, "backups", "authority");
+  if (dirname(backup.authorityManifest) !== authorityDirectory) throw new Error("storage-backup-authority-refused");
+  const copiedManifest = join(root, "files", "profile", "backups", "authority", basename(backup.authorityManifest));
+  const manifestBytes = file(copiedManifest).bytes, manifest = AuthorityBackupManifestSchema.parse(JSON.parse(manifestBytes.toString("utf8")));
+  if (manifest.schemaVersion !== 6 || manifest.installationId !== undefined || manifest.profileId !== undefined
+    || basename(backup.authorityManifest) !== `${manifest.backupFileName}.manifest.json` || hash(manifestBytes) !== backup.authorityDigest
+    || hash(file(join(dirname(copiedManifest), manifest.backupFileName)).bytes) !== manifest.sha256) throw new Error("storage-backup-authority-refused");
+  return { backupPath: path, backupDigest: hash(bytes) };
+}
+
+export async function backupFlatStorage(admission: RuntimeAdmission, clock: Clock) {
+  if (!admission.isFlatBackup()) throw new Error("flat-backup-authority-required");
+  await inspectCoupledBackupSource(admission, true, clock);
+  const root = storageBackupRoot(admission);
+  mkdirSync(root, { recursive: true, mode: 0o700 }); noSymlinkAncestry(root, new Map());
+  statDirectory(dirname(root), "storage backups", 0o700); statDirectory(root, "storage backup", 0o700);
+  if (readdirSync(dirname(root)).some(name => name !== admission.locator.installationId)
+    || readdirSync(root).some(name => !["source.json", "files", "backup.json"].includes(name))) throw new Error("storage-backup-membership-refused");
+  if (lstatSync(join(root, "backup.json"), { throwIfNoEntry: false }) !== undefined) retainedStorageBackup(admission);
+  const coupled = await writeCoupledBackup(admission, admission, root, true, clock);
+  const record = StorageBackupSchema.parse({ schemaVersion: 1, installationId: admission.locator.installationId,
+    sourceStateRoot: admission.stateRoot, authorityManifest: coupled.authorityManifest, authorityDigest: coupled.authorityDigest,
+    sourceDigest: coupled.sourceDigest, files: coupled.files });
+  const bytes = Buffer.from(canonicalJsonStringify(record)), path = join(root, "backup.json");
+  if (lstatSync(path, { throwIfNoEntry: false }) === undefined) { writePrivateStage(path, bytes); fsyncPath(root); fsyncPath(dirname(root)); }
+  else if (!file(path).bytes.equals(bytes)) throw new Error("storage-backup-changed");
+  retainedStorageBackup(admission);
+  coupled.verifySource(); admission.assertLive();
+  return { manifests: [AuthorityBackupManifestSchema.parse(JSON.parse(file(record.authorityManifest).bytes.toString("utf8")))],
+    coupledBackup: { backupPath: path, backupDigest: hash(bytes) } };
 }

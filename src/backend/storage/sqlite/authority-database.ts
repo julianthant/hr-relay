@@ -1404,8 +1404,9 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   }
 }
 
-function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock): void {
-  requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(path, processLockRoot);
+function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, backup = false): void {
+  if (backup) requireRuntimeAdmission(admission).assertStoppedAuthorityBackup(path, processLockRoot);
+  else requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(path, processLockRoot);
   requireDatabaseSourcePath(path);
   const locks = observeRuntimeLockSnapshot({ processLockRoot,
     sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) }, clock);
@@ -1838,10 +1839,10 @@ export class AuthorityDatabase implements Disposable {
     owner.assertLive();
     return withAuthorityDatabaseReadOnly(owner, path, database => {
       const inspection = inspectNativeAuthority(database, owner.profileMaintenanceSchemaVersion());
-      const binding = owner.profileBinding;
+      const binding = inspection.schemaVersion === 6 ? undefined : owner.profileBinding;
       if (inspection.schemaVersion === 6
         ? inspection.installationId !== undefined || inspection.profileId !== undefined
-        : inspection.installationId !== binding.installationId || inspection.profileId !== binding.profileId) throw new Error("profile-maintenance-binding-mismatch");
+        : inspection.installationId !== binding?.installationId || inspection.profileId !== binding?.profileId) throw new Error("profile-maintenance-binding-mismatch");
       const settings = readAppSettings(database);
       const settingsAuthority = settings === undefined
         ? Object.freeze({ state: "never-initialized" as const })
@@ -1893,7 +1894,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static inspectStoppedUpgrade(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock) {
-    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock, true);
     const snapshot = createReadonlyAuthoritySnapshot(path);
     let database: DatabaseSync | undefined;
     let result: ReturnType<typeof inspectNativeAuthority> | undefined;

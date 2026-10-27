@@ -475,7 +475,7 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
-  "       storage backup [--json]",
+  "       storage backup [--json]  verified SQLite backup; stopped flat native6 includes private coupled companions",
   "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
   "       storage recover-duo-publication",
   "       storage restore --from <manifest.json> [--json]",
@@ -925,7 +925,9 @@ async function backupCommand(
     };
   }
   const { backupStoppedAuthority } = await import("../../storage/maintenance/upgrade.js");
-  const report = await backupStoppedAuthority(admission,stateRoot, clock,join(repoRoot,isolation.processLockRoot));
+  const report = admission.isFlatBackup()
+    ? await (await import("../../storage/maintenance/existing-data-backup.js")).backupFlatStorage(admission, clock)
+    : await backupStoppedAuthority(admission,stateRoot, clock,join(repoRoot,isolation.processLockRoot));
     const manifest = report.manifests.at(-1);
     if (manifest === undefined) {
       throw new Error("verified backup run reported no manifest");
@@ -936,7 +938,8 @@ async function backupCommand(
         : [
             `backup: verified — ${manifest.backupFileName}`,
             `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
-            `  manifest ${manifest.backupFileName}.manifest.json (restore with: storage restore --from <that manifest>)`,
+            `  manifest ${manifest.backupFileName}.manifest.json${"coupledBackup" in report ? "" : " (restore with: storage restore --from <that manifest>)"}`,
+            ...("coupledBackup" in report ? [`  private coupled companions: ${report.coupledBackup.backupPath}; owner claim remains in the dashboard`] : []),
           ].join("\n"),
       exitCode: 0,
     };

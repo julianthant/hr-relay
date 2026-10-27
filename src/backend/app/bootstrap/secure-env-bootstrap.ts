@@ -1,7 +1,7 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { fileURLToPath } from "node:url";
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
-import { acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
+import { acquireStorageBackupEntrypointAdmission, acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../../storage/admission/installation.js";
 import { acquireRuntimeRestoreAdmission, acquireRuntimeProcessLock, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
@@ -145,6 +145,7 @@ export async function runSecureEnvironmentBootstrap(
   let initialWorkerCustody: RuntimeProcessLockHandle | undefined;
   const admission = await (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
     : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(workspace, requested)
+    : storageCommand === "backup" ? acquireStorageBackupEntrypointAdmission(workspace)
     : acquireEntrypointAdmission(workspace, requested)))(mode);
   let shutdown: "release" | "retain" = "release";
   let runtimeFailure: unknown;

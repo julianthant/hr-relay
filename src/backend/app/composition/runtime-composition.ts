@@ -143,7 +143,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page",
     "  storage retire-orphan-verification --acquisition <uuid> [--plan] [--json]  offline retirement of one abandoned sign-in reservation",
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
-    "  storage backup [--json]  write ONE verified authority backup + manifest — the only backup writer",
+    "  storage backup [--json]  write verified SQLite backup + manifest; stopped flat native6 also retains private coupled companions",
     "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup",
     "  storage recover-admission --pid <owner-pid> | --empty  offline quarantine of a verified abandoned owner, or of an empty installation mutex; preserves its owner evidence",
     "  storage recover-chatgpt-lock  offline removal of a ChatGPT credential lock whose owner process is gone; a live owner is refused",
