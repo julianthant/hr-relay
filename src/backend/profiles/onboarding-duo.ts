@@ -57,6 +57,7 @@ export interface DraftDuoCapability {
 
 export interface ProfileOnboardingDuoProvider {
   start(attempt: DraftDuoAttempt,
-    bindObservedContext: (context: DraftDuoObservedContext) => Promise<DraftDuoCapability>): Promise<void>;
+    bindObservedContext: (context: DraftDuoObservedContext) => Promise<DraftDuoCapability>,
+    reportFailure: (error: Error) => Promise<void>): Promise<void>;
   cancel(attempt: DraftDuoAttempt): Promise<Readonly<{ state: "closed" | "uncertain" }>>;
 }
