@@ -103,7 +103,8 @@ function observeStoppedControlProcessCustody(processLockRoot: string, admission:
   if (Object.values(snapshot.processLocks).some((lock) => lock.state !== "stopped") || orphans.staleWorkerRecords > 0 || orphans.staleServerRecords > 0) {
     throw new Error("profile-control-upgrade-process-custody-unproved");
   }
-  return { snapshot, orphans };
+  const { recordedAt: _recordedAt, ...custody } = snapshot;
+  return { snapshot: custody, orphans };
 }
 function assessProfileCredentialCopies(admission: RuntimeAdmission, before: ReturnType<typeof enumerateProfileCredentialMembership>,
   backups: readonly Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[], fields: Readonly<{ capturedSecrets: readonly string[];

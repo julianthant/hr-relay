@@ -1810,20 +1810,30 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         const observed = inspectAuthenticatedCredentialPayload(copy.document, capturedSecrets);
         return { ...observed, containsCaptured: observed.containsCaptured || containsKey(copy.document) };
       } };
-    const inventory = options.repairInventory?.(request, writer, copies);
-    if (inventory === undefined) throw new Error("credential-repair-inventory-required");
+    const abort = abortSourceCapture;
+    if (abort !== undefined && (abortRepairCopies === undefined || abortRepairRequest === undefined
+      || !privateEqual(request, abortRepairRequest) || !privateEqual(request, abort.operation.onboarding?.abort)
+      || copies !== abortRepairCopies || copies.abortSource?.operationId !== abort.operation.operationId)) throw new Error("profile-draft-abort-request-changed");
+    const initialization = abort === undefined ? undefined : options.initializationInventory?.(abort.operation, writer, copies);
+    const inventory = abort === undefined ? options.repairInventory?.(request, writer, copies) : undefined;
     let result: { value: T } | undefined, primary: { error: unknown } | undefined;
     try {
-      inventory.revalidate();
+      if (abort !== undefined) {
+        if (initialization === undefined) throw new Error("credential-initialization-inventory-required");
+        initialization.revalidateBeforeKeyIntent(); initialization.revalidate(abort.operation); initialization.revalidateBeforeKeyIntent();
+      } else {
+        if (inventory === undefined) throw new Error("credential-repair-inventory-required");
+        inventory.revalidate();
+      }
       assertCredentialErasureHeadFiles(journalPath, head); assertCredentialKeyWitness(keyPath, key, binding);
       const observed = readPrivateFile(protectedPath, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
       if (observed === undefined || observed.identity.device !== current.identity.device || observed.identity.inode !== current.identity.inode
         || !sameBytes(observed.bytes, current.bytes)) throw new Error("credential-repair-source-changed");
       result = { value: work() };
     } catch (error) { primary = { error }; }
-    const owners = { admission: { admission: options.admission, inventory } };
+    const owners = { admission: { admission: options.admission, inventory: inventory ?? initialization } };
     if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([primary.error], owners);
-    try { inventory.dispose(); }
+    try { inventory?.dispose(); }
     catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], owners); }
     if (primary !== undefined) throw primary.error;
     if (result === undefined) throw new Error('credential-repair-result-unproved');

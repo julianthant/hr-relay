@@ -1333,7 +1333,7 @@ export class RuntimeAdmission {
     const assertHeld = () => {
       this.assertLive(); assertStoppedMachineMaintenance(lease, restore);
       if (canonicalJsonStringify(lease.readProfileRegistry()) !== source || !noSymlinkAncestry(root, ancestry)) throw new Error("profile-incomplete-publication-changed");
-      assertLiveProfileDatabaseBinding(join(root, "state.db"), binding);
+      assertCanonicalProfileBinding(join(root, "state.db"), binding);
     };
     assertHeld();
     return new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => this.readInstallationContext() },
