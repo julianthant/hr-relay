@@ -1,5 +1,5 @@
-import { z } from "zod";
 // @vitest-environment jsdom
+import { z } from "zod";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
@@ -282,4 +282,31 @@ it("confirmation retains the displayed attempt and rejects replacement, expiry, 
     await act(async () => root.unmount());
     await act(async () => oldConfirm(replacement!)); assert.equal(requests.length, 1);
   } finally { await act(async () => root.unmount()); }
+});
+
+it("focuses a distinct-window opener and tolerates a missing opener", async () => {
+  const host = document.createElement("div"), frame = document.createElement("iframe");
+  document.body.append(host, frame);
+  const child = frame.contentWindow;
+  assert.ok(child);
+  assert.equal(child instanceof Window, false);
+  const focus = vi.spyOn(child, "focus").mockImplementation(() => {});
+  const prior = Object.getOwnPropertyDescriptor(window, "opener");
+  const root = createRoot(host);
+  let setup!: ReturnType<typeof useServedDuoSetup>;
+  function Probe() { setup = useServedDuoSetup(); return null; }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    Object.defineProperty(window, "opener", { configurable: true, value: child });
+    setup.returnToParent();
+    assert.equal(focus.mock.calls.length, 1);
+    Object.defineProperty(window, "opener", { configurable: true, value: null });
+    setup.returnToParent();
+    assert.equal(focus.mock.calls.length, 1);
+  } finally {
+    if (prior) Object.defineProperty(window, "opener", prior);
+    else Reflect.deleteProperty(window, "opener");
+    await act(async () => root.unmount());
+    vi.restoreAllMocks(); host.remove(); frame.remove();
+  }
 });

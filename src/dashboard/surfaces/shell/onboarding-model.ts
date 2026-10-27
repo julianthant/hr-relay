@@ -278,7 +278,7 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
   return { methods: { key: draft?.methods.key.state === "complete", touch: draft?.methods.touch.state === "complete" },
     connected: draft !== undefined && !port?.unavailable, unavailable: unavailable || port?.unavailable || draft?.methods[method].state === "unknown" || draft?.methods[method].state === "unavailable", listening: pending || draft?.methods[method].state === "pending", method, setMethod(next: ProfileOnboardingMethod) { if (next !== current.current.method) generation.current++; setMethod(next); }, matchesConfirmation,
     dismissConfirmation(scope: DuoConfirmationScope) { if (scope.generation === generation.current) generation.current++; },
-    returnToParent() { const opener: unknown = window.opener; if (opener instanceof Window) opener.focus(); },
+    returnToParent() { const opener = window.opener as WindowProxy | null; opener?.focus(); },
     cancel() { const attemptId = draft?.methods[method].attemptId; if (port && attemptId) void run(() => port.cancelDuo(method, attemptId)); },
     open(capture: boolean) {
       if (!port || !draft || port.unavailable) return;
