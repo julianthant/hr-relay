@@ -1,7 +1,7 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { fileURLToPath } from "node:url";
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
-import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
+import { acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../../storage/admission/installation.js";
 import { acquireRuntimeRestoreAdmission, acquireRuntimeProcessLock, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
@@ -143,7 +143,8 @@ export async function runSecureEnvironmentBootstrap(
     && !["doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
   let initialWorkerCustody: RuntimeProcessLockHandle | undefined;
-  const admission = (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
+  const admission = await (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
+    : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(workspace, requested)
     : acquireEntrypointAdmission(workspace, requested)))(mode);
   let shutdown: "release" | "retain" = "release";
   let runtimeFailure: unknown;

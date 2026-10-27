@@ -21,7 +21,7 @@ import { ConfigSchema } from "../../../../models/config/schema.js";
 import { ensureChildDirectory } from "../../../storage/configuration/credential-safe-file.js";
 import { createProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo-provider.js";
 import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
-import { consumeAuthenticatedProfileOwnerClaim, isAuthenticatedProfileOwnerClaim, consumeAuthenticatedProfileUpgrade, type ActiveProfileSession, type AuthenticatedProfileUpgrade, type ProfileUpgradeRequired } from "../../../profiles/profile-session.js";
+import { authorizeFlatExistingDataClaim, consumeAuthenticatedProfileOwnerClaim, isAuthenticatedProfileOwnerClaim, consumeAuthenticatedProfileUpgrade, type ActiveProfileSession, type AuthenticatedProfileUpgrade, type ProfileUpgradeRequired } from "../../../profiles/profile-session.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
 import { staticBundleHandler } from "../../../transports/http/static-bundle.js";
@@ -1043,7 +1043,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       try {
         if (claiming) {
           const claim = consumeAuthenticatedProfileOwnerClaim(authorization, exclusive);
-          await exclusive.claimExistingProfileData(claim.owner, claim.claimId, clock);
+          await exclusive.claimExistingProfileData(claim.owner, claim.claimId, clock, claim.flat);
         } else {
           const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
           const report = await upgradeReadyProfileStorage(exclusive, claim, { plan: false, hostFacts: facts }, clock);
@@ -1112,9 +1112,10 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
   const bundle = frontend === "built-bundle" ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript) : undefined;
   const processLock = acquireRuntimeProcessLock({ processLockRoot, name: "server", pid: process.pid }, clock);
-  const { profile, facts } = (() => {
+  const { profile: profileRuntime, facts } = (() => {
     try {
       const facts = hostConfigFacts(env);
+      if (machine.requiresExistingDataClaim()) return { profile: undefined, facts };
       let onboardingDuo = input.onboardingDuo;
       if (onboardingDuo === undefined) {
         const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, "onboarding");
@@ -1129,6 +1130,10 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       throw error;
     }
   })();
+  const profile = () => {
+    if (profileRuntime === undefined) throw new ProfileSessionRefusedError("PROFILE_OWNER_CLAIM_REQUIRED");
+    return profileRuntime;
+  };
   const app = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
   type Selection = { sessionId: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
   let selection: Selection | undefined;
@@ -1157,15 +1162,15 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   };
   const current = (request: Request): Selection => {
     if (!loopback(request) || transitioning || selection === undefined || cookieOf(request) !== selection.sessionId) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
-    profile.assertCurrent(selection.token);
+    profile().assertCurrent(selection.token);
     return selection;
   };
   const currentOnboarding = (request: Request, operationId: string, abort = false) => {
     const draft = onboardingSelection;
     if (!loopback(request) || transitioning || draft === undefined || draft.operationId !== operationId
       || cookieOf(request, onboardingCookieName) !== draft.sessionId) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
-    if (abort) profile.session.assertOnboardingAbort(draft.token, operationId);
-    else profile.session.readOnboarding(draft.token, operationId);
+    if (abort) profile().session.assertOnboardingAbort(draft.token, operationId);
+    else profile().session.readOnboarding(draft.token, operationId);
     return draft;
   };
   const selectedPath = (request: Request): boolean => {
@@ -1187,7 +1192,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   });
   app.get("/api/v1/profile/state", c => {
     if (selection === undefined && onboardingSelection !== undefined && cookieOf(c.req.raw, onboardingCookieName) === onboardingSelection.sessionId) {
-      return c.json(profile.session.readOnboarding(onboardingSelection.token, onboardingSelection.operationId));
+      return c.json(profile().session.readOnboarding(onboardingSelection.token, onboardingSelection.operationId));
     }
     if (selection === undefined) return c.json(PublicProfileStateSchema.parse(pending !== undefined && cookieOf(c.req.raw) === pending.sessionId
       ? { state: "cancelling", operationId: pending.operationId } : { state: "signed-out" }));
@@ -1212,7 +1217,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     guarded.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
     let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
     guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return dispatchMountedRequest(selectedApp, c.req.raw); });
-    const runtime = await composeDashboardRuntime({ ...input, profile: { runtime: profile, token: result.token },
+    const runtime = await composeDashboardRuntime({ ...input, profile: { runtime: profile(), token: result.token },
       applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } });
     selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
@@ -1224,12 +1229,13 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     transitioning = true;
     try {
       const result = await (async () => {
-        if (claiming) return profile.session.claimExistingData({ ...ProfileOwnerClaimRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
-        if (signup) return profile.session.signUp({ ...ProfileSignUpRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
+        if (claiming && profileRuntime === undefined) return authorizeFlatExistingDataClaim(machine, { ...ProfileOwnerClaimRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
+        if (claiming) return profile().session.claimExistingData({ ...ProfileOwnerClaimRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
+        if (signup) return profile().session.signUp({ ...ProfileSignUpRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
         const fields = { ...ProfileLoginRequestSchema.parse(await request.json()), at: clock.now().toISOString() };
-        const signed = profile.session.signIn(fields);
+        const signed = profile().session.signIn(fields);
         if (signed.state !== "cancelling") return signed;
-        const continuation = profile.session.authorizeLogoutContinuation(fields);
+        const continuation = profile().session.authorizeLogoutContinuation(fields);
         if (continuation.state !== "authorized") return continuation;
         return continuation.resume();
       })();
@@ -1275,21 +1281,21 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   });
   app.post("/api/v1/profile/onboarding/duo/start", async c => {
     const request = StartProfileOnboardingDuoRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId);
-    return c.json(await profile.session.startOnboardingDuo(draft.token, request.operationId, request.method));
+    return c.json(await profile().session.startOnboardingDuo(draft.token, request.operationId, request.method));
   });
   app.post("/api/v1/profile/onboarding/duo/confirm", async c => {
     const request = ConfirmProfileOnboardingDuoRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId);
-    return c.json(profile.session.confirmOnboardingDuo(draft.token, request.operationId, request.method, request.attemptId));
+    return c.json(profile().session.confirmOnboardingDuo(draft.token, request.operationId, request.method, request.attemptId));
   });
   app.post("/api/v1/profile/onboarding/duo/cancel", async c => {
     const request = CancelProfileOnboardingDuoRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId);
-    return c.json(await profile.session.cancelOnboardingDuo(draft.token, request.operationId, request.method, request.attemptId));
+    return c.json(await profile().session.cancelOnboardingDuo(draft.token, request.operationId, request.method, request.attemptId));
   });
   app.post("/api/v1/profile/onboarding/cancel", async c => {
     const request = CancelProfileOnboardingRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId, true);
     transitioning = true;
     try {
-      const result = await profile.session.cancelOnboarding(draft.token, request.operationId);
+      const result = await profile().session.cancelOnboarding(draft.token, request.operationId);
       onboardingSelection = undefined;
       c.header("set-cookie", `${onboardingCookieName}=; HttpOnly; SameSite=Strict; Path=/api/v1/profile; Max-Age=0`);
       return c.json(PublicProfileStateSchema.parse(result));
@@ -1306,7 +1312,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     const draft = currentOnboarding(c.req.raw, request.operationId);
     transitioning = true;
     try {
-      const active = await profile.session.completeOnboarding(draft.token, request.operationId), result = await mountActive(active);
+      const active = await profile().session.completeOnboarding(draft.token, request.operationId), result = await mountActive(active);
       completedDraft = { operationId: request.operationId, sessionId: draft.sessionId };
       onboardingSelection = undefined;
       if (selection === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
@@ -1322,7 +1328,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     transitioning = true;
     try {
       if (active !== undefined) {
-        const result = profile.session.logOut(active.token, { at: clock.now().toISOString() });
+        const result = profile().session.logOut(active.token, { at: clock.now().toISOString() });
         if (result.state !== "cancelling" || result.operationId === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
         pending = { sessionId: active.sessionId, operationId: result.operationId, profileId: active.profileId, runtime: active.runtime };
         selection = undefined;
@@ -1330,8 +1336,8 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       const operation = pending;
       if (operation === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
       await operation.runtime.detach();
-      await profile.awaitClosurePreparation(operation.profileId);
-      const result = profile.session.resumeLogout(operation.operationId);
+      await profile().awaitClosurePreparation(operation.profileId);
+      const result = profile().session.resumeLogout(operation.operationId);
       if (result.state !== "wiped") return c.json(PublicProfileStateSchema.parse(result.state === "refused"
         ? { state: "refused", code: result.code } : { state: "cancelling", operationId: operation.operationId }));
       pending = undefined;
@@ -1344,7 +1350,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   const listener = await (async () => {
     try { return await startDashboardHttpServer({ app, port: bindPort ?? input.backendPortOverride ?? input.isolation.backendPort }); }
     catch (error) {
-      try { await profile.close(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
+      try { await profileRuntime?.close(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       throw error;
     }
@@ -1355,7 +1361,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     if (stopping !== undefined) return stopping;
     transitioning = true;
     const failures: unknown[] = [];
-    try { profile.beginClose(); } catch (error) { failures.push(error); }
+    try { profileRuntime?.beginClose(); } catch (error) { failures.push(error); }
     const transportClosure = listener.close();
     stopping = (async () => {
       try { await transportClosure; } catch (error) { failures.push(error); }
@@ -1364,9 +1370,9 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       if (selectedRuntime !== undefined) {
         try { await selectedRuntime.detach(); } catch (error) { failures.push(error); }
       }
-      try { await profile.session.closeOnboarding(); } catch (error) { failures.push(error); }
+      try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
-      try { await profile.close(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try { await profileRuntime?.close(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       try { processLock.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       try { machine.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
     })();

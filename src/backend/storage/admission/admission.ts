@@ -24,7 +24,7 @@ import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type Director
 import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, captureCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import type { ProfileRegistryDocument, ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { type IssuedDuoTransaction } from "../configuration/duo-credential-store.js";
 import { type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
@@ -140,7 +140,7 @@ type AdmissionScope = "profile-restore" | "installation" | "adoption-inspection"
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
   | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-repair-inventory" | "profile-pending-logout-inventory" | "stopped-control-inventory" | "stopped-incomplete-profile-inventory";
 
-type ReadyProfileUpgrade = Readonly<{ sourcePath: string; processLockRoot: string; sourceSchemaVersion: 8 | 9; copyPath?: string;
+type ReadyProfileUpgrade = Readonly<{ sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9; copyPath?: string;
   qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
@@ -385,10 +385,14 @@ export class RuntimeAdmission {
       }
     }
   }
-  profileMaintenanceSchemaVersion(): 8 | 9 {
+  profileMaintenanceSchemaVersion(): 6 | 8 | 9 {
     this.assertLive();
     if (this.#readyUpgrade === undefined) return 9;
     const observed = readProfileDatabaseBinding(this.#readyUpgrade.copyPath ?? this.#readyUpgrade.sourcePath);
+    if (this.#readyUpgrade.sourceSchemaVersion === 6) {
+      if (observed.state !== "unbound" || observed.schemaVersion !== 6) throw new Error("existing-data-owner-source-changed");
+      return 6;
+    }
     if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9) || observed.binding.installationId !== this.profileBinding.installationId
       || observed.binding.profileId !== this.profileBinding.profileId) throw new Error("profile-stopped-upgrade-binding-changed");
     return observed.schemaVersion;
@@ -788,11 +792,13 @@ export class RuntimeAdmission {
     receipts: readonly RelocationCompletionReceipt[] }> | undefined {
     this.assertLive();
     if (this.#scope === "synthetic") return undefined;
+    if (this.#readyUpgrade !== undefined && this.#profileParent !== undefined) return this.#profileParent.readInstallationContext();
     if (this.#scope === "stopped-incomplete-profile-inventory" || this.#scope === "stopped-control-inventory" || this.#scope === "profile-restore" || this.#scope === "stopped-staged" || this.#scope === "stopped-projection" || this.#scope === "synthetic-stopped-staged") {
       if (this.#authority.readInstallationContext === undefined) throw new Error("runtime-admission: staged installation context unavailable");
       return this.#authority.readInstallationContext();
     }
-    if (this.#scope === "profile" || this.#scope === "profile-initialization") {
+    if (this.#scope === "profile" || this.#scope === "profile-initialization" || this.#scope === "profile-settlement"
+      || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") {
       if (this.#authority.readInstallationContext === undefined) throw new Error("profile-parent-context-unavailable");
       return this.#authority.readInstallationContext();
     }
@@ -1339,34 +1345,38 @@ export class RuntimeAdmission {
     return new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => this.readInstallationContext() },
       root, join(root, "artifacts"), [join(root, "state.db")], "stopped-incomplete-profile-inventory", "exclusive", this.#locator, binding, this);
   }
-  async forStoppedExistingDataBackup(witness: ExistingDataOwnerWitness): Promise<RuntimeAdmission> {
+  async forStoppedExistingDataBackup(witness: ExistingDataOwnerWitness, targetProfileId?: string): Promise<RuntimeAdmission> {
     const { lease, restore } = this.#stoppedDuoRecovery();
-    const owner = verifyExistingDataOwner(witness, this);
-    if (owner.profileId === undefined) throw new Error("existing-data-flat-transition-required");
-    const readonly = this.forStoppedIncompleteProfileInventory(owner.profileId);
-    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
-    let source: ReturnType<typeof AuthorityDatabase.inspectExistingReadOnly>;
-    try { source = AuthorityDatabase.inspectExistingReadOnly(readonly, join(readonly.stateRoot, "state.db")); }
-    catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: readonly });
-      readonly.release(); throw error;
-    }
-    readonly.release();
-    const root = join(this.stateRoot, "profiles", owner.profileId), path = join(root, "state.db");
+    const owner = verifyExistingDataOwner(witness, this), flat = owner.profileId === undefined;
+    if (flat && !this.requiresExistingDataClaim()) throw new Error("existing-data-flat-source-required");
+    const profileId = owner.profileId ?? z.uuid().parse(targetProfileId).toLowerCase();
+    const root = flat ? this.stateRoot : join(this.stateRoot, "profiles", profileId), path = join(root, "state.db");
     const processLockRoot = join(lease.readInstallationContext().workspace, rebuildRuntimeIsolation.processLockRoot);
-    const registry = canonicalJsonStringify(this.readProfileRegistry()), physical = lstatSync(path);
+    const registry = flat ? undefined : canonicalJsonStringify(this.readProfileRegistry()), physical = lstatSync(path);
     const assertHeld = () => {
       this.assertLive(); assertStoppedMachineMaintenance(lease, restore); verifyExistingDataOwner(witness, this);
-      if (canonicalJsonStringify(this.readProfileRegistry()) !== registry) throw new Error("existing-data-owner-source-changed");
+      if (flat ? !this.requiresExistingDataClaim() : canonicalJsonStringify(this.readProfileRegistry()) !== registry) throw new Error("existing-data-owner-source-changed");
       const current = lstatSync(path);
       if (current.dev !== physical.dev || current.ino !== physical.ino || current.size !== physical.size
         || current.mtimeMs !== physical.mtimeMs || current.ctimeMs !== physical.ctimeMs) throw new Error("existing-data-owner-source-changed");
+      if (!flat) assertCanonicalProfileBinding(path, { installationId: this.locator.installationId, profileId });
     };
     assertHeld();
-    return new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release() {} },
+    const qualification: ReadyProfileUpgrade["qualification"] = { current: { kind: "inspection" } };
+    const child = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release() {} },
       root, join(root, "artifacts"), [path], "profile-ready-upgrade", "exclusive", this.#locator,
-      { installationId: this.locator.installationId, profileId: owner.profileId }, this, undefined,
-      { sourcePath: path, processLockRoot, sourceSchemaVersion: 9, qualification: { current: { kind: "qualified", sourceFingerprint: source.authorityContentFingerprint } } });
+      { installationId: this.locator.installationId, profileId }, this, undefined,
+      { sourcePath: path, processLockRoot, sourceSchemaVersion: flat ? 6 : 9, qualification });
+    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+    try {
+      const source = AuthorityDatabase.inspectStoppedUpgrade(child, path, processLockRoot, systemClock);
+      if (source.schemaVersion !== (flat ? 6 : 9)) throw new Error("existing-data-source-schema-refused");
+      qualification.current = { kind: "qualified", sourceFingerprint: source.authorityContentFingerprint };
+      return child;
+    } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: child });
+      child.release(); throw error;
+    }
   }
   async reclassifyIncompleteProfileAsDraft(profileId: string): Promise<void> {
     const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
@@ -1379,20 +1389,35 @@ export class RuntimeAdmission {
       lease.reclassifyIncompleteProfile(witness);
     } finally { admission.release(); }
   }
-  async claimExistingProfileData(owner: ExistingDataOwnerWitness, claimId: string, clock: Clock): Promise<SignUpOperation> {
-    const { lease } = this.#stoppedDuoRecovery();
+  async claimExistingProfileData(owner: ExistingDataOwnerWitness, claimId: string, clock: Clock, flat?: { firstName: string; lastName: string; createdAt: string }): Promise<SignUpOperation> {
+    const { lease, restore } = this.#stoppedDuoRecovery();
+    const source = verifyExistingDataOwner(owner, this);
+    if ((source.profileId === undefined) !== (flat !== undefined)) throw new Error("existing-data-owner-claim-required");
     const { backupExistingData } = await import("../maintenance/existing-data-backup.js");
     const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
     const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
-    const backupAdmission = await this.forStoppedExistingDataBackup(owner);
+    const backupAdmission = await this.forStoppedExistingDataBackup(owner, claimId);
     let backup: Awaited<ReturnType<typeof backupExistingData>>;
     try { backup = await backupExistingData(this, backupAdmission, owner, claimId, clock); }
     catch (error) {
       if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
       backupAdmission.release(); throw error;
     }
+    if (owner.profileId === undefined) {
+      if (flat === undefined) throw new Error("existing-data-owner-claim-required");
+      const { prepareFlatProfileClaim, completeFlatProfileClaim } = await import("../maintenance/flat-profile-claim.js");
+      let witness: Awaited<ReturnType<typeof prepareFlatProfileClaim>>;
+      try { witness = await prepareFlatProfileClaim(this, owner, backup, flat, backupAdmission); }
+      catch (error) {
+        if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
+        backupAdmission.release(); throw error;
+      }
+      backupAdmission.release();
+      const operation = lease.claimFlatProfileData(witness, restore, this);
+      await completeFlatProfileClaim(this, operation, clock);
+      return operation;
+    }
     backupAdmission.release();
-    if (owner.profileId === undefined) throw new Error("existing-data-flat-transition-required");
     const inventory = this.forStoppedIncompleteProfileInventory(owner.profileId);
     try {
       const witness = captureIncompleteProfileDraft(this, inventory, () => assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(inventory)), { owner, backup });
@@ -1406,10 +1431,14 @@ export class RuntimeAdmission {
     const matches = readdirSync(operations).filter(name => name.endsWith(".json")).map(name => {
       const file = readPrivateFile(join(operations, name), { label: "lock", maxBytes: 1_048_576 });
       if (file === undefined) throw new Error("existing-data-claim-readback-unproved");
-      return SignUpOperationSchema.parse(JSON.parse(file.bytes.toString("utf8")));
-    }).filter(operation => operation.ownerClaim?.claimId === claimId);
+      return z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(file.bytes.toString("utf8")));
+    }).filter((operation): operation is SignUpOperation => operation.kind === "sign-up" && operation.ownerClaim?.claimId === backup.claimId);
     if (matches.length !== 1 || matches[0] === undefined) throw new Error("existing-data-claim-readback-unproved");
     return matches[0];
+  }
+  recoverFlatProfileClaim(): SignUpOperation | undefined {
+    const { lease, restore } = this.#stoppedDuoRecovery();
+    return lease.recoverFlatProfileClaim(restore, this);
   }
   assertStoppedIncompleteProfileInventory(): void {
     this.assertLive();
@@ -1445,6 +1474,23 @@ export class RuntimeAdmission {
     }
     stoppedMaintenanceRestores.set(lease, restore);
     return RuntimeAdmission.fromInstallationLease(lease);
+  }
+  requiresExistingDataClaim(): boolean {
+    this.assertLive();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    return (this.#authority as InstallationLease).requiresExistingDataClaim();
+  }
+  static acquireDashboard(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
+    const canonical = realpathSync(workspace);
+    if (!existsSync(join(canonical, ".tracker", "control", "installation.json"))) return RuntimeAdmission.acquireMachine(canonical, mode);
+    const lease = mode === "exclusive" ? acquireInstallation(canonical, "exclusive") : acquireInstallation(canonical, "shared");
+    try { lease.requiresExistingDataClaim(); return RuntimeAdmission.fromInstallationLease(lease); }
+    catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: lease });
+      try { lease.release(); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: lease }); }
+      throw error;
+    }
   }
   static acquireMachine(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
     const canonical = realpathSync(workspace);

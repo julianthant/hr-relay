@@ -1,3 +1,4 @@
+import { readFlatProfileClaimReceipt, claimedProfilePath } from "./flat-profile-claim.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { AbsolutePathSchema } from "../../../models/config/schema.js";
 import { BrowserSystemIdSchema, PositiveIntSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
@@ -51,8 +52,10 @@ export function inventoryFileIdentity(path: string) {
 
 export function enumerateProfileCredentialMembership<Custody extends CredentialMembershipCustody>(admission: RuntimeAdmission, custody: Custody, savedBrowserRoot: string, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>) {
   admission.assertLive();
-  const root = admission.stateRoot;
-    const browserRootPaths = [...new Set([...custody.configSnapshots.map(snapshot => snapshot.config.paths.browserProfileRoot), savedBrowserRoot])];
+  const root = admission.stateRoot, flat = admission.profileMaintenanceSchemaVersion() === 6;
+  const claim = flat ? undefined : readFlatProfileClaimReceipt(admission);
+  const mapped = (path: string) => claim === undefined ? path : claimedProfilePath(admission, path, claim);
+    const browserRootPaths = [...new Set([...custody.configSnapshots.map(snapshot => mapped(snapshot.config.paths.browserProfileRoot)), mapped(savedBrowserRoot)])];
     if (browserRootPaths.length === 0) throw new Error("profile-inventory-config-unavailable");
     for (const path of browserRootPaths) assertRetainedProfileBrowserRoot(admission, path);
     if (browserRootPaths.some(path => browserRootPaths.some(other => other !== path && path.startsWith(`${other}${sep}`)))) throw new Error("profile-inventory-browser-root-ambiguous");
@@ -60,19 +63,25 @@ export function enumerateProfileCredentialMembership<Custody extends CredentialM
     const backupPaths: string[] = [], manifests: string[] = [];
     const browserRoots = new Set(custody.browsers.map(browser => {
       const slot = custody.slots.find(value => value.workerId === browser.workerId);
-      const roots = [...new Set(custody.configSnapshots.filter(snapshot => snapshot.fingerprint === browser.configFingerprint).map(snapshot => snapshot.config.paths.browserProfileRoot))];
+      const roots = [...new Set(custody.configSnapshots.filter(snapshot => snapshot.fingerprint === browser.configFingerprint).map(snapshot => mapped(snapshot.config.paths.browserProfileRoot)))];
       if (slot === undefined || roots.length !== 1 || browser.profileDirectory === undefined
-        || browser.profileDirectory !== workerProfileDirectory({ profileRoot: roots[0], slotOrdinal: slot.ordinal, system: browser.system })) {
+        || mapped(browser.profileDirectory) !== workerProfileDirectory({ profileRoot: roots[0], slotOrdinal: slot.ordinal, system: browser.system })) {
         throw new Error("profile-inventory-browser-membership-unavailable");
       }
       if (browser.health !== "closed") throw new Error("profile-inventory-browser-closure-unproved");
-      return browser.profileDirectory;
+      return mapped(browser.profileDirectory);
     }));
     const visit = (path: string): void => {
       admission.assertStateRoot(path);
       const entry = inventoryFileIdentity(path);
       identities.push(entry);
       const local = relative(root, path), parts = local.split(sep), top = parts[0];
+      if (flat && (local === ".runtime-owner.json" || local === "artifacts/.runtime-owner.json" || local === "locks")) return;
+      if (top === "files") {
+        if (entry.directory) for (const name of readdirSync(path).sort()) visit(join(path, name));
+        else { copies.push(path); unsupported.push(path); }
+        return;
+      }
       if (local === "") { for (const name of readdirSync(path).sort()) visit(join(path, name)); return; }
       const configuredBrowserRoot = browserRootPaths.find(browserRoot => path === browserRoot || path.startsWith(`${browserRoot}${sep}`));
       const browserAncestor = browserRootPaths.some(browserRoot => browserRoot.startsWith(`${path}${sep}`));

@@ -681,7 +681,7 @@ Worker bootstrap acquires machine admission, captures durable selection, and tak
 
 A stopped cancelling profile uses a privately issued pending-logout inventory child, bound to its exact current operation, registry generation, parent lease and physical source. Its canonical database binding is parsed once from a descriptor-isolated snapshot retained only for that child. Every liveness check revalidates the exact unchanged main, WAL, SHM and journal identities and absences, plus current parent and operation custody; any change permanently revokes that child. Native resource inventories still take fresh strict snapshots. Disposal precedes child and parent release, and a failed snapshot cleanup retains custody. It admits descriptor-isolated inspection of canonical copies before an erasure CAS exists; it cannot grant ordinary credential reads, database writes, artifacts, workers or selection. The constructor-owned credential inventory authenticates key, external head and all recognized ciphertext copies before assessment, with complete profile and process-root membership revalidation. Cold closure requires terminal runs and closed leases, browsers, controls and write custody. A matching late erasure observes only its original request and pending publication head; incomplete capture remains a refusal when surviving copies cannot be certified.
 
-Logout inventory certifies independent backup and credential-stage copies only when both canonical UCPath identity and password were available for capture before that erase. When a prior erase leaves capture incomplete, even a clean-shaped existing copy remains uncertain; repeated resumes and restart cannot publish wiped until those copies are absent. No captured plaintext is persisted. Credential copy scans use the exact authenticated source-schema table registry for verified stopped backups, including supported pre-assistant copies. Their native schema, metadata, digest and physical custody must validate before scanning; ordinary runtime admission remains current-schema-only. Ordinary logout may retain noncurrent bound backups only for three exact settled transitions: historical 7→8, canonical pending-setup 7→9, and predecessor 8→9. Each copy requires its own authenticated profile/installation binding, exact source bytes and matching immutable receipt. The historical 7→8 case uses the canonical plan bounded at target8; 7→9 and 8→9 use their source version and the current target9 plan. All three cases require full stopped-process, resource and copy custody before and after inventory; missing, duplicate, foreign or mismatched evidence refuses. Historical receipts and backup bytes remain unchanged. Schema7 archival inspection grants no ordinary runtime, credential write or READY schema7 upgrade authority under schema9; the existing generic pending-setup conversion remains separate. Unbound schema1–6 backups retain a named binding refusal; path identity alone does not assign them to a profile.
+Logout inventory certifies independent backup and credential-stage copies only when both canonical UCPath identity and password were available for capture before that erase. When a prior erase leaves capture incomplete, even a clean-shaped existing copy remains uncertain; repeated resumes and restart cannot publish wiped until those copies are absent. No captured plaintext is persisted. Credential copy scans use the exact authenticated source-schema table registry for verified stopped backups, including supported pre-assistant copies. Their native schema, metadata, digest and physical custody must validate before scanning; ordinary runtime admission remains current-schema-only. Ordinary logout may retain noncurrent bound backups only for three exact settled transitions: historical 7→8, canonical pending-setup 7→9, and predecessor 8→9. Each copy requires its own authenticated profile/installation binding, exact source bytes and matching immutable receipt. The historical 7→8 case uses the canonical plan bounded at target8; 7→9 and 8→9 use their source version and the current target9 plan. All three cases require full stopped-process, resource and copy custody before and after inventory; missing, duplicate, foreign or mismatched evidence refuses. Historical receipts and backup bytes remain unchanged. Schema7 archival inspection grants no ordinary runtime, credential write or READY schema7 upgrade authority under schema9; the existing generic pending-setup conversion remains separate. Unbound schema1–6 backups retain a named binding refusal unless the immutable flat owner-claim receipt authenticates their exact retained source path and copies. Path identity alone never assigns them to a profile.
 
 Settled worker reservation IDs retain allocation provenance. Closure authenticates the exact origin,
 revision and canonical retirement command. Remove-worker retirement requires
@@ -719,17 +719,45 @@ database and key. Missing, corrupt, unsupported or nonzero activity refuses; thi
 legacy owner claim or an automatic startup conversion.
 
 Explicit existing-data claims use the profile claim action and the existing application maintenance
-handoff. The supported bound source is a native9 historical saved profile with its original
+handoff. A supported bound source is a native9 historical saved profile with its original
 authenticated credential apply, matching verifier and protected inputs, no previous erasure or Duo
-publication, and proved closed resource custody. Retained terminal runs, settings and files are not
-required to be empty. Wrong-owner, foreign binding, active or UNKNOWN write custody and unsupported
-history refuse. Ordinary signup cannot resume a claim, and draft cancellation cannot erase claimed
-data. Flat pre-profile installations still require their separate stopped transition.
+publication, and proved closed resource custody. Its terminal runs, settings and managed files may
+be retained. Withdrawal keeps its database, key and original operation identities unchanged.
 
-`storage/maintenance/existing-data-backup.ts` verifies a native SQLite backup and separate private
-copies of profile files, keys, verifier, pepper and installation control before publication changes.
-The claim operation pins that backup; its native publication journal recovers exact prefixes and
-retains an immutable claim receipt. Repeating a completed backup verifies and reuses it. The database,
-protected document, key and historical identities remain unchanged. The claim grants only the
-existing private onboarding authority: genuine method receipts and explicit Finish still govern
-publication. Retained recovery copies prevent a successful logout erasure claim.
+A supported flat source is an adopted native6 installation at the pinned default root pair, with no
+profile registry, replay-valid v2 protected history, initialized active settings and no saved path
+overrides. Retained worker slots must be retired: unretired lifetime evidence contains the old
+authority path and cannot authorize a moved runtime. Dashboard admission holds it at the public profile shell; ordinary worker admission,
+sign-in and signup refuse. No profile, verifier, pepper or onboarding browser is created by those
+refused requests. The explicit claim proves the supplied email/password against the existing
+protected authority and matches the entered name's initials to its retained timekeeper value.
+
+`storage/maintenance/existing-data-backup.ts` verifies a native SQLite backup plus private copies of
+managed files, external reports/downloads/onboarding documents, and independent installation,
+profile, key and verifier evidence before business mutation. Its durable intent keeps the original
+claim and target identities across interrupted copying and fresh browser request UUIDs. Completed
+copies and SQLite backups are verified and reused. A proved empty allocation is an unfinished
+allocation, never a completed backup.
+
+`storage/maintenance/flat-profile-claim.ts` records exact source/destination paths, file digests and
+physical identities. Native installation publication journals the moves before performing them,
+checks every recovery prefix and retains an immutable receipt. State and artifact ownership markers
+and fixed process locks stay in place. SQLite's existing stopped forward migration binds the same
+records to the private profile; one configuration activation maps current writable paths and closed
+browser observations. Historical snapshots and run identities remain intact. Their immutable claim
+receipt supplies physical membership provenance; ordinary runtime uses the current active config.
+Dashboard startup can finish that already-authorized journal and activation, without repeating
+completed moves or creating an account from an unclaimed source.
+
+The current credential owner converts replay-valid protected history into encrypted profile
+storage, preserving values, value IDs, revisions and original command/write identities. Registration
+proves the original authenticated apply even when its last edit contains other protected fields.
+Legacy Duo files and browser data remain retained; this transition invents no enrollment or Touch ID
+receipt. Genuine current method receipts and explicit Finish still govern registry, verifier and
+active-session publication. Ordinary signup cannot resume a claim, and cancellation cannot erase
+claimed records.
+
+Wrong ownership, foreign or corrupt binding, unverified copies, active/UNKNOWN write custody and
+unsupported source shapes refuse. Recovery copies hold a successful logout-erasure claim while
+remaining compatible with normal resource closure and shutdown. No recovery backup is silently
+removed or reported erased.

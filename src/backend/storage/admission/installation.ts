@@ -1,7 +1,9 @@
+import type { RuntimeAdmission } from "./admission.js";
+import { FlatProfileClaimSchema, FlatProfileClaimReceiptSchema, verifyFlatProfileClaim, settleFlatProfileClaim, type FlatProfileClaimWitness } from "../maintenance/flat-profile-claim.js";
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
-import { readPrivateFile, writePrivateStage } from "../configuration/credential-safe-file.js";
+import { readPrivateFile, writePrivateStage, fsyncPath } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, unpublishedDraftAbortMembership, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
 import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
@@ -202,11 +204,14 @@ export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator
   assertHeld(): void; assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void;
   readRelocationReceipts(): readonly RelocationCompletionReceipt[];
   readProfileRegistry(): ProfileRegistryDocument;
+  requiresExistingDataClaim(): boolean;
   commitProfileDuo(transaction: IssuedDuoTransaction): void;
   assertDraftDuoPublicationRecovery(operationId: string, profileId: string, generation: number): z.infer<typeof SignUpOperationSchema>;
   abortUnpublishedProfile(witness: UnpublishedDraftAbortWitness): void;
   reclassifyIncompleteProfile(witness: IncompleteProfileDraftWitness): void;
   claimExistingProfileData(witness: IncompleteProfileDraftWitness): void;
+  claimFlatProfileData(witness: FlatProfileClaimWitness, restore: RestoreAdmissionHandle, machine: RuntimeAdmission): z.infer<typeof SignUpOperationSchema>;
+  recoverFlatProfileClaim(restore: RestoreAdmissionHandle, machine: RuntimeAdmission): z.infer<typeof SignUpOperationSchema> | undefined;
   commitProfileDuoIntent(transaction: IssuedDuoTransaction): void;
   capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(): void }>;
   captureStoppedProfileUpgrade(profileId: string): Readonly<{ assertHeld(): void }>;
@@ -1878,17 +1883,35 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
   return canonicalJsonStringify({ document, observation: before, files, directories });
 }
 
-function initializeMachineRegistry(control: string, locator: RuntimeLocator): void {
+function initializeMachineRegistry(control: string, locator: RuntimeLocator, draft?: { operation: z.infer<typeof SignUpOperationSchema>; pepper: Buffer }): void {
   const directory = join(locator.stateRoot, "machine");
-  mkdirSync(directory, { mode: 0o700 }); syncDir(locator.stateRoot);
+  if (draft === undefined || !lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); syncDir(locator.stateRoot); }
+  privateDirectory(directory);
+  if (draft !== undefined && readdirSync(directory).some(name => !["profile-registry-version.json", "profiles.json", "profile-verifiers.json", "profile-pepper", "operations"].includes(name))) fail("existing-data-flat-machine-membership-refused");
+  const publish = (path: string, value: unknown) => {
+    if (draft === undefined || !lstatMaybe(path)) atomicJson(path, value);
+    else if (canonicalJsonStringify(readStrict(path, z.unknown())) !== canonicalJsonStringify(value)) fail("existing-data-flat-machine-publication-changed");
+  };
   const document = ProfileRegistryDocumentSchema.parse({ schemaVersion: 2, profiles: [], activeProfileId: null, sessionGeneration: 0 });
-  atomicJson(join(directory, "profile-registry-version.json"), { schemaVersion: 3 });
-  atomicJson(join(directory, "profiles.json"), document);
-  atomicJson(join(directory, "profile-verifiers.json"), { schemaVersion: 1, profiles: [] });
-  writeFileSync(join(directory, "profile-pepper"), randomBytes(32), { mode: 0o600, flag: "wx" });
-  const pepper = openSync(join(directory, "profile-pepper"), "r"); try { fsyncSync(pepper); } finally { closeSync(pepper); }
+  publish(join(directory, "profile-registry-version.json"), { schemaVersion: 3 });
+  publish(join(directory, "profiles.json"), document);
+  publish(join(directory, "profile-verifiers.json"), { schemaVersion: 1, profiles: [] });
+  const pepperPath = join(directory, "profile-pepper"), pepperBytes = draft?.pepper ?? randomBytes(32);
+  if (draft === undefined || !lstatMaybe(pepperPath)) writeFileSync(pepperPath, pepperBytes, { mode: 0o600, flag: "wx" });
+  else {
+    const existing = readPrivateFile(pepperPath, { label: "lock", maxBytes: 32 });
+    if (existing === undefined || !existing.bytes.equals(pepperBytes)) fail("existing-data-flat-pepper-changed");
+  }
+  fsyncPath(pepperPath);
   syncDir(directory);
-  atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(directory, "profiles.json"), document, [], []));
+  if (draft !== undefined) {
+    const operations = join(directory, "operations");
+    if (!lstatMaybe(operations)) { mkdirSync(operations, { mode: 0o700 }); syncDir(directory); }
+    privateDirectory(operations);
+    if (readdirSync(operations).some(name => name !== `${draft.operation.operationId}.json`)) fail("existing-data-flat-operation-membership-refused");
+    publish(join(operations, `${draft.operation.operationId}.json`), draft.operation);
+  }
+  publish(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(directory, "profiles.json"), document, [], []));
 }
 
 function adopt(control: string, workspace: string, defaultPair: RuntimePair, verifier?: AuthorityVerifier,
@@ -2121,7 +2144,10 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
             join(locator.stateRoot, "machine", "erasures", `${pending.profileId}.json`), pending);
           const row = ProfileRegistryRowSchema.parse({ profileId: pending.profileId, ...deriveProfileNames(pending.firstName, pending.lastName),
             registration: { operationId: pending.operationId, commandId: pending.commandId, writeId: pending.writeId, credentialRevision: revision, onboardingCompletion },
-            createdAt: pending.createdAt, lastSignedInAt: pending.createdAt, credentialState: "saved", duoState: "ready", lifecycle: "ready" });
+            createdAt: pending.createdAt, lastSignedInAt: pending.ownerClaim === undefined ? pending.createdAt : onboardingCompletion.finishedAt,
+            credentialState: "saved", duoState: "ready", lifecycle: "ready",
+            ...(pending.ownerClaim !== undefined && verifyExistingDataBackupFiles(pending.ownerClaim, workspace, locator.installationId).sourceStateRoot !== undefined
+              ? { migratedFromLegacy: true } : {}) });
           next = ProfileRegistryDocumentSchema.parse({ ...before, profiles: [...before.profiles, row] });
         } else {
           next = ProfileRegistryDocumentSchema.parse(document);
@@ -2269,6 +2295,20 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (canonicalJsonStringify(current) !== canonicalJsonStringify(locator)) fail("admitted locator changed; reacquire lease");
       return readReceiptChain(control, workspace, locator.installationId);
     },
+    requiresExistingDataClaim() {
+      assertHeld();
+      if (!equalLocator(readLocator(control, workspace), locator)) fail("existing-data-owner-source-changed");
+      if (lstatMaybe(join(control, "profile-flat-claim.json"))) return true;
+      const machine = lstatMaybe(join(locator.stateRoot, "machine")), continuity = lstatMaybe(join(control, "profile-registry.json"));
+      if (machine !== undefined || continuity !== undefined) {
+        readMachineRegistry(control, locator);
+        if (lstatMaybe(join(locator.stateRoot, "state.db"))) fail("existing-data-source-ambiguous");
+        return false;
+      }
+      if (lstatMaybe(join(locator.stateRoot, "profiles"))) fail("existing-data-source-ambiguous");
+      privateFile(join(locator.stateRoot, "state.db"));
+      return true;
+    },
     readProfileRegistry() {
       assertHeld();
       if (lstatMaybe(join(control, "profile-publication.json"))) {
@@ -2306,6 +2346,33 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     commitProfileDuo(transaction: IssuedDuoTransaction) { publishIssuedDuo(transaction, "settle"); },
     reclassifyIncompleteProfile(witness: IncompleteProfileDraftWitness) { reclassifyDraft(witness, false); },
     claimExistingProfileData(witness: IncompleteProfileDraftWitness) { reclassifyDraft(witness, true); },
+    claimFlatProfileData(witness: FlatProfileClaimWitness, restore: RestoreAdmissionHandle, machine: RuntimeAdmission) {
+      return mutex(control, () => {
+        assertHeld();
+        if (mode !== "exclusive" || this.locator !== publicLocator) fail("existing-data-flat-stopped-owner-required");
+        assertStoppedMachineMaintenance(this, restore);
+        if (!this.requiresExistingDataClaim() || lstatMaybe(join(control, "profile-flat-claim.json"))) fail("existing-data-flat-transition-pending");
+        const claim = verifyFlatProfileClaim(witness, locator, machine);
+        atomicJson(join(control, "profile-flat-claim.json"), claim);
+        settleFlatProfileClaim(machine, claim, locator, workspace, (operation, pepper) => initializeMachineRegistry(control, locator, { operation, pepper }));
+        unlinkSync(join(control, "profile-flat-claim.json")); syncDir(control);
+        readMachineRegistry(control, locator, false);
+        return claim.operation;
+      });
+    },
+    recoverFlatProfileClaim(restore: RestoreAdmissionHandle, machine: RuntimeAdmission) {
+      return mutex(control, () => {
+        assertHeld();
+        if (mode !== "exclusive" || this.locator !== publicLocator) fail("existing-data-flat-stopped-owner-required");
+        assertStoppedMachineMaintenance(this, restore);
+        const path = join(control, "profile-flat-claim.json");
+        if (!lstatMaybe(path)) return undefined;
+        const claim = readStrict(path, FlatProfileClaimSchema);
+        settleFlatProfileClaim(machine, claim, locator, workspace, (operation, pepper) => initializeMachineRegistry(control, locator, { operation, pepper }));
+        unlinkSync(path); syncDir(control); readMachineRegistry(control, locator, false);
+        return claim.operation;
+      });
+    },
     abortUnpublishedProfile(witness: UnpublishedDraftAbortWitness) {
       mutex(control, () => {
         assertHeld();
@@ -2520,7 +2587,20 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (capture.operation.profileId !== profileId) fail("profile-key-publication-profile-mismatch");
         const prior = readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
         const row = prior.erasures.find(entry => entry.profileId === profileId);
-        if (row === undefined) fail("profile-key-publication-unregistered");
+        if (row === undefined) {
+          const operation = capture.operation, reference = operation.ownerClaim;
+          if (reference === undefined || operation.credentialInitialization?.mode !== "proven-v2" || operation.onboarding === undefined
+            || operation.onboarding.abort !== undefined || operation.onboarding.finish !== undefined || capture.head.state !== "never-erased"
+            || before.profiles.some(entry => entry.profileId === profileId)) fail("profile-key-publication-unregistered");
+          const backup = verifyExistingDataBackupFiles(reference, workspace, locator.installationId);
+          const claim = readStrict(join(dirname(reference.backupPath), "flat.json"), FlatProfileClaimReceiptSchema);
+          if (backup.sourceStateRoot !== locator.stateRoot || backup.profileId !== profileId || claim.profileId !== profileId || claim.installationId !== locator.installationId
+            || claim.sourceStateRoot !== locator.stateRoot || canonicalJsonStringify(claim.operation.ownerClaim) !== canonicalJsonStringify(reference)
+            || claim.operation.operationId !== operation.operationId || claim.operation.credentialInitialization?.keyId !== capture.key.keyId
+            || canonicalJsonStringify(claim.operation.credentialInitialization?.mode === "proven-v2" ? claim.operation.credentialInitialization.source : undefined)
+              !== canonicalJsonStringify(operation.credentialInitialization.source)) fail("existing-data-flat-key-publication-unproved");
+          return;
+        }
         if (row.credentialKey !== undefined) {
           if (canonicalJsonStringify(row.credentialKey) !== canonicalJsonStringify(capture.key)) fail("profile-key-anchor-replacement-refused");
           return;

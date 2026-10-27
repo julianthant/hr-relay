@@ -319,3 +319,10 @@ initiating response settles before transport and profile closure, backup and sto
 After reconnection, the operator repeats the explicit claim; authenticated recovery returns the
 original private operation with its limited onboarding cookie. A fresh browser request UUID does
 not replace the retained operation or repeat its completed effects. Ordinary signup stays separate.
+
+For an adopted flat installation, the same public shell refuses ordinary signup/sign-in with
+`PROFILE_OWNER_CLAIM_REQUIRED` before constructing private profile or onboarding machinery. The
+claim's stopped handoff verifies its backup, publishes its resumable native transition and reopens
+the same loopback port. Restart may finish only that original authorized transition; a flat source
+without a claim journal stays unclaimed. The resulting authority remains the existing private draft
+until genuine current Duo methods and explicit Finish complete.

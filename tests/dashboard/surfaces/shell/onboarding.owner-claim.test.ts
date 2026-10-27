@@ -29,8 +29,8 @@ it("uses an explicit claim action and stable request identity without dispatchin
     for (const [name, value] of [["firstName", "Historical"], ["lastName", "Fixture"], ["email", "historical-fixture@ucsd.edu"], ["password", "disposable-historical-fixture"]]) {
       await act(async () => {
         const input = host.querySelector<HTMLInputElement>(`input[name="${name}"]`); assert.ok(input);
-        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set; assert.ok(setter);
-        setter.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true }));
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.bind(input); assert.ok(setter);
+        setter(value); input.dispatchEvent(new Event("input", { bubbles: true }));
       });
     }
     const form = host.querySelector("form"); assert.ok(form);

@@ -40,7 +40,7 @@ import { assessCredentialInventory, type CredentialInventory } from "./credentia
 import { createProfileRegistry, withProfileLock, ProfileRegistryAuthorityError } from "./registry.js";
 import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../models/profiles/profile.js";
 import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
-import { ProfileOnboardingStateSchema, type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+import { ProfileOwnerClaimRequestSchema, ProfileOnboardingStateSchema, type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
 import { createProfileOnboarding } from "./profile-onboarding.js";
@@ -58,15 +58,36 @@ export class ProfileUpgradeUnavailableError extends Error {
 }
 
 export interface AuthenticatedProfileUpgrade { readonly profileId: string; }
-const authenticatedOwnerClaims = new WeakMap<AuthenticatedProfileUpgrade, { owner: ExistingDataOwnerWitness; claimId: string; registry: string; machineRoot: string }>();
+const authenticatedOwnerClaims = new WeakMap<AuthenticatedProfileUpgrade, { owner: ExistingDataOwnerWitness; claimId: string; registry?: string; machineRoot: string; flat?: { firstName: string; lastName: string; createdAt: string } }>();
 export function isAuthenticatedProfileOwnerClaim(authorization: AuthenticatedProfileUpgrade): boolean { return authenticatedOwnerClaims.has(authorization); }
 export function consumeAuthenticatedProfileOwnerClaim(authorization: AuthenticatedProfileUpgrade, machine: RuntimeAdmission) {
   const issued = authenticatedOwnerClaims.get(authorization);
   if (issued === undefined || issued.machineRoot !== machine.stateRoot) throw new ProfileSessionRefusedError("PROFILE_OWNER_CLAIM_UNAVAILABLE");
   authenticatedOwnerClaims.delete(authorization);
   machine.assertExclusive(); verifyExistingDataOwner(issued.owner, machine);
-  if (canonicalJsonStringify(machine.readProfileRegistry()) !== issued.registry) throw new ProfileSessionRefusedError("PROFILE_OWNER_CLAIM_UNAVAILABLE");
-  return { owner: issued.owner, claimId: issued.claimId };
+  if (issued.registry !== undefined && canonicalJsonStringify(machine.readProfileRegistry()) !== issued.registry) throw new ProfileSessionRefusedError("PROFILE_OWNER_CLAIM_UNAVAILABLE");
+  return { owner: issued.owner, claimId: issued.claimId, ...(issued.flat === undefined ? {} : { flat: issued.flat }) };
+}
+export function authorizeFlatExistingDataClaim(machine: RuntimeAdmission,
+  fields: z.infer<typeof ProfileOwnerClaimRequestSchema> & { createdAt: string }): ProfileUpgradeRequired | ProfileRefusal {
+  if (!machine.requiresExistingDataClaim()) return refusal("PROFILE_OWNER_CLAIM_UNAVAILABLE");
+  const { createdAt: claimedAt, ...body } = fields;
+  const request = ProfileOwnerClaimRequestSchema.parse(body), createdAt = IsoInstantSchema.parse(claimedAt);
+  let names: ReturnType<typeof deriveProfileNames>;
+  try { names = deriveProfileNames(request.firstName, request.lastName); }
+  catch (error) { if (error instanceof ProfileNameValidationError) return refusal("PROFILE_NAME_REFUSED"); throw error; }
+  let owner: ExistingDataOwnerWitness;
+  try {
+    owner = captureExistingDataOwner(machine, request);
+    if (verifyExistingDataOwner(owner, machine).record.entries.timekeeperName?.value !== names.timekeeperName) return refusal("PROFILE_OWNER_CLAIM_UNAVAILABLE");
+  } catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
+    return refusal("PROFILE_SIGN_IN_REFUSED");
+  }
+  const authorization = Object.freeze({ profileId: request.claimId });
+  authenticatedOwnerClaims.set(authorization, { owner, claimId: request.claimId, machineRoot: machine.stateRoot,
+    flat: { firstName: names.firstName, lastName: names.lastName, createdAt } });
+  return { ...refusal("PROFILE_OWNER_CLAIM_STARTING"), upgrade: authorization };
 }
 const authenticatedUpgrades = new WeakMap<AuthenticatedProfileUpgrade, (machine: RuntimeAdmission) => RegisteredProfileStorageClaim>();
 export function consumeAuthenticatedProfileUpgrade(authorization: AuthenticatedProfileUpgrade, machine: RuntimeAdmission): RegisteredProfileStorageClaim {
@@ -705,6 +726,8 @@ export function createProfileSession(input: {
         const emailKey = verifiers.emailKeyFor(fields.email);
         const draft = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.emailKey === emailKey && entry.ownerClaim !== undefined);
         if (draft !== undefined) {
+          try { captureExistingDataOwner(admission, fields, draft.profileId, draft); }
+          catch (error) { if (error instanceof AuthoritySourceClosureUnprovedError) throw error; return refusal("PROFILE_SIGN_IN_REFUSED"); }
           return signUpLocked(fields, names, true);
         }
         const identified = verifiers.identify(fields.email);

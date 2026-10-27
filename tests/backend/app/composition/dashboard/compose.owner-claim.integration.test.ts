@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { it, vi } from "vitest";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
-import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { createHistoricalFlatProfileFixture, historicalFlatFields } from "../../../../support/fixtures/storage/historical-flat-profile-fixture.js";
+import { join } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
@@ -46,4 +48,34 @@ it("admits an explicit in-app claim after its response settles, then reopens onl
   } finally {
     await application?.stop(); machine.release(); await f.close();
   }
+});
+
+it("serves the same explicit owner-claim flow for flat data and reconnects only to its authenticated private draft", async () => {
+  const f = createHistoricalFlatProfileFixture({ laterProtectedChange: true }), machine = await acquireDashboardEntrypointAdmission(f.workspace, "shared");
+  let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  try {
+    application = await composeDashboardApplication({ admission: machine, isolation: rebuildRuntimeIsolation, repoRoot: f.workspace,
+      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      onboardingDuo: syntheticOnboardingDuo(() => historicalFlatFields.email) });
+    const base = `http://127.0.0.1:${String(application.port)}`, claimId = randomUUID();
+    const request = { ...historicalFlatFields, claimId: claimId.toUpperCase(), claimExistingData: true };
+    const post = (body: unknown) => fetch(`${base}/api/v1/profile/claim-existing-data`, { method: "POST",
+      headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify(body) });
+    const accepted = await post(request);
+    assert.equal(accepted.headers.get("set-cookie"), null);
+    assert.deepEqual(await accepted.json(), { state: "refused", code: "PROFILE_OWNER_CLAIM_STARTING" });
+    await Promise.race([application.failure, vi.waitFor(async () => {
+      assert.ok(existsSync(join(f.stateRoot, "profiles", claimId, "state.db")));
+      const state = await fetch(`${base}/api/v1/profile/state`);
+      assert.equal(state.status, 200); assert.deepEqual(await state.json(), { state: "signed-out" });
+    }, { timeout: 15_000, interval: 100 })]);
+    const wrong = await post({ ...request, password: "wrong-owner" });
+    assert.deepEqual(await wrong.json(), { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
+    const resumed = await post({ ...request, claimId: randomUUID() }), draft = PublicProfileStateSchema.parse(await resumed.json());
+    assert.equal(draft.state, "onboarding");
+    if (draft.state !== "onboarding") throw new Error("actual flat private draft required");
+    assert.equal(draft.profileId, claimId);
+    const cookie = resumed.headers.get("set-cookie"); assert.ok(cookie?.startsWith("relay-profile-onboarding="));
+    assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie: cookie?.split(";", 1)[0] ?? "" } })).status, 401);
+  } finally { await application?.stop(); machine.release(); f.close(); }
 });

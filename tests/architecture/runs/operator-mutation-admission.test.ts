@@ -71,7 +71,8 @@ export function auditOperatorMutationAdmission(source: string, table: Readonly<R
       }
       continue;
     }
-    const use = uses.get(path);
+    const use = uses.get(path) ?? [...uses.entries()].filter(([pattern]) => pattern.endsWith("/*") && path.startsWith(pattern.slice(0, -1)))
+      .sort(([left], [right]) => right.length - left.length)[0]?.[1];
     if (use === undefined) {
       violations.push(`${method.toUpperCase()} ${path} has no app.use("${path}", ${admission.guard}) line`);
     } else if (use.guard !== admission.guard) {

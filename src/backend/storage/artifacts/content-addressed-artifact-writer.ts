@@ -81,7 +81,7 @@ async function initializeArtifactRoot(admission: RuntimeAdmission): Promise<stri
   return root;
 }
 
-function decodeStoredArtifact(input: unknown, expectedDigest: string): Readonly<{
+export function decodeStoredArtifact(input: unknown, expectedDigest: string): Readonly<{
   ref: ArtifactRef;
   bytes: Uint8Array;
 }> {

@@ -152,7 +152,7 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
         try {
           const store = createCredentialStore({ admission: capability, stateRoot: capability.stateRoot, erasureJournalAdmission: admission,
             erasureJournalPath: join(root, "machine", "erasures", `${pending.profileId}.json`) });
-          const witness = captureCommittedCredentialReplay(store, parsed);
+          const witness = captureCommittedCredentialReplay(store, parsed, pending.ownerClaim === undefined ? undefined : pending);
           admission.publishProfileRegistration(pending, witness, verifier);
         } finally { capability.release(); }
         const row = read().profiles.find(entry => entry.profileId === pending.profileId);
