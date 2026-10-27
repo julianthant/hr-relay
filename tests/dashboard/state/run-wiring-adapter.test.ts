@@ -108,10 +108,12 @@ describe("served Logs wiring", () => {
     assert.equal(projection.steps[0].entries[1].id, "stream/1");
   });
   it("refuses wrong run/revision/attempt and foreign action evidence", async () => {
-    for (const changed of [detail(selection(OTHER)), { ...detail(), rowRevision: selection().row.rowRevision + 1 }, { ...detail(), header: { ...detail().header, attempt: 2 } }]) {
+    for (const changed of [detail(selection(OTHER)), { ...detail(), header: { ...detail().header, attempt: 2 } }]) {
       const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : changed);
       await assert.rejects(() => readRunLogs(client, selection(), new AbortController().signal), /IDENTITY_MISMATCH/);
     }
+    const ahead = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : { ...detail(), rowRevision: selection().row.rowRevision + 1 });
+    await assert.rejects(() => readRunLogs(ahead, selection(), new AbortController().signal), /RUN_DETAIL_REVISION_AHEAD/);
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...page(), confirmedActions: [action(OTHER)] } } : detail());
     await assert.rejects(() => readRunLogs(client, selection(), new AbortController().signal), /ACTION_IDENTITY_MISMATCH/);
   });
