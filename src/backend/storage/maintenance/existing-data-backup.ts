@@ -13,7 +13,7 @@ import type { RuntimeAdmission } from "../admission/admission.js";
 import { readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, statDirectory } from "../configuration/credential-safe-file.js";
 import type { ExistingDataOwnerWitness } from "../configuration/credential-store.js";
 import type { ProfileRegistryDocument, ProfileOperation, SignUpOperation } from "../../../models/profiles/profile.js";
-import { verifyFlatProfileClaimBackup } from "./flat-profile-claim.js";
+import { flatProfileClaimConfigured, verifyFlatProfileClaimBackup } from "./flat-profile-claim.js";
 import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -438,7 +438,7 @@ export function observeBoundRetainedBackupMutexRecovery(workspace: string, locat
   const name = z.uuid().parse(names[0]), root = join(claims, name), intent = claimIntent(claims, name);
   if (intent === undefined || intent.claimId !== name || intent.installationId !== locator.installationId
     || intent.sourceStateRoot !== join(workspace, rebuildRuntimeIsolation.stateRoot)) throw new Error("storage-backup-claim-binding-refused");
-  if (canonicalJsonStringify(readdirSync(root).sort()) !== canonicalJsonStringify(["backup.json", "files", "flat.json", "intent.json", "source.json"])) throw new Error("storage-backup-claim-membership-refused");
+  if (canonicalJsonStringify(readdirSync(root).sort()) !== canonicalJsonStringify(["backup.json", "configured.json", "files", "flat.json", "intent.json", "source.json"])) throw new Error("storage-backup-claim-membership-refused");
   const reference = { claimId: name, backupPath: join(root, "backup.json"), backupDigest: hash(file(join(root, "backup.json")).bytes) };
   const draft = operations.filter((operation): operation is SignUpOperation => operation.kind === "sign-up" && operation.profileId === intent.profileId);
   const registered = document.profiles.filter(row => row.profileId === intent.profileId);
@@ -446,6 +446,7 @@ export function observeBoundRetainedBackupMutexRecovery(workspace: string, locat
   const verified = verifyFlatProfileClaimBackup(reference, workspace, locator.installationId, intent.profileId, draft[0]);
   if (verified === undefined || verified.backup.storageBackup === undefined) throw new Error("storage-backup-claim-binding-refused");
   const { backup, receipt } = verified, registration = registered[0]?.registration;
+  if (!flatProfileClaimConfigured(reference, receipt)) throw new Error("storage-backup-claim-incomplete");
   if (receipt.operation.profileId !== intent.profileId || draft[0] !== undefined
     && canonicalJsonStringify(draft[0].ownerClaim) !== canonicalJsonStringify(reference)
     || registration !== undefined && (registration.onboardingCompletion === undefined
@@ -522,7 +523,8 @@ export function observeFlatBackupMutexRecovery(workspace: string, locator: Runti
   return { binding: FlatBackupRecoveryBindingSchema.parse({ kind: names.length === 0 ? "empty-allocation" : "source-record",
     allocationDevice: allocation.dev, allocationInode: allocation.ino, sourceDigest: hash(currentSource) }),
     observation: canonicalJsonStringify({ roots, source: currentSource.toString("base64"), allocation: unpublishedDraftAbortMembership(root),
-      recoveryHistory: recoveryHistory.observation, files: inventory(root, ""), membership: membership.identities.filter(entry => entry.path !== processLockRoot), inspection }) };
+      recoveryHistory: recoveryHistory.observation, files: inventory(root, ""), membership: membership.identities.filter(entry => entry.path !== processLockRoot),
+      inspection: { ...inspection, installationId: inspection.installationId ?? null, profileId: inspection.profileId ?? null } }) };
 }
 
 function assertCoupledArtifacts(artifactRoot: string, references: ReturnType<typeof AuthorityDatabase.readProfileMaintenanceInventory>["artifactReferences"]) {

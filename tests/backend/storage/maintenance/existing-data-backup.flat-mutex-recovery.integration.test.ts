@@ -12,6 +12,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { observeProcessIdentity, acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import { MutexRecoveryReceiptSchema } from "../../../../src/backend/storage/admission/installation.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { captureExistingDataOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { ownerClaimRecoveryCopies, verifyExistingDataBackupFiles } from "../../../../src/backend/storage/maintenance/existing-data-backup.js";
@@ -102,7 +103,8 @@ for (const change of ["malformed", "foreign", "missing-copy", "extra-copy", "ext
       const lost = loseMutex(f, "complete"), receiptPath = join(lost.root, "backup.json"), copy = join(lost.root, "files/workspace-data/reports/historical-report.csv");
       if (change === "malformed") writeFileSync(receiptPath, "{}");
       if (change === "foreign") {
-        const receipt = JSON.parse(readFileSync(receiptPath, "utf8")); receipt.installationId = "00000000-0000-4000-8000-000000000001"; writeFileSync(receiptPath, JSON.stringify(receipt));
+        const receipt: unknown = JSON.parse(readFileSync(receiptPath, "utf8"));
+        assert.ok(receipt !== null && typeof receipt === "object" && "installationId" in receipt); receipt.installationId = "00000000-0000-4000-8000-000000000001"; writeFileSync(receiptPath, JSON.stringify(receipt));
       }
       if (change === "missing-copy") nativeFs.unlinkSync(copy);
       if (change === "extra-copy") writeFileSync(join(lost.root, "files/extra"), "unowned", { mode: 0o600 });
@@ -130,13 +132,13 @@ it("retains the abandoned mutex when server custody becomes active", async () =>
 
 it("rechecks copied physical identity at the final recovery custody barrier", async () => {
   const f = createHistoricalFlatProfileFixture();
-  const write = nativeFs.writeFileSync.bind(nativeFs); let changed = false;
+  const write = nativeFs.writeFileSync.bind(nativeFs), rename = nativeFs.renameSync.bind(nativeFs); let changed = false;
   try {
     const lost = loseMutex(f, "complete"), copy = join(lost.root, "files/workspace-data/reports/historical-report.csv");
-    const spy = vi.spyOn(nativeFs, "writeFileSync").mockImplementation((path, bytes, options) => {
-      write(path, bytes, options);
-      if (!changed && String(path).includes(`/admission-mutex-recovery/`) && String(path).includes(lost.owner.acquisitionId)) {
-        changed = true; const replacement = `${copy}.new`; write(replacement, readFileSync(copy), { mode: 0o600 }); nativeFs.renameSync(replacement, copy);
+    const spy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, target) => {
+      rename(source, target);
+      if (!changed && String(target) === join(lost.control, "admission-mutex-recovery", `${lost.owner.acquisitionId}.json`)) {
+        changed = true; const replacement = `${copy}.new`; write(replacement, readFileSync(copy), { mode: 0o600 }); rename(replacement, copy);
       }
     });
     syncBuiltinESMExports();
@@ -178,7 +180,8 @@ for (const change of ["source-reference", "allocation-reference", "foreign-recei
       const lost = loseMutex(f, "complete"); assert.equal((await resume(f)).exitCode, 0);
       const history = join(lost.control, "admission-mutex-recovery"), receiptPath = join(history, `${lost.owner.acquisitionId}.json`);
       const archive = join(history, lost.owner.acquisitionId), ownerPath = join(archive, "owner.json");
-      const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+      const receipt = MutexRecoveryReceiptSchema.parse(JSON.parse(readFileSync(receiptPath, "utf8")));
+      assert.ok(receipt.flatBackup);
       if (change === "source-reference") receipt.flatBackup.sourceDigest = "0".repeat(64);
       if (change === "allocation-reference") receipt.flatBackup.allocationInode += 1;
       if (change === "foreign-receipt") receipt.installationId = randomUUID();
@@ -260,7 +263,7 @@ it("runs the actual backup bootstrap in a fresh flat fixture process", () => {
     mkdirSync(join(f.workspace, "scripts/dev"), { recursive: true });
     cpSync(join(process.cwd(), "scripts/dev/secure-env-bootstrap.ts"), join(f.workspace, "scripts/dev/secure-env-bootstrap.ts"));
     mkdirSync(join(f.workspace, "config"));
-    for (const name of ["runtime-isolation.json", "test-data.json"]) cpSync(join(process.cwd(), "config", name), join(f.workspace, "config", name));
+    for (const name of ["runtime-isolation.json", "test-data.json", "dashboard-workflow-sources.json"]) cpSync(join(process.cwd(), "config", name), join(f.workspace, "config", name));
     symlinkSync(join(process.cwd(), "node_modules"), join(f.workspace, "node_modules"));
     const source = [f.databasePath, f.protectedPath, f.artifact, f.reportPath].map(path => ({ path, bytes: readFileSync(path), inode: statSync(path).ino }));
     const child = spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup", "--json"], { cwd: f.workspace, encoding: "utf8", timeout: 20_000 });
@@ -282,7 +285,8 @@ for (const replacement of ["malformed", "flat-binding", "recovered-at"] as const
         rename(source, target);
         if (!substituted && String(target) === receiptPath) {
           substituted = true;
-          const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+          const receipt = MutexRecoveryReceiptSchema.parse(JSON.parse(readFileSync(receiptPath, "utf8")));
+          assert.ok(receipt.flatBackup);
           if (replacement === "flat-binding") receipt.flatBackup.sourceDigest = "0".repeat(64);
           if (replacement === "recovered-at") receipt.recoveredAt = "2000-01-01T00:00:00.000Z";
           const path = `${receiptPath}.substitute`;

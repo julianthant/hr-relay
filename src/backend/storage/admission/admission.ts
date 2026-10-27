@@ -1471,21 +1471,32 @@ export class RuntimeAdmission {
         if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
         backupAdmission.release(); throw error;
       }
+      let operation: SignUpOperation;
+      try { operation = lease.claimFlatProfileData(witness, restore, this); }
+      catch (error) {
+        if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
+        backupAdmission.release(); throw error;
+      }
       backupAdmission.release();
-      const operation = lease.claimFlatProfileData(witness, restore, this);
       await completeFlatProfileClaim(this, operation, clock);
       return operation;
     }
-    backupAdmission.release();
-    const inventory = this.forStoppedIncompleteProfileInventory(owner.profileId);
+    let inventory: RuntimeAdmission | undefined, failure: { error: unknown } | undefined;
     try {
-      const witness = captureIncompleteProfileDraft(this, inventory, () => assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(inventory)), { owner, backup });
+      const acquired = this.forStoppedIncompleteProfileInventory(owner.profileId);
+      inventory = acquired;
+      const witness = captureIncompleteProfileDraft(this, acquired, () => assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(acquired)), { owner, backup });
       lease.claimExistingProfileData(witness);
-    } catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: inventory });
-      inventory.release(); throw error;
+    } catch (error) { failure = { error }; }
+    if (!(failure?.error instanceof AuthoritySourceClosureUnprovedError)) {
+      try { inventory?.release(); backupAdmission.release(); }
+      catch (error) { failure = { error: retainAuthoritySourceClosure(failure === undefined ? [error] : [failure.error, error], {}) }; }
     }
-    inventory.release();
+    if (failure !== undefined) {
+      if (!(failure.error instanceof AuthoritySourceClosureUnprovedError)) throw failure.error;
+      const retained = retainAuthoritySourceClosure([failure.error], { admission: backupAdmission });
+      throw inventory === undefined ? retained : retainAuthoritySourceClosure([retained], { admission: inventory });
+    }
     const operations = join(this.stateRoot, "machine", "operations");
     const matches = readdirSync(operations).filter(name => name.endsWith(".json")).map(name => {
       const file = readPrivateFile(join(operations, name), { label: "lock", maxBytes: 1_048_576 });

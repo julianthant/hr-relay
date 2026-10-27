@@ -5,6 +5,8 @@ import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { retainedHistoricalData } from "../../../support/fixtures/storage/retained-historical-data.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
@@ -190,5 +192,74 @@ for (const boundary of ["intent", "operation", "verifier", "registry", "continui
       for (const [index, path] of paths.entries()) assert.deepEqual(readFileSync(path), before[index]);
       assert.equal(readdirSync(join(f.profileRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json")).length, 1);
     } finally { recovered.release(); await f.close(); }
+  });
+}
+
+for (const boundary of ["factory-refusal", "factory-closure", "capture-refusal", "capture-closure"] as const) {
+  it(`retains exact bound-claim child custody across ${boundary}`, async () => {
+    const f = await createHistoricalIncompleteProfileFixture(); retainedHistoricalData(f);
+    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace), claimId = randomUUID();
+    const children: { backup?: RuntimeAdmission; inventory?: RuntimeAdmission } = {};
+    const inspect = AuthorityDatabase.inspectStoppedUpgrade.bind(AuthorityDatabase),
+      maintenance = AuthorityDatabase.readProfileMaintenanceInventory.bind(AuthorityDatabase), open = nativeFs.openSync.bind(nativeFs), close = nativeFs.closeSync.bind(nativeFs);
+    const refused = new Error(`fixture ${boundary}`);
+    let fired = false, descriptor: number | undefined;
+    const original = [f.databasePath, f.protectedPath, f.keyPath, f.registryPath, f.verifierPath].map(path => ({ path, bytes: readFileSync(path), inode: nativeFs.statSync(path).ino }));
+    try {
+      vi.spyOn(AuthorityDatabase, "inspectStoppedUpgrade").mockImplementation((...args) => {
+        const result = inspect(...args);
+        if (new Error().stack?.includes("forStoppedExistingDataBackup")) children.backup = args[0];
+        return result;
+      });
+      vi.spyOn(AuthorityDatabase, "readProfileMaintenanceInventory").mockImplementation((...args) => {
+        if (new Error().stack?.includes("captureIncompleteProfileDraft")) children.inventory = args[0];
+        return maintenance(...args);
+      });
+      vi.spyOn(nativeFs, "openSync").mockImplementation((path, flags, mode) => {
+        const factory = boundary.startsWith("factory-");
+        const target = factory ? String(path) === f.registryPath && new Error().stack?.includes("forStoppedIncompleteProfileInventory")
+          : children.inventory !== undefined && String(path) === f.keyPath && new Error().stack?.includes("captureIncompleteProfileDraft");
+        if (!fired && target) {
+          assert.equal(existsSync(join(f.workspace, ".tracker/control/profile-owner-claims", claimId, "backup.json")), true);
+          fired = true;
+          if (boundary.endsWith("-refusal")) throw refused;
+          descriptor = open(path, flags, mode); return descriptor;
+        }
+        return open(path, flags, mode);
+      });
+      vi.spyOn(nativeFs, "closeSync").mockImplementation(fd => {
+        if (fd === descriptor) throw refused;
+        close(fd);
+      });
+      syncBuiltinESMExports();
+      const owner = captureExistingDataOwner(machine, historicalIncompleteProfileFields, f.profileId);
+      await assert.rejects(machine.claimExistingProfileData(owner, claimId, systemClock), error => {
+        if (boundary.endsWith("-refusal")) return error instanceof Error && error.cause === refused;
+        if (!(error instanceof AuthoritySourceClosureUnprovedError)) return false;
+        const source = boundary.startsWith("factory-") ? error.cause
+          : error.cause instanceof AuthoritySourceClosureUnprovedError ? error.cause.cause : undefined;
+        return source instanceof AuthoritySourceClosureUnprovedError && source.errors.length === 1 && source.errors[0] === refused;
+      });
+      assert.equal(fired, true); assert.ok(children.backup);
+      if (boundary.startsWith("factory-")) assert.equal(children.inventory, undefined);
+      else assert.ok(children.inventory);
+      if (boundary.endsWith("-refusal")) {
+        assert.throws(() => children.backup?.assertLive(), /released admission/u);
+        if (children.inventory !== undefined) assert.throws(() => children.inventory?.assertLive(), /released admission/u);
+      } else {
+        assert.ok(descriptor !== undefined);
+        const held = nativeFs.fstatSync(descriptor), expected = nativeFs.statSync(boundary.startsWith("factory-") ? f.registryPath : f.keyPath);
+        assert.equal(held.dev, expected.dev); assert.equal(held.ino, expected.ino);
+        children.backup.assertLive(); children.inventory?.assertLive();
+      }
+      for (const entry of original) {
+        assert.deepEqual(readFileSync(entry.path), entry.bytes); assert.equal(nativeFs.statSync(entry.path).ino, entry.inode);
+      }
+      assert.equal(existsSync(f.operationPath), false);
+    } finally {
+      vi.restoreAllMocks(); syncBuiltinESMExports();
+      if (descriptor !== undefined) close(descriptor);
+      children.inventory?.release(); children.backup?.release(); machine.release(); await f.close();
+    }
   });
 }

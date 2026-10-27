@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { it, vi } from "vitest";
 import { acquireDashboardEntrypointAdmission, acquireStorageBackupEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { FlatProfileClaimReceiptSchema } from "../../../../src/backend/storage/maintenance/flat-profile-claim.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { composeProfileRuntime, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -105,7 +106,7 @@ for (const finished of [false, true]) {
   });
 }
 
-for (const finished of [false, true]) for (const change of ["copy", "partial", "reference", "stale-registration", "foreign", "unowned", "extra-directory", "pending"] as const) {
+for (const finished of [false, true]) for (const change of ["copy", "partial", "reference", "stale-registration", "foreign", "unowned", "extra-directory", "pending", "configuration-missing", "configuration-binding"] as const) {
   it(`retains the abandoned ${finished ? "registered" : "draft"} mutex for ${change} retained backup evidence`, async () => {
     const f = createHistoricalFlatProfileFixture();
     try {
@@ -113,17 +114,27 @@ for (const finished of [false, true]) for (const change of ["copy", "partial", "
       if (change === "copy") writeFileSync(join(claimed.root, "files/profile/credentials/protected.json"), "changed");
       if (change === "partial") nativeFs.unlinkSync(join(claimed.root, "backup.json"));
       if (change === "reference" || change === "stale-registration") {
-        const receipt = JSON.parse(readFileSync(flatPath, "utf8"));
+        const receipt = FlatProfileClaimReceiptSchema.parse(JSON.parse(readFileSync(flatPath, "utf8")));
+        assert.ok(receipt.operation.ownerClaim);
         if (change === "reference") receipt.operation.ownerClaim.backupDigest = "f".repeat(64);
         else receipt.operation.commandId = randomUUID();
         writeFileSync(flatPath, JSON.stringify(receipt));
       }
       if (change === "foreign") {
-        const path = join(claimed.root, "backup.json"), receipt = JSON.parse(readFileSync(path, "utf8"));
+        const path = join(claimed.root, "backup.json");
+        const receipt: unknown = JSON.parse(readFileSync(path, "utf8"));
+        assert.ok(receipt !== null && typeof receipt === "object" && "installationId" in receipt);
         receipt.installationId = randomUUID(); writeFileSync(path, JSON.stringify(receipt));
       }
       if (change === "unowned") nativeFs.mkdirSync(join(dirname(claimed.claim), randomUUID()), { mode: 0o700 });
       if (change === "extra-directory") nativeFs.mkdirSync(join(claimed.root, "files/unowned"), { mode: 0o700 });
+      if (change === "configuration-missing") nativeFs.unlinkSync(join(claimed.claim, "configured.json"));
+      if (change === "configuration-binding") {
+        const path = join(claimed.claim, "configured.json");
+        const receipt: unknown = JSON.parse(readFileSync(path, "utf8"));
+        assert.ok(receipt !== null && typeof receipt === "object" && "configSnapshotId" in receipt);
+        receipt.configSnapshotId = randomUUID(); writeFileSync(path, JSON.stringify(receipt));
+      }
       if (change === "pending") writeFileSync(join(claimed.control, "profile-publication.json"), "{}", { mode: 0o600 });
       const source = join(f.stateRoot, "profiles", claimed.operation.profileId, "state.db"), bytes = readFileSync(source);
       await assert.rejects(recover(f));
@@ -135,16 +146,16 @@ for (const finished of [false, true]) for (const change of ["copy", "partial", "
 
 for (const substitution of ["copy", "receipt", "membership"] as const) {
   it(`pins bound retained ${substitution} through the final mutex recovery custody barrier`, async () => {
-    const f = createHistoricalFlatProfileFixture(), write = nativeFs.writeFileSync.bind(nativeFs); let changed = false;
+    const f = createHistoricalFlatProfileFixture(), write = nativeFs.writeFileSync.bind(nativeFs), rename = nativeFs.renameSync.bind(nativeFs); let changed = false;
     try {
       const claimed = await claimBackedFlat(f, true), lost = loseBoundMutex(f);
       const target = join(claimed.root, substitution === "receipt" ? "backup.json" : "files/profile/credentials/protected.json");
-      const spy = vi.spyOn(nativeFs, "writeFileSync").mockImplementation((path, bytes, options) => {
-        write(path, bytes, options);
-        if (!changed && String(path).includes("/admission-mutex-recovery/") && String(path).includes(lost.owner.acquisitionId)) {
+      const spy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
+        rename(source, destination);
+        if (!changed && String(destination) === join(claimed.control, "admission-mutex-recovery", `${lost.owner.acquisitionId}.json`)) {
           changed = true;
           if (substitution === "membership") nativeFs.mkdirSync(join(claimed.root, "files/unowned"), { mode: 0o700 });
-          else { const temporary = `${target}.replacement`; write(temporary, readFileSync(target), { mode: 0o600 }); nativeFs.renameSync(temporary, target); }
+          else { const temporary = `${target}.replacement`; write(temporary, readFileSync(target), { mode: 0o600 }); rename(temporary, target); }
         }
       });
       syncBuiltinESMExports();

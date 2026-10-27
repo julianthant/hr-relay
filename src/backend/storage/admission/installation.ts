@@ -35,14 +35,14 @@ import { DuoPublicationCaptureSchema, assertDuoDocumentWitness, assertDuoPublish
 
 const ProfileOperationSchema = z.union([SignUpOperationSchema, LogoutOperationSchema]);
 const ProfileOperationMutationSchema = z.union([z.strictObject({ kind: z.literal("write"), operation: ProfileOperationSchema }), z.strictObject({ kind: z.literal("delete"), operationId: z.uuid() })]);
-const ProfileErasureHeadSchema = z.strictObject({ profileId: z.uuid(), originOperationId: z.uuid(), head: CredentialErasureHeadSchema, credentialKey: CredentialKeyWitnessSchema.optional() });
+const ProfileErasureHeadSchema = z.lazy(() => z.strictObject({ profileId: z.uuid(), originOperationId: z.uuid(), head: CredentialErasureHeadSchema, credentialKey: CredentialKeyWitnessSchema.optional() }));
 const ErasureRequestIdentitySchema = z.strictObject({ commandId: z.uuid(), writeId: z.uuid(), commandFingerprint: z.string().regex(/^[0-9a-f]{64}$/u), expectedRevision: z.number().int().nonnegative(), updatedAt: z.string().datetime(), requestReceipt: z.string().min(1) });
 export type ErasureRequestIdentity = z.infer<typeof ErasureRequestIdentitySchema>;
 const PriorProfileContinuitySchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(),
   digest: z.string().regex(/^[0-9a-f]{64}$/u), device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(), generation: z.number().int().nonnegative(), erasures: z.array(ProfileErasureHeadSchema).max(10_000), operations: z.array(z.strictObject({ operationId: z.uuid(), digest: z.string().regex(/^[0-9a-f]{64}$/u), device: z.number().int().nonnegative(), inode: z.number().int().nonnegative() })) });
 
 const ProfileContinuitySchema = PriorProfileContinuitySchema.extend({ schemaVersion: z.literal(2), duo: z.array(DuoContinuityRowSchema).max(10_000) });
-const ProfilePublicationSchema = z.discriminatedUnion("kind", [
+const ProfilePublicationSchema = z.lazy(() => z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("onboarding-finish"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
     operation: SignUpOperationSchema, priorDocument: ProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema,
     priorVerifiers: ProfileVerifierDocumentSchema, verifiers: ProfileVerifierDocumentSchema,
@@ -65,7 +65,7 @@ const ProfilePublicationSchema = z.discriminatedUnion("kind", [
     operation: SignUpOperationSchema, source: CredentialKeyWitnessSchema.shape.file, priorHead: z.strictObject({ state: z.literal("never-erased"), epoch: z.literal(0) }), settledHead: CredentialErasureHeadSchema.optional() }),
   z.strictObject({ kind: z.literal("erasure"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
     profileId: z.uuid(), request: ErasureRequestIdentitySchema, nextEpoch: z.number().int().positive(), nextDigest: z.string().regex(/^[0-9a-f]{64}$/u) }),
-]);
+]));
 
 const PairSchema = z.strictObject({ stateRoot: z.string().min(1), artifactRoot: z.string().min(1) });
 const InstallationSchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(), workspace: z.string().min(1) });
@@ -97,7 +97,7 @@ const DeviceRecertificationAuthorizationSchema = z.strictObject({ captureDigest:
   acknowledgement: z.literal("recertify-current-files-with-unproved-historical-volume-binding") });
 const DeviceRecertificationJournalSchema = z.strictObject({ schemaVersion: z.literal(1), capture: DeviceRecertificationCaptureSchema,
   stage: ControlUpgradeFileSchema, authorization: DeviceRecertificationAuthorizationSchema });
-const DeviceRecertificationSourceSchema = z.strictObject({
+const DeviceRecertificationSourceSchema = z.lazy(() => z.strictObject({
   custody: z.strictObject({ bootStartedAt: z.number().int().positive(), singletons: z.array(RuntimeProcessLockFileSchema), workers: z.array(WorkerProcessLockFileSchema),
     files: z.array(UnpublishedDraftAbortCaptureSchema.shape.membership.element.omit({ directory: true }).extend({ owner: z.number().int().nonnegative(), links: z.number().int().positive() })) }),
   membership: UnpublishedDraftAbortCaptureSchema.shape.membership, machineMembership: UnpublishedDraftAbortCaptureSchema.shape.membership,
@@ -107,7 +107,7 @@ const DeviceRecertificationSourceSchema = z.strictObject({
   documents: z.strictObject({ installation: z.string(), locator: z.string(), stateMarker: z.string(), artifactMarker: z.string() }),
   stateMarker: ControlUpgradeFileSchema, artifactMarker: ControlUpgradeFileSchema, installation: ControlUpgradeFileSchema,
   locator: ControlUpgradeFileSchema, registry: ControlUpgradeFileSchema, verifiers: ControlUpgradeFileSchema, pepper: ControlUpgradeFileSchema,
-});
+}));
 export type DeviceRecertificationAuthorization = z.infer<typeof DeviceRecertificationAuthorizationSchema>;
 export interface StoppedDeviceRecertification {
   readonly capture: Readonly<{ digest: string; priorDevice: number; currentDevice: number; historicalVolumeBinding: "unproved" }>;
@@ -163,8 +163,8 @@ const JournalBase = { schemaVersion: z.literal(2), operationId: z.uuid(), instal
   pinnedEntries: z.array(PinnedEntrySchema) };
 const RestoreFileBindingSchema = z.strictObject({ dev: GenerationSchema, ino: GenerationSchema,
   byteSize: GenerationSchema, sha256: DigestSchema });
-const ProfileRestoreContextSchema = z.strictObject({ binding: ProfileDatabaseBindingSchema, continuity: ProfileContinuitySchema,
-  head: CredentialErasureHeadSchema, credentialKey: CredentialKeyWitnessSchema });
+const ProfileRestoreContextSchema = z.lazy(() => z.strictObject({ binding: ProfileDatabaseBindingSchema, continuity: ProfileContinuitySchema,
+  head: CredentialErasureHeadSchema, credentialKey: CredentialKeyWitnessSchema }));
 export type ProfileRestoreContext = z.infer<typeof ProfileRestoreContextSchema>;
 export const AuthorityRestoreInputSchema = z.strictObject({ operationId: z.uuid(), profile: ProfileRestoreContextSchema,
   authorityPath: z.string().min(1), stagedPath: z.string().min(1), suspectPath: z.string().min(1),

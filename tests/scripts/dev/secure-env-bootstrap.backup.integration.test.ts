@@ -26,6 +26,7 @@ function installation() {
   mkdirSync(join(workspace, "config"));
   cpSync(join(repositoryRoot, "config", "runtime-isolation.json"), join(workspace, "config", "runtime-isolation.json"));
   cpSync(join(repositoryRoot, "config", "test-data.json"), join(workspace, "config", "test-data.json"));
+  cpSync(join(repositoryRoot, "config", "dashboard-workflow-sources.json"), join(workspace, "config", "dashboard-workflow-sources.json"));
   symlinkSync(join(repositoryRoot, "node_modules"), join(workspace, "node_modules"));
   const admission = acquireEntrypointAdmission(workspace, "exclusive");
   const stateRoot = admission.stateRoot;
@@ -82,7 +83,7 @@ it("runs the unchanged explicit CLI backup on a stopped adopted flat source with
     mkdirSync(join(f.workspace, "scripts", "dev"), { recursive: true });
     cpSync(join(repositoryRoot, "scripts", "dev", "secure-env-bootstrap.ts"), join(f.workspace, "scripts", "dev", "secure-env-bootstrap.ts"));
     mkdirSync(join(f.workspace, "config"));
-    for (const name of ["runtime-isolation.json", "test-data.json"]) cpSync(join(repositoryRoot, "config", name), join(f.workspace, "config", name));
+    for (const name of ["runtime-isolation.json", "test-data.json", "dashboard-workflow-sources.json"]) cpSync(join(repositoryRoot, "config", name), join(f.workspace, "config", name));
     symlinkSync(join(repositoryRoot, "node_modules"), join(f.workspace, "node_modules"));
     const paths = [f.databasePath, f.protectedPath, f.artifact, f.reportPath], before = paths.map(path => readFileSync(path));
     const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],

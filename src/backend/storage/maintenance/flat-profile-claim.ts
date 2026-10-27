@@ -271,6 +271,15 @@ export async function completeFlatProfileClaim(machine: RuntimeAdmission, operat
   profile.release();
 }
 
+export function flatProfileClaimConfigured(reference: ExistingDataBackup, receipt: z.infer<typeof FlatProfileClaimReceiptSchema>): boolean {
+  const configured = readPrivateFile(join(dirname(reference.backupPath), "configured.json"), { label: "lock", maxBytes: 4096 });
+  if (configured === undefined) return false;
+  const expected = canonicalJsonStringify({ schemaVersion: 1, profileId: receipt.profileId,
+    operationId: receipt.operation.operationId, configSnapshotId: receipt.activationSnapshotId });
+  if (configured.bytes.toString("utf8") !== expected) throw new Error("existing-data-flat-configuration-receipt-changed");
+  return true;
+}
+
 export function flatProfileClaimNeedsRecovery(machine: RuntimeAdmission): boolean {
   requireRuntimeAdmission(machine).assertLive();
   const context = machine.readInstallationContext();
@@ -287,10 +296,7 @@ export function flatProfileClaimNeedsRecovery(machine: RuntimeAdmission): boolea
     if (operation.kind !== "sign-up" || operation.ownerClaim === undefined) continue;
     const receipt = readFlatProfileClaimReceipt(machine, operation);
     if (receipt === undefined) continue;
-    const configured = readPrivateFile(join(dirname(operation.ownerClaim.backupPath), "configured.json"), { label: "lock", maxBytes: 4096 });
-    if (configured === undefined) return true;
-    const expected = canonicalJsonStringify({ schemaVersion: 1, profileId: operation.profileId, operationId: operation.operationId, configSnapshotId: receipt.activationSnapshotId });
-    if (configured.bytes.toString("utf8") !== expected) throw new Error("existing-data-flat-configuration-receipt-changed");
+    if (!flatProfileClaimConfigured(operation.ownerClaim, receipt)) return true;
   }
   return false;
 }
