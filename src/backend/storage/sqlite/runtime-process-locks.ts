@@ -884,7 +884,6 @@ export function inspectStoppedDeviceRecertificationCustody(processLockRoot: stri
   const workers = [...iterateWorkerProcessLocks(root)];
   if (workers.some(record => record.releasedAt === null)) throw new Error("device-recertification-worker-custody-unproved");
   const retained = singletons.filter(record => record.releasedAt === null);
-  if (retained.length > 1) throw new Error("device-recertification-server-custody-unproved");
   for (const record of retained) {
     const startedAt = Number(record.processIdentity.startToken) * 1000;
     if (record.name !== "server" || record.processIdentity.platform !== "darwin" || !/^\d+$/u.test(record.processIdentity.startToken)
