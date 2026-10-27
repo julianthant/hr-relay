@@ -216,7 +216,7 @@ describe("served Logs wiring", () => {
     const mismatch = { ...snapshot, logs: { ...snapshot.logs, operationStructure: { ...snapshot.logs.operationStructure, observations: [{ ...observation, occurrence: OperationActionObservationWireSchema.parse({ ...observation, occurrence: { ...observation.occurrence, occurrence: 2 } }).occurrence }] } } };
     assert.equal(projectRunLogs(mismatch, client).steps[0].entries.length, 1);
   });
-  it("exposes supported gate approvals and refuses typed IDs, rejection text and confirmation-copy downgrades", () => {
+  it("exposes supported gate approvals, with or without served confirmation, and refuses typed IDs and rejection text", () => {
     const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
     for (const packet of [fixtures.ONE_CLICK, fixtures.CHOOSE, fixtures.TYPE_EID]) {
       const gate = fixtures.gateDetail(packet);
@@ -226,7 +226,7 @@ describe("served Logs wiring", () => {
       else if (gate.approvalShape === "choose-a-candidate") assert.equal(actions[0]?.input?.kind, "candidate");
       else assert.equal(actions[0]?.input, undefined);
       assert.deepEqual(gateLogActions({ ...gate, actions: [{ ...approval, resolution: "rejected" }] }), []);
-      assert.deepEqual(gateLogActions({ ...gate, actions: [{ ...approval, confirm: { title: "Confirm", body: "Exact confirmation", confirmLabel: "Approve", tone: "neutral" } }] }), []);
+      assert.deepEqual(gateLogActions({ ...gate, actions: [{ ...approval, confirm: { title: "Confirm", body: "Exact confirmation", confirmLabel: "Approve", tone: "neutral" } }] }), actions);
     }
   });
   it("retains exact parked UNKNOWN identity with no submission control", async () => {

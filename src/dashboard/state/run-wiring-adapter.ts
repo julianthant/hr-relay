@@ -17,6 +17,7 @@ import { appendLogPage, logRowsOf, type NotePage } from "../surfaces/run-detail/
 import type { LogEntry, LogScreenshot, LogStep } from "../surfaces/run-detail/logs/log-feed-model.js";
 import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/logs/log-timeline-model.js";
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
+import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
 import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
 
 class RunLogIdentityError extends Error {
@@ -398,7 +399,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
 
 export function gateLogActions(gate: IdentityGateDetailWire): readonly LogDecisionAction[] {
   return gate.actions.flatMap(action => {
-    if (action.kind !== "command" || action.command !== "resolve-gate" || action.resolution !== "approved" || action.confirm !== undefined) return [];
+    if (action.kind !== "command" || action.command !== "resolve-gate" || action.resolution !== "approved") return [];
     const ceremony = identityCeremonyFor(gate, "approved");
     if (ceremony.kind !== "choose" && ceremony.kind !== "confirm") return [];
     return [{ id: action.key, label: action.label, primary: action.intent === "primary", result: { title: action.label, message: "" },
@@ -419,7 +420,10 @@ interface GateCommandOwner {
   readonly scope: CommandExecutionScope | undefined;
 }
 
-export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined) {
+/** Shows the served confirmation for a decision and calls `onConfirmed` only when the operator confirms it. */
+export type RunWiringConfirm = (pending: PendingCommand, onConfirmed: () => void) => void;
+
+export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
   const { row } = selection;
   const request = useMemo(() => ({ client, runId: row.runId, revision: row.rowRevision, day: binding?.authority.day, selection: { row, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
@@ -495,6 +499,19 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     if (replay) await binding.executor.replay(envelope.commandId, options);
     else await binding.executor.execute(envelope, options);
   }, [binding, client, commandOwner]);
+  const dispatch = useCallback((envelope: CommandRequest) => {
+    commandRef.current = { owner: commandOwner, envelope, state: "pending" };
+    void send(envelope);
+  }, [commandOwner, send]);
+  const dispatchIfGateCurrent = useRef<(envelope: CommandRequest) => void>(() => undefined);
+  dispatchIfGateCurrent.current = (envelope: CommandRequest) => {
+    if (value.state === "loaded" && matchesGate(envelope) && !(commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) {
+      dispatch(envelope);
+      return;
+    }
+    bindingRef.current?.feedback({ kind: "refused", commandId: envelope.commandId, reason: "not-attempted",
+      feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})) });
+  };
   const onDecision = useCallback((id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => {
     if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) return;
     const section = value.snapshot.sections.find(section => section.section === "identity-gate");
@@ -510,9 +527,12 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       ...(answer.candidate === undefined ? {} : { gateAnswer: { decision: "approved", eid: answer.candidate } }) });
     if (composed.state !== "ready") return;
     const envelope = CommandRequestSchema.parse(composed.request);
-    commandRef.current = { owner: commandOwner, envelope, state: "pending" };
-    void send(envelope);
-  }, [value, binding, commandOwner, row.runId, send, commandApplies]);
+    if (descriptor.confirm === undefined) { dispatch(envelope); return; }
+    if (confirm === undefined) return;
+    confirm({ action: descriptor, target: { runId: row.runId, expectedVersion: gate.expectedVersion }, subject: row.title, traceId: String(row.traceId),
+      workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId, requestedAt: envelope.requestedAt,
+      triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null }, () => dispatchIfGateCurrent.current(envelope));
+  }, [value, binding, commandOwner, row, selection.workflowLabel, dispatch, commandApplies, confirm]);
   const newest = binding?.executor.retainedAttempts().findLast(attempt => attempt.request.family === "gate"
     && attempt.request.target.runId === row.runId && attempt.request.requestedBy === binding.scope.actorId
     && attempt.scope.client === binding.scope.client && attempt.scope.authority === binding.scope.authority && attempt.scope.dayRequest === binding.scope.dayRequest);
