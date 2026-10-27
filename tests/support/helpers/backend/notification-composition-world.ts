@@ -15,13 +15,13 @@ import { type RunRecord } from "../../../../src/models/run/record.js";
 export function createNotificationCompositionTestWorld() {
   async function fixture() {
     const clock = manualClock(new Date("2026-09-10T20:00:00.000Z"));
-    const opened = openBoundDatabaseFixture("notification-producers", clock);
+    const opened = await openBoundDatabaseFixture("notification-producers", clock);
     const db = opened.database;
     db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     testWorkerPorts(db, clock, { path: opened.path, descriptor: personLookupDescriptor, poolIndex: 1 });
     const reader = new RunRecordService({ database: db, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} });
     const inbox = createNotificationInbox({ authority: db, clock, ids: sequentialIdFactory("a"), actorId: "local-operator", runReader: reader });
-    return { root: opened.stateRoot, path: opened.path, clock, db, reader, inbox, close: () => opened.close(), dispose: () => opened.close() };
+    return { root: opened.stateRoot, path: opened.path, clock, db, reader, inbox, close: async () => await opened.close(), dispose: async () => await opened.close() };
   }
 
   function seedRun(f: Awaited<ReturnType<typeof fixture>>, desired: RunRecord) {

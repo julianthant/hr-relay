@@ -16,7 +16,7 @@ import { ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, CONFIG_SNAPSHOT, NOW, WRITE_ATTE
 import { manualClock } from '../../../src/rules/time/clock.js';
 
 const clock = manualClock(new Date(NOW));
-const profile = createBoundProfileFixture();
+const profile = await createBoundProfileFixture();
 const authorityPath = realpathSync(profile.path);
 const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
 const workflow = WRITE_INTENT_ATTEMPTING.workflowId;

@@ -22,8 +22,8 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 
-export function settingsFixture(isolateBrowser = false) {
-  const profile = createBoundProfileFixture();
+export async function settingsFixture(isolateBrowser = false) {
+  const profile = await createBoundProfileFixture();
   const root = profile.stateRoot;
   const path = profile.path;
   const clock = manualClock(new Date("2026-09-09T12:00:00.000Z"));
@@ -73,6 +73,6 @@ export function settingsFixture(isolateBrowser = false) {
     resolutions: () => resolutions,
     save: (patch: SettingsPatch) => execute(command(patch)),
     create: (overrides: Partial<CreateRunRequest> = {}) => requireLifecycleApplied(service.create(request(overrides))),
-    close: () => { database.close(); profile.close(); },
+    close: async () => { database.close(); await profile.close(); },
   };
 }

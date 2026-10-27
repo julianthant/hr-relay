@@ -22,8 +22,8 @@ const disposers: (() => void)[] = [];
 async function unmount() { await act(async () => root?.unmount()); root = undefined; }
 async function cleanup() { await unmount(); document.body.replaceChildren(); window.sessionStorage.clear();
   for (const dispose of disposers.splice(0)) dispose(); }
-function setup() { const h = launchHarness(); disposers.push(h.dispose); return h; }
-type Harness = ReturnType<typeof setup>;
+async function setup() { const h = await launchHarness(); disposers.push(h.dispose); return h; }
+type Harness = Awaited<ReturnType<typeof setup>>;
 const text = () => document.body.textContent ?? "";
 function button(name: string): HTMLButtonElement {
   if (name === "Continue" && [...document.querySelectorAll("button")].some(node => node.textContent?.trim() === "Preview plan")) name = "Preview plan";

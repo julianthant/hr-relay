@@ -33,7 +33,7 @@ import { ManualScheduler, type SessionFactoryHarness } from "../phase1f-executor
 
 
 export function createWorkerCompositionTestWorld() {
-  const profiles = new Map<string, ReturnType<typeof createBoundProfileFixture>>();
+  const profiles = new Map<string, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
 
   const openDatabases: AuthorityDatabase[] = [];
 
@@ -46,8 +46,8 @@ export function createWorkerCompositionTestWorld() {
     if (fixture === undefined) throw new Error("worker fixture owner not issued");
     return fixture;
   }
-  function repoRootWithState() {
-    const fixture = createBoundProfileFixture({ sharedMachine: true });
+  async function repoRootWithState() {
+    const fixture = await createBoundProfileFixture({ sharedMachine: true });
     const repoRoot = fixture.workspace, stateRoot = fixture.stateRoot;
     profiles.set(repoRoot, fixture);
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "worker-composition-fixture", version: "0.1.0", type: "module" }));
@@ -315,14 +315,14 @@ export function createWorkerCompositionTestWorld() {
     if (failure !== undefined || cleanupFailures.length > 0) throw new AggregateError([...(failure === undefined ? [] : [failure]), ...cleanupFailures], "worker fixture children failed");
     return reports;
   }
-  const cleanup = () => {
+  const cleanup = async () => {
     for (const fixture of profiles.values()) {
       const snapshot = observeRuntimeLockSnapshot({ processLockRoot: processLockRoot(fixture.stateRoot),
         sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(fixture.path) }, systemClock);
       assert.equal(snapshot.processLocks.workers.state, "stopped", "unproved fixture worker custody must be retained");
     }
     closeDatabases();
-    for (const [root, fixture] of profiles) { fixture.close(); profiles.delete(root); }
+    for (const [root, fixture] of profiles) { await fixture.close(); profiles.delete(root); }
   };
   return { openDatabases, NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, ensureBaselineRuntimeConfig,
     resolvedSettings, processLockRoot, profileAdmission, stateRootFor, captureSyntheticClosure, workerLifetime, concurrentWorkers, databaseDescriptors, closeDatabases, composeInput, cleanup };

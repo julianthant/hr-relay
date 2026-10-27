@@ -17,8 +17,8 @@ export function createPoolRuntimeTestWorld() {
     return parsed;
   }
 
-  function admittedAdapterRoster(workflowId = WORKFLOW_ID) {
-    const authority = openAuthorityHarness();
+  async function admittedAdapterRoster(workflowId = WORKFLOW_ID) {
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const command = workerBrowserCommand({ commandId: randomUUID(), requestedBy: "local-operator", requestedAt: NOW,
       source: "dashboard", family: "worker-browser", type: "plan-worker-count",
@@ -31,7 +31,7 @@ export function createPoolRuntimeTestWorld() {
     return { authority, roster, members: roster.selected.map(workerPoolMember) };
   }
 
-  function admitAdapterPlan(native: ReturnType<typeof admittedAdapterRoster>, command: ReturnType<typeof workerBrowserCommand>) {
+  function admitAdapterPlan(native: Awaited<ReturnType<typeof admittedAdapterRoster>>, command: ReturnType<typeof workerBrowserCommand>) {
     if (command.type !== "plan-worker-count") throw new Error("fixture plan command required");
     return native.authority.database.withAuthorityTransaction(repositories => {
       repositories.commands.insert(command);

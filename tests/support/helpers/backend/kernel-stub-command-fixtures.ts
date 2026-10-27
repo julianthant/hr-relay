@@ -55,20 +55,20 @@ export function createKernelStubCommandFixtures(input: {
     } as const;
   }
 
-  function createHarness(options: { publishQueued?: RunRecordServiceDependencies["publishQueued"] } = {}): KernelStubHarness {
+  async function createHarness(options: { publishQueued?: RunRecordServiceDependencies["publishQueued"] } = {}): Promise<KernelStubHarness> {
     const clock = manualClock(new Date(NOW));
-    const profile = createBoundProfileFixture();
+    const profile = await createBoundProfileFixture();
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: input.migrationOwner },
       clock,
     );
     const close = database.close.bind(database);
     let closed = false;
-    database.close = () => {
+    database.close = async () => {
       if (closed) return;
       closed = true;
       close();
-      profile.close();
+      await profile.close();
     };
     input.roots.push(profile.workspace);
     input.openDatabases.push(database);

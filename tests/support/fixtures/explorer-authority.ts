@@ -16,13 +16,13 @@ import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER 
 
 const retainedExplorerAuthorityOwners = new Set<object>();
 
-export function explorerAuthorityFixture(owned?: Readonly<{
+export async function explorerAuthorityFixture(owned?: Readonly<{
   root: string; path: string; open: () => AuthorityDatabase; dispose: () => void;
 }>) {
-  const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; owned?: typeof owned; primary?: { error: unknown }; failure?: Error } = { owned };
+  const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; owned?: typeof owned; primary?: { error: unknown }; failure?: Error } = { owned };
   retainedExplorerAuthorityOwners.add(held);
   try {
-  const profile = owned === undefined ? createBoundProfileFixture() : undefined; held.profile = profile;
+  const profile = owned === undefined ? await createBoundProfileFixture() : undefined; held.profile = profile;
   const selected = owned ?? profile;
   if (selected === undefined) throw new Error('explorer-fixture-owner-required');
   const root = 'root' in selected ? selected.root : selected.stateRoot;
@@ -95,11 +95,11 @@ export function explorerAuthorityFixture(owned?: Readonly<{
       try { database.close(); database = open(); held.database = database; composed = compose(); }
       catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
     },
-    dispose() {
+    async dispose() {
       if (held.failure !== undefined) throw held.failure;
       if (closeAttempted) return;
       closeAttempted = true;
-      try { database.close(); if (owned === undefined) profile?.close(); else owned.dispose(); retainedExplorerAuthorityOwners.delete(held); }
+      try { database.close(); if (owned === undefined) await profile?.close(); else owned.dispose(); retainedExplorerAuthorityOwners.delete(held); }
       catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
     },
   };

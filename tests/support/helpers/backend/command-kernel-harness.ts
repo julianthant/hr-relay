@@ -38,7 +38,7 @@ type AuthorityTransactionWrap = <Result>(
 ) => Result;
 
 interface HarnessOptions {
-  readonly profile?: ReturnType<typeof createBoundProfileFixture>;
+  readonly profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>;
   readonly prepareAssistantModelPreference?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["prepareAssistantModelPreference"];
   readonly failureResolution?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["failureResolution"];
   readonly explorerEdits?: ExplorerEditExecutor;
@@ -170,18 +170,18 @@ export function createCommandKernelTestWorld() {
     };
   }
 
-  function createHarness(
+  async function createHarness(
     wrap?: RepositoryWrap,
     settingsInputOrOptions?: SettingsApplicationExecutor | HarnessOptions,
     transactionWrap?: AuthorityTransactionWrap,
-  ): Harness {
+  ): Promise<Harness> {
     const options = settingsInputOrOptions !== undefined && !("applyOrdinary" in settingsInputOrOptions)
       ? settingsInputOrOptions : {};
     const descriptors = options.descriptors ?? DESCRIPTOR_SET;
     const settingsOverride = settingsInputOrOptions !== undefined && "applyOrdinary" in settingsInputOrOptions
       ? settingsInputOrOptions : undefined;
     const clock = manualClock(new Date(NOW));
-    const created = options.profile === undefined ? createBoundProfileFixture() : undefined;
+    const created = options.profile === undefined ? await createBoundProfileFixture() : undefined;
     const profile = options.profile ?? created;
     if (profile === undefined) throw new Error("kernel fixture profile missing");
     const path = profile.path;
@@ -194,11 +194,11 @@ export function createCommandKernelTestWorld() {
       roots.push(created.workspace);
       const close = database.close.bind(database);
       let closed = false;
-      database.close = () => {
+      database.close = async () => {
         if (closed) return;
         closed = true;
         close();
-        created.close();
+        await created.close();
       };
     }
     openDatabases.push(database);

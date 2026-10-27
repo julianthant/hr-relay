@@ -103,9 +103,9 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
     assertServedBundle(input.distDir, input.bundle);
-    const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; server?: Server; services?: ReturnType<typeof composeFixtureServices>; workerHandles?: RuntimeProcessLockHandle[]; primary?: unknown } = {};
+    const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; server?: Server; services?: ReturnType<typeof composeFixtureServices>; workerHandles?: RuntimeProcessLockHandle[]; primary?: unknown } = {};
     retainedSeededFixtureOwners.add(held);
-    const profile = createBoundProfileFixture();
+    const profile = await createBoundProfileFixture();
     held.profile = profile;
     const root = profile.workspace, stateRoot = profile.stateRoot;
     const clock = manualClock(SEEDED_AT);
@@ -117,13 +117,13 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     const workerHandles: RuntimeProcessLockHandle[] = [];
     held.workerHandles = workerHandles;
     let cleanupAttempted = false, cleanupFailure: Error | undefined;
-    const cleanupAuthority = (): void => {
+    const cleanupAuthority = async (): Promise<void> => {
       if (cleanupAttempted) { if (cleanupFailure !== undefined) throw cleanupFailure; return; }
       cleanupAttempted = true;
       try {
         for (const handle of workerHandles.toReversed()) handle.release();
         database.close();
-        profile.close();
+        await profile.close();
         retainedSeededFixtureOwners.delete(held);
       } catch (error) {
         cleanupFailure = retainAuthoritySourceClosure([error], { admission: { held, workerHandles } });
@@ -232,9 +232,9 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       baseUrl: `http://127.0.0.1:${address.port}`,
       day: SEEDED_DAY,
       runIds: Object.freeze(runIds),
-      close: (): Promise<void> => {
+      close: async (): Promise<Promise<void>> => {
         if (closePromise !== undefined) return closePromise;
-        closePromise = (async () => {
+        closePromise = await (async () => {
         try {
           server.closeAllConnections();
           await new Promise<void>((resolvePromise, rejectPromise) => {
@@ -246,7 +246,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
           held.primary = error;
           throw retainAuthoritySourceClosure([error], { admission: { held, workerHandles } });
         }
-        cleanupAuthority();
+        await cleanupAuthority();
         })();
         return closePromise;
       },

@@ -41,7 +41,7 @@ export function createStorageRestoreTestWorld() {
 
   const roots: string[] = [];
 
-  const admissions = new Map<string, Pick<ReturnType<typeof createBoundProfileFixture>, 'admission' | 'close'>>();
+  const admissions = new Map<string, Pick<Awaited<ReturnType<typeof createBoundProfileFixture>>, 'admission' | 'close'>>();
   const attemptChildren = new Map<ReturnType<typeof spawn>, Promise<readonly PromiseSettledResult<unknown>[]>>();
   const retainedAttemptScratch = new Set<string>();
   const attemptDatabases = new Map<string, { database: AuthorityDatabase; closeDatabase: () => void }>();
@@ -49,8 +49,8 @@ export function createStorageRestoreTestWorld() {
 
   async function composeStorageCommand(isolation:typeof rebuildRuntimeIsolation,args:readonly string[],clock:typeof CLOCK,repoRoot:string){const fixture=admissions.get(repoRoot);assert.ok(fixture);return composeNativeStorageCommand(isolation,args,clock,repoRoot,fixture.admission,boundProfileCredentials(fixture.admission));}
 
-  function drillPaths(): DrillPaths {
-    const fixture = createBoundProfileFixture();
+  async function drillPaths(): Promise<DrillPaths> {
+    const fixture = await createBoundProfileFixture();
     const repoRoot = fixture.workspace, stateRoot = fixture.stateRoot;
     roots.push(repoRoot);
     admissions.set(repoRoot, fixture);
@@ -270,7 +270,7 @@ export function createStorageRestoreTestWorld() {
         const retained = retainAuthoritySourceClosure([error], { database: owner?.database, directory: { fixture, owner } });
         attemptClosureFailures.add(retained); throw retained;
       }
-      fixture.close(); attemptDatabases.delete(root);
+      await fixture.close(); attemptDatabases.delete(root);
     }
     admissions.clear();
     roots.splice(0);

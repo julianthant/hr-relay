@@ -112,7 +112,7 @@ export function createWorkerSessionManagerTestWorld() {
     };
   }
 
-  function manager(
+  async function manager(
     harness: ReturnType<typeof sessionFactory>,
     events: WorkerSessionEvent[] = [],
     options: {
@@ -121,7 +121,7 @@ export function createWorkerSessionManagerTestWorld() {
       browserScreenshotCapture?: RunBrowserScreenshotCapture;
       captureBrowserScreenshots?: boolean;
     } = {},
-  ): WorkerSessionManager {
+  ): Promise<WorkerSessionManager> {
     const clock = options.clock ?? manualClock(new Date("2026-08-02T18:00:00.000Z"));
     const sessions = new WorkerSessionManager({
       workerId: WORKER_ID,
@@ -131,7 +131,7 @@ export function createWorkerSessionManagerTestWorld() {
       clock,
       scheduler: options.scheduler ?? new ManualScheduler(clock),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock),
       onEvent: (event) => events.push(event),
       ...(options.browserScreenshotCapture === undefined
         ? { browserScreenshotCapture: { capture: async () => undefined } }

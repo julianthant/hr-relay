@@ -8,9 +8,9 @@ import { boundProfileCredentials, createBoundProfileFixture } from "../admission
 
 import type { Clock } from "../../../../src/rules/time/clock.js";
 
-export function createBackupFixtures(cleanups: (() => void)[], CLOCK: Clock) {
-  function openCurrentWorld() {
-    const profile = createBoundProfileFixture();
+export function createBackupFixtures(cleanups: (() => void | Promise<void>)[], CLOCK: Clock) {
+  async function openCurrentWorld() {
+    const profile = await createBoundProfileFixture();
     let database: AuthorityDatabase | undefined = undefined;
     let openingFailure: AuthoritySourceClosureUnprovedError | undefined = undefined;
     let cleanupFailure: { error: unknown } | undefined = undefined;
@@ -22,10 +22,10 @@ export function createBackupFixtures(cleanups: (() => void)[], CLOCK: Clock) {
       try { database?.close(); closure = { state: "closed" }; }
       catch (error) { closure = { state: "failed", error }; throw error; }
     };
-    cleanups.push(() => {
+    cleanups.push(async () => {
       if (openingFailure !== undefined) throw openingFailure;
       if (cleanupFailure !== undefined) throw cleanupFailure.error;
-      try { closeDatabase(); profile.close(); }
+      try { closeDatabase(); await profile.close(); }
       catch (error) { cleanupFailure = { error }; throw error; }
     });
     const admission = profile.admission, credentials = boundProfileCredentials(admission);
@@ -52,7 +52,7 @@ export function createBackupFixtures(cleanups: (() => void)[], CLOCK: Clock) {
     };
   }
 
-  async function takeBackup(world: ReturnType<typeof openCurrentWorld>) {
+  async function takeBackup(world: Awaited<ReturnType<typeof openCurrentWorld>>) {
     const service = new AuthorityBackupService(world.admission, world.database, { directory: world.backupDirectory }, CLOCK);
     const report = await service.request({
       trigger: "operator",

@@ -707,12 +707,13 @@ export function writeFixtureSessions(world: WriteFixtureWorld): SessionFactoryHa
   return sessionFactoryHarness({ ucpath: () => createFixtureDriver(world) });
 }
 
-export function writeFixtureSessionManager(
+export async function writeFixtureSessionManager(
   harness: SessionFactoryHarness,
   registry: TaskStoreRegistry,
   clock: TestClock,
-  duoCeremony: DuoCeremonyGateFactory = fixtureDuoCeremonyGates(clock),
-): WorkerSessionManager {
+  duoCeremony?: DuoCeremonyGateFactory,
+): Promise<WorkerSessionManager> {
+  duoCeremony ??= await fixtureDuoCeremonyGates(clock);
   return new WorkerSessionManager({
     workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
     workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),

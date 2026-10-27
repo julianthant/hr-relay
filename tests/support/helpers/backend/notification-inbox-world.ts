@@ -14,10 +14,10 @@ import type { AuthorityRepositories } from "../../../../src/backend/storage/sqli
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 export function createNotificationInboxTestWorld() {
-  const disposers: (() => void)[] = [];
-  const _afterEachFixture0 = () => {
+  const disposers: (() => void | Promise<void>)[] = [];
+  const _afterEachFixture0 = async () => {
     const failures: unknown[] = [];
-    for (const dispose of disposers.splice(0)) { try { dispose(); } catch (error) { failures.push(error); } }
+    for (const dispose of disposers.splice(0)) { try { await dispose(); } catch (error) { failures.push(error); } }
     if (failures.length > 0) throw new AggregateError(failures, "notification fixture cleanup failed");
   };
 
@@ -44,11 +44,11 @@ export function createNotificationInboxTestWorld() {
     });
   }
 
-  function harness(mapRepositories: (repositories: AuthorityRepositories) => AuthorityRepositories = repositories => repositories): { database: AuthorityDatabase; kernel: CommandKernel } {
+  async function harness(mapRepositories: (repositories: AuthorityRepositories) => AuthorityRepositories = repositories => repositories): Promise<{ database: AuthorityDatabase; kernel: CommandKernel }> {
     const clock = manualClock(new Date(LATER));
-    const profile = createBoundProfileFixture();
+    const profile = await createBoundProfileFixture();
     const opened: { database?: AuthorityDatabase } = {};
-    disposers.push(() => { opened.database?.close(); profile.close(); });
+    disposers.push(async () => { opened.database?.close(); await profile.close(); });
     const database = AuthorityDatabase.open(profile.admission,
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "inbox-test" }, clock,
       undefined, undefined, undefined, boundProfileCredentials(profile.admission));

@@ -24,9 +24,9 @@ export function createRunClaimFixtures(
   WORKER_START_REQUEST: typeof BASE_WORKER_START_REQUEST,
   WORKER_ID: string,
 ) {
-  const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
-  function openDatabase(): AuthorityDatabase {
-    const profile = createBoundProfileFixture(); profiles.push(profile);
+  const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+  async function openDatabase(): Promise<AuthorityDatabase> {
+    const profile = await createBoundProfileFixture(); profiles.push(profile);
     const root = profile.stateRoot; roots.push(root);
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -47,9 +47,9 @@ export function createRunClaimFixtures(
     if (outcome.state !== "claimed") throw new Error(`expected a claim, got ${outcome.state}`);
     return outcome.run;
   }
-  const cleanup = () => {
+  const cleanup = async () => {
     for (const database of databases.splice(0)) database.close();
-    for (const profile of profiles.splice(0)) profile.close();
+    for (const profile of profiles.splice(0)) await profile.close();
     roots.splice(0);
   };
   return { openDatabase, claimOne, cleanup };

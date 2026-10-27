@@ -167,12 +167,12 @@ export function createCapabilityWiringTestWorld() {
     };
   }
 
-  function wiringHarness(
+  async function wiringHarness(
     descriptor: AnyWorkflowDescriptor,
     stores: ReturnType<typeof defineTaskStoreRegistry>,
     seams?: Readonly<{ providers?: RunProviderWiring; artifacts?: ContentAddressedArtifactWriter }>,
   ) {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const sessions = happySessionHarness();
     const emitter = recordingEmitter();
@@ -181,7 +181,7 @@ export function createCapabilityWiringTestWorld() {
       descriptor,
       stores,
       authority: authority.database,
-      sessions: sessionManagerFor(sessions, authority.clock),
+      sessions: await sessionManagerFor(sessions, authority.clock),
       emitter: emitter.emitter,
       clock: authority.clock,
       ids: sequentialIdFactory("e"),
@@ -194,7 +194,7 @@ export function createCapabilityWiringTestWorld() {
     return { authority, emitter, deps };
   }
 
-  function claim(authority: Pick<ReturnType<typeof openAuthorityHarness>, "database" | "clock" | "path">, descriptor: AnyWorkflowDescriptor): {
+  function claim(authority: Pick<Awaited<ReturnType<typeof openAuthorityHarness>>, "database" | "clock" | "path">, descriptor: AnyWorkflowDescriptor): {
     run: RunRecord;
     claim: { workerId: string; claimGeneration: number };
   } {

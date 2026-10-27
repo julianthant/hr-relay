@@ -76,8 +76,8 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
     ? defineWorkflowDescriptor({ ...descriptor, flow: graphWithGate })
     : defineWorkflowDescriptor({ ...descriptor, flow: graphWithoutGate });
 }
-export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2], selection?: Readonly<{ descriptor: AnyWorkflowDescriptor; protectedSecrets: ProtectedSecretSource }>) {
-  const h = sourceBoundHarness(selection?.descriptor ?? launchDescriptor(enqueue), (world) => {
+export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2], selection?: Readonly<{ descriptor: AnyWorkflowDescriptor; protectedSecrets: ProtectedSecretSource }>) {
+  const h = await sourceBoundHarness(selection?.descriptor ?? launchDescriptor(enqueue), (world) => {
     const reads = sourceBoundReadStores(world); const writes = buildWriteFixtureRegistry(world);
     return defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
       scenarioIds: [...reads.corpus.scenarioIds, ...writes.corpus.scenarioIds], tasks: [...reads.corpus.tasks, ...writes.corpus.tasks],

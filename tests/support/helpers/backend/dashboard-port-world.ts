@@ -27,12 +27,12 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
     });
   }
 
-  function createProfileFixture(clock: Clock) {
-    const fixture = createBoundProfileFixture({ sharedMachine: true });
+  async function createProfileFixture(clock: Clock) {
+    const fixture = await createBoundProfileFixture({ sharedMachine: true });
     const profileClosures: (() => Promise<void>)[] = [];
     cleanups.push(async () => {
       for (const close of profileClosures.toReversed()) await close();
-      fixture.close();
+      await fixture.close();
     });
     copyRuntimePackageFixture(fixture.workspace);
     function selectProfile() {
@@ -50,7 +50,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
       profileClosures.push(close);
       runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
         processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot) });
-      const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+      const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
       assert.equal(active.state, "active");
       if (active.state !== "active") throw new Error("fixture-profile-sign-in-required");
       const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
@@ -79,7 +79,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
     };
   }
 
-  function readRuntimeSettingsRevision(fixture: ReturnType<typeof createProfileFixture>) {
+  function readRuntimeSettingsRevision(fixture: Awaited<ReturnType<typeof createProfileFixture>>) {
     const database = fixture.openDatabase({
       path: join(fixture.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test",
     });
@@ -90,7 +90,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
     } finally { database.close(); }
   }
 
-  function readPersistedSettings(fixture: ReturnType<typeof createProfileFixture>, clock: ReturnType<typeof manualClock>) {
+  function readPersistedSettings(fixture: Awaited<ReturnType<typeof createProfileFixture>>, clock: ReturnType<typeof manualClock>) {
     const database = fixture.openDatabase({ path: join(fixture.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
     try { return readSettings(database.authority); } finally { database.close(); }
   }

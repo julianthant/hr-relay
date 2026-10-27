@@ -55,22 +55,22 @@ export const EXECUTOR_NOW = "2026-08-03T09:00:00.000Z";
 export interface AuthorityHarness {
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
-  readonly profile: ReturnType<typeof createBoundProfileFixture>;
+  readonly profile: Awaited<ReturnType<typeof createBoundProfileFixture>>;
 
   readonly path: string;
   readonly stateRoot: string;
   readonly closeDatabase: () => void;
-  readonly dispose: () => void;
+  readonly dispose: () => void | Promise<void>;
 }
 
 const retainedAuthorityHarnessOwners = new Set<object>();
 
-export function openAuthorityHarness(): AuthorityHarness {
-  const held: { fixture?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; primary?: { error: unknown } } = {};
+export async function openAuthorityHarness(): Promise<AuthorityHarness> {
+  const held: { fixture?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; primary?: { error: unknown } } = {};
   retainedAuthorityHarnessOwners.add(held);
   try {
   const clock = manualClock(new Date(EXECUTOR_NOW));
-  const fixture = createBoundProfileFixture(); held.fixture = fixture;
+  const fixture = await createBoundProfileFixture(); held.fixture = fixture;
   const root = fixture.stateRoot, path = fixture.path;
   const database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -98,10 +98,10 @@ export function openAuthorityHarness(): AuthorityHarness {
     path,
     stateRoot: root,
     closeDatabase,
-    dispose: (): void => {
+    dispose: async (): Promise<void> => {
       if (disposed) return;
       try {
-        closeDatabase(); fixture.close(); retainedAuthorityHarnessOwners.delete(held); disposed = true;
+        closeDatabase(); await fixture.close(); retainedAuthorityHarnessOwners.delete(held); disposed = true;
       }
       catch (error) { held.primary = { error }; closeFailure = retainAuthoritySourceClosure([error], { admission: held }); throw closeFailure; }
     },
@@ -361,12 +361,12 @@ export function happySessionHarness(): SessionFactoryHarness {
 
 export const FIXTURE_SESSION_ACQUIRE_MS = 60_000;
 
-export function sessionManagerFor(
+export async function sessionManagerFor(
   harness: SessionFactoryHarness,
   clock: TestClock,
   onEvent?: (event: WorkerSessionEvent) => void,
   scheduler: MonotonicDeadlineScheduler = new ManualScheduler(clock),
-): WorkerSessionManager {
+): Promise<WorkerSessionManager> {
   const manager = new WorkerSessionManager({
     workerId: EXECUTOR_WORKER_ID,
     workflowId: EXECUTOR_WORKFLOW_ID,
@@ -375,7 +375,7 @@ export function sessionManagerFor(
     clock,
     scheduler,
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: fixtureDuoCeremonyGates(clock),
+    duoCeremony: await fixtureDuoCeremonyGates(clock),
     ...(onEvent === undefined ? {} : { onEvent }),
   });
 

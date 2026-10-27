@@ -14,12 +14,12 @@ import { personLookupDescriptor } from "../registered-workflows.js";
 export function createWorkerDirectiveTestWorld() {
   const disposers: (() => void)[] = [];
 
-  function loopHarness(options: Readonly<{
+  async function loopHarness(options: Readonly<{
     sessions?: SessionFactoryHarness;
     heartbeatIntervalMs?: number;
     exitWhenIdle?: boolean;
   }> = {}) {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const sessions = options.sessions ?? happySessionHarness();
     const scheduler = new ManualScheduler(authority.clock, 0);
@@ -39,7 +39,7 @@ export function createWorkerDirectiveTestWorld() {
       scheduler,
       taskDeadlineMs: 60_000,
       sessionAcquireMs: 20_000,
-      duoCeremony: fixtureDuoCeremonyGates(authority.clock),
+      duoCeremony: await fixtureDuoCeremonyGates(authority.clock),
       heartbeatIntervalMs: options.heartbeatIntervalMs ?? 500,
       idleRepollMs: 1_000,
       log: recordingLogger().log,

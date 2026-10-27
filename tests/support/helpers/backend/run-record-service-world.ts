@@ -29,16 +29,16 @@ export const CANONICAL_WORKER_ID = "person-lookup-worker-1";
 const WORKER_ID = CANONICAL_WORKER_ID;
 
 export function createRunRecordServiceTestWorld() {
-  const cleanups: (() => void)[] = [];
+  const cleanups: (() => void | Promise<void>)[] = [];
   const serviceDatabases = new WeakMap<RunRecordService, AuthorityDatabase>();
 
-  function fixture(
+  async function fixture(
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
   ) {
-    const profile = createBoundProfileFixture({ sharedMachine: true });
+    const profile = await createBoundProfileFixture({ sharedMachine: true });
     const root = profile.stateRoot;
-    cleanups.push(() => profile.close());
+    cleanups.push(async () => await profile.close());
     const clock = manualClock(new Date(NOW));
     const database = AuthorityDatabase.open(
       { path: join(root, "state.db"), migrationOwner: "unit-test", busyTimeoutMs: 250 },
@@ -246,10 +246,10 @@ export function createRunRecordServiceTestWorld() {
       },
     };
   }
-  const cleanup = () => {
+  const cleanup = async () => {
     const failures: unknown[] = [];
     for (const dispose of [...cleanups].reverse()) {
-      try { dispose(); cleanups.splice(cleanups.indexOf(dispose), 1); }
+      try { await dispose(); cleanups.splice(cleanups.indexOf(dispose), 1); }
       catch (error) { failures.push(error); }
     }
     if (failures.length !== 0) throw new AggregateError(failures, "run-service-fixture-closure-unproved");

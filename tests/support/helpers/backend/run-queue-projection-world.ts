@@ -12,8 +12,8 @@ import { join } from "node:path";
 export function createRunQueueProjectionTestWorld() {
   const worlds: DashboardWorld[] = [];
 
-  function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-    const created = makeWorld(...args);
+  async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
+    const created = await makeWorld(...args);
     worlds.push(created);
     return created;
   }
@@ -55,8 +55,8 @@ export function createRunQueueProjectionTestWorld() {
     }));
   }
 
-  const cleanup = () => {
-    for (const w of worlds.splice(0)) w.dispose();
+  const cleanup = async () => {
+    for (const w of worlds.splice(0)) await w.dispose();
   };
   return { worlds, world, runRecordOf, queuedEventOf, CLAIM, appendOther, seedWorld, otherConnection, seedExitRunShape, cleanup };
 }

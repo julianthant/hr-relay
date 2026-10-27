@@ -207,22 +207,22 @@ export interface DashboardWorld {
   readonly writer: TimelineEmitter;
   readonly changes: RunQueueProjectionChange[];
   readonly scheduledRebuilds: (() => void)[];
-  dispose(): void;
+  dispose(): void | Promise<void>;
 }
 
 const retainedDashboardWorldOwners = new Set<object>();
 
-export function makeWorld(input?: Readonly<{
+export async function makeWorld(input?: Readonly<{
   reader?: CanonicalRunReader;
   timeline?: TimelineRepository;
   collectRebuilds?: boolean;
 
   descriptors?: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
-}>): DashboardWorld {
-  const held: { fixture?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; raws: Set<DatabaseSync>; primary?: { error: unknown }; failure?: Error } = { raws: new Set() };
+}>): Promise<DashboardWorld> {
+  const held: { fixture?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; raws: Set<DatabaseSync>; primary?: { error: unknown }; failure?: Error } = { raws: new Set() };
   retainedDashboardWorldOwners.add(held);
   try {
-  const fixture = createBoundProfileFixture(); held.fixture = fixture;
+  const fixture = await createBoundProfileFixture(); held.fixture = fixture;
   const stateRoot = fixture.stateRoot;
   const clock = manualClock(AT);
   const authority = authorityFake();
@@ -336,13 +336,13 @@ export function makeWorld(input?: Readonly<{
     writer,
     changes,
     scheduledRebuilds,
-    dispose: () => {
+    dispose: async () => {
       if (held.failure !== undefined) throw held.failure;
       if (closeAttempted) return;
       closeAttempted = true;
       try {
         releaseSeededWriteOwners(database, clock.now().toISOString());
-        database.close(); fixture.close(); retainedDashboardWorldOwners.delete(held);
+        database.close(); await fixture.close(); retainedDashboardWorldOwners.delete(held);
       }
       catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
     },

@@ -50,7 +50,7 @@ export function personLookupTerminalIdentityEvidence(run: import("../../../src/m
 export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER))) {
 
   const roots: string[] = [];
-  const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+  const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 
   const databases: AuthorityDatabase[] = [];
 
@@ -60,8 +60,8 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
 
   const ACTIVE = PERSON_LOOKUP_ACTIVE;
 
-  function openDatabase(hooks?: AuthorityTerminalizationHooks): AuthorityDatabase {
-    const profile = createBoundProfileFixture(); profiles.push(profile);
+  async function openDatabase(hooks?: AuthorityTerminalizationHooks): Promise<AuthorityDatabase> {
+    const profile = await createBoundProfileFixture(); profiles.push(profile);
     roots.push(profile.stateRoot);
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -203,9 +203,9 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
       failureId: UUID_6,
     };
   }
-  const cleanup = () => {
+  const cleanup = async () => {
     for (const database of databases.splice(0)) database.close();
-    for (const profile of profiles.splice(0)) profile.close();
+    for (const profile of profiles.splice(0)) await profile.close();
     roots.splice(0);
   };
   return { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning, resultRequest, WORKER_ID, failure, failureAuthorization, cleanup };

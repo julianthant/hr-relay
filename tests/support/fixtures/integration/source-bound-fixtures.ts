@@ -33,11 +33,11 @@ import { writeFixtureDescriptor, createWriteFixtureWorld, buildWriteFixtureRegis
 
 const retainedSourceBoundFixtureOwners = new Set<object>();
 
-export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource) {
-  const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
+export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource) {
+  const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
   retainedSourceBoundFixtureOwners.add(held);
   try {
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   held.profile = profile;
 
   const clock = manualClock(new Date(NOW));
@@ -82,7 +82,7 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
   const world = createWriteFixtureWorld();
   const stores = customStores === undefined ? buildWriteFixtureRegistry(world) : customStores(world);
   const sessions = writeFixtureSessions(world);
-  const manager = writeFixtureSessionManager(sessions, stores, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)));
+  const manager = await writeFixtureSessionManager(sessions, stores, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)));
   const emitter = recordingEmitter();
   const worker = workerRunLifecyclePort(lifecycle);
   const common = { lifecycle: worker, stores, authority: database, sessions: manager, emitter: emitter.emitter,
@@ -126,10 +126,10 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
       record.payload.kind === "span" && record.payload.event.t === "run.queued" ? [record.payload.event] : []);
   }, lifecycle, kernel, planner, world, stores, manager,
     proposal, command, start, execute, fresh, resolution, recovery,
-    dispose: () => {
+    dispose: async () => {
       if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
       disposeAttempted = true;
-      try { database.close(); profile.close(); }
+      try { database.close(); await profile.close(); }
       catch (error) {
         held.primary = error;
         disposeFailure = retainAuthoritySourceClosure([error], { admission: held });

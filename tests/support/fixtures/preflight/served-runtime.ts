@@ -22,7 +22,7 @@ import { FIXTURE_DESCRIPTOR_HASH, FIXTURE_NOW } from "../dashboard/fixture-ident
 export type SetupScene = "healthy" | "browser-missing" | "secret-missing" | "optional-warning" | "unavailable" | "stale";
 /** Production admission/report services and detector inputs; synthetic workflow, assets and credentials. */
 export async function servedPreflightRuntime(scene: SetupScene) {
-  const f=runtimeFixture(["dashboard.serve"]);f.clock.setWall(new Date(FIXTURE_NOW));
+  const f=await runtimeFixture(["dashboard.serve"]);f.clock.setWall(new Date(FIXTURE_NOW));
   const database=AuthorityDatabase.open({path:f.databasePath,busyTimeoutMs:250,migrationOwner:"setup-ui"},f.clock);
   const fingerprint=FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(f.input.config)));
   const resolved={...resolveConfigWithProvenance({},hostConfigFacts({}),f.clock),config:f.input.config,fingerprint};
@@ -42,5 +42,5 @@ export async function servedPreflightRuntime(scene: SetupScene) {
   if(scene!=="unavailable") await runtime.admission.prepare(runtime.currentScope(personLookupDescriptor.id),new AbortController().signal);
   if(scene==="stale"){f.clock.advanceWall(60_000);f.clock.advanceMonotonic(60_000);}
   const document=()=>buildSettingsEditor({settings:{read:()=>({record:settings,runtimeStatus:{state:"current",identity:settingsRuntimeIdentity(settings,fingerprint)}})},protectedSettings:createProtectedSettingsRuntimeReader({read:()=>ProtectedStoreRecordSchema.parse(f.input.protectedSecrets.read())}),environment:{},clock:f.clock,resolve:()=>resolved});
-  return {clock:f.clock,service,document,scope:personLookupDescriptor.id,database,runtime,identity,fixture:f,close(){database.close();f.close();},provenance:{detectors:"createRuntimePreflightRunners",admission:"composeRuntimePreflight",report:"createPreflightReportService",effects:"Synthetic private files and SQLite; no workflow execution, browser launch or external requests."}};
+  return {clock:f.clock,service,document,scope:personLookupDescriptor.id,database,runtime,identity,fixture:f,async close(){database.close();await f.close();},provenance:{detectors:"createRuntimePreflightRunners",admission:"composeRuntimePreflight",report:"createPreflightReportService",effects:"Synthetic private files and SQLite; no workflow execution, browser launch or external requests."}};
 }

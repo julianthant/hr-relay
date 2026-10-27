@@ -29,8 +29,8 @@ export function createFinalizationTerminalTestWorld() {
 
   const signal = new AbortController().signal;
 
-  function harness(): FinalizationHarness {
-    const created = finalizationHarness();
+  async function harness(): Promise<FinalizationHarness> {
+    const created = await finalizationHarness();
     open.push(created);
     return created;
   }
@@ -230,8 +230,8 @@ export function createFinalizationTerminalTestWorld() {
 
     return claimQueued(value);
   }
-  const cleanup = () => {
-    for (const harness of open.splice(0)) harness.dispose();
+  const cleanup = async () => {
+    for (const harness of open.splice(0)) await harness.dispose();
   };
   return { open, signal, harness, executorDependencies, enqueueFromComparison, parkApproveAndReclaim, cleanup };
 }

@@ -24,11 +24,11 @@ export function createSettingsAuthorityTestWorld() {
   const databases: AuthorityDatabase[] = [];
 
   const admissions: RuntimeAdmission[] = [];
-  const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+  const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 
-  function fixture(hooks?: CredentialStoreHooks, exclusive = false, sharedMachine = false) {
+  async function fixture(hooks?: CredentialStoreHooks, exclusive = false, sharedMachine = false) {
     if (exclusive && sharedMachine) throw new Error("exclusive settings fixture cannot share machine");
-    const profile = createBoundProfileFixture(sharedMachine ? { sharedMachine: true } : {}); profiles.push(profile);
+    const profile = await createBoundProfileFixture(sharedMachine ? { sharedMachine: true } : {}); profiles.push(profile);
     const repoRoot = profile.workspace; roots.push(repoRoot);
     const admission = exclusive ? profile.admission : undefined;
     if (admission !== undefined) admissions.push(admission);
@@ -67,6 +67,6 @@ export function createSettingsAuthorityTestWorld() {
       commandAudits: { ...repositories.commandAudits, insert: () => { throw new Error("injected audit failure"); } },
     })) };
   }
-  const cleanup = () => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const profile of profiles.splice(0)) profile.close(); roots.splice(0); };
+  const cleanup = async () => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const profile of profiles.splice(0)) await profile.close(); roots.splice(0); };
   return { roots, databases, admissions, fixture, protectedCommand, failAudit, cleanup };
 }

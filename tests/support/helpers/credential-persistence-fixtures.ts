@@ -22,7 +22,7 @@ import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 
 export function createCredentialPersistenceFixtures(roots: string[], COMMAND_1: string, NOW_1: string) {
-const cleanups: (() => void)[] = [];
+const cleanups: (() => void | Promise<void>)[] = [];
 function fixture(hooks?: CredentialStoreHooks) {
   const stateRoot = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hr-credential-store-")));
   roots.push(stateRoot);
@@ -43,8 +43,8 @@ function fixture(hooks?: CredentialStoreHooks) {
     directory: join(tracker, "credentials"), path: join(tracker, "credentials", "protected.json"),
     lockPath: join(tracker, "credentials", ".protected.lock"), store };
 }
-function registeredFixture(hooks?: CredentialStoreHooks) {
-  const f = createBoundProfileFixture();
+async function registeredFixture(hooks?: CredentialStoreHooks) {
+  const f = await createBoundProfileFixture();
   const journalPath = join(f.machine.stateRoot, "machine", "erasures", `${f.admission.profileBinding.profileId}.json`);
   const ordinary = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine, erasureJournalPath: journalPath, hooks,
     repairInventory: composeProfileCredentialRepairInventory({ machine: f.machine, admission: f.admission, clock: systemClock, hostFacts: { primaryDisplay: null } }) });
@@ -52,7 +52,7 @@ function registeredFixture(hooks?: CredentialStoreHooks) {
   let retained: ReturnType<typeof createCredentialStore> | undefined;
   let operation: ReturnType<typeof LogoutOperationSchema.parse> | undefined;
   let exactErase: CredentialEraseInput | undefined;
-  cleanups.push(() => { settlement?.release(); f.close(); });
+  cleanups.push(async () => { settlement?.release(); await f.close(); });
   return { stateRoot: f.workspace, tracker: f.stateRoot, admission: f.admission, machine: f.machine, journalPath,
     directory: join(f.stateRoot, "credentials"), path: join(f.stateRoot, "credentials", "protected.json"),
     lockPath: join(f.stateRoot, "credentials", ".protected.lock"), store: ordinary,
@@ -85,8 +85,8 @@ function registeredFixture(hooks?: CredentialStoreHooks) {
     },
   };
 }
-function releaseFixtures(): void {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+async function releaseFixtures(): Promise<void> {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 }
 
 function request(input: {

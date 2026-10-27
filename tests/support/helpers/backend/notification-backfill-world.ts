@@ -10,12 +10,12 @@ import { openBoundDatabaseFixture } from "../admission-fixture.js";
 
 
 export function createNotificationBackfillTestWorld() {
-  const disposers: (() => void)[] = [];
+  const disposers: (() => void | Promise<void>)[] = [];
 
-  function world() {
+  async function world() {
     const clock = manualClock(new Date(NOW));
-    const opened = openBoundDatabaseFixture("backfill-gap-test", clock);
-    disposers.push(() => opened.close());
+    const opened = await openBoundDatabaseFixture("backfill-gap-test", clock);
+    disposers.push(async () => await opened.close());
     const database = opened.database;
     const inbox = createNotificationInbox({
       authority: database,
@@ -25,8 +25,8 @@ export function createNotificationBackfillTestWorld() {
     });
     return { database, inbox };
   }
-  const cleanup = () => {
-    for (const dispose of disposers.splice(0)) dispose();
+  const cleanup = async () => {
+    for (const dispose of disposers.splice(0)) await dispose();
   };
   return { disposers, world, cleanup };
 }

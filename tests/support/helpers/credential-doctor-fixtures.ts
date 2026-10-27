@@ -17,10 +17,10 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, type
 
 
 
-export function createCredentialDoctorFixtures(cleanups: (() => void)[]) {
-function fixture() {
-  const profile = createBoundProfileFixture();
-  cleanups.push(() => profile.close());
+export function createCredentialDoctorFixtures(cleanups: (() => void | Promise<void>)[]) {
+async function fixture() {
+  const profile = await createBoundProfileFixture();
+  cleanups.push(async () => await profile.close());
   const { workspace, admission } = profile;
   const root = profile.stateRoot;
   const credentialStore = boundProfileCredentials(admission);

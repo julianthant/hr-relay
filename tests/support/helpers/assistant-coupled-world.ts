@@ -33,8 +33,8 @@ import { writeFixtureDescriptor } from '../fixtures/write-sequencer-fixtures.js'
 
 export const SYNTHETIC_ASSISTANT_SOURCE = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision: '9af76694409eeff5e0ac954fc9501bc69991643a' };
 export async function assistantCoupledWorld() {
-  const profile = createBoundProfileFixture();
-  const account = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture();
+  const account = await chatGptFixture(profile.admission);
   const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: 'assistant-synthetic' }, account.clock);
   try {
   seedInitialSettingsRuntimeConfig(database, account.clock);
@@ -120,7 +120,7 @@ export async function assistantCoupledWorld() {
     descriptor(value: AnyWorkflowDescriptor) { descriptor = value; },
     ambiguous() { candidates = [subject(), { ...subject(), subjectRef: 'synthetic-second-subject' }]; },
     staleRuntime() { runtime = { ...runtime, revision: 'a'.repeat(40) }; },
-    async close() { controller.abort(); await account.cleanup(); database.close(); profile.close(); },
+    async close() { controller.abort(); await account.cleanup(); database.close(); await profile.close(); },
   };
-  } catch (error) { await account.cleanup(); database.close(); profile.close(); throw error; }
+  } catch (error) { await account.cleanup(); database.close(); await profile.close(); throw error; }
 }

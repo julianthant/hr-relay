@@ -18,7 +18,7 @@ export interface Fixture {
 
 
 export function createStepOmissionTestWorld() {
-  const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+  const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
   const databases: AuthorityDatabase[] = [];
 
   const STEP = "crm-read";
@@ -31,8 +31,8 @@ export function createStepOmissionTestWorld() {
 
   const TYPED_FACT = "a1ZVr000004TypedMAC";
 
-  function openDatabase(): AuthorityDatabase {
-    const profile = createBoundProfileFixture();
+  async function openDatabase(): Promise<AuthorityDatabase> {
+    const profile = await createBoundProfileFixture();
     profiles.push(profile);
     const clock = manualClock(new Date("2026-08-04T00:11:13.500Z"));
     const database = AuthorityDatabase.open(
@@ -44,7 +44,7 @@ export function createStepOmissionTestWorld() {
     return database;
   }
 
-  function omittedStepFixture(overrides?: Readonly<{
+  async function omittedStepFixture(overrides?: Readonly<{
     stepOmissions?: readonly { readonly step: string; readonly facts: Record<string, string> }[];
     dropAssertedCheckpoint?: boolean;
     citeAssertedAsResolved?: boolean;
@@ -57,8 +57,8 @@ export function createStepOmissionTestWorld() {
     citeAssertedAsNotRun?: boolean;
     /** Leave the marked node out of the terminal record's dependencies entirely. */
     dropAssertedDependency?: boolean;
-  }>): Fixture {
-    const database = openDatabase();
+  }>): Promise<Fixture> {
+    const database = await openDatabase();
     const seeded = seedPersonLookupExitRun(database);
     const storedResult = database.authority.runResults.get(EXIT_RUN_ID);
     assert.ok(storedResult !== undefined, "the seeded exit run must have a terminal result");
@@ -134,9 +134,9 @@ export function createStepOmissionTestWorld() {
         : checkpoints.map((row) => (String(row.nodeId) === ASSERTED_NODE ? asserted : row)),
     };
   }
-  const cleanup = () => {
+  const cleanup = async () => {
     for (const database of databases.splice(0)) database.close();
-    for (const profile of profiles.splice(0)) profile.close();
+    for (const profile of profiles.splice(0)) await profile.close();
   };
   return { databases, STEP, TYPED_FACT, omittedStepFixture, ASSERTED_AT, ASSERTED_NODE, OMITTED_NODE, cleanup };
 }

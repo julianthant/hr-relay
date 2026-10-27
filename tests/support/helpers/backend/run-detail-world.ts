@@ -15,8 +15,8 @@ import { sqliteRunReader } from "../canonical-run-reader.js";
 export function createRunDetailTestWorld() {
   const worlds: DashboardWorld[] = [];
 
-  function world(): DashboardWorld {
-    const created = makeWorld();
+  async function world(): Promise<DashboardWorld> {
+    const created = await makeWorld();
     worlds.push(created);
     return created;
   }
@@ -141,8 +141,8 @@ export function createRunDetailTestWorld() {
   }
 
   const RUN_ID = uuidOf(1);
-  const cleanup = () => {
-    for (const w of worlds.splice(0)) w.dispose();
+  const cleanup = async () => {
+    for (const w of worlds.splice(0)) await w.dispose();
   };
   return { worlds, world, OUTPUT_SCHEMA_HASH, EXACT_DESCRIPTOR, depsOf, sourceRun, checkpointFor, storeCheckpoint, RUN_ID, cleanup };
 }

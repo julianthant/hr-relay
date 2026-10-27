@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot, type RuntimeProcessLockHandle } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
-export function createFirstInstallCustodyFixture(roots: string[], sourceDatabaseIdentity: string) {
-  const profile = createBoundProfileFixture();
+export async function createFirstInstallCustodyFixture(roots: string[], sourceDatabaseIdentity: string) {
+  const profile = await createBoundProfileFixture();
   roots.push(profile.workspace);
   const root = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
   const authorityPath = profile.path;
@@ -17,7 +17,7 @@ export function createFirstInstallCustodyFixture(roots: string[], sourceDatabase
     AuthorityDatabase.open(profile.admission, { path: authorityPath, busyTimeoutMs: 250, migrationOwner: 'first-worker-admission-test' }).close();
     return profile.admission;
   };
-  return { root, authorityPath, snapshot, acquire, close: () => profile.close(), custody: () => {
+  return { root, authorityPath, snapshot, acquire, close: async () => await profile.close(), custody: () => {
     if (custody === undefined) throw new Error("missing first-install custody"); return custody;
   } };
 }

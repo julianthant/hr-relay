@@ -27,38 +27,32 @@ const realScheduler: MonotonicDeadlineScheduler = {
   },
 };
 
-const closeFixtures: (() => void)[] = [];
-export function closeDuoCeremonyFixtures(): void {
+const closeFixtures: (() => void | Promise<void>)[] = [];
+export async function closeDuoCeremonyFixtures(): Promise<void> {
   const failures: unknown[] = [];
   for (const close of closeFixtures.splice(0).reverse()) {
-    try { close(); } catch (error) { failures.push(error); }
+    try { await close(); } catch (error) { failures.push(error); }
   }
   if (failures.length > 0) throw new AggregateError(failures, "Duo fixture cleanup failed");
 }
 
-export function openDuoCeremonyLeaseDatabase(clock: Clock): AuthorityDatabase {
-  const profile = createBoundProfileFixture();
+export async function openDuoCeremonyLeaseDatabase(clock: Clock): Promise<AuthorityDatabase> {
+  const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock,
   );
-  closeFixtures.push(() => { database.close(); profile.close(); });
+  closeFixtures.push(async () => { database.close(); await profile.close(); });
   return database;
 }
 
 
-export function fixtureDuoCeremonyGates(
+export async function fixtureDuoCeremonyGates(
   clock: Clock = systemClock,
   scheduler: MonotonicDeadlineScheduler = realScheduler,
-): DuoCeremonyGateFactory {
-  let real: DuoCeremonyGateFactory | undefined;
-  const lazy: DuoCeremonyGateFactory = {
-    openGate: (input) => {
-      real ??= duoCeremonyGatesOver(openDuoCeremonyLeaseDatabase(clock), clock, scheduler);
-      return real.openGate(input);
-    },
-  };
-  return Object.freeze(lazy);
+): Promise<DuoCeremonyGateFactory> {
+  return duoCeremonyGatesOver(await openDuoCeremonyLeaseDatabase(clock), clock, scheduler);
 }
+
 
 export function duoCeremonyGatesOver(
   database: AuthorityDatabase,
@@ -78,12 +72,12 @@ export function duoCeremonyGatesOver(
 }
 
 /** One open gate for a recipe test that drives `defineVerifiedLoginRecipe` directly. */
-export function fixtureDuoCeremonyGate(
+export async function fixtureDuoCeremonyGate(
   system: BrowserSystemId,
   workerId: WorkerId = WorkerIdSchema.parse("person-lookup-worker-1"),
   clock: Clock = systemClock,
-): DuoCeremonyGateHandle {
-  const database = openDuoCeremonyLeaseDatabase(clock);
+): Promise<DuoCeremonyGateHandle> {
+  const database = await openDuoCeremonyLeaseDatabase(clock);
   const path = syntheticDatabasePath(database);
   testWorkerPorts(database, clock, { path, descriptor: personLookupDescriptor, poolIndex: 1 });
   const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(candidate => candidate.poolIndex === 1);

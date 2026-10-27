@@ -14,7 +14,7 @@ import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER, UNSTORED_CONFIG_IDENTITY 
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { type foundationFixture, failure, terminalizeFixtureFailure, NOW } from "../database-foundation/fixtures.js";
 
-export function resolutionKernel(db: AuthorityDatabase, clock: ReturnType<typeof foundationFixture>["clock"], overrides: Partial<CommandKernelDependencies> = {}) {
+export function resolutionKernel(db: AuthorityDatabase, clock: Awaited<ReturnType<typeof foundationFixture>>["clock"], overrides: Partial<CommandKernelDependencies> = {}) {
   const unused = (): never => { throw new Error("unrelated executor reached"); };
   return createCommandKernel({
     authority: db, clock, ids: { uuid: randomUUID },
@@ -26,9 +26,9 @@ export function resolutionKernel(db: AuthorityDatabase, clock: ReturnType<typeof
     writeResolution: { resolvePresent: unused, resolveAbsent: unused }, ...overrides,
   });
 }
-export function resolutionFixture(runId: string = failure().runId, failureId: string = failure().failureId,
+export async function resolutionFixture(runId: string = failure().runId, failureId: string = failure().failureId,
   options: { sharedMachine?: true } = {}) {
- const f = diagnosticFoundation(options);
+ const f = await diagnosticFoundation(options);
  const held: { foundation: typeof f; primary?: unknown } = { foundation: f };
  retainedResolutionOwners.add(held);
  try {
@@ -49,7 +49,7 @@ export function resolutionCommand(overrides: Record<string, unknown> = {}) {
 }
 
 /** The production HTTP route/admission/kernel; unrelated routes deliberately have no fixture. */
-export function resolutionApp(f: ReturnType<typeof resolutionFixture>) {
+export function resolutionApp(f: Awaited<ReturnType<typeof resolutionFixture>>) {
   return createDashboardApp({
     ...composeActivity({ database: f.db, clock: f.clock, descriptors: { resolve: id => id === personLookupDescriptor.id ? personLookupDescriptor : undefined }, ledger: createTransactionHistory(f.db.authority) }),
     requestIdentity: createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" }),
@@ -62,7 +62,7 @@ export function resolutionApp(f: ReturnType<typeof resolutionFixture>) {
   } as unknown as DashboardAppDeps);
 }
 
-export function resolutionReadDeps(f: ReturnType<typeof resolutionFixture>) {
+export function resolutionReadDeps(f: Awaited<ReturnType<typeof resolutionFixture>>) {
   const reader = sqliteRunReader(f.db, f.clock);
   const trust = createReceiptService({ database: f.db, runReader: reader, descriptors: [personLookupDescriptor] });
   return { runReader: reader, trust, timeline: f.db.authority.timelineEvents } as unknown as RunDetailQueryDeps;
@@ -89,11 +89,11 @@ import { id } from "../database-foundation/fixtures.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
 const retainedResolutionOwners = new Set<object>();
-function diagnosticFoundation(options: { sharedMachine?: true }){
- const held: { profile?: ReturnType<typeof createBoundProfileFixture>; db?: AuthorityDatabase; primary?: unknown } = {};
+async function diagnosticFoundation(options: { sharedMachine?: true }){
+ const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; db?: AuthorityDatabase; primary?: unknown } = {};
  retainedResolutionOwners.add(held);
  try {
- const profile=createBoundProfileFixture(options); held.profile = profile;const root=profile.stateRoot;const path=profile.path;const clock=manualClock(new Date(NOW));
+ const profile=await createBoundProfileFixture(options); held.profile = profile;const root=profile.stateRoot;const path=profile.path;const clock=manualClock(new Date(NOW));
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock); held.db = db;
  const config=ConfigSchema.parse({paths:defaultRuntimePaths()});
  const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
@@ -120,10 +120,10 @@ assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
  const run=createRun(RUN_ID);
  let disposeAttempted = false, disposeFailure: Error | undefined;
   retainedResolutionOwners.delete(held);
-  return {root,path,clock,db,snapshot,run,createRun,profile,dispose:()=>{
+  return {root,path,clock,db,snapshot,run,createRun,profile,dispose:async ()=>{
     if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
     disposeAttempted = true;
-    try { db.close(); profile.close(); }
+    try { db.close(); await profile.close(); }
     catch (error) { held.primary = error; disposeFailure = retainAuthoritySourceClosure([error], { admission: held }); retainedResolutionOwners.add(held); throw disposeFailure; }
   }};
 } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }

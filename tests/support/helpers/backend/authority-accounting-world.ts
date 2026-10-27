@@ -197,14 +197,15 @@ export function createAuthorityAccountingTestWorld() {
     updatedAt: NOW,
   };
 
-  function databasePath(_name = "authority.sqlite"): string {
-    const profile = createBoundProfileFixture();
+  async function databasePath(_name = "authority.sqlite"): Promise<string> {
+    const profile = await createBoundProfileFixture();
     roots.push(profile.workspace);
     return profile.path;
   }
 
-  function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
-    const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
+  async function openDatabase(path: string | undefined = undefined, busyTimeoutMs = 250): Promise<AuthorityDatabase> {
+    path ??= await databasePath();
+  const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
     openDatabases.push(database);
     databasePaths.set(database, path);
     return database;
@@ -434,7 +435,7 @@ export function createAuthorityAccountingTestWorld() {
 export type MutationCase = Readonly<{
     table: Exclude<AuthorityTableName, "database_states" | "database_upgrades">;
     prepare?: (database: AuthorityDatabase) => void;
-    mutate: (database: AuthorityDatabase) => void;
+    mutate: (database: AuthorityDatabase) => void | Promise<void>;
   }>;
 
 export function authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }: Pick<ReturnType<typeof createAuthorityAccountingTestWorld>, "prepareRunning" | "terminalFailureRequest" | "terminalSuccessRequest" | "terminalizeForTrust" | "DIAGNOSTIC_BUNDLE" | "FAILURE_RECORD" | "DRY_RUN_SCENARIO_RESULT" | "OPERATOR_XLSX_EXPORT" | "CLOCK" | "ATOMIC_WRITE_COMMIT" | "databasePaths" | "INTAKE_MANIFEST" | "OCR_EXTRACTION" | "prepareWorkerSlot" | "claimedWorkerId" | "prepareDelegationOwners" | "COMMAND_AUDIT" | "RUN_CHECKPOINT" | "OBSERVED_PRESENT_WRITE_INTENT">): readonly MutationCase[] {
@@ -553,8 +554,8 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     { table: "delegation_dependencies", prepare: (db) => { prepareDelegationOwners(db); db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
-    { table: "explorer_overrides", mutate: db => {
-      const f = explorerAuthorityFixture();
+    { table: "explorer_overrides", mutate: async db => {
+      const f = await explorerAuthorityFixture();
       try {
         const command = f.command(UUID_7);
         const result = f.kernel.execute(command);
@@ -567,7 +568,7 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
           repos.explorerOverrides.replace(command, override);
           repos.commandAudits.insert(audit);
         });
-      } finally { f.dispose(); }
+      } finally { await f.dispose(); }
     } },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "notifications", prepare: db => { db.authority.notifications.create({ ...NOTIFICATION,

@@ -11,14 +11,14 @@ export function createPersonLookupStartFixtures(
   planTtlMs: number,
 ) {
   void roots;
-  function openDatabase(): AuthorityDatabase {
-    const profile = createBoundProfileFixture();
+  async function openDatabase(): Promise<AuthorityDatabase> {
+    const profile = await createBoundProfileFixture();
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
       clock,
     );
     const close = database.close.bind(database);
-    database.close = () => { close(); profile.close(); };
+    database.close = async () => { close(); await profile.close(); };
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     databases.push(database);
     return database;

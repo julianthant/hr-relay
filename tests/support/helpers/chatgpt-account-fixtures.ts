@@ -7,8 +7,8 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 
 import { createBoundProfileFixture } from "./admission-fixture.js";
 
-export function chatGptFixture(ownedAdmission?: RuntimeAdmission) {
-  const profile = ownedAdmission === undefined ? createBoundProfileFixture() : undefined;
+export async function chatGptFixture(ownedAdmission?: RuntimeAdmission) {
+  const profile = ownedAdmission === undefined ? await createBoundProfileFixture() : undefined;
   const admission = ownedAdmission ?? profile?.admission;
   if (admission === undefined) throw new Error("actual profile fixture admission required");
   const root = admission.stateRoot;
@@ -58,7 +58,7 @@ export function chatGptFixture(ownedAdmission?: RuntimeAdmission) {
   async function connected(usePlan = true) { const attempt = await service.signIn({ usePlan }); await callback(attempt); return attempt.completion; }
   async function cleanup() {
     await service.close();
-    profile?.close();
+    await profile?.close();
   }
   return { root, admission, clock, service, transport, calls, callback, connected, cleanup,
     setClaims(patch: { [key: string]: unknown }) { claimsPatch = patch; },
@@ -80,7 +80,7 @@ function completedCapabilityStream(output: unknown, model: string) {
   return `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_synthetic", model, status: "completed", output } })}\n\n`;
 }
 
-export function publicCapabilityResponses(f: ReturnType<typeof chatGptFixture>, value = 'relay-public-capability') {
+export function publicCapabilityResponses(f: Awaited<ReturnType<typeof chatGptFixture>>, value = 'relay-public-capability') {
   f.setResponse(init => {
     assert.ok(typeof init.body === 'string');
     const wire = z.object({ model: z.string(), input: z.array(z.object({ type: z.string().optional() }).passthrough()) }).parse(JSON.parse(init.body));

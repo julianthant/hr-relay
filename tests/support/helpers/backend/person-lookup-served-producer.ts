@@ -21,7 +21,7 @@ import type { RunLogSnapshot } from "../../../../src/dashboard/state/run-wiring-
 export async function personLookupServedProducer(person?: SearchPersonOrgOutput) {
   const world=createRunExecutorTestWorld();
   const sessions=sessionFactoryHarness({ucpath:()=>createDeterministicUcpathPersonOrgDriver(person),crm:()=>healthyCrmDriver()});
-  const harness=world.executorHarness({sessions});
+  const harness=await world.executorHarness({sessions});
   const {database,clock,stateRoot}=harness.authority;
   try {
     const claimed=world.enqueueAndClaim(database,personLookupQueuedRun({includeCrmDates:true,dryRun:true}),clock.now().toISOString());

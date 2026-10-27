@@ -361,12 +361,12 @@ export interface FinalizationHarness {
   readonly sequencer: ProductionWriteSequencer;
   readonly sessions: WorkerSessionManager;
   readonly bound: <Result>(work: () => Promise<Result>) => Promise<Result>;
-  readonly dispose: () => void;
+  readonly dispose: () => void | Promise<void>;
 }
 
 const retainedFinalizationOwners = new Set<object>();
 
-export function finalizationHarness(
+export async function finalizationHarness(
   options: Readonly<{
     /** Seed the document as ALREADY finalized with exactly these ten values. */
     persistedFinalization?: KualiFinalizationFields;
@@ -379,12 +379,12 @@ export function finalizationHarness(
     /** Values offered by the live Department control. */
     departmentOptions?: readonly string[];
   }> = {},
-): FinalizationHarness {
-  const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; manager?: WorkerSessionManager; primary?: { error: unknown }; failure?: Error } = {};
+): Promise<FinalizationHarness> {
+  const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; manager?: WorkerSessionManager; primary?: { error: unknown }; failure?: Error } = {};
   retainedFinalizationOwners.add(held);
   try {
   const clock = manualClock(new Date(FINALIZATION_NOW));
-  const profile = createBoundProfileFixture(); held.profile = profile;
+  const profile = await createBoundProfileFixture(); held.profile = profile;
   const database = AuthorityDatabase.open(
     {
       path: profile.path,
@@ -492,11 +492,11 @@ export function finalizationHarness(
         FINALIZATION_CONFIG_FINGERPRINT,
         work,
       ),
-    dispose: (): void => {
+    dispose: async (): Promise<void> => {
       if (held.failure !== undefined) throw held.failure;
       if (closeAttempted) return;
       closeAttempted = true;
-      try { database.close(); profile.close(); retainedFinalizationOwners.delete(held); }
+      try { database.close(); await profile.close(); retainedFinalizationOwners.delete(held); }
       catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
     },
   };

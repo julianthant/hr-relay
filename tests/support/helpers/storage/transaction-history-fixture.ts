@@ -13,8 +13,8 @@ import { atomicWriteCheckpoint, releaseSeededWriteOwners } from "../timeline-wri
 import { ledgerCommitFixture, fixtureUuid } from "../../fixtures/ledger-projection-fixtures.js";
 export const HISTORY_NOW = "2026-09-09T12:00:00.000Z";
 export const historyClock = capturedInstantClock(HISTORY_NOW);
-export function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) {
-  const admitted = foundationFixture();
+export async function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) {
+  const admitted = await foundationFixture();
   const { root, path } = admitted;
   const open = () => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "transaction-history-test" }, historyClock);
   let database = admitted.db;
@@ -58,7 +58,7 @@ export function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) 
       return fixture;
     },
     reopen() { releaseSeededWriteOwners(database, historyClock.now().toISOString()); database.close(); database = open(); },
-    dispose() { releaseSeededWriteOwners(database, historyClock.now().toISOString()); database.close(); admitted.profile.close(); },
+    async dispose() { releaseSeededWriteOwners(database, historyClock.now().toISOString()); database.close(); await admitted.profile.close(); },
   };
 }
 

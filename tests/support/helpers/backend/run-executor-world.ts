@@ -49,26 +49,26 @@ interface ExecutorHarness {
 export function createRunExecutorTestWorld() {
   const authorityHarnesses = new WeakMap<AuthorityDatabase, AuthorityHarness>();
 
-  const disposers: (() => void)[] = [];
+  const disposers: (() => void | Promise<void>)[] = [];
   const sessionClosures = new Set<() => Promise<void>>();
 
-  function executorHarness(options: Readonly<{
+  async function executorHarness(options: Readonly<{
     sessions?: SessionFactoryHarness;
     autoFireAtOrBelowMs?: number;
     taskDeadlineMs?: number;
     stores?: RunExecutorDependencies["stores"];
     descriptor?: AnyWorkflowDescriptor;
-  }> = {}): ExecutorHarness {
-    const authority = openAuthorityHarness();
+  }> = {}): Promise<ExecutorHarness> {
+    const authority = await openAuthorityHarness();
     authorityHarnesses.set(authority.database, authority);
     const sessions = options.sessions ?? happySessionHarness();
-    const manager = sessionManagerFor(sessions, authority.clock);
+    const manager = await sessionManagerFor(sessions, authority.clock);
     let sessionsClosed = false;
     const closeSessions = async () => { await manager.closeAll("worker-stop"); sessionsClosed = true; };
     sessionClosures.add(closeSessions);
-    disposers.push(() => {
+    disposers.push(async () => {
       if (!sessionsClosed) throw new Error("executor-fixture-session-closure-unproved");
-      authority.dispose();
+      await authority.dispose();
     });
     const scheduler = new ManualScheduler(authority.clock, options.autoFireAtOrBelowMs ?? 0);
     const emitter = {
@@ -278,7 +278,7 @@ export function createRunExecutorTestWorld() {
       catch (error) { failures.push(error); }
     }
     for (const dispose of [...disposers]) {
-      try { dispose(); disposers.splice(disposers.indexOf(dispose), 1); }
+      try { await dispose(); disposers.splice(disposers.indexOf(dispose), 1); }
       catch (error) { failures.push(error); }
     }
     if (failures.length !== 0) throw new AggregateError(failures, "executor-fixture-closure-unproved");

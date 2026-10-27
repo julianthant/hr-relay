@@ -14,9 +14,9 @@ import { personLookupQueuedRun } from "../phase1f-executor-harness.js";
 import { makeWorld, uuidOf } from "./dashboard-harness.js";
 
 /** Trust acceptance uses actual SQLite service reads; the empty projector supplies evidence only. */
-export function trustWorld() {
-  const world = makeWorld();
-  const profile = createBoundProfileFixture();
+export async function trustWorld() {
+  const world = await makeWorld();
+  const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(profile.admission, { path: profile.path,
     busyTimeoutMs: 250, migrationOwner: "trust-linkage-test" }, world.clock, undefined, undefined, undefined,
     boundProfileCredentials(profile.admission));
@@ -91,20 +91,20 @@ export function trustWorld() {
     return result.run;
   };
   return { world, profile, database, workerId, service, reader, receipts, deps, runtimeConfig, create, cancel, fail,
-    dispose() {
+    async dispose() {
       const failures: unknown[] = [];
       let databaseClosed = false;
       try { database.close(); databaseClosed = true; } catch (error) { failures.push(error); }
       if (databaseClosed) {
-        try { profile.close(); } catch (error) { failures.push(error); }
+        try { await profile.close(); } catch (error) { failures.push(error); }
       }
-      try { world.dispose(); } catch (error) { failures.push(error); }
+      try { await world.dispose(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new AggregateError(failures, "trust fixture closure failed");
     } };
 }
 
 /** Real folded evidence deliberately contradicts the separate SQLite lifecycle oracle. */
-export function foldTrustGate(world: ReturnType<typeof makeWorld>, run: RunRecord, state: "open" | "resolved") {
+export function foldTrustGate(world: Awaited<ReturnType<typeof makeWorld>>, run: RunRecord, state: "open" | "resolved") {
   // The fold's separate SQLite fixture still needs the exact retained owner;
   // its deliberately stale gate evidence does not fabricate a new run.
   world.authority.records.set(run.envelope.runId, run);

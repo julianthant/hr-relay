@@ -24,7 +24,7 @@ interface LoopHarness {
   readonly stop: AbortController;
 }
 
-export function createWorkerLoopHarness(
+export async function createWorkerLoopHarness(
   authority: AuthorityHarness,
   workerSuffix: string,
   idPrefix: string,
@@ -33,7 +33,7 @@ export function createWorkerLoopHarness(
     onSpan?: () => void;
     exitWhenIdle?: boolean;
   }> = {},
-): LoopHarness {
+): Promise<LoopHarness> {
   const sessions = options.sessions ?? happySessionHarness();
   const scheduler = new ManualScheduler(authority.clock, 0);
   const stop = new AbortController();
@@ -63,7 +63,7 @@ export function createWorkerLoopHarness(
       scheduler,
       taskDeadlineMs: 60_000,
       sessionAcquireMs: 20_000,
-      duoCeremony: fixtureDuoCeremonyGates(authority.clock),
+      duoCeremony: await fixtureDuoCeremonyGates(authority.clock),
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
       idleRepollMs: 1_000,
       log: recordingLogger().log,

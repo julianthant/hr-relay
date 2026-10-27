@@ -320,10 +320,10 @@ export interface CompositionHarness {
   readonly ids: ReturnType<typeof sequentialIdFactory>;
   readonly sequencer: ProductionWriteSequencer;
   readonly bound: <Result>(work: () => Promise<Result>) => Promise<Result>;
-  readonly dispose: () => void;
+  readonly dispose: () => void | Promise<void>;
 }
 
-export function compositionHarness(options: Readonly<{
+export async function compositionHarness(options: Readonly<{
   /** UCPath transaction rows the probe will scan. */
   rows?: readonly UcpathTransactionRow[];
   /** Who UCPath Page B shows AFTER staging — the beat-③ mismatch arm. */
@@ -334,9 +334,9 @@ export function compositionHarness(options: Readonly<{
   persistedFinalization?: KualiObservedFinalizationFields;
 
   kualiCommitDoesNotPersist?: boolean;
-}> = {}): CompositionHarness {
+}> = {}): Promise<CompositionHarness> {
   const clock = manualClock(new Date(COMPOSITION_NOW));
-  const opened = openBoundDatabaseFixture("separations-composition-test", clock);
+  const opened = await openBoundDatabaseFixture("separations-composition-test", clock);
   const database = opened.database;
   testWorkerPorts(database, clock, { path: opened.path, descriptor: separationsDescriptor, poolIndex: 1 });
   const ucpath = createUcpathSmartHrFakeWorld({
@@ -372,7 +372,7 @@ export function compositionHarness(options: Readonly<{
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: fixtureDuoCeremonyGates(clock),
+    duoCeremony: await fixtureDuoCeremonyGates(clock),
   });
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("d");
@@ -394,9 +394,9 @@ export function compositionHarness(options: Readonly<{
     ucpath, kuali, database, clock, emitter, ids, sequencer,
     bound: <Result>(work: () => Promise<Result>): Promise<Result> =>
       withBoundRunConfigFingerprint(manager, COMPOSITION_CONFIG_FINGERPRINT, work),
-    dispose: (): void => {
+    dispose: async (): Promise<void> => {
       releaseSeededWriteOwners(database, clock.now().toISOString());
-      opened.close();
+      await opened.close();
     },
   };
 }

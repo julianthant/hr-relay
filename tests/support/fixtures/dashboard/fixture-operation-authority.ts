@@ -51,7 +51,7 @@ import { startFixtureServer } from "../../helpers/dashboard/served-fixtures/fixt
 const retainedOperationAuthorityOwners = new Set<object>();
 
 export async function startOperationAuthorityServer(mode: "local" | "browser" | "separation" | "separation-failed" | "separation-ambiguous" = "local") {
-  const harness = openAuthorityHarness();
+  const harness = await openAuthorityHarness();
   const held: { harness: typeof harness; sessions?: WorkerSessionManager; shell?: Awaited<ReturnType<typeof startFixtureServer>>;
     http?: Awaited<ReturnType<typeof startDashboardHttpServer>>; primary?: { error: unknown }; failures: unknown[] } = { harness, failures: [] };
   retainedOperationAuthorityOwners.add(held);
@@ -165,7 +165,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
           let sessionsClosed = false;
           try { await sessions.closeAll("worker-stop"); sessionsClosed = true; } catch (error) { failures.push(error); }
           if (sessionsClosed && failures.length === 0) {
-            try { harness.dispose(); } catch (error) { failures.push(error); }
+            try { await harness.dispose(); } catch (error) { failures.push(error); }
           }
           if (failures.length > 0) {
             const failure = new AggregateError(failures, "operation fixture cleanup failed", { cause: failures[0] });

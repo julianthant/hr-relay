@@ -9,7 +9,7 @@ import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import type { createRunRecordServiceTestWorld } from "./run-record-service-world.js";
 
 const ownerLines = new WeakMap<ChildProcess, () => Promise<string>>();
-function readOwnerLine(child: ChildProcess): Promise<string> {
+async function readOwnerLine(child: ChildProcess): Promise<Promise<string>> {
   const existing = ownerLines.get(child);
   if (existing !== undefined) return existing();
   if (child.stdout === null) throw new Error("fence owner has no stdout");
@@ -37,7 +37,7 @@ function readOwnerLine(child: ChildProcess): Promise<string> {
     return line;
   };
   ownerLines.set(child, read);
-  return read();
+  return await read();
 }
 async function stop(child: ChildProcess) {
   if (child.exitCode !== null || child.signalCode !== null) return;
@@ -46,7 +46,7 @@ async function stop(child: ChildProcess) {
   await exited;
 }
 export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof createRunRecordServiceTestWorld>, options?: { fenceInOwner?: boolean }) {
-  const h = world.fixture(), children: ChildProcess[] = [], handles: RuntimeProcessLockHandle[] = [];
+  const h = await world.fixture(), children: ChildProcess[] = [], handles: RuntimeProcessLockHandle[] = [];
   const slot = h.database.authority.workerSlots.list()[0];
   if (slot === undefined) throw new Error("missing member");
   const lease = h.database.authority.workerLeases.get(slot.workerId);

@@ -24,15 +24,15 @@ export function createSystemSessionTestWorld() {
     "communities-login": { count: 0 },
   } as const;
 
-  function contextFor(
+  async function contextFor(
     script: FakePageScript,
     signal = new AbortController().signal,
     system: BrowserSystemId = "ucpath",
-  ): {
+  ): Promise<{
     context: SystemLoginContext;
     harness: ReturnType<typeof fakeLoginPage>;
     evidence: () => readonly AuthenticatedApplicationEvidence[];
-  } {
+  }> {
     const harness = fakeLoginPage(script);
     const recorded: AuthenticatedApplicationEvidence[] = [];
     return {
@@ -47,7 +47,7 @@ export function createSystemSessionTestWorld() {
         credentials: CREDENTIALS,
         recordEvidence: (evidence) => recorded.push(evidence),
 
-        duoCeremony: fixtureDuoCeremonyGate(system),
+        duoCeremony: await fixtureDuoCeremonyGate(system),
       },
     };
   }

@@ -152,7 +152,7 @@ export const disposeHttpRouteHarness = async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 };
 
-export function harness(options: {
+export async function harness(options: {
   readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
@@ -177,8 +177,8 @@ export function harness(options: {
   readonly commandJournal?: (
     real: DashboardAppDeps["commandJournal"],
   ) => DashboardAppDeps["commandJournal"];
-} = {}): Harness {
-  const profile = createBoundProfileFixture();
+} = {}): Promise<Harness> {
+  const profile = await createBoundProfileFixture();
   const root = profile.workspace, stateRoot = profile.stateRoot;
   const settingsPath = join(root, ".tracker", "settings", "settings.json");
   const clock = manualClock(AT);
@@ -208,7 +208,7 @@ export function harness(options: {
     const failures = readiness.filter(result => result.status === "rejected").map((result): unknown => result.reason);
     if (failures.length > 0) throw new AggregateError(failures, "artifact initialization failed");
     database.close();
-    profile.close();
+    await profile.close();
   });
 
   const descriptors = {

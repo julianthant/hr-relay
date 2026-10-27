@@ -38,18 +38,18 @@ interface Harness {
 const retainedWriteSequencerOwners = new Set<object>();
 
 export function createWriteSequencerTestWorld() {
-  const disposers: (() => void)[] = [];
+  const disposers: (() => void | Promise<void>)[] = [];
 
-  function harness(options: Readonly<{
+  async function harness(options: Readonly<{
     hooks?: WriteSequencerHooks;
     commitHooks?: AuthorityWriteCommitHooks;
     emitterThrowsOn?: "data.observed" | "failed-task-span" | "transaction.fenced" | "verify-start";
-  }> = {}): Harness {
-    const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; manager?: WorkerSessionManager; primary?: { error: unknown }; failure?: Error } = {};
+  }> = {}): Promise<Harness> {
+    const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; manager?: WorkerSessionManager; primary?: { error: unknown }; failure?: Error } = {};
     retainedWriteSequencerOwners.add(held);
     try {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const profile = createBoundProfileFixture(); held.profile = profile;
+    const profile = await createBoundProfileFixture(); held.profile = profile;
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "write-sequencer-test" },
       clock,
@@ -57,13 +57,13 @@ export function createWriteSequencerTestWorld() {
     );
     held.database = database;
     let closeAttempted = false;
-    disposers.push(() => {
+    disposers.push(async () => {
       if (held.failure !== undefined) throw held.failure;
       if (closeAttempted) return;
       closeAttempted = true;
       try {
         releaseSeededWriteOwners(database, clock.now().toISOString());
-        database.close(); profile.close(); retainedWriteSequencerOwners.delete(held);
+        database.close(); await profile.close(); retainedWriteSequencerOwners.delete(held);
       }
       catch (error) { held.primary ??= { error }; held.failure = retainAuthoritySourceClosure(held.primary.error === error ? [error] : [held.primary.error, error], { admission: held }); throw held.failure; }
     });
@@ -75,7 +75,7 @@ export function createWriteSequencerTestWorld() {
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
     const sessions = writeFixtureSessions(world);
-    const manager = writeFixtureSessionManager(sessions, registry, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock))); held.manager = manager;
+    const manager = await writeFixtureSessionManager(sessions, registry, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock))); held.manager = manager;
     const emitter = recordingEmitter();
     const spanSink = {
       emit(event: Parameters<typeof emitter.emitter.emit>[0]): void {
@@ -286,8 +286,8 @@ export function createWriteSequencerTestWorld() {
     };
     return { intent, attempt };
   }
-  const cleanup = () => {
-    for (const dispose of disposers.splice(0)) dispose();
+  const cleanup = async () => {
+    for (const dispose of disposers.splice(0)) await dispose();
   };
   return { disposers, harness, claimRunning, releaseClaim, contextFor, intentByKey, attemptingIntentFixture, cleanup };
 }

@@ -34,8 +34,8 @@ import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from ".
 import type { ParityBundleProof } from "../../../parity/helpers/bundle.js";
 
 export const INTAKE_CSV = "Employee ID#,Effective Date,Dept\n10456712,07/01/2026,Housing\n10-4567,07/01/2026,Housing\n10998801,07/01/2026,Student Affairs\n";
-export function createIntakeAuthority() {
-  const profile = createBoundProfileFixture();
+export async function createIntakeAuthority() {
+  const profile = await createBoundProfileFixture();
   const root = profile.stateRoot, path = profile.path, artifactRoot = profile.admission.artifactRoot;
   const clock = manualClock(new Date(NOW));
   let database = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "intake-disposable-proof" }, clock);
@@ -130,7 +130,7 @@ export function createIntakeAuthority() {
     },
     async post(request: unknown) { return app.request("http://127.0.0.1/api/v1/commands", { method: "POST", headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/json" }, body: JSON.stringify(request) }); },
     async upload(csv = INTAKE_CSV) { const result = await runtime.intake.upload({ workflow: descriptor.id, fileName: "synthetic.csv", mediaType: "text/csv", bytes: new TextEncoder().encode(csv) }); if (result.state === "refused") throw new Error(result.message); return result; },
-    close() { database.close(); profile.close(); },
+    async close() { database.close(); await profile.close(); },
   };
 }
 
@@ -143,7 +143,7 @@ export async function startIntakeAuthorityServer(input: { distDir: string; bundl
     workflows: [{ ...template, id: intakeFixtureDescriptor.id, label: "Intake fixture", code: "if" }],
   }) };
   const fixture = await startFixtureServer({ ...input, profile });
-  const authority = createIntakeAuthority();
+  const authority = await createIntakeAuthority();
   const server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "127.0.0.1"}`);
@@ -171,6 +171,6 @@ export async function startIntakeAuthorityServer(input: { distDir: string; bundl
   const address = server.address(); if (address === null || typeof address === "string") throw new Error("Intake proof did not bind loopback");
   return { authority, baseUrl: `http://127.0.0.1:${address.port}`, async close() {
     server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error === undefined ? resolve() : reject(error)));
-    await fixture.close(); authority.close();
+    await fixture.close(); await authority.close();
   } };
 }

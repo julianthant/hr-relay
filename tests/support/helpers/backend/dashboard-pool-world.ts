@@ -101,12 +101,12 @@ export function createDashboardPoolTestWorld() {
   const roots: string[] = [];
 
   const openDatabases: AuthorityDatabase[] = [];
-  const profiles = new Map<AuthorityDatabase, ReturnType<typeof createBoundProfileFixture>>();
+  const profiles = new Map<AuthorityDatabase, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
 
   const cleanups: (() => Promise<void> | void)[] = [];
 
-  function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
-    const profile = createBoundProfileFixture(), root = profile.stateRoot;
+  async function openControlHarness(options?: ControlHarnessOptions): Promise<ControlHarness> {
+    const profile = await createBoundProfileFixture(), root = profile.stateRoot;
     const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
     const clock = manualClock(new Date(NOW));
     let database: AuthorityDatabase;
@@ -115,7 +115,7 @@ export function createDashboardPoolTestWorld() {
         undefined, undefined, undefined, boundProfileCredentials(profile.admission));
     } catch (error) {
       const failures: unknown[] = [error];
-      try { profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+      try { await profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
       if (failures.length > 1) throw new AggregateError(failures, "fixture opening and cleanup failed", { cause: error });
       throw error;
     }
@@ -357,7 +357,7 @@ export function createDashboardPoolTestWorld() {
       try { database.close(); } catch (error) { failures.push(error); continue; }
       const profile = profiles.get(database);
       assert.ok(profile);
-      try { profile.close(); profiles.delete(database); } catch (error) { failures.push(error); }
+      try { await profile.close(); profiles.delete(database); } catch (error) { failures.push(error); }
     }
     if (failures.length > 0) throw new AggregateError(failures, "pool fixture cleanup failed");
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });

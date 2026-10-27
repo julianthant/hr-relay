@@ -41,25 +41,25 @@ interface Harness {
 const retainedWriteRecoveryOwners = new Set<object>();
 
 export function createWriteRecoveryTestWorld() {
-  const disposers: (() => void)[] = [];
+  const disposers: (() => void | Promise<void>)[] = [];
 
   const SIGNAL = new AbortController().signal;
 
-  function harness(refuseContinuation = false): Harness {
-    const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; manager?: WorkerSessionManager; world?: WriteFixtureWorld; recovery?: WriteRecoveryService; primary?: unknown; failure?: Error } = {};
+  async function harness(refuseContinuation = false): Promise<Harness> {
+    const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; manager?: WorkerSessionManager; world?: WriteFixtureWorld; recovery?: WriteRecoveryService; primary?: unknown; failure?: Error } = {};
     retainedWriteRecoveryOwners.add(held);
     try {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const profile = createBoundProfileFixture(); held.profile = profile;
+    const profile = await createBoundProfileFixture(); held.profile = profile;
 
     const open=()=>AuthorityDatabase.open({path:profile.path,busyTimeoutMs:250,migrationOwner:"write-recovery-test"},clock);
     let database=open(); held.database = database;
     let disposeAttempted = false, disposeFailure: Error | undefined;
-    disposers.push(() => {
+    disposers.push(async () => {
       if (held.failure !== undefined) throw held.failure;
       if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
       disposeAttempted = true;
-      try { database.close(); profile.close(); }
+      try { database.close(); await profile.close(); }
       catch (error) { held.primary = error; disposeFailure = retainAuthoritySourceClosure([error], { admission: held }); held.failure = disposeFailure; retainedWriteRecoveryOwners.add(held); throw disposeFailure; }
     });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -88,7 +88,7 @@ export function createWriteRecoveryTestWorld() {
       },
     };
     const scheduler = new ManualScheduler(clock);
-    const manager = writeFixtureSessionManager(spied, registry, clock, {
+    const manager = await writeFixtureSessionManager(spied, registry, clock, {
       openGate: input => duoCeremonyGatesOver(database, clock, scheduler).openGate(input),
     }); held.manager = manager;
     const ids = sequentialIdFactory("c");
@@ -217,8 +217,8 @@ export function createWriteRecoveryTestWorld() {
     if (parked.state !== "applied") throw new Error("park transition failed");
     return { run: parked.run, writeIntentId: UUID_8 };
   }
-  function resolutionHarness(descriptor = writeFixtureDescriptor) {
-    const h = harness();
+  async function resolutionHarness(descriptor = writeFixtureDescriptor) {
+    const h = await harness();
     const executor = createWriteResolutionExecutor({
       continuation: testRunContinuation(h.database, h.clock),
       descriptors: {
@@ -264,9 +264,9 @@ export function createWriteRecoveryTestWorld() {
     });
   }
 
-  const cleanup = () => {
+  const cleanup = async () => {
     const failures: unknown[] = [];
-    for (const dispose of disposers.splice(0)) { try { dispose(); } catch (error) { failures.push(error); } }
+    for (const dispose of disposers.splice(0)) { try { await dispose(); } catch (error) { failures.push(error); } }
     if (failures.length > 0) throw new AggregateError(failures, 'Write recovery fixture cleanup failed', { cause: failures[0] });
   };
   return { disposers, SIGNAL, harness, ownBindingProof, parkedAttemptingWrite, resolutionHarness, commandFor, cleanup };

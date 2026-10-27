@@ -132,8 +132,8 @@ export function createLoginContractTestWorld() {
 
   const databases: AuthorityDatabase[] = [];
 
-  function sharedAuthority(clock: TestClock): AuthorityDatabase {
-    const database = openDuoCeremonyLeaseDatabase(clock);
+  async function sharedAuthority(clock: TestClock): Promise<AuthorityDatabase> {
+    const database = await openDuoCeremonyLeaseDatabase(clock);
     for (const poolIndex of [1, 2]) testWorkerPorts(database, clock, {
       path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex,
     });

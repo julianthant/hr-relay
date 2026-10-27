@@ -26,7 +26,7 @@ interface Harness {
 
 export function createDryRunPreviewResultTestWorld() {
   const roots: string[] = [];
-  const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+  const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 
   const openDatabases: AuthorityDatabase[] = [];
 
@@ -34,8 +34,8 @@ export function createDryRunPreviewResultTestWorld() {
 
   const PREVIEW_RESULT_SCHEMA_HASH = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
 
-  function harness(): Harness {
-    const profile = createBoundProfileFixture(); profiles.push(profile);
+  async function harness(): Promise<Harness> {
+    const profile = await createBoundProfileFixture(); profiles.push(profile);
     roots.push(profile.stateRoot);
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
     const database = AuthorityDatabase.open(
@@ -97,10 +97,10 @@ export function createDryRunPreviewResultTestWorld() {
 
     return { database, clock, world, emitter, run };
   }
-  const cleanup = () => {
-    for (const open of kualiOpen.splice(0)) open.dispose();
+  const cleanup = async () => {
+    for (const open of kualiOpen.splice(0)) await open.dispose();
     for (const database of openDatabases.splice(0)) database.close();
-    for (const profile of profiles.splice(0)) profile.close();
+    for (const profile of profiles.splice(0)) await profile.close();
     roots.splice(0);
   };
   return { roots, openDatabases, kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness, cleanup };

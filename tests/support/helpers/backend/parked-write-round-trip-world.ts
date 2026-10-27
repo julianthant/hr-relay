@@ -21,7 +21,7 @@ import { ManualScheduler, recordingEmitter, recordingLogger } from "../phase1f-e
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 
 interface RoundTrip {
-  readonly profile: ReturnType<typeof createBoundProfileFixture>;
+  readonly profile: Awaited<ReturnType<typeof createBoundProfileFixture>>;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly world: WriteFixtureWorld;
@@ -33,12 +33,12 @@ interface RoundTrip {
 
 export function createParkedWriteRoundTripTestWorld() {
   const roots: string[] = [];
-  const profiles = new Map<AuthorityDatabase, ReturnType<typeof createBoundProfileFixture>>();
+  const profiles = new Map<AuthorityDatabase, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
 
   const openDatabases: AuthorityDatabase[] = [];
 
-  function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, resolutionHooks?: WriteSequencerHooks): RoundTrip {
-    const profile = createBoundProfileFixture();
+  async function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, resolutionHooks?: WriteSequencerHooks): Promise<RoundTrip> {
+    const profile = await createBoundProfileFixture();
     roots.push(profile.workspace);
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
     let database: AuthorityDatabase;
@@ -47,7 +47,7 @@ export function createParkedWriteRoundTripTestWorld() {
         clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
     } catch (error) {
       const failures: unknown[] = [error];
-      try { profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+      try { await profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
       if (failures.length > 1) throw new AggregateError(failures, "parked fixture opening cleanup failed", { cause: error });
       throw error;
     }
@@ -177,10 +177,10 @@ export function createParkedWriteRoundTripTestWorld() {
       payload: { ...payload, occurrenceKeyDigest: intent.idempotencyKeyDigest },
     };
   }
-  function cleanup(): void {
+  async function cleanup(): Promise<void> {
     const failures: unknown[] = [];
     for (const database of openDatabases.splice(0)) {
-      try { database.close(); profiles.get(database)?.close(); profiles.delete(database); }
+      try { database.close(); await profiles.get(database)?.close(); profiles.delete(database); }
       catch (error) { failures.push(error); }
     }
     roots.splice(0);

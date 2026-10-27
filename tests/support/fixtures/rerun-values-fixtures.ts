@@ -31,13 +31,13 @@ export function mappedReadDescriptor(mappings: readonly RerunValueMappingSpec[] 
     ? defineWorkflowDescriptor({ ...descriptor, flow: graphWithGate })
     : defineWorkflowDescriptor({ ...descriptor, flow: graphWithoutGate });
 }
-export function rerunValuesHarness() { return sourceBoundHarness(mappedReadDescriptor(), sourceBoundReadStores); }
-export function rerunValuesDeps(h: ReturnType<typeof sourceBoundHarness>): RerunValuesDependencies {
+export async function rerunValuesHarness() { return await sourceBoundHarness(mappedReadDescriptor(), sourceBoundReadStores); }
+export function rerunValuesDeps(h: Awaited<ReturnType<typeof sourceBoundHarness>>): RerunValuesDependencies {
   return { reader: h.lifecycle, database: h.database, descriptors: { resolve: () => h.descriptor } };
 }
 
 /** Descriptor and authority fixture for retained partial source evidence. */
-export function valueShapeHarness() {
+export async function valueShapeHarness() {
   const Input = z.strictObject({ eid: EidSchema, documentNumber: z.string().optional(), memo: z.string().optional() });
   const Output = z.strictObject({ eid: EidSchema, documentNumber: z.string().optional(), embedded: z.string(), missing: z.string().optional(), invalidEid: z.string() });
   const valueContract = defineTaskContract({ id: contract.id, title: "Read source values", effect: "read", input: Input, output: Output,
@@ -56,10 +56,10 @@ export function valueShapeHarness() {
       .build({ schema: Output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
   });
 
-  return sourceBoundHarness(descriptor, () => defineTaskStoreRegistry([], { scenarioIds: [], tasks: [] }));
+  return await sourceBoundHarness(descriptor, () => defineTaskStoreRegistry([], { scenarioIds: [], tasks: [] }));
 }
 
-export function mappedTransactionHarness() {
+export async function mappedTransactionHarness() {
   const prior = writeFixtureMemoDescriptor;
   const Input = z.strictObject({ eid: EidSchema, memo: z.string().optional() });
   const descriptor = defineWorkflowDescriptor({ id: prior.id, version: prior.version, contractFingerprint: prior.contractFingerprint,
@@ -74,5 +74,5 @@ export function mappedTransactionHarness() {
       dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
     }).build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }),
   });
-  return sourceBoundHarness(descriptor);
+  return await sourceBoundHarness(descriptor);
 }
