@@ -426,8 +426,9 @@ export type RunWiringConfirm = (pending: PendingCommand, onConfirmed: () => void
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
   const { row } = selection;
   const request = useMemo(() => ({ client, runId: row.runId, revision: row.rowRevision, day: binding?.authority.day, selection: { row, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
-    epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
-  [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
+    epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state,
+    dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
+  [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.scope.actorId, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
   [client, row.runId, binding?.authority.day, binding?.authority.epoch, binding?.authority.dayState.request, binding?.scope]);
@@ -442,21 +443,21 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   commandRef.current = command;
   const active = useRef(request);
   active.current = request;
-  const refreshedBehind = useRef<string | undefined>(undefined);
+  const refreshedBehind = useMemo(() => new Set<number>(), [client, row.runId, binding?.scope.actorId, binding?.authority.epoch, binding?.authority.day]);
   const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>({ request, value: { state: "loading" } });
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
-    && settled.request.epoch === request.epoch;
+    && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
   const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
     : { state: "loading", ...(sameRun && settled.value.snapshot ? { snapshot: settled.value.snapshot } : {}) }, [settled, request, sameRun]);
   useEffect(() => {
+    if (request.dayState !== undefined && request.dayState !== "loaded") return;
     const controller = new AbortController();
     void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
       if (active.current === request && !controller.signal.aborted) setSettled({ request, value: { state: "loaded", snapshot } });
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
-      const behind = `${request.runId}:${String(request.revision)}`;
-      if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && refreshedBehind.current !== behind) {
-        refreshedBehind.current = behind;
+      if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && !refreshedBehind.has(request.revision)) {
+        refreshedBehind.add(request.revision);
         request.refreshDay();
         return;
       }
@@ -471,7 +472,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         ...(current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
     return () => controller.abort();
-  }, [client, request, row.runId]);
+  }, [client, request, row.runId, refreshedBehind]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
   const detailGate = value.snapshot?.detail.gate;
   const matchesGate = useCallback((envelope: CommandRequest) => envelope.family === "gate" && gate?.section === "identity-gate" && gate.payload.state === "available"

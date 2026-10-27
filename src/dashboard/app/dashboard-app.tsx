@@ -352,6 +352,11 @@ function LoadedApp({
   const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => workflowSource(row.workflowId, dataSources) === "served"), [dayWire, dataSources]);
   const queueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
   const selectedRow = dayWire?.queueSurfaces.find(row => row.runId === route.run);
+  const logIdentity = useMemo(() => ({}), [client, authorityEpoch, boot.actor.id, day, route.run]);
+  const retainedLogRow = useRef<{ identity: object; row: QueueSurfaceWire } | undefined>(undefined);
+  if (selectedRow !== undefined) retainedLogRow.current = { identity: logIdentity, row: selectedRow };
+  else if (dayResource.state !== "loading" || retainedLogRow.current?.identity !== logIdentity) retainedLogRow.current = undefined;
+  const logRow = selectedRow ?? (dayResource.state === "loading" ? retainedLogRow.current?.row : undefined);
   const activeWorkflowId = selectedRow?.workflowId ?? route.view?.workflow ?? chosenWorkflowId;
   const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, catalog: workflowCatalog, nowIso, today, day, dayState,
     selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
@@ -1021,8 +1026,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} anchorIso={boot.serverClock.now} nowIso={nowIso} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => completeReview(railRow.id, "approve")}
               reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
               onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => completeReview(railRow.id, "discard")} onRestore={() => completeReview(railRow.id, "restore")}
-              onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
-              <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={workflowComposition.logsSources ? workflowSource(selectedRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
+              onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
+              <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={workflowComposition.logsSources ? workflowSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}

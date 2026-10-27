@@ -19,6 +19,7 @@ import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from "
 import { ActorIdSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { IdentityApprovalResultSchema } from "../../../src/rules/separations/identity-approval.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
+import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
@@ -57,7 +58,7 @@ type Harness = { state?: ReturnType<typeof useRunWiring>; outcomes: CommandOutco
 async function harness(client: DashboardClient, confirm?: RunWiringConfirm): Promise<Harness> {
   const h: Harness = { outcomes: [], refreshed: 0, render: async () => undefined };
   const scope = Object.freeze({ actorId: ActorIdSchema.parse("local-operator"), client, authority: {}, dayRequest: {} });
-  const dayState = { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loading" as const }, connection: { state: "connecting" as const }, refresh: () => { h.refreshed++; } };
+  const dayState = { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh: () => { h.refreshed++; } };
   const binding = { scope, executor: new CommandExecutor(() => scope), feedback: (outcome: CommandOutcome) => { h.outcomes.push(outcome); },
     authority: { epoch: scope.authority, catalog: [], nowIso: AT, today: "2026-08-03", day: "2026-08-03", dayState, selection: { route: { start: false }, workflowId: "separations" } } } as unknown as DashboardCommandBinding;
   function Probe({ selected }: { selected: LogSelection }) { h.state = useRunWiring(client, selected, binding, confirm); return null; }
