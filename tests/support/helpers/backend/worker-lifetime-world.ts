@@ -9,7 +9,7 @@ import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import type { createRunRecordServiceTestWorld } from "./run-record-service-world.js";
 
 const ownerLines = new WeakMap<ChildProcess, () => Promise<string>>();
-async function readOwnerLine(child: ChildProcess): Promise<Promise<string>> {
+function readOwnerLine(child: ChildProcess): Promise<string> {
   const existing = ownerLines.get(child);
   if (existing !== undefined) return existing();
   if (child.stdout === null) throw new Error("fence owner has no stdout");
@@ -37,7 +37,7 @@ async function readOwnerLine(child: ChildProcess): Promise<Promise<string>> {
     return line;
   };
   ownerLines.set(child, read);
-  return await read();
+  return read();
 }
 async function stop(child: ChildProcess) {
   if (child.exitCode !== null || child.signalCode !== null) return;

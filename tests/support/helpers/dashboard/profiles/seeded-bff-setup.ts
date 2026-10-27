@@ -232,9 +232,9 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       baseUrl: `http://127.0.0.1:${address.port}`,
       day: SEEDED_DAY,
       runIds: Object.freeze(runIds),
-      close: async (): Promise<Promise<void>> => {
+      close: (): Promise<void> => {
         if (closePromise !== undefined) return closePromise;
-        closePromise = await (async () => {
+        closePromise = (async () => {
         try {
           server.closeAllConnections();
           await new Promise<void>((resolvePromise, rejectPromise) => {

@@ -140,9 +140,9 @@ export function createWorkerSupervisionTestWorld() {
         },
         leases: { observe: (workerId) => harness.observeLease(workerId) },
         gracefulStop: {
-          request: async (target, directive) => {
+          request: (target, directive) => {
             gracefulRequests.push(target);
-            return await harness.nextGracefulStop(target, directive);
+            return harness.nextGracefulStop(target, directive);
           },
         },
         clock,

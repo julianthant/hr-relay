@@ -63,7 +63,7 @@ export function createBrowserSessionFactoryFixtures(
       const result: unknown = runInNewContext(`(${callback.toString()})(arg)`, { ...sandbox, document: realm.document, arg });
       return result as T;
     };
-    const mainFrame = { evaluate, isDetached: () => false, url: () => current, locator: async (selector: string) => ({ selector, ...await page.locator() }) };
+    const mainFrame = { evaluate, isDetached: () => false, url: () => current, locator: (selector: string) => ({ selector, ...page.locator() }) };
     const page: FakePage = {
       evaluate,
       viewportSize: () => ({ width: realm.innerWidth, height: realm.innerHeight }),
