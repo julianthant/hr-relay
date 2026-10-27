@@ -342,7 +342,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (canonicalJsonStringify(active.attempt) !== canonicalJsonStringify(attempt)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
       const session = active;
       const result = await close(session);
-      if (result.state === "uncertain" && session.failure) throw session.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider", error);
+      if (result.state === "uncertain" && session.failure) throw session.failure;
       return result;
     },
   });
