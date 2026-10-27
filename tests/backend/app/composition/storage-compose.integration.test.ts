@@ -579,7 +579,7 @@ try {
     confirmedAt: clock.now().toISOString(), ids: { uuid: randomUUID } });
   const command = rehearsal.resolutionCommand("resolve-write-present", { runId: parked.envelope.runId, expectedVersion: parked.version,
     writeIntentId: intent.writeIntentId, intentGeneration: intent.generation }, {
-    proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: proofValue }, evidenceNote: "Synthetic exact occurrence receipt" });
+    proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: proofValue } });
   releaseSeededWriteOwners(harness.database, clock.now().toISOString()); harness.database.close();
   const inspect = (path: string) => withAuthorityDatabaseReadOnly(admissions.get(p.repoRoot)!, path, db => {
     const run = runRecordFromRow(db.prepare("SELECT * FROM runs WHERE id=?").get(WRITE_FIXTURE_RUN_ID));

@@ -293,7 +293,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
         expectedVersion: action.expectedVersion,
         ...writeTarget,
       },
-      payload: { occurrenceKeyDigest, proof: { schemaHash: "a".repeat(64), value: "receipt-123" }, evidenceNote: "confirmed in UCPath" },
+      payload: { occurrenceKeyDigest, proof: { schemaHash: "a".repeat(64), value: "receipt-123" } },
     });
     assert.equal(command.family, "run");
     if (command.family !== "run" || command.type !== "resolve-write-present") throw new Error("unreachable");

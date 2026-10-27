@@ -564,7 +564,7 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
       if(intent.status !== "parked") throw new Error("parked-write-resolution-required");
       const resolution=resolutionBinding(context,"absent");
       const settlement={state:"operator-confirmed-absent" as const,writeIntentId:intent.writeIntentId,generation:intent.generation,
-        operator:ActorIdSchema.parse(context.command.requestedBy),confirmedAt:context.now,evidenceNote:context.command.payload.evidenceNote};
+        operator:ActorIdSchema.parse(context.command.requestedBy),confirmedAt:context.now};
       const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,...base}=intent;
       const settled=WriteIntentRecordSchema.parse({...base,status:"retryable",settlement,resolvedAt:context.now,
         updatedAt:context.now,version:intent.version+1,resolution});

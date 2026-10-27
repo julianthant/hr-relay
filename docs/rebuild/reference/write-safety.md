@@ -187,7 +187,7 @@ The command kernel accepts `resolve-write-present` and `resolve-write-absent` on
 `createWriteResolutionExecutor` provides two arms:
 
 - Confirmed present validates the supplied proof's current schema hash, parses its value, checks repeat freshness, and reconstructs the output. Authenticated settlement records `proofSource: "operator-attestation"`, the checkpoint, confirmation history, and continuation.
-- Confirmed absent requires `evidenceNote`, records the operator and confirmation instant, and marks the intent `retryable`. It does not click. The next attempt must prepare, observe, and fence again.
+- Confirmed absent records the operator and confirmation instant and marks the intent `retryable`. It does not click. The next attempt must prepare, observe, and fence again.
 
 `commitResolvedParkedWrite` and `settleResolvedParkedAbsence` in `authority-database.ts` authenticate the resolution against the command and audit and verify the run CAS. Both preserve the original parked attempt bytes. Resolution is recorded on the intent, not by rewriting the original browser attempt's outcome.
 

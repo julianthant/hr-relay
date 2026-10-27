@@ -36,7 +36,6 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
         schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
         value: { transactionId: "T998877" },
       },
-      evidenceNote: "receipt T998877 is visible in UCPath",
     });
     const result = harness.kernel.execute(command);
     assert.equal(result.state, "applied");

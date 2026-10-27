@@ -277,7 +277,6 @@ describe("retryable re-fence (only a settled retryable key mints a new generatio
           generation: 1,
           operator: "local-operator",
           confirmedAt: now,
-          evidenceNote: "Checked the target system; the write is absent",
         },
         now,
       });

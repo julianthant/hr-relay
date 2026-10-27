@@ -237,7 +237,6 @@ afterEach(async () => {
         schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
         value: { transactionId: "T999999" },
       },
-      evidenceNote: "Verified transaction T999999 in the target system",
     });
     if (command.family !== "run" || command.type !== "resolve-write-present") throw new Error("unreachable");
     assert.equal(kernel.execute(command).state,"applied");
@@ -293,7 +292,6 @@ afterEach(async () => {
       }));
     const command = commandFor("resolve-write-present", run, {
       proof: { schemaHash: "1".repeat(64), value: { transactionId: "T999999" } },
-      evidenceNote: "wrong schema",
     });
     if (command.family !== "run" || command.type !== "resolve-write-present") throw new Error("unreachable");
     const context: WriteResolutionContext = Object.freeze({
@@ -314,7 +312,6 @@ afterEach(async () => {
       message:"operator absence requires parked authority",now:h.clock.now().toISOString(),
       authorityReason:deriveWriteAuthorityReason("recovery-probe-unknown","probe","test operator park")});
     const command = commandFor("resolve-write-absent", run, {
-      evidenceNote: "Checked UCPath directly; the transaction is absent",
     });
     if (command.family !== "run" || command.type !== "resolve-write-absent") throw new Error("unreachable");
     assert.equal(kernel.execute(command).state,"applied");
@@ -324,7 +321,6 @@ afterEach(async () => {
     assert.equal(settled.settlement.state, "operator-confirmed-absent");
     if (settled.settlement.state === "operator-confirmed-absent") {
       assert.equal(settled.settlement.operator, "local-operator");
-      assert.match(settled.settlement.evidenceNote, /transaction is absent/);
     }
     assert.equal(settled.generation, 1, "the resolution never itself advances the generation");
   });

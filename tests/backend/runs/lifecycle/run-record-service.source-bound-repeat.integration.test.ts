@@ -178,7 +178,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.equal(intent.status, "parked");
     const base = { requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "run", type: "resolve-write-present",
       target: { runId: repeat.envelope.runId, expectedVersion: parked.version, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest } };
-    const payload = { proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T123456" } }, evidenceNote: "Exact occurrence receipt inspected" };
+    const payload = { proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T123456" } } };
     assert.throws(() => h.kernel.execute({ ...base, commandId: h.ids.uuid(), payload }), /occurrenceKeyDigest/u);
     assert.equal(h.kernel.execute({ ...base, commandId: h.ids.uuid(), payload: { ...payload, occurrenceKeyDigest: intent.idempotencyKeyDigest } }).state, "rejected");
     assert.deepEqual(h.fresh(repeat), parked);
@@ -249,7 +249,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     h.database.authority.commands.insert({commandId,requestedAt:h.clock.now().toISOString(),requestedBy:"local-operator",source:"dashboard",
       family:"run",type:"resolve-write-present",target:{runId:peer.envelope.runId,expectedVersion:peer.version,
         writeIntentId:h.ids.uuid(),intentGeneration:1,writeAttemptId:h.ids.uuid(),bindingProofDigest:source.envelope.contractFingerprint},
-      payload:{occurrenceKeyDigest:source.envelope.contractFingerprint,proof:{schemaHash:checkpoint.output.schemaHash,value:{checkpoint}},evidenceNote:"offline checkpoint inspection"}});
+      payload:{occurrenceKeyDigest:source.envelope.contractFingerprint,proof:{schemaHash:checkpoint.output.schemaHash,value:{checkpoint}}}});
     const generation=h.database.getMeta().authorityGeneration;
     const result=h.lifecycle.delete({commandId:h.ids.uuid(),runId:source.envelope.runId,expectedVersion:source.version});
     assert.deepEqual(result,{state:"refused",refusal:{reason:"shared-checkpoint"}});

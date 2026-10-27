@@ -59,7 +59,7 @@ afterEach(cleanup);
       const resolved = h.kernel.execute(resolutionCommand("resolve-write-absent", {
         runId: WRITE_FIXTURE_RUN_ID, expectedVersion: state.run.version,
         writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
-      }, { evidenceNote: "checked target: no transaction exists" }));
+      }, {}));
       assert.equal(resolved.state, "applied");
       const resumed = deps.runReader.read(WRITE_FIXTURE_RUN_ID);
       assert.equal(resumed.state, "present"); if (resumed.state !== "present") throw new Error("resumed run missing");
@@ -109,7 +109,7 @@ afterEach(cleanup);
       expectedVersion: parked.version,
       writeIntentId: intent.writeIntentId,
       intentGeneration: intent.generation,
-    }, { evidenceNote: "checked UCPath: no transaction exists for this key" }));
+    }, {}));
     assert.equal(result.state, "applied");
 
     const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -139,7 +139,7 @@ afterEach(cleanup);
       expectedVersion: parked.version,
       writeIntentId: intent.writeIntentId,
       intentGeneration: intent.generation,
-    }, { evidenceNote: "five reads of an empty field; the mutation body carried no entry at the formKey" }));
+    }, {}));
     assert.equal(result.state, "applied", "an incidental closure move may not strand a parked write");
 
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "retryable");
@@ -167,7 +167,6 @@ afterEach(cleanup);
         schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
         value: { transactionId: "T998877" },
       },
-      evidenceNote: "receipt T998877 is visible in UCPath",
     }));
     assert.equal(result.state, "applied");
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "committed");
@@ -186,7 +185,7 @@ afterEach(cleanup);
         expectedVersion: parked.version,
         writeIntentId: intent.writeIntentId,
         intentGeneration: intent.generation,
-      }, { evidenceNote: "checked the target system" })),
+      }, {})),
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.match(error.message, /permanent-key-identity moved/);
@@ -236,7 +235,7 @@ afterEach(cleanup);
       expectedVersion: parked.version,
       writeIntentId: intent.writeIntentId,
       intentGeneration: intent.generation + 1,
-    }, { evidenceNote: "stale browser tab" }));
+    }, {}));
     assert.equal(stale.state, "rejected");
     assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
@@ -271,7 +270,6 @@ afterEach(cleanup);
   it("rejects a proof bound to a schema this build does not have", async () => {
     const result = await refusedPresent({
       proof: { schemaHash: "1".repeat(64), value: { transactionId: "T998877" } },
-      evidenceNote: "pasted from a stale tab",
     });
     assert.ok(result.state === "rejected");
     assert.equal(result.code, "schema-mismatch");
@@ -285,7 +283,6 @@ afterEach(cleanup);
         // The contract's receipt is `T` + at least six digits.
         value: { transactionId: "nope" },
       },
-      evidenceNote: "typed what the page showed",
     });
     assert.ok(result.state === "rejected");
     assert.equal(result.code, "schema-mismatch");
@@ -365,7 +362,7 @@ afterEach(cleanup);
         expectedVersion: parked.version,
         writeIntentId: intent.writeIntentId,
         intentGeneration: intent.generation,
-      }, { evidenceNote: "checked UCPath: no transaction exists for this key" })).state,
+      }, {})).state,
       "applied",
     );
     const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -398,7 +395,6 @@ afterEach(cleanup);
           schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
           value: { transactionId: "T998877" },
         },
-        evidenceNote: "receipt T998877 is visible in UCPath",
       })).state,
       "applied",
     );
@@ -425,8 +421,7 @@ afterEach(cleanup);
     assert.ok(run);
     const command = resolutionCommand("resolve-write-present", { runId: WRITE_FIXTURE_RUN_ID,
       expectedVersion: run.version, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation },
-      { proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T998877" } },
-        evidenceNote: "synthetic confirmed receipt" });
+      { proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T998877" } } });
     const generation = h.database.getMeta().authorityGeneration;
     assert.throws(() => h.kernel.execute(command), /kernel outer resolution rollback/);
     assert.deepEqual(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID), run);

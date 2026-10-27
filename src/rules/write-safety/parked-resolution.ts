@@ -37,8 +37,7 @@ export function authenticateParkedWriteResolution(intentInput: unknown, attemptI
       || intent.confirmedAt !== binding.resolvedAt) throw new Error("parked-write-resolution-positive-proof-mismatch");
   } else if (command.type !== "resolve-write-absent" || binding.decision !== "absent"
     || intent.settlement.state !== "operator-confirmed-absent" || intent.resolvedAt !== binding.resolvedAt
-    || intent.settlement.operator !== command.requestedBy || intent.settlement.confirmedAt !== binding.resolvedAt
-    || intent.settlement.evidenceNote !== command.payload.evidenceNote) throw new Error("parked-write-resolution-absence-proof-mismatch");
+    || intent.settlement.operator !== command.requestedBy || intent.settlement.confirmedAt !== binding.resolvedAt) throw new Error("parked-write-resolution-absence-proof-mismatch");
   return {intent,attempt,command,audit};
 }
 

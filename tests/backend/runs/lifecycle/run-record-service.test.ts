@@ -202,9 +202,9 @@ async function fixture(faultStep?:string) {
   const command={commandId:UUID_5,family:"run",type:"resolve-write-absent",requestedAt:NOW,requestedBy:"local-operator",source:"dashboard",
     target:{runId:run.envelope.runId,expectedVersion:5,writeIntentId:parked.writeIntentId,intentGeneration:1,
       writeAttemptId:parked.currentAttemptId,bindingProofDigest:parked.bindingProofDigest},
-    payload:{occurrenceKeyDigest:parked.idempotencyKeyDigest,evidenceNote:"offline authenticated absence"}};
+    payload:{occurrenceKeyDigest:parked.idempotencyKeyDigest}};
   const settlement={state:"operator-confirmed-absent" as const,writeIntentId:parked.writeIntentId,generation:1,
-    operator:"local-operator",confirmedAt:LATER,evidenceNote:command.payload.evidenceNote};
+    operator:"local-operator",confirmedAt:LATER};
   const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,...base}=parked;
   const settled=WriteIntentRecordSchema.parse({...base,status:"retryable",settlement,resolvedAt:LATER,updatedAt:LATER,version:3,resolution});
   const audit={auditId:UUID_6,request:command,result:{state:"applied",commandId:UUID_5,affectedTargets:[{family:"run",runId:run.envelope.runId}]},
@@ -228,7 +228,7 @@ async function fixture(faultStep?:string) {
 function positive(f:Awaited<ReturnType<typeof fixture>>) {
   const resolution={...f.resolution,decision:"present" as const};
   const proof=LEDGER_PAYLOAD.proof;
-  const command={...f.command,type:"resolve-write-present",payload:{occurrenceKeyDigest:f.parked.idempotencyKeyDigest,proof,evidenceNote:"offline exact receipt"}};
+  const command={...f.command,type:"resolve-write-present",payload:{occurrenceKeyDigest:f.parked.idempotencyKeyDigest,proof}};
   const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,...base}=f.parked;
   const settled=WriteIntentRecordSchema.parse({...base,status:"committed",completionProof:proof,confirmedAt:LATER,version:3,updatedAt:LATER,resolution});
   const audit={...f.audit,request:command,writeResolution:settled};
