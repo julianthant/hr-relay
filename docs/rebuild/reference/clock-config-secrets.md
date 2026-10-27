@@ -726,8 +726,11 @@ key and operation removal, in that order. Dead-writer recovery authenticates the
 Stopped incomplete-profile reclassification requires the exact original apply, key and never-Duo
 witnesses plus fresh canonical SQLite counts including deleted runs, write attempts, receipts and
 artifacts. It withdraws registry/verifier publication into a private draft while preserving the same
-database and key. Missing, corrupt, unsupported or nonzero activity refuses; this is not a generic
-legacy owner claim or an automatic startup conversion.
+database and key. Counts and rows remain intact. Eligibility requires genuinely empty storage or
+exact authenticated unsaved revision-one initialization, with every snapshot bound to the initial
+or current-active endpoint. Unbound or intermediate snapshots, saved or advanced settings, business,
+deleted, UNKNOWN, write, control, diagnostic or artifact history refuses, as does missing, corrupt or
+unsupported authority. This is not a generic legacy owner claim or an automatic startup conversion.
 
 Explicit existing-data claims use the profile claim action and the existing application maintenance
 handoff. A supported bound source is a native9 historical saved profile with its original
