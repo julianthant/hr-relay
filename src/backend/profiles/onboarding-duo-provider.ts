@@ -226,7 +226,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       try {
         await Promise.race([(async () => {
           await session.reporting;
-          if (session.retentionFailed) throw new ProfileOnboardingDuoProviderError("unknown", "provider");
+          if (session.retentionFailed) throw session.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider");
           if (session.capability && session.credentialId && !session.accepted) await session.capability.retainUnknown();
           if (!session.worker) throw new ProfileOnboardingDuoProviderError("unknown", "worker");
           if (!browser?.contextClosed) await workerCall(session.worker, "stop");
