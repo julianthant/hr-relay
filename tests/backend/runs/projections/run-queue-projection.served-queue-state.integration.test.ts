@@ -40,6 +40,11 @@ describe("THE run/queue projection", () => {
     const control = WorkerControlRecordSchema.parse({ commandId, request, scope: "worker-pool:person-lookup", executorId: uuidOf(86), admittedAt: at,
       expiresAt: instantOffsetOf(0, 180_000), basisVersion: 2, phase: { state: "succeeded", startedAt: at, completedAt: at,
         acknowledgement: { kind: "parked-write-check", result, evidence: { schemaHash: HASH_A, value: { privateEvidence: "PRIVATE_PROBE_CANARY" } } } } });
+    for (const changed of [{ commandId: uuidOf(87) }, { requestedBy: "foreign-operator" },
+      { target: { ...request.target, profileId: uuidOf(87) } }, { held: false }]) {
+      assert.equal(WorkerControlRecordSchema.safeParse({ ...control, phase: { ...control.phase,
+        acknowledgement: { kind: "parked-write-check", result: { ...result, ...changed } } } }).success, false);
+    }
     w.authority.workerControls = () => [control];
     w.projection.rebuildFromTimeline();
     const day = w.projection.buildDashboardDayWire(DAY), observed = day.workerOperations[0];

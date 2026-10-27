@@ -162,8 +162,9 @@ export const WorkerControlRecordSchema = z.strictObject({
   if (Date.parse(record.expiresAt) < Date.parse(record.admittedAt)) context.addIssue({ code: "custom", message: "worker-control-expiry-before-admission" });
   if (record.phase.state === "succeeded") {
     const browser = record.request.type === "refresh-browser" || record.request.type === "reopen-browser";
-    if (!browser && record.phase.application === undefined) context.addIssue({ code: "custom", message: "worker-control-application-required" });
-    const expectedKind = record.request.type === "remove-worker" ? "remove" : record.request.type === "retry-worker" ? "retry" : record.request.type === "plan-worker-count" ? "plan" : record.request.type === "stop-worker" ? record.reset === undefined ? "stop" : record.lifecycle === undefined ? "reset" : "reset-replacement" : "control";
+    const parkedCheck = record.request.type === "check-parked-write";
+    if (!browser && !parkedCheck && record.phase.application === undefined) context.addIssue({ code: "custom", message: "worker-control-application-required" });
+    const expectedKind = parkedCheck ? "parked-write-check" : record.request.type === "remove-worker" ? "remove" : record.request.type === "retry-worker" ? "retry" : record.request.type === "plan-worker-count" ? "plan" : record.request.type === "stop-worker" ? record.reset === undefined ? "stop" : record.lifecycle === undefined ? "reset" : "reset-replacement" : "control";
     if (record.phase.acknowledgement.kind !== expectedKind || browser && (record.phase.acknowledgement.kind !== "control" || record.phase.acknowledgement.browserSessionId === undefined)) context.addIssue({ code: "custom", message: "worker-control-outcome-kind-mismatch" });
     const acknowledgement = record.phase.acknowledgement;
     if (record.lifecycle !== undefined && acknowledgement.kind === "remove" && (acknowledgement.retirement.workerId !== record.lifecycle.member.workerId
