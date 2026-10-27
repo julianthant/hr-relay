@@ -202,6 +202,26 @@ describe("Start enqueue verification through the actual command and day transpor
     });
   }
 
+  it("confirms a start whose run advanced a revision between the history and day reads", async () => {
+    const w = await setup(); const seen: { runId: string; rowRevision: number }[] = [];
+    w.client.itemAttemptHistory = async (runId, options) => {
+      const history = await w.h.client.itemAttemptHistory(runId, options);
+      if (history.state === "available" && history.selected.state === "present") seen.push({ runId, rowRevision: history.selected.rowRevision });
+      return history;
+    };
+    w.client.dashboardDay = async day => {
+      for (const { runId, rowRevision } of seen.splice(0)) {
+        const reply = CommandResultSchema.parse(await w.h.client.executeCommand({ commandId: w.h.ids.uuid(), requestedAt: w.h.clock.now().toISOString(), requestedBy: "local-operator",
+          source: "queue", family: "run", type: "rename", target: { runId, expectedVersion: rowRevision }, payload: { displayName: "Renamed while confirming" } }));
+        assert.equal(reply.state, "applied");
+      }
+      return w.h.client.dashboardDay(day);
+    };
+    const plan = w.h.proposal();
+    assert.equal((await w.launch.submit(w.launch.prepareFinal(plan), w.binding, plan)).kind, "confirmed");
+    assert.equal(w.h.queueRoots.length, 1);
+  });
+
   it("does not accept matching runs moved into each other's partition snapshots", async () => {
     const w = await setup("supersede-active"); w.h.clock.setWall(new Date("2026-08-01T06:59:59.000Z"));
     w.h.start(w.h.proposal()); const plan = w.h.proposal(); const command = w.launch.prepareFinal(plan);
