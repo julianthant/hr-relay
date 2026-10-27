@@ -166,21 +166,22 @@ function decryptCredentialDocument(input: unknown, key: CredentialKeyDocument, b
 
 export interface DuoCredentialPurpose { readonly profileId: string }
 
-const duoPurposes = new WeakMap<DuoCredentialPurpose, {
-  custody: ReturnType<RuntimeAdmission["captureDuoCredentialCustody"]> & { readonly draftOperationId?: string; assertPublicationRecovery?: () => void }; keyPath: string; witness: CredentialKeyWitness; ancestry: Map<string, DirectoryIdentity>; documentPath: string; assertReadable(): void;
-}>();
+type IssuedDuoPurpose = {
+  custody: ReturnType<RuntimeAdmission["captureDuoCredentialCustody"]> & { readonly draftOperationId?: string; assertPublicationRecovery?: () => void }; keyPath: string; witness: CredentialKeyWitness; ancestry: Map<string, DirectoryIdentity>; documentPath: string;
+};
+const duoPurposes = new WeakMap<DuoCredentialPurpose, IssuedDuoPurpose>();
 
 export function issueDuoCredentialPurpose(profile: RuntimeAdmission, machine: RuntimeAdmission): DuoCredentialPurpose {
-  return issueDuoPurpose(profile, machine, machine.captureDuoCredentialCustody(profile), () => profile.assertProfileRuntime());
+  return issueDuoPurpose(profile, machine, machine.captureDuoCredentialCustody(profile));
 }
 
 export function issueDraftDuoCredentialPurpose(profile: RuntimeAdmission, machine: RuntimeAdmission, operationId: string, generation: number): DuoCredentialPurpose {
   const custody = machine.captureDraftDuoCredentialCustody(profile, operationId, generation);
-  return issueDuoPurpose(profile, machine, custody, () => custody.assertHeld());
+  return issueDuoPurpose(profile, machine, custody);
 }
 
 function issueDuoPurpose(profile: RuntimeAdmission, machine: RuntimeAdmission,
-  custody: ReturnType<RuntimeAdmission["captureDuoCredentialCustody"]> & { readonly draftOperationId?: string; assertPublicationRecovery?: () => void }, assertReadable: () => void): DuoCredentialPurpose {
+  custody: IssuedDuoPurpose["custody"]): DuoCredentialPurpose {
   const binding = custody.binding;
   const keyPath = join(machine.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`);
   const witness = captureKeyFile(keyPath, binding);
@@ -188,8 +189,7 @@ function issueDuoPurpose(profile: RuntimeAdmission, machine: RuntimeAdmission,
   const purpose = Object.freeze({ profileId: binding.profileId }), ancestry = new Map<string, DirectoryIdentity>();
   if (!noSymlinkAncestry(dirname(keyPath), ancestry)) throw new Error("credential-key-required");
   duoPurposes.set(purpose, { custody, keyPath, witness, ancestry,
-    documentPath: join(machine.stateRoot, 'machine', 'duo-credentials', `${binding.profileId}.json`),
-    assertReadable });
+    documentPath: join(machine.stateRoot, 'machine', 'duo-credentials', `${binding.profileId}.json`) });
   return purpose;
 }
 
@@ -200,6 +200,10 @@ function duoPurposeKey(purpose: DuoCredentialPurpose, recovery = false) {
     if (issued.custody.draftOperationId === undefined || issued.custody.assertPublicationRecovery === undefined) throw new Error("duo-draft-recovery-unissued");
     issued.custody.assertPublicationRecovery();
   } else issued.custody.assertHeld();
+  return readDuoPurposeKey(issued);
+}
+
+function readDuoPurposeKey(issued: IssuedDuoPurpose) {
   if (!noSymlinkAncestry(dirname(issued.keyPath), issued.ancestry)) throw new Error("credential-key-required");
   assertCredentialKeyWitness(issued.keyPath, issued.witness, issued.custody.binding);
   const file = readPrivateFile(issued.keyPath, { label: "lock", maxBytes: 4096 });
@@ -257,10 +261,11 @@ function decryptDuoCredentialDocument(issued: ReturnType<typeof duoPurposeKey>, 
 }
 
 export function openDuoCredentialDocument(purpose: DuoCredentialPurpose, bytes: Uint8Array, revision: number): DuoCredentialDocument {
-  const issued = duoPurposeKey(purpose);
-  issued.assertReadable();
-  const continuity = issued.custody.readDuoContinuity();
+  const owner = duoPurposes.get(purpose);
+  if (owner === undefined) throw new Error("duo-purpose-unissued");
+  const continuity = owner.custody.readDuoContinuity();
   if (continuity.state === "never-initialized" || revision > continuity.revision) throw new Error("duo-envelope-binding-mismatch");
+  const issued = readDuoPurposeKey(owner);
   const readCurrent = () => {
     if (!noSymlinkAncestry(dirname(issued.documentPath), issued.ancestry)) throw new Error("duo-directory-required");
     const file = readPrivateFile(issued.documentPath, { label: "Duo credential", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
@@ -275,10 +280,9 @@ export function openDuoCredentialDocument(purpose: DuoCredentialPurpose, bytes: 
   const document = decryptDuoCredentialDocument(issued, bytes, revision);
   if (continuity.state === 'erased' && document.credentials.length > 0) throw new Error("duo-erased-key-material-refused");
   if (document.credentials.some(row => current.retired.some(retired => retired.credentialId === row.credentialId))) throw new Error("duo-erased-key-material-refused");
-  duoPurposeKey(purpose);
+  readDuoPurposeKey(owner);
   const after = readCurrent();
   if (!after.bytes.equals(currentFile.bytes)) throw new Error("duo-document-custody-changed");
-  issued.assertReadable();
   if (canonicalJsonStringify(issued.custody.readDuoContinuity()) !== canonicalJsonStringify(continuity)) throw new Error("duo-document-custody-changed");
   return document;
 }

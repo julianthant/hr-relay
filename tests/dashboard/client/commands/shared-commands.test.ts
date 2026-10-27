@@ -6,6 +6,26 @@ import { checkedCommandResult } from "../../../../src/dashboard/client/commands/
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { NOW, UUID_1, UUID_2 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
+it("binds a parked check receipt to both its exact worker and held run", () => {
+  const request = CommandRequestSchema.parse({ commandId: UUID_1, requestedAt: NOW, requestedBy: "local-operator", source: "run-detail",
+    family: "worker-browser", type: "check-parked-write", target: {
+      workerId: "separations-worker-1", workflowId: "separations", expectedVersion: 2,
+      controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: NOW,
+      installationId: UUID_1, profileId: UUID_2, itemId: UUID_1, runId: UUID_2, runVersion: 3, runAttempt: 1,
+      traceId: "sep-120000-0001", nodeId: "submit", writeIntentId: UUID_1, intentVersion: 1, intentGeneration: 1,
+      writeAttemptId: UUID_2, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64),
+    } });
+  const worker = { family: "worker-browser", workerId: "separations-worker-1" };
+  const run = { family: "run", runId: UUID_2 };
+  const result = { state: "applied", commandId: UUID_1, affectedTargets: [worker, run] };
+  assert.deepEqual(checkedCommandResult(request, result), result);
+  assert.deepEqual(checkedCommandResult(request, { ...result, state: "already-applied" }), { ...result, state: "already-applied" });
+  for (const affectedTargets of [[], [worker], [run], [worker, worker], [run, run], [worker, run, run],
+    [worker, { ...run, runId: UUID_1 }], [{ ...worker, workerId: "foreign-worker" }, run]]) {
+    assert.throws(() => checkedCommandResult(request, { ...result, affectedTargets }));
+  }
+});
+
 it("binds explicit no-change readback to its actual zero-match collection only", () => {
   const request = CommandRequestSchema.parse({ commandId: UUID_1, requestedAt: NOW, requestedBy: "local-operator", source: "notification-bell",
     family: "notification", type: "notification-read-all", target: { actorId: "local-operator", members: [], matchingCount: 0 } });

@@ -31,7 +31,7 @@ async function setup(options: { sharedMachine?: true } = {}) {
   const fixture = await createBoundProfileFixture(options), clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
   const store = createDuoCredentialStore(fixture.admission, fixture.machine, clock);
   const baseline = store.read();
-  assert.equal(baseline.state, 'initialized');
+  assert.equal(baseline.state, 'registered');
   assert.equal(baseline.revision, 2);
   assert.deepEqual(baseline.credentials.map(({ state, highWater }) => ({ state, highWater })), [{ state: 'ready', highWater: 0 }]);
   const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" });

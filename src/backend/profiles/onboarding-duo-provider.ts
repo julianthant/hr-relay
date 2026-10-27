@@ -118,7 +118,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     attempt: DraftDuoAttempt; profileDirectory: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
     capability?: DraftDuoCapability; credentialId?: string; requestId?: string; accepted: boolean; revoked: boolean;
     contextClosed: boolean; launchStarted: boolean; process?: ReturnType<typeof observe>; startup?: Promise<void>; pump?: Promise<void>;
-    reportFailure: (error: Error) => Promise<void>; reporting?: Promise<void>; failure?: ProfileOnboardingDuoProviderError; retentionFailed?: boolean; expiry?: ReturnType<typeof setTimeout>; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
+    reportFailure: (error: Error) => Promise<void>; reporting?: Promise<void>; failure?: ProfileOnboardingDuoProviderError; retentionFailed?: boolean; stopFailureAfterSettlement?: ProfileOnboardingDuoProviderError; expiry?: ReturnType<typeof setTimeout>; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
   };
 
   type OwnedBrowser = {
@@ -223,20 +223,32 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     session.close = (async () => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       let expired = false;
+      let stopFailure: ProfileOnboardingDuoProviderError | undefined;
       try {
         await Promise.race([(async () => {
-          await session.reporting;
-          if (session.retentionFailed) throw new ProfileOnboardingDuoProviderError("unknown", "provider");
-          if (session.capability && session.credentialId && !session.accepted) await session.capability.retainUnknown();
-          if (!session.worker) throw new ProfileOnboardingDuoProviderError("unknown", "worker");
-          if (!browser?.contextClosed) await workerCall(session.worker, "stop");
-          await session.pump;
+          await session.startup;
+          clearTimeout(session.expiry);
           if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
+          await session.reporting;
+          if (session.retentionFailed) throw session.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider");
+          if (session.capability && session.credentialId && !session.accepted) await session.capability.retainUnknown();
+          if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
+          if (!session.worker) throw new ProfileOnboardingDuoProviderError("unknown", "worker");
+          if (!browser?.contextClosed) {
+            try { await workerCall(session.worker, "stop"); }
+            catch (error) { stopFailure = new ProfileOnboardingDuoProviderError("unknown", "worker", error); }
+          }
+          await session.pump;
+          await session.reporting;
+          if (session.retentionFailed) throw session.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider");
+          if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
+          if (stopFailure !== undefined) { session.stopFailureAfterSettlement = stopFailure; throw stopFailure; }
           if (active === session) active = undefined;
         })(), new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { expired = true; reject(new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime")); }, options.closeProofMs); })]);
         return { state: "closed" as const };
       } catch (error) {
-        session.failure = new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime", error);
+        session.failure = new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime", stopFailure === undefined || stopFailure === error
+          ? error : new AggregateError([stopFailure, error], "onboarding attempt closure unproved"));
         return { state: "uncertain" as const };
       } finally { clearTimeout(timer); }
     })();
@@ -251,13 +263,21 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       let workerStopFailure: unknown;
       try {
         await Promise.race([(async () => {
-          if (active && (await close(active)).state !== "closed") throw new ProfileOnboardingDuoProviderError("unknown", "provider");
+          const attempt = active;
+          if (attempt) {
+            if (!sameOwner(session.owner, attempt.attempt) || attempt.profileDirectory !== session.profileDirectory
+              || attempt.context !== session.context || attempt.worker !== session.worker) throw new ProfileOnboardingDuoProviderError("unknown", "scope");
+            if ((await close(attempt)).state !== "closed") {
+              if (attempt.stopFailureAfterSettlement === undefined) throw attempt.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider");
+              workerStopFailure = attempt.stopFailureAfterSettlement;
+            }
+          }
           await session.launching;
           if (session.launchStarted) {
             if (!session.context || !session.process) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
             if (session.worker && !session.contextClosed) {
               try { await workerCall(session.worker, "browserStop"); }
-              catch (error) { workerStopFailure = error; }
+              catch (error) { workerStopFailure = workerStopFailure === undefined ? error : new AggregateError([workerStopFailure, error]); }
             }
             const pages = [...new Set([...session.context.pages(), ...(session.setup ? [session.setup] : []), ...(session.portal ? [session.portal] : [])])];
             for (const page of pages) if (!page.isClosed()) await page.close({ runBeforeUnload: false });
@@ -275,7 +295,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           await Promise.allSettled([session.startup, session.setupOpening, session.portalOpening]);
           await session.pump;
           if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
+          if (browser !== session || active !== undefined && active !== attempt) throw new ProfileOnboardingDuoProviderError("unknown", "scope");
           deleteOwnedBrowserProfile(options.browserRoot, session.profileDirectory);
+          if (active === attempt) active = undefined;
           if (browser === session) browser = undefined;
         })(), new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { expired = true; reject(new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime")); }, options.closeProofMs * 2); })]);
         return { state: "closed" as const };

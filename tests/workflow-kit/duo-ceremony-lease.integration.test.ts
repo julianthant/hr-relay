@@ -58,14 +58,17 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     assert.equal(outcome.token.generation, 1);
     const stored = database.authority.duoCeremonyLeases.get(CREDENTIAL);
     assert.deepEqual(stored, outcome.lease);
+    assert.equal(database.authority.duoCeremonyLeases.release({ token: outcome.token, now: at(20_000) }).state, "released");
     database.close();
   });
 
   it("refuses a second acquirer while the lease is live, naming the holder", async () => {
     const database = await openDatabase();
-    database.authority.duoCeremonyLeases.acquire({
+    const first = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
+    assert.equal(first.state, "acquired");
+    if (first.state !== "acquired") throw new Error("first fixture lease unavailable");
     const second = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(1_000), ttlMs: TTL_MS,
     });
@@ -85,6 +88,9 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
       credentialKey: OTHER_CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(2_000), ttlMs: TTL_MS,
     });
     assert.equal(other.state, "acquired");
+    if (other.state !== "acquired") throw new Error("other fixture lease unavailable");
+    assert.equal(database.authority.duoCeremonyLeases.release({ token: first.token, now: at(3_000) }).state, "released");
+    assert.equal(database.authority.duoCeremonyLeases.release({ token: other.token, now: at(3_000) }).state, "released");
     database.close();
   });
 
@@ -115,6 +121,7 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     assert.equal(second.lease.generation, 2);
     assert.equal(second.tookOver, null);
     assert.equal(second.lease.createdAt, at(0), "one row per credential keeps its creation instant");
+    assert.equal(database.authority.duoCeremonyLeases.release({ token: second.token, now: at(23_000) }).state, "released");
     database.close();
   });
 
@@ -145,6 +152,7 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     assert.equal(stale.current.holder.workerId, "person-lookup-worker-2");
     assert.throws(() => assertDuoCeremonyLeaseToken(first.token), /retired/);
     assert.deepEqual(database.authority.duoCeremonyLeases.get(CREDENTIAL), takeover.lease);
+    assert.equal(database.authority.duoCeremonyLeases.release({ token: takeover.token, now: at(TTL_MS + 6) }).state, "released");
     database.close();
   });
 

@@ -71,7 +71,7 @@ import { z } from "zod";
 import type { RuntimeIsolation } from "../../../../models/config/define-runtime-isolation.js";
 import { descriptorSetHash, DESCRIPTORS, INTAKE_PROJECTIONS, SERVER_REGISTRY } from "../../registries/workflow-registry.js";
 import { stepProofDescriptorOf } from "../../registries/step-proof-modules.js";
-import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../runs/commands/command-kernel.js";
+import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor, type WorkerRuntimeContext } from "../../../runs/commands/command-kernel.js";
 import { createWorkerPoolRuntimeExecutor } from "../../../runtime/workers/worker-loop.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
 import { isLiveWorker } from "../../../../models/run/worker.js";
@@ -207,10 +207,11 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
   supervisor: DashboardWorkerProcessSupervisor;
   workerRuntime: WorkerPoolRuntimeAdoption;
 }> {
+  const browserChannel = createWorkerBrowserChannel(input);
   const supervisor = createDashboardWorkerProcessSupervisor({
     launch: input.launch,
     spawn: input.spawn,
-    browserControl: createWorkerBrowserChannel(input),
+    browserControl: browserChannel,
     prepareAdmission: async request => {
       if (request.command !== "spawn-worker" || input.preflight === undefined) return;
       try {
@@ -354,7 +355,8 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
   });
   return Object.freeze({
     supervisor,
-    workerRuntime: Object.freeze({ pool: createWorkerPoolRuntimeExecutor(supervisor, input.database.authority.workerSlots, { database: input.database, clock: input.clock }) }),
+    workerRuntime: Object.freeze({ pool: { ...createWorkerPoolRuntimeExecutor(supervisor, input.database.authority.workerSlots, { database: input.database, clock: input.clock }),
+      checkParkedWrite: (context: WorkerRuntimeContext) => browserChannel.check(context.command.commandId) } }),
   });
 }
 
@@ -773,7 +775,7 @@ async function composeDashboardRuntimeStartup(
   };
 
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
-  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
+  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, ownsWorker, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
   const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
 
@@ -799,6 +801,7 @@ async function composeDashboardRuntimeStartup(
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     settings: settingsBoundary.executor,
     authorityProfileId: admission.profileBinding.profileId,
+    authorityInstallationId: admission.profileBinding.installationId,
     prepareAssistantModelPreference: async request => {
       assertCurrent();
       if (request.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || request.target.profileId !== selectedModelProfileId

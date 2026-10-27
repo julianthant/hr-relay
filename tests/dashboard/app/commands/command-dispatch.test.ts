@@ -138,7 +138,7 @@ function gateSection(overrides: Record<string, unknown> = {}) {
         displayName: "Hernandez, Jose Santos",
         origin: "the EID this run checked (document-eid)",
       })),
-      approvalShape: built.approvalShape,
+      approvalShape: built.approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
       actions: [{
         key: "resolve-gate-approved",
         label: "Approve this person",
@@ -181,26 +181,14 @@ describe("composeCommandRequest — the identity gate (ref write-safety §14.4)"
     assert.equal(result.evidenceDigest, section.value.evidenceDigest);
   });
 
-  it("REFUSES a rejection nobody authored — the reason is the operator's own", () => {
-
+  it("REFUSES a served rejection action — the gate composes approvals only", () => {
     const composed = composeCommandRequest(
       REJECT,
       { runId: runId(1), expectedVersion: 3 },
       { ...CONTEXT, gate: gateSection() },
     );
     assert.equal(composed.state, "refused");
-    assert.match(composed.state === "refused" ? composed.reason : "", /no operator answer/);
-  });
-
-  it("REFUSES an approval nobody authored when the server asked for a choice — §14.6 risk 1", () => {
-
-    const composed = composeCommandRequest(
-      APPROVE,
-      { runId: runId(1), expectedVersion: 3 },
-      { ...CONTEXT, gate: gateSection({ approvalShape: "type-the-eid" }) },
-    );
-    assert.equal(composed.state, "refused");
-    assert.match(composed.state === "refused" ? composed.reason : "", /type-the-eid/);
+    assert.match(composed.state === "refused" ? composed.reason : "", /not an approval/);
   });
 
   it("REFUSES when the section is absent or unavailable, naming which", () => {
@@ -232,7 +220,7 @@ const runId = (n: number): string =>
 
 const CONTEXT = { actorId: "local-operator", source: "run-detail" } as const;
 
-const { ONE_CLICK, CHOOSE, TYPE_EID, gateDetail } =
+const { ONE_CLICK, CHOOSE, NAME_MISMATCH, gateDetail } =
   createIdentityCeremonyFixtures(NOW, CHECKED, NAME_SEARCH, RESULT_SCHEMA_HASH, runId);
 
 
@@ -246,16 +234,15 @@ const { ONE_CLICK, CHOOSE, TYPE_EID, gateDetail } =
 
 
 const APPROVE: CommandAction = identityApprovalAction("Approve");
-const REJECT: CommandAction = { ...APPROVE, key: "resolve-gate-rejected", resolution: "rejected" };
 
 function available(detail: IdentityGateDetail) {
   return { state: "available" as const, value: detail };
 }
 
-describe("composeCommandRequest — the three ceremonies reach the real command endpoint", () => {
+describe("composeCommandRequest — the ceremonies reach the real command endpoint", () => {
 
-  it("composes a TYPED EID, and the label still comes off the served option", () => {
-    const detail = gateDetail(TYPE_EID);
+  it("composes a PICKED candidate from a name-mismatch packet, labelled by the served option", () => {
+    const detail = gateDetail(NAME_MISMATCH);
     const composed = composeCommandRequest(
       APPROVE,
       { runId: runId(1), expectedVersion: 3 },
@@ -271,28 +258,6 @@ describe("composeCommandRequest — the three ceremonies reach the real command 
     assert.equal(result.chosenFrom, "checked");
   });
 
-  it("composes a REJECTION with the operator's own trimmed reason and the bound digest", () => {
-    const detail = gateDetail(ONE_CLICK);
-    const composed = composeCommandRequest(
-      REJECT,
-      { runId: runId(1), expectedVersion: 3 },
-      {
-        ...CONTEXT,
-        gate: available(detail),
-        gateAnswer: { decision: "rejected", reason: "  the UCPath detail is a different person  " },
-      },
-    );
-    assert.equal(composed.state, "ready");
-    if (composed.state !== "ready") return;
-    const parsed = CommandRequestSchema.parse(composed.request);
-    if (parsed.family !== "gate") return assert.fail("expected a gate command");
-    const result = IdentityApprovalResultSchema.parse(parsed.payload.result.value);
-    assert.equal(result.decision, "rejected");
-    if (result.decision !== "rejected") return;
-    assert.equal(result.reason, "the UCPath detail is a different person");
-    assert.equal(result.evidenceDigest, detail.evidenceDigest);
-  });
-
   it("still composes the ONE ceremony whose answer is a served fact", () => {
 
     const composed = composeCommandRequest(
@@ -303,11 +268,11 @@ describe("composeCommandRequest — the three ceremonies reach the real command 
     assert.equal(composed.state, "ready");
   });
 
-  it("REFUSES a typed-EID ceremony when no operator answer was supplied", () => {
+  it("REFUSES a pick when no operator answer was supplied", () => {
     const composed = composeCommandRequest(
       APPROVE,
       { runId: runId(1), expectedVersion: 3 },
-      { ...CONTEXT, gate: available(gateDetail(TYPE_EID)) },
+      { ...CONTEXT, gate: available(gateDetail(NAME_MISMATCH)) },
     );
 
     assert.equal(composed.state, "refused");
@@ -320,29 +285,14 @@ describe("composeCommandRequest — the three ceremonies reach the real command 
       { runId: runId(1), expectedVersion: 3 },
       {
         ...CONTEXT,
-        gate: available(gateDetail(TYPE_EID)),
+        gate: available(gateDetail(NAME_MISMATCH)),
         gateAnswer: { decision: "approved", eid: "99999999" },
       },
     );
     assert.equal(composed.state, "refused");
     const reason = composed.state === "refused" ? composed.reason : "";
-    assert.match(reason, new RegExp(`never showed EID ${directIdentifierDigestReference("99999999")}`));
+    assert.match(reason, new RegExp(`EID ${directIdentifierDigestReference("99999999")} is not one of the candidates`));
     assert.doesNotMatch(reason, /99999999/);
-  });
-
-  it("REFUSES when the answer and the control pressed disagree", () => {
-
-    const composed = composeCommandRequest(
-      REJECT,
-      { runId: runId(1), expectedVersion: 3 },
-      {
-        ...CONTEXT,
-        gate: available(gateDetail(CHOOSE)),
-        gateAnswer: { decision: "approved", eid: NAME_SEARCH },
-      },
-    );
-    assert.equal(composed.state, "refused");
-    assert.match(composed.state === "refused" ? composed.reason : "", /disagree/);
   });
 
   it("REFUSES an unsupported ceremony outright — no payload, no send", () => {

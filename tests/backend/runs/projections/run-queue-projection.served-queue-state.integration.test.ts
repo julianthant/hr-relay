@@ -9,6 +9,8 @@ import { createTransactionHistory } from "../../../../src/backend/storage/sqlite
 import { HASH_A, HASH_B, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { declareProjectionWorker, APP_VERSION, claimEventOf, DAY, DESCRIPTOR_SET_HASH, instantOffsetOf, taskEventsOf, traceOf, uuidOf, workerLeaseOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor, separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 
 const {world, runRecordOf, queuedEventOf, CLAIM, otherConnection, appendOther, seedWorld, cleanup } = createRunQueueProjectionTestWorld();
 
@@ -25,6 +27,34 @@ function corruptLatest(w: DashboardWorld): void {
 afterEach(cleanup);
 
 describe("THE run/queue projection", () => {
+  it("keeps structured parked-probe evidence private while serving its held result", async () => {
+    const w = await world(), at = instantOffsetOf(0), commandId = uuidOf(80);
+    queuedEventOf(w, { seed: 1 });
+    const request = CommandRequestSchema.parse({ commandId, family: "worker-browser", type: "check-parked-write", requestedAt: at, requestedBy: "local-operator", source: "run-detail",
+      target: { workerId: "person-lookup-worker-1", workflowId: "person-lookup", expectedVersion: 2, controlBasis: { leaseGeneration: 1, controlRevision: 1 },
+        membershipRevision: 1, processId: 42, startedAt: at, installationId: uuidOf(81), profileId: uuidOf(82), itemId: uuidOf(83), runId: uuidOf(1), runVersion: 4,
+        runAttempt: 1, traceId: traceOf(1), nodeId: "submit-write", writeIntentId: uuidOf(84), intentVersion: 1, intentGeneration: 1,
+        writeAttemptId: uuidOf(85), bindingProofDigest: HASH_A, occurrenceKeyDigest: HASH_B } });
+    const result = { commandId, requestedBy: request.requestedBy, target: request.target, observedAt: at, held: true,
+      provenance: "system-probe", state: "ambiguous", code: "PARKED_CHECK_OCCURRENCE_UNPROVED", probeTaskId: "ucpath/match-existing-termination", evidenceDigest: HASH_A };
+    const control = WorkerControlRecordSchema.parse({ commandId, request, scope: "worker-pool:person-lookup", executorId: uuidOf(86), admittedAt: at,
+      expiresAt: instantOffsetOf(0, 180_000), basisVersion: 2, phase: { state: "succeeded", startedAt: at, completedAt: at,
+        acknowledgement: { kind: "parked-write-check", result, evidence: { schemaHash: HASH_A, value: { privateEvidence: "PRIVATE_PROBE_CANARY" } } } } });
+    for (const changed of [{ commandId: uuidOf(87) }, { requestedBy: "foreign-operator" },
+      { target: { ...request.target, profileId: uuidOf(87) } }, { held: false }]) {
+      assert.equal(WorkerControlRecordSchema.safeParse({ ...control, phase: { ...control.phase,
+        acknowledgement: { kind: "parked-write-check", result: { ...result, ...changed } } } }).success, false);
+    }
+    w.authority.workerControls = () => [control];
+    w.projection.rebuildFromTimeline();
+    const day = w.projection.buildDashboardDayWire(DAY), observed = day.workerOperations[0];
+    assert.equal(observed.phase.state, "succeeded");
+    if (observed.phase.state !== "succeeded" || observed.phase.acknowledgement.kind !== "parked-write-check") throw new Error("held check result absent");
+    assert.equal(observed.phase.acknowledgement.result.held, true);
+    assert.equal(observed.phase.acknowledgement.evidence, undefined);
+    assert.equal(JSON.stringify(day).includes("PRIVATE_PROBE_CANARY"), false);
+    assert.deepEqual(control.phase.state === "succeeded" && control.phase.acknowledgement.kind === "parked-write-check" && control.phase.acknowledgement.evidence?.value, { privateEvidence: "PRIVATE_PROBE_CANARY" });
+  });
   it("shows the six declared Separations steps in the queue pipeline", async () => {
     const w = await world({ descriptors: { resolve: () => separationsDescriptor } });
     queuedEventOf(w, { seed: 1, workflow: "separations", lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1, version: 2 });

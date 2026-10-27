@@ -65,7 +65,7 @@ FIXTURE_DIAGNOSTIC_BUNDLE: typeof FixtureDiagnosticTypes.FIXTURE_DIAGNOSTIC_BUND
     FIXTURE_IDS.doneRun,
     FIXTURE_IDS.failedRun,
     FIXTURE_IDS.openGateRun,
-    FIXTURE_IDS.gateTypedEidRun,
+    FIXTURE_IDS.gateNameMismatchRun,
     FIXTURE_IDS.parkedRun,
     FIXTURE_IDS.memberRun,
     FIXTURE_IDS.groupOf13,

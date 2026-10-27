@@ -1241,7 +1241,8 @@ export class RuntimeAdmission {
       }, release: () => this.release() }, root, join(root, "artifacts"), [join(root, "state.db")], "profile-restore", "exclusive", this.#locator, input.profile.binding);
   }
 
-  captureDuoCredentialCustody(profile: RuntimeAdmission): Readonly<{ binding: ProfileDatabaseBinding; generation: number; assertHeld(): void; readDuoContinuity(): ReturnType<typeof readIssuedDuoContinuity> }> {
+  captureDuoCredentialCustody(profile: RuntimeAdmission): Readonly<{ binding: ProfileDatabaseBinding; generation: number; assertHeld(): void;
+    readDuoContinuity(): ReturnType<typeof readIssuedDuoContinuity> }> {
     this.assertWritable();
     profile.assertProfileRuntime();
     const binding = profile.profileBinding;
@@ -1255,12 +1256,25 @@ export class RuntimeAdmission {
       if (this.#scope !== "installation") throw new Error("duo-profile-custody-expired");
       return readIssuedDuoContinuity(this.#authority as InstallationLease, binding.profileId);
     };
-    return Object.freeze({ binding, generation, readDuoContinuity, assertHeld: () => {
+    const assertOwner = () => {
       this.assertLive();
       if (profile.#released || profile.#profileParent !== this || profile.#scope !== "profile") throw new Error("duo-profile-custody-expired");
       if (!noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-profile-root-required");
+    };
+    return Object.freeze({ binding, generation, assertHeld: () => {
+      assertOwner();
       assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
       readDuoContinuity();
+    }, readDuoContinuity: () => {
+      assertOwner();
+      profile.assertProfileRuntime();
+      const before = readDuoContinuity();
+      assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
+      assertOwner();
+      profile.assertProfileRuntime();
+      const after = readDuoContinuity();
+      if (canonicalJsonStringify(after) !== canonicalJsonStringify(before)) throw new Error("duo-document-custody-changed");
+      return after;
     } });
   }
   captureDraftDuoCredentialCustody(profile: RuntimeAdmission, operationId: string, generation: number) {
@@ -1288,9 +1302,14 @@ export class RuntimeAdmission {
       lastName: operation.lastName, createdAt: operation.createdAt, commandFingerprint: operation.commandFingerprint });
     const identity = stable(original), ancestry = new Map<string, DirectoryIdentity>();
     if (!noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-profile-root-required");
-    const assertHeld = () => {
+    const current = () => {
       const current = readOperation();
       if (stable(current) !== identity || !noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-draft-authority-changed");
+      if (current.onboarding === undefined) throw new Error("duo-draft-operation-required");
+      return current.onboarding.duo;
+    };
+    const assertHeld = () => {
+      current();
       assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
     };
     const assertPublicationRecovery = () => {
@@ -1302,9 +1321,12 @@ export class RuntimeAdmission {
       assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
     };
     return Object.freeze({ binding, generation, draftOperationId: operationId, assertHeld, assertPublicationRecovery,
-      readDuoContinuity: () => { assertHeld(); const operation = readOperation();
-        if (operation.onboarding === undefined) throw new Error("duo-draft-operation-required");
-        return operation.onboarding.duo;
+      readDuoContinuity: () => {
+        const before = current();
+        assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
+        const after = current();
+        if (canonicalJsonStringify(after) !== canonicalJsonStringify(before)) throw new Error("duo-document-custody-changed");
+        return after;
       } });
   }
   static forStoppedControlInventory(value: StoppedControlProfileInventory): RuntimeAdmission {

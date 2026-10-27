@@ -13,7 +13,7 @@ import { JsonValueSchema, canonicalJsonStringify } from "../validation/canonical
 import { SettingsLeafOperationSchema, SettingsPatchSchema } from "../../models/config/settings.js";
 import { MarkedProtectedSettingsPatchSchema, ProtectedSettingsPatchSchema, ProtectedSettingsReadbackSchema, markProtectedSettingsPatch } from "../../models/config/protected-settings.js";
 import { deepFreeze } from "../validation/immutability.js";
-import { ActorIdSchema, BrowserSessionIdSchema, CommandAuditIdSchema, CommandIdSchema, DependencyIdSchema, FingerprintSchema, GateIdSchema, IntakeSessionIdSchema, IntakeManifestIdSchema, IntakeTargetFieldIdSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID, NotificationIdSchema, NonNegativeIntSchema, PositiveIntSchema, RunIdSchema, RunSessionIdSchema, SourceColumnIdSchema, SourceSurfaceIdSchema, StartPlanIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, WriteAttemptIdSchema } from "../identity/ids.js";
+import { ActorIdSchema, BrowserSessionIdSchema, CommandAuditIdSchema, CommandIdSchema, DependencyIdSchema, FingerprintSchema, GateIdSchema, IntakeSessionIdSchema, IntakeManifestIdSchema, IntakeTargetFieldIdSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, TraceIdSchema, LOCAL_OPERATOR_ACTOR_ID, NotificationIdSchema, NonNegativeIntSchema, PositiveIntSchema, RunIdSchema, RunSessionIdSchema, SourceColumnIdSchema, SourceSurfaceIdSchema, StartPlanIdSchema, TaskIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, WriteAttemptIdSchema } from "../identity/ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
 import { sha256Hex } from "../validation/sha256.js";
 import { ExplorerEditApplyRequestSchema } from "../../models/dashboard/explorer.js";
@@ -42,6 +42,7 @@ export const CommandFamilySchema = z.enum([
 ]);
 
 export const CommandActionSchema = z.enum([
+  "check-parked-write",
   "set-assistant-model-preference",
   "annotate-failure",
   "set-batch-grouping",
@@ -159,7 +160,33 @@ export const LiveWorkerResetRequestSchema = z.strictObject({ ...CommandEnvelopeF
 const WorkerMemberControlTargetSchema = z.strictObject({ workerId: WorkerIdSchema, workflowId: WorkflowIdSchema,
   membershipRevision: PositiveIntSchema, controlBasis: WorkerControlBasisSchema, expectedVersion: NonNegativeIntSchema });
 
+export const ParkedWriteCheckTargetSchema = WorkerVersionTargetSchema.extend({
+  controlBasis: WorkerControlBasisSchema, membershipRevision: PositiveIntSchema,
+  processId: PositiveIntSchema, startedAt: IsoInstantSchema,
+  installationId: z.uuid(), profileId: z.uuid(), workflowId: WorkflowIdSchema, itemId: ItemIdSchema,
+  runId: RunIdSchema, runVersion: PositiveIntSchema, runAttempt: PositiveIntSchema, traceId: TraceIdSchema, nodeId: NodeIdSchema,
+  writeIntentId: WriteIntentIdSchema, intentVersion: PositiveIntSchema, intentGeneration: PositiveIntSchema,
+  writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema, occurrenceKeyDigest: FingerprintSchema,
+});
+export const ParkedWriteCheckResultSchema = z.strictObject({
+  commandId: CommandIdSchema, requestedBy: ActorIdSchema, target: ParkedWriteCheckTargetSchema,
+  observedAt: IsoInstantSchema, held: z.literal(true), provenance: z.enum(["system-probe", "not-observed"]),
+  state: z.enum(["absent", "ambiguous", "unknown", "unavailable"]),
+  code: z.enum(["PARKED_CHECK_ABSENT", "PARKED_CHECK_AMBIGUOUS", "PARKED_CHECK_UNKNOWN", "PARKED_CHECK_UNAVAILABLE", "PARKED_CHECK_OCCURRENCE_UNPROVED"]),
+  probeTaskId: TaskIdSchema.optional(), evidenceDigest: FingerprintSchema,
+}).superRefine((result, context) => {
+  const state = result.code === "PARKED_CHECK_ABSENT" ? "absent"
+    : result.code === "PARKED_CHECK_UNAVAILABLE" ? "unavailable" : result.code === "PARKED_CHECK_UNKNOWN" ? "unknown" : "ambiguous";
+  if (result.state !== state || (result.provenance === "system-probe") !== (result.probeTaskId !== undefined)
+    || ((result.state === "absent" || result.state === "ambiguous") && result.provenance !== "system-probe")) {
+    context.addIssue({ code: "custom", message: "a held check must state the actual registered observation and provenance" });
+  }
+});
+export type ParkedWriteCheckTarget = z.infer<typeof ParkedWriteCheckTargetSchema>;
+export type ParkedWriteCheckResult = z.infer<typeof ParkedWriteCheckResultSchema>;
+
 export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("check-parked-write"), target: ParkedWriteCheckTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["remove-worker", "retry-worker"]), target: WorkerMemberControlTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("stop-worker"), target: WorkerVersionTargetSchema.extend({ expectedVersion: PositiveIntSchema.optional(), membershipRevision: PositiveIntSchema.optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: z.number().int().min(0) }) }),
@@ -766,6 +793,7 @@ export function commandEffectIsWeaker(stated: CommandEffectClass, actual: Comman
 }
 
 export const COMMAND_EFFECT_BY_ACTION = {
+  "check-parked-write": "local-write",
   "set-assistant-model-preference": "local-write",
   "annotate-failure": "local-write",
   "set-batch-grouping": "local-write",
@@ -807,6 +835,7 @@ export const COMMAND_EFFECT_BY_ACTION = {
 } as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
 
 export const COMMAND_ASSISTANT_METADATA = {
+  "check-parked-write": "Read target state while keeping an uncertain write held",
   "set-assistant-model-preference": "Persist the selected profile model preference",
   "annotate-failure": "Resolve a recorded failure",
   "set-batch-grouping": "Change queue grouping",
@@ -866,7 +895,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   "workflow-batch": ["set-batch-grouping"],
   start: ["start-run"],
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
-  "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
+  "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"],
   settings: ["apply-settings", "apply-protected-settings"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   run: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"],
@@ -909,7 +938,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "workflow-batch", actions: ["set-batch-grouping"] },
   { family: "start", actions: ["start-run"] },
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
-  { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
+  { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
   { family: "storage-relocation", actions: ["plan-storage-relocation", "cancel-storage-relocation"] },
   { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"] },

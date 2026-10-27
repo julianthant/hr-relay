@@ -8,10 +8,13 @@ import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.
 import type { WorkerSessionManager } from "./worker-sessions.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
+import type { WorkerEffectAcknowledgement } from "../../../models/run/worker-control.js";
+import type { CommandRequest } from "../../../rules/commands/commands.js";
 
 /** Called between whole runs, before the next claim. Busy requests are never held for later. */
 export function createWorkerBrowserControl(input: Readonly<{
   database: AuthorityDatabase; workerId: string; leaseGeneration: number; clock: Clock; signal: AbortSignal;
+  checkParkedWrite?: (sessions: WorkerSessionManager, request: Extract<CommandRequest, { type: "check-parked-write" }>, expiresAt: string) => Promise<Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>>;
 }>) {
   const removalAttempts = new Set<string>();
   return async (sessions: WorkerSessionManager): Promise<void> => {
@@ -33,7 +36,7 @@ export function createWorkerBrowserControl(input: Readonly<{
       && record.request.target.controlBasis?.leaseGeneration === input.leaseGeneration);
     for (const record of records) {
       const { request } = record;
-      if (request.type !== "refresh-browser" && request.type !== "reopen-browser") throw new Error("worker-browser-channel-invalid-operation");
+      if (request.type !== "refresh-browser" && request.type !== "reopen-browser" && request.type !== "check-parked-write") throw new Error("worker-browser-channel-invalid-operation");
       let started = false;
       const now = () => input.clock.now().toISOString();
       try {
@@ -47,16 +50,42 @@ export function createWorkerBrowserControl(input: Readonly<{
             || lease.controlRevision !== basis.controlRevision + 1 || lease.controlCommandId !== record.commandId) throw new WorkerControlRefusal("worker-control-basis-changed-before-effect");
           if (lease.lifecycle.state === "busy" || repositories.runs.listByWorker(input.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state))) throw new WorkerControlRefusal("worker-browser-busy");
           if (lease.lifecycle.state !== "idle" && lease.lifecycle.state !== "paused") throw new WorkerControlRefusal("worker-browser-worker-unavailable");
-          sessions.assertControlTarget(request.target.browserSessionId);
+          if (request.type === "check-parked-write") {
+            const slot = repositories.workerSlots.get(input.workerId);
+            if (input.checkParkedWrite === undefined || lease.lifecycle.state !== "idle" || record.control === undefined
+              || slot?.membershipRevision !== request.target.membershipRevision || slot.retiredAt !== null || slot.workflow !== request.target.workflowId
+              || lease.processId !== request.target.processId || lease.lifecycle.startedAt !== request.target.startedAt
+              || record.control.member.membershipRevision !== request.target.membershipRevision
+              || record.control.lifetime.processId !== lease.processId || record.control.lifetime.startedAt !== lease.lifecycle.startedAt) {
+              throw new WorkerControlRefusal("parked-check-worker-unavailable");
+            }
+          } else sessions.assertControlTarget(request.target.browserSessionId);
           repositories.workerControls.transition(record.commandId, "ready", { state: "executing", startedAt: now() });
           started = true;
         });
-        const resource = await sessions.controlBrowser(request.type, request.target.browserSessionId, input.signal);
+        let acknowledgement: WorkerEffectAcknowledgement;
+        if (request.type === "check-parked-write") {
+          const check = input.checkParkedWrite;
+          if (check === undefined) throw new WorkerControlRefusal("PARKED_CHECK_UNAVAILABLE");
+          acknowledgement = await check(sessions, request, record.expiresAt);
+        } else acknowledgement = { kind: "control", browserSessionId: (await sessions.controlBrowser(request.type, request.target.browserSessionId, input.signal)).sessionId };
         input.database.withAuthorityTransaction(repositories => {
           const current = repositories.workerControls.get(record.commandId);
           if (current?.phase.state !== "executing") throw new Error("worker-browser-settlement-no-longer-owned");
+          if (request.type === "check-parked-write") {
+            const lease = repositories.workerLeases.get(input.workerId), slot = repositories.workerSlots.get(input.workerId);
+            if (input.signal.aborted || input.clock.nowMs() >= Date.parse(record.expiresAt)
+              || lease?.lifecycle.state !== "idle" || lease.workflow !== request.target.workflowId
+              || lease.leaseGeneration !== request.target.controlBasis.leaseGeneration
+              || lease.controlRevision !== request.target.controlBasis.controlRevision + 1 || lease.controlCommandId !== record.commandId
+              || slot?.retiredAt !== null || slot.membershipRevision !== request.target.membershipRevision || slot.workflow !== request.target.workflowId
+              || lease.processId !== request.target.processId || lease.lifecycle.startedAt !== request.target.startedAt
+              || repositories.runs.listByWorker(input.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state))) {
+              throw new Error("parked-check-worker-authority-changed-after-read");
+            }
+          }
           repositories.workerControls.transition(record.commandId, "executing", { state: "succeeded", startedAt: current.phase.startedAt,
-            completedAt: now(), acknowledgement: { kind: "control", browserSessionId: resource.sessionId } });
+            completedAt: now(), acknowledgement });
         });
       } catch (error) {
         input.database.withAuthorityTransaction(repositories => {
@@ -72,6 +101,7 @@ export function createWorkerBrowserControl(input: Readonly<{
               ? { state: "refused", completedAt: now(), message: error instanceof WorkerControlRefusal ? error.message : "worker-browser-refused-before-effect" }
               : { state: "uncertain", startedAt: current.phase.state === "executing" ? current.phase.startedAt : now(), observedAt: now(), message: "worker-browser-effect-failed-or-uncertain" });
         });
+        if (request.type === "check-parked-write" && started && !(error instanceof WorkerControlRefusal)) throw error;
       }
     }
   };

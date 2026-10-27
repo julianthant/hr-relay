@@ -11,7 +11,7 @@ export function RunLaunchHost({ controller, onPreviewClose, ...props }: Omit<Com
   const { toast } = useToasts();
   const setOpen = controller.setOpen;
   const changeOpen = useCallback((open: boolean) => { setOpen(open); if (!open) onPreviewClose?.(); }, [setOpen, onPreviewClose]);
-  return <RunStartSurfaces {...props} rerunSource={props.previewLaunch ? undefined : controller.rerunSource} open={controller.open || props.previewLaunch !== undefined} onOpenChange={changeOpen} onCloseAutoFocus={controller.closeFocus}
+  return <RunStartSurfaces {...props} rerunSource={props.previewLaunch ? undefined : controller.rerunSource} rerunInputText={props.previewLaunch ? undefined : controller.rerunInputText} open={controller.open || props.previewLaunch !== undefined} onOpenChange={changeOpen} onCloseAutoFocus={controller.closeFocus}
     onApplied={(workflowId, count) => {
       toast({ tone: "success", title: count === undefined ? "Run submission confirmed" : !props.previewLaunch && controller.rerunSource ? "Rerun started" : count === 1 ? "Run started" : `${count} runs started`, description: props.catalog.find(workflow => workflow.id === workflowId)?.label ?? workflowId });
       props.onApplied?.(workflowId, count);

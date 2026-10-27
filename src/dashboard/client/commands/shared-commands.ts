@@ -27,6 +27,7 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
   if (result.state !== "applied" && result.state !== "already-applied") return result;
   if (!commandNoChangeResultMatches(command, result)) identityMismatch(response);
   const targets = result.affectedTargets;
+  if (command.family === "worker-browser" && command.type === "check-parked-write" && targets.length !== 2) identityMismatch(response);
   const matches = (target: typeof targets[number]): boolean => {
     switch (command.family) {
       case 'assistant-model-preference': return target.family === 'assistant-model-preference'
@@ -40,6 +41,8 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
       case "intake": return (target.family === "intake" && target.intakeSessionId === command.target.intakeSessionId)
         || (command.type === "enqueue-intake-manifest" && target.family === "run");
       case "worker-browser":
+        if (command.type === "check-parked-write") return target.family === "worker-browser" && target.workerId === command.target.workerId
+          || target.family === "run" && target.runId === command.target.runId;
         if (command.type === "remove-worker") return target.family === "worker-browser" && target.workerId === command.target.workerId
           || target.family === "worker-pool" && target.workflowId === command.target.workflowId;
         if (command.type === "plan-worker-count") return target.family === "worker-browser"
