@@ -4,7 +4,7 @@ import { normalizeUsername, accountUsernames, validateAccount, validateCredentia
 
 const STORE = 'autopilotV1';
 const defaultSettings = { enabled: true, trustClick: false, toast: true };
-export function createService(storage, now = () => Date.now()) {
+export function createService(storage, now = () => Date.now(), relay) {
   let queue = Promise.resolve();
   const serial = operation => {
     const result = queue.then(operation);
@@ -82,7 +82,8 @@ export function createService(storage, now = () => Date.now()) {
       if (type === 'STATE') return publicState(state);
       if (type === 'SETTINGS') return { enabled: state.settings.enabled, trustClick: state.settings.trustClick, toast: state.settings.toast };
       if (type === 'SAVE_ACCOUNT') {
-        const existing = data.id ? accountFor(state, data.id) : {};
+        const existing = data.id ? state.accounts.find(account => account.id === data.id) : undefined;
+        if (data.id && !existing && !relay) throw new Error('Choose an account first.');
         const account = validateAccount({ ...existing, ...data }, state.accounts);
         state.accounts = [...state.accounts.filter(a => a.id !== account.id), account];
         event(state, 'Account saved.', account.id);
@@ -147,11 +148,16 @@ export function createService(storage, now = () => Date.now()) {
         if (type === 'SIGN') {
           const { credential, reason } = selectCredential(state, data);
           if (!credential) { event(state, reason); await save(state); return { ok: false, reason }; }
-          credential.signCount = nextSignCount(credential.signCount, Math.floor(now() / 1000));
+          credential.signCount = relay
+            ? await relay.reserveSignCount(credential.credentialId, data.requestId)
+            : nextSignCount(credential.signCount, Math.floor(now() / 1000));
           if (credential.signCount >= 0xffffffff) throw new Error('Key counter exhausted. Enroll a new key.');
           credential.lastUsedAt = now();
           // Duo requesting this exact ID proves it knows the newly registered key.
-          if (data.allowCredentials?.length) credential.status = 'ready';
+          if (data.allowCredentials?.length) {
+            if (relay) await relay.exactCredentialRequested(credential.credentialId, data.requestId);
+            credential.status = 'ready';
+          }
           await save(state); // Persist the counter before releasing the assertion.
           const assertion = await createAssertion({ privateKeyPkcs8: base64ToBytes(credential.privateKey),
             rpId: data.rpId, challenge: base64ToBytes(data.challenge), origin: data.origin, signCount: credential.signCount });
@@ -175,10 +181,14 @@ export function createService(storage, now = () => Date.now()) {
         const transport = data.authenticatorAttachment === 'platform' ? 'internal' : data.authenticatorAttachment === 'cross-platform' ? 'usb' : arm.transport;
         const reg = await createRegistration({ rpId: data.rpId, challenge: base64ToBytes(data.challenge), origin: data.origin, signCount: 0 });
         const credentialId = bytesToBase64(reg.credentialId);
+        if (relay) await relay.persistPending({ credentialId, privateKeyPkcs8: bytesToBase64(reg.privateKeyPkcs8),
+          publicKeySpki: bytesToBase64(reg.publicKeySpki), userHandle: data.userHandle, transport,
+          isResidentCredential: !!data.residentKey, createdAt: new Date(now()).toISOString() });
         state.credentials.push({ rpId: data.rpId, credentialId, privateKey: bytesToBase64(reg.privateKeyPkcs8),
           userHandle: data.userHandle, signCount: 0, isResidentCredential: !!data.residentKey, transport,
           accountId: account.id, status: 'pending', createdAt: now() });
         state.enrollment = null;
+        if (relay) await relay.recordCeremony(credentialId, data.requestId);
         event(state, 'Key captured. Finish adding the device in Duo.', account.id);
         await save(state);
         return { ok: true, credentialId, transport, toast: state.settings.toast,

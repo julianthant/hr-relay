@@ -33,3 +33,21 @@ Chrome 140+ is the main installation path. Safari 18+ on macOS has an Xcode pack
 47 commits from June 5 to October 12, 2026.
 
 Real HR data lives outside this repository. Personal credentials and browser profiles are excluded from source and clean share packages.
+
+## Relay onboarding mode
+
+Relay stages only the runtime files named by its provider with `relay-manifest.json`.
+This selects the separate Relay background and page bridge; standalone bootstrap,
+local storage and IndexedDB startup are never entered. The native draft owner must
+acknowledge pending-key persistence before enrollment output, and durable counter
+reservation before signing. Extension key copies use trusted session storage only.
+
+The Security key method captures the approved software credential. The Touch ID
+method disables software capture/signing, passes through to the native platform
+ceremony, and records only public metadata. Duo's added-method observation and the
+operator's explicit Touch ID confirmation remain separate requirements. An internal
+transport or user-verification flag alone does not establish a biometric operation.
+
+Cancelling closes the owned setup browser after draining its bridge. Unknown remote
+enrollment preserves pending custody in the native draft owner; closure does not
+prove a credential was never registered. Ready does not save a profile; Finish does.
