@@ -2306,7 +2306,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         return false;
       }
       if (lstatMaybe(join(locator.stateRoot, "profiles"))) fail("existing-data-source-ambiguous");
-      privateFile(join(locator.stateRoot, "state.db"));
+      if (readPrivateFile(join(locator.stateRoot, "state.db"), { label: "authority database", maxBytes: 512 * 1024 * 1024 }) === undefined) fail("existing-data-source-required");
       return true;
     },
     readProfileRegistry() {

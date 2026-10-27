@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import nativeFs, { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import nativeFs, { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
@@ -20,12 +20,16 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 
 it("holds flat data behind explicit ownership while ordinary startup and signup cannot create a profile", async () => {
   const f = createHistoricalFlatProfileFixture();
+  chmodSync(f.databasePath, 0o644);
+  const databaseIdentity = statSync(f.databasePath);
   const before = [f.databasePath, f.protectedPath, f.artifact].map(path => readFileSync(path));
   assert.throws(() => acquireEntrypointAdmission(f.workspace, "shared"));
   const machine = await acquireDashboardEntrypointAdmission(f.workspace, "shared");
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
     assert.equal(machine.requiresExistingDataClaim(), true);
+    assert.equal(statSync(f.databasePath).mode, databaseIdentity.mode);
+    assert.equal(statSync(f.databasePath).ino, databaseIdentity.ino);
     assert.throws(() => machine.assertAuthorityDatabase(f.databasePath), /profile-bound-authority-required/u);
     application = await composeDashboardApplication({ admission: machine, isolation: rebuildRuntimeIsolation, repoRoot: f.workspace,
       backendPortOverride: 0, frontendPortOverride: 0, env: {} });
@@ -45,6 +49,23 @@ it("holds flat data behind explicit ownership while ordinary startup and signup 
     for (const [index, path] of [f.databasePath, f.protectedPath, f.artifact].entries()) assert.deepEqual(readFileSync(path), before[index]);
   } finally { await application?.stop(); machine.release(); f.close(); }
 });
+
+for (const privateSource of ["credential", "control"] as const) {
+  it(`refuses a 0644 ${privateSource} source without moving retained data`, async () => {
+    const f = createHistoricalFlatProfileFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+    const path = privateSource === "credential" ? f.protectedPath : join(f.workspace, ".tracker", "control", "installation.json");
+    const before = readFileSync(path), identity = statSync(path);
+    try {
+      const owner = captureExistingDataOwner(machine, historicalFlatFields);
+      chmodSync(path, 0o644);
+      await assert.rejects(machine.claimExistingProfileData(owner, randomUUID(), systemClock,
+        { ...historicalFlatFields, createdAt: systemClock.now().toISOString() }), /permissions or identity|private regular file|unsafe file/u);
+      assert.deepEqual(readFileSync(path), before); assert.equal(statSync(path).ino, identity.ino);
+      assert.equal(statSync(path).mode & 0o7777, 0o644);
+      assert.equal(existsSync(join(f.stateRoot, "profiles")), false);
+    } finally { chmodSync(path, 0o600); machine.release(); f.close(); }
+  });
+}
 
 it("refuses valid UNKNOWN flat custody before backup or data movement", async () => {
   const f = createHistoricalFlatProfileFixture({ unknownWrite: true }), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
@@ -242,8 +263,12 @@ it("holds an interrupted flat claim when unjournaled artifact membership appears
   } finally { recovered?.release(); f.close(); }
 });
 
-it("backs up native6 records and replay-validated protected values through finite stopped authority", async () => {
-  const f = createHistoricalFlatProfileFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+it("backs up native6 records and retained 0644 data into private copies without changing source identity", async () => {
+  const f = createHistoricalFlatProfileFixture({ closedBrowser: true }), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  const browserPath = join(f.stateRoot, "browsers", "w1", "ucpath", "Default", "Preferences");
+  const paths = [f.databasePath, f.reportPath, f.artifact, browserPath];
+  for (const path of paths) chmodSync(path, 0o644);
+  const before = paths.map(path => ({ bytes: readFileSync(path), identity: statSync(path) }));
   let child: RuntimeAdmission | undefined;
   try {
     const owner = captureExistingDataOwner(machine, historicalFlatFields), claimId = randomUUID();
@@ -255,14 +280,30 @@ it("backs up native6 records and replay-validated protected values through finit
     assert.equal(backup.sourceStateRoot, f.stateRoot);
     assert.ok(backup.files.some(entry => entry.path === "profile/credentials/protected.json"));
     assert.ok(backup.files.some(entry => entry.path === "profile/.runtime-owner.json"));
+    for (const [index, path] of paths.entries()) {
+      assert.deepEqual(readFileSync(path), before[index]?.bytes);
+      assert.equal(statSync(path).mode, before[index]?.identity.mode);
+      assert.equal(statSync(path).ino, before[index]?.identity.ino);
+    }
+    const copyRoot = join(reference.backupPath, "..", "files");
+    for (const entry of backup.files) assert.equal(statSync(join(copyRoot, entry.path)).mode & 0o7777, 0o600);
+    const copiedReport = join(copyRoot, "workspace-data", "reports", "historical-report.csv");
+    chmodSync(copiedReport, 0o644);
+    assert.throws(() => verifyExistingDataBackup(reference, owner, machine), /permissions or identity/u);
+    chmodSync(copiedReport, 0o600);
+    verifyExistingDataBackup(reference, owner, machine);
     assert.equal(existsSync(join(f.stateRoot, "machine")), false);
     assert.equal(existsSync(join(f.stateRoot, "profiles")), false);
   } finally { child?.release(); machine.release(); f.close(); }
 });
 
-it("moves only the backed-up original data into one private claimed profile without publishing an account", async () => {
-  const f = createHistoricalFlatProfileFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
-  const source = [f.protectedPath, f.artifact], before = source.map(path => readFileSync(path));
+it("moves retained 0644 files with their original identities into one private profile without publishing an account", async () => {
+  const f = createHistoricalFlatProfileFixture({ closedBrowser: true }), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  const browserPath = join(f.stateRoot, "browsers", "w1", "ucpath", "Default", "Preferences");
+  const ordinary = [f.databasePath, f.artifact, f.reportPath, browserPath];
+  for (const path of ordinary) chmodSync(path, 0o644);
+  const identities = ordinary.map(path => statSync(path));
+  const source = [f.protectedPath, f.artifact, browserPath], before = source.map(path => readFileSync(path));
   const original = new DatabaseSync(f.databasePath, { readOnly: true });
   const runs = original.prepare("SELECT * FROM runs ORDER BY id").all(); original.close();
   try {
@@ -286,6 +327,11 @@ it("moves only the backed-up original data into one private claimed profile with
     }
     assert.equal(readFileSync(join(root, "files", "reports", "historical-report.csv"), "utf8"), "status\nretained\n");
     assert.equal(existsSync(f.reportPath), false);
+    for (const [index, path] of ordinary.entries()) {
+      const moved = path === f.reportPath ? join(root, "files", "reports", "historical-report.csv") : join(root, path.slice(f.stateRoot.length + 1));
+      assert.equal(statSync(moved).mode, identities[index]?.mode);
+      assert.equal(statSync(moved).ino, identities[index]?.ino);
+    }
     assert.equal(existsSync(join(f.artifactRoot, ".runtime-owner.json")), true);
     assert.equal(existsSync(join(f.stateRoot, ".runtime-owner.json")), true);
     assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-flat-claim.json")), false);

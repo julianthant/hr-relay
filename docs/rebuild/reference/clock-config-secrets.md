@@ -745,6 +745,12 @@ claim and target identities across interrupted copying and fresh browser request
 copies and SQLite backups are verified and reused. A proved empty allocation is an unfinished
 allocation, never a completed backup.
 
+Claim admission and movement retain safe ordinary file modes, including `0644` databases, admitted
+browser/artifact/log/scratch data and reports/downloads/onboarding documents. Reads preserve source
+bytes, mode and inode and refuse links, foreign owners and group/world-writable files. Credentials,
+keys, ownership markers, control/claim records and every private recovery copy still require `0600`.
+The SQLite forward migration preserves database identity and mode while changing its schema/content.
+
 `storage/maintenance/flat-profile-claim.ts` records exact source/destination paths, file digests and
 physical identities. Native installation publication journals the moves before performing them,
 checks every recovery prefix and retains an immutable receipt. State and artifact ownership markers

@@ -12,7 +12,7 @@ import type { RuntimeLocator } from "../admission/installation.js";
 import { readPrivateFile, noSymlinkAncestry, writePrivateStage, fsyncPath } from "../configuration/credential-safe-file.js";
 import { verifyExistingDataOwner, type ExistingDataOwnerWitness } from "../configuration/credential-store.js";
 import { emailKey } from "../configuration/synthetic-verifier.js";
-import { ownerClaimRecoveryCopies, verifyExistingDataBackup, verifyExistingDataBackupFiles, type ExistingDataBackup } from "./existing-data-backup.js";
+import { existingDataFileLabel, ownerClaimRecoveryCopies, verifyExistingDataBackup, verifyExistingDataBackupFiles, type ExistingDataBackup } from "./existing-data-backup.js";
 import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
 import { LogoutOperationSchema, SignUpOperationSchema, deriveProfileNames, type SignUpOperation } from "../../../models/profiles/profile.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
@@ -33,13 +33,13 @@ export interface FlatProfileClaimWitness { readonly profileId: string; }
 const issuedClaims = new WeakMap<FlatProfileClaimWitness, { machine: RuntimeAdmission; owner: ExistingDataOwnerWitness; backup: ExistingDataBackup; claim: FlatProfileClaim }>();
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
-function bytes(path: string) {
-  const file = readPrivateFile(path, { label: "lock", maxBytes: 512 * 1024 * 1024 });
+function bytes(path: string, label: "lock" | "authority database" | "managed data" = "lock") {
+  const file = readPrivateFile(path, { label, maxBytes: 512 * 1024 * 1024 });
   if (file === undefined) throw new Error("existing-data-transition-file-required");
   return file.bytes;
 }
 
-function entries(root: string) {
+function entries(root: string, inventoryPath: string) {
   const result: z.infer<typeof EntrySchema>[] = [];
   const visit = (path: string) => {
     noSymlinkAncestry(dirname(path), new Map());
@@ -47,7 +47,7 @@ function entries(root: string) {
     if (info.isSymbolicLink() || !info.isFile() && !info.isDirectory() || info.isFile() && info.nlink !== 1
       || process.getuid !== undefined && info.uid !== process.getuid() || (info.mode & 0o022) !== 0) throw new Error("existing-data-transition-path-unsafe");
     result.push({ path: relative(root, path), directory: info.isDirectory(), device: info.dev, inode: info.ino, mode: info.mode,
-      ...(info.isDirectory() ? {} : { digest: hash(bytes(path)) }) });
+      ...(info.isDirectory() ? {} : { digest: hash(bytes(path, existingDataFileLabel(join(inventoryPath, relative(root, path))))) }) });
     if (info.isDirectory()) for (const name of readdirSync(path).sort()) visit(join(path, name));
   };
   visit(root); return result;
@@ -95,7 +95,7 @@ export function assertRetainedFlatClaimFile(admission: RuntimeAdmission, path: s
   if (move === undefined || move.destination.startsWith("state.db") || local === "credentials/protected.json") return false;
   const entry = move.entries.find(value => value.path === relative(join(admission.stateRoot, move.destination), path));
   if (entry === undefined || entry.directory) return false;
-  const actual = entries(path)[0];
+  const actual = entries(path, `profile/${local}`)[0];
   if (actual === undefined || actual.device !== entry.device || actual.inode !== entry.inode || actual.digest !== entry.digest || actual.mode !== entry.mode) throw new Error("existing-data-flat-retained-copy-changed");
   return true;
 }
@@ -130,26 +130,26 @@ export async function prepareFlatProfileClaim(machine: RuntimeAdmission, owner: 
   for (const name of readdirSync(machine.stateRoot).sort()) {
     if ([".runtime-owner.json", "locks", "artifacts"].includes(name)) continue;
     if (!["state.db", "state.db-wal", "state.db-shm", "credentials", "browsers", "backups", "logs", "scratch"].includes(name)) throw new Error("existing-data-flat-membership-refused");
-    moves.push({ role: "state", source: name, destination: name, entries: entries(join(machine.stateRoot, name)) });
+    moves.push({ role: "state", source: name, destination: name, entries: entries(join(machine.stateRoot, name), `profile/${name}`) });
   }
   for (const name of readdirSync(machine.artifactRoot).sort()) {
     if (name === ".runtime-owner.json") continue;
     if (!/^[a-f0-9]{64}\.artifact$/u.test(name)) throw new Error("existing-data-flat-artifact-refused");
-    moves.push({ role: "state", source: `artifacts/${name}`, destination: `artifacts/${name}`, entries: entries(join(machine.artifactRoot, name)) });
+    moves.push({ role: "state", source: `artifacts/${name}`, destination: `artifacts/${name}`, entries: entries(join(machine.artifactRoot, name), `profile/artifacts/${name}`) });
   }
   const dataRoot = join(context.workspace, "data");
   if (lstatSync(dataRoot, { throwIfNoEntry: false }) !== undefined) {
     noSymlinkAncestry(dataRoot, new Map());
     for (const name of readdirSync(dataRoot).sort()) {
       if (!["reports", "downloads", "onboarding"].includes(name) || !lstatSync(join(dataRoot, name)).isDirectory()) throw new Error("existing-data-flat-data-membership-refused");
-      moves.push({ role: "data", source: name, destination: `files/${name}`, entries: entries(join(dataRoot, name)) });
+      moves.push({ role: "data", source: name, destination: `files/${name}`, entries: entries(join(dataRoot, name), `workspace-data/${name}`) });
     }
   }
   if (!moves.some(move => move.source === "state.db") || !moves.some(move => move.source === "credentials")) throw new Error("existing-data-flat-source-required");
-  const root = entries(machine.stateRoot).find(entry => entry.path === "");
+  const root = entries(machine.stateRoot, "profile").find(entry => entry.path === "");
   const claim = FlatProfileClaimSchema.parse({ schemaVersion: 1, installationId: machine.locator.installationId, sourceStateRoot: machine.stateRoot,
     profileId: verified.profileId, operation, pepper: pepper.toString("base64"), moves, root,
-    ...(lstatSync(dataRoot, { throwIfNoEntry: false }) === undefined ? {} : { dataRoot: entries(dataRoot)[0] }), activationSnapshotId: randomUUID(),
+    ...(lstatSync(dataRoot, { throwIfNoEntry: false }) === undefined ? {} : { dataRoot: entries(dataRoot, "workspace-data")[0] }), activationSnapshotId: randomUUID(),
     activationPrior: settings.record.active, claimedAt: fields.createdAt });
   if (claim.moves.some(move => move.entries.some(entry => entry.device !== claim.root.device))) throw new Error("existing-data-flat-cross-device-unsupported");
   const witness = Object.freeze({ profileId: claim.profileId });
@@ -166,7 +166,7 @@ export function verifyFlatProfileClaim(witness: FlatProfileClaimWitness, locator
   verifyExistingDataBackup(issued.backup, issued.owner, issued.machine);
   const context = issued.machine.readInstallationContext();
   if (context === undefined) throw new Error("existing-data-transition-installation-required");
-  for (const move of issued.claim.moves) if (canonicalJsonStringify(entries(join(move.role === "state" ? locator.stateRoot : join(context.workspace, "data"), move.source))) !== canonicalJsonStringify(move.entries)) throw new Error("existing-data-flat-source-changed");
+  for (const move of issued.claim.moves) if (canonicalJsonStringify(entries(join(move.role === "state" ? locator.stateRoot : join(context.workspace, "data"), move.source), `profile/${move.destination}`)) !== canonicalJsonStringify(move.entries)) throw new Error("existing-data-flat-source-changed");
   return issued.claim;
 }
 
@@ -211,15 +211,15 @@ export function settleFlatProfileClaim(machine: RuntimeAdmission, claimInput: Fl
     const from = lstatSync(source, { throwIfNoEntry: false }), to = lstatSync(destination, { throwIfNoEntry: false });
     if ((from === undefined) === (to === undefined)) throw new Error("existing-data-flat-move-uncertain");
     const current = from === undefined ? destination : source;
-    if (canonicalJsonStringify(entries(current)) !== canonicalJsonStringify(move.entries)) throw new Error("existing-data-flat-move-changed");
+    if (canonicalJsonStringify(entries(current, `profile/${move.destination}`)) !== canonicalJsonStringify(move.entries)) throw new Error("existing-data-flat-move-changed");
     if (from !== undefined) { renameSync(source, destination); fsyncPath(dirname(source)); fsyncPath(dirname(destination)); }
   }
   if (dataInfo !== undefined && readdirSync(dataRoot).length !== 0) throw new Error("existing-data-flat-data-membership-changed");
   const expected = new Set(["", "artifacts", ...(claim.moves.some(move => move.role === "data") ? ["files"] : []),
     ...claim.moves.flatMap(move => move.entries.map(entry => entry.path === "" ? move.destination : `${move.destination}/${entry.path}`))]);
-  const actual = entries(target);
+  const actual = entries(target, "profile");
   if (actual.length !== expected.size || actual.some(entry => !expected.has(entry.path))) throw new Error("existing-data-flat-target-membership-changed");
-  for (const move of claim.moves) if (canonicalJsonStringify(entries(join(target, move.destination))) !== canonicalJsonStringify(move.entries)) throw new Error("existing-data-flat-move-changed");
+  for (const move of claim.moves) if (canonicalJsonStringify(entries(join(target, move.destination), `profile/${move.destination}`)) !== canonicalJsonStringify(move.entries)) throw new Error("existing-data-flat-move-changed");
   publish(claim.operation, Buffer.from(claim.pepper, "base64"));
   const { pepper, ...receiptFields } = claim;
   const receipt = FlatProfileClaimReceiptSchema.parse({ ...receiptFields, pepperDigest: hash(Buffer.from(pepper, "base64")) });

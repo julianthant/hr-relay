@@ -27,9 +27,16 @@ const issuedBackups = new WeakMap<ExistingDataBackup, { owner: ExistingDataOwner
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const maxBytes = 512 * 1024 * 1024;
 
-function file(path: string) {
+export function existingDataFileLabel(inventoryPath: string): "lock" | "authority database" | "managed data" {
+  if (/^profile\/state\.db(?:-wal|-shm|-journal)?$/u.test(inventoryPath)) return "authority database";
+  if (/^profile\/(?:browsers|artifacts|logs|scratch|files\/(?:reports|downloads|onboarding))\/(?!\.runtime-owner\.json$)/u.test(inventoryPath)
+    || /^workspace-data\/(?:reports|downloads|onboarding)\//u.test(inventoryPath)) return "managed data";
+  return "lock";
+}
+
+function file(path: string, label: "lock" | "authority database" | "managed data" = "lock") {
   noSymlinkAncestry(dirname(path), new Map());
-  const value = readPrivateFile(path, { label: "lock", maxBytes });
+  const value = readPrivateFile(path, { label, maxBytes });
   if (value === undefined) throw new Error("existing-data-backup-file-required");
   return value;
 }
@@ -44,8 +51,9 @@ function inventory(root: string, prefix: string, excluded: ReadonlySet<string> =
       const path = join(directory, name), stat = lstatSync(path);
       if (stat.isDirectory()) walk(path, local);
       else {
-        const current = file(path);
-        result.push({ path, file: FileSchema.parse({ path: prefix === "" ? local : `${prefix}/${local}`, digest: hash(current.bytes), device: current.identity.device, inode: current.identity.inode }) });
+        const inventoryPath = prefix === "" ? local : `${prefix}/${local}`;
+        const current = file(path, prefix === "" ? "lock" : existingDataFileLabel(inventoryPath));
+        result.push({ path, file: FileSchema.parse({ path: inventoryPath, digest: hash(current.bytes), device: current.identity.device, inode: current.identity.inode }) });
       }
     }
   };
@@ -120,7 +128,7 @@ export function verifyExistingDataBackup(reference: ExistingDataBackup, owner: E
   const backup = verifyExistingDataBackupFiles(reference, context.workspace, machine.locator.installationId);
   if (canonicalJsonStringify(issued.census()) !== canonicalJsonStringify(issued.source)) throw new Error("existing-data-backup-membership-changed");
   for (const entry of issued.source) {
-    const current = file(entry.path);
+    const current = file(entry.path, existingDataFileLabel(entry.file.path));
     if (current.identity.device !== entry.file.device || current.identity.inode !== entry.file.inode || hash(current.bytes) !== entry.file.digest) throw new Error("existing-data-backup-source-changed");
   }
   return backup;
@@ -208,7 +216,7 @@ export async function backupExistingData(machine: RuntimeAdmission, admission: R
   ];
   const source = census();
   for (const entry of source) {
-    const bytes = file(entry.path).bytes;
+    const bytes = file(entry.path, existingDataFileLabel(entry.file.path)).bytes;
     if (hash(bytes) !== entry.file.digest) throw new Error("existing-data-backup-source-changed");
     const target = join(root, "files", entry.file.path);
     mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
