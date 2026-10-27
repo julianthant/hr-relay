@@ -4,7 +4,7 @@ import { verifyFlatBackupRecoveryManifest } from "../sqlite/backup-service.js";
 import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 import { enumerateFlatBackupRecoveryMembership, assertCredentialCopyResourcesClosed } from "./profile-inventory.js";
 import { profileAuthorityFileWitnesses, unpublishedDraftAbortMembership } from "../configuration/credential-store.js";
-import { MutexRecoveryReceiptSchema, MutexOwnerSchema, type RuntimeLocator } from "../admission/installation.js";
+import { FlatBackupRecoveryBindingSchema, MutexRecoveryReceiptSchema, MutexOwnerSchema, type RuntimeLocator } from "../admission/installation.js";
 import { createHash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -20,8 +20,6 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import type { Clock } from "../../../rules/time/clock.js";
 
 const DigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
-export const FlatBackupRecoveryBindingSchema = z.strictObject({ kind: z.enum(["source-record", "empty-allocation"]),
-  allocationDevice: z.number().int().nonnegative(), allocationInode: z.number().int().nonnegative(), sourceDigest: DigestSchema });
 const RelativePathSchema = z.string().min(1).refine(value => !value.startsWith("/") && !value.includes("\\") && value.split("/").every(part => part !== "" && part !== "." && part !== ".."));
 const FileSchema = z.strictObject({ path: RelativePathSchema, digest: DigestSchema, device: z.number().int().nonnegative(), inode: z.number().int().nonnegative() });
 const SourceRecordSchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(), sourceStateRoot: z.string().min(1),

@@ -1,7 +1,7 @@
 import type { RuntimeAdmission } from "./admission.js";
 import { FlatProfileClaimSchema, FlatProfileClaimReceiptSchema, verifyFlatProfileClaim, settleFlatProfileClaim, type FlatProfileClaimWitness } from "../maintenance/flat-profile-claim.js";
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
-import { FlatBackupRecoveryBindingSchema, observeFlatBackupMutexRecovery, verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup.js";
+import { observeFlatBackupMutexRecovery, verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { readPrivateFile, writePrivateStage, fsyncPath } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, unpublishedDraftAbortMembership, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
@@ -749,6 +749,9 @@ function assertLiveObservationMutex(control: string): void {
     throw error;
   }
 }
+export const FlatBackupRecoveryBindingSchema = z.strictObject({ kind: z.enum(["source-record", "empty-allocation"]),
+  allocationDevice: z.number().int().nonnegative(), allocationInode: z.number().int().nonnegative(), sourceDigest: DigestSchema });
+
 const OwnerMutexRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
   pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema,
   installationId: z.uuid(), generation: NonNegativeIntSchema, ownerFile: z.string().min(1),
@@ -867,12 +870,23 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   const destination = join(history, acquisitionId);
   const receiptPath = join(history, `${acquisitionId}.json`);
   if (lstatMaybe(destination)) fail("recovery archive already exists");
+  let expectedReceipt = receipt;
   if (lstatMaybe(receiptPath)) {
     const existing = readStrict(receiptPath, MutexRecoveryReceiptSchema);
     if (canonicalJsonStringify({ ...existing, recoveredAt: receipt.recoveredAt })
       !== canonicalJsonStringify(receipt)) fail("recovery receipt changed");
+    expectedReceipt = existing;
   } else atomicJson(receiptPath, receipt);
-  const recoveryReceipt = flatWitness === undefined ? undefined : controlUpgradeFile(receiptPath);
+  let recoveryReceipt: ReturnType<typeof controlUpgradeFile> | undefined;
+  if (flatWitness !== undefined) {
+    const file = readPrivateFile(receiptPath, { label: "lock", maxBytes: 1_048_576 });
+    if (file === undefined) fail("flat-backup-recovery-receipt-changed");
+    const published = MutexRecoveryReceiptSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+    if (canonicalJsonStringify(published) !== canonicalJsonStringify(expectedReceipt)) fail("flat-backup-recovery-receipt-changed");
+    const verified = { device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") };
+    if (!sameControlUpgradeFile(receiptPath, verified)) fail("flat-backup-recovery-receipt-changed");
+    recoveryReceipt = verified;
+  }
   assertRestoreHeld(workspace, restore);
   assertCustody();
   if (recoveryReceipt !== undefined && !sameControlUpgradeFile(receiptPath, recoveryReceipt)) fail("flat-backup-recovery-receipt-changed");

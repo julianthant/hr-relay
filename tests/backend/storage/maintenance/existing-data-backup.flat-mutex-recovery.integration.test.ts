@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import nativeFs, { chmodSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import nativeFs, { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -241,5 +241,79 @@ it("retains restore custody when the read-only snapshot reports unproved closure
       assert.equal(failed, true); assert.equal(existsSync(join(f.processLockRoot, "restore-admission.lock.json")), true);
       assert.equal(existsSync(join(lost.mutex, "owner.json")), true);
     } finally { spy.mockRestore(); syncBuiltinESMExports(); }
+  } finally { f.close(); }
+});
+
+for (const entry of ["src/backend/storage/maintenance/existing-data-backup.ts", "src/backend/storage/admission/bootstrap-admission.ts", "scripts/dev/secure-env-bootstrap.ts"]) {
+  it(`loads ${entry} in a fresh module graph before any fixture admission`, () => {
+    const script = `await import(${JSON.stringify(pathToFileURL(join(process.cwd(), entry)).href)}); process.stdout.write("fresh-import-complete");`;
+    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { cwd: process.cwd(), encoding: "utf8", timeout: 20_000 });
+    assert.equal(child.status, 0, `${child.error?.message ?? ""}\n${child.stdout}\n${child.stderr}`);
+    assert.equal(child.stdout, "fresh-import-complete");
+  });
+}
+
+it("runs the actual backup bootstrap in a fresh flat fixture process", () => {
+  const f = createHistoricalFlatProfileFixture();
+  try {
+    cpSync(join(process.cwd(), "src"), join(f.workspace, "src"), { recursive: true });
+    mkdirSync(join(f.workspace, "scripts/dev"), { recursive: true });
+    cpSync(join(process.cwd(), "scripts/dev/secure-env-bootstrap.ts"), join(f.workspace, "scripts/dev/secure-env-bootstrap.ts"));
+    mkdirSync(join(f.workspace, "config"));
+    for (const name of ["runtime-isolation.json", "test-data.json"]) cpSync(join(process.cwd(), "config", name), join(f.workspace, "config", name));
+    symlinkSync(join(process.cwd(), "node_modules"), join(f.workspace, "node_modules"));
+    const source = [f.databasePath, f.protectedPath, f.artifact, f.reportPath].map(path => ({ path, bytes: readFileSync(path), inode: statSync(path).ino }));
+    const child = spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup", "--json"], { cwd: f.workspace, encoding: "utf8", timeout: 20_000 });
+    assert.equal(child.status, 0, `${child.error?.message ?? ""}\n${child.stdout}\n${child.stderr}`);
+    const result = JSON.parse(child.stdout) as { coupledBackup: { backupPath: string } };
+    assert.equal(existsSync(result.coupledBackup.backupPath), true);
+    for (const entry of source) { assert.deepEqual(readFileSync(entry.path), entry.bytes); assert.equal(statSync(entry.path).ino, entry.inode); }
+    assert.equal(existsSync(join(f.stateRoot, "machine")), false); assert.equal(existsSync(join(f.stateRoot, "profiles")), false);
+  } finally { f.close(); }
+});
+
+for (const replacement of ["malformed", "flat-binding", "recovered-at"] as const) {
+  it(`refuses publication-time same-path ${replacement} receipt substitution before its first pin`, async () => {
+    const f = createHistoricalFlatProfileFixture(), rename = nativeFs.renameSync.bind(nativeFs); let substituted = false;
+    try {
+      const lost = loseMutex(f, "complete"), receiptPath = join(lost.control, "admission-mutex-recovery", `${lost.owner.acquisitionId}.json`);
+      const owner = readFileSync(join(lost.mutex, "owner.json"));
+      const spy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, target) => {
+        rename(source, target);
+        if (!substituted && String(target) === receiptPath) {
+          substituted = true;
+          const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+          if (replacement === "flat-binding") receipt.flatBackup.sourceDigest = "0".repeat(64);
+          if (replacement === "recovered-at") receipt.recoveredAt = "2000-01-01T00:00:00.000Z";
+          const path = `${receiptPath}.substitute`;
+          writeFileSync(path, replacement === "malformed" ? "{}" : JSON.stringify(receipt), { mode: 0o600 });
+          rename(path, receiptPath);
+        }
+      });
+      syncBuiltinESMExports();
+      try {
+        await assert.rejects(resume(f)); assert.equal(substituted, true);
+        assert.deepEqual(readFileSync(join(lost.mutex, "owner.json")), owner);
+        assert.equal(existsSync(join(lost.control, "admission-mutex-recovery", lost.owner.acquisitionId)), false);
+        assert.equal(existsSync(receiptPath), true);
+      } finally { spy.mockRestore(); syncBuiltinESMExports(); }
+    } finally { f.close(); }
+  });
+}
+
+it("preserves the exact prior receipt timestamp when retrying its genuine publication prefix", async () => {
+  const f = createHistoricalFlatProfileFixture(), rename = nativeFs.renameSync.bind(nativeFs); let interrupted = false;
+  try {
+    const lost = loseMutex(f, "complete"), receiptPath = join(lost.control, "admission-mutex-recovery", `${lost.owner.acquisitionId}.json`);
+    const spy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, target) => {
+      rename(source, target);
+      if (!interrupted && String(target) === receiptPath) { interrupted = true; throw new Error("fixture interrupted receipt publication"); }
+    });
+    syncBuiltinESMExports();
+    try { await assert.rejects(resume(f)); assert.equal(interrupted, true); assert.equal(existsSync(join(lost.mutex, "owner.json")), true); }
+    finally { spy.mockRestore(); syncBuiltinESMExports(); }
+    const published = readFileSync(receiptPath);
+    assert.equal((await resume(f)).exitCode, 0);
+    assert.deepEqual(readFileSync(receiptPath), published); assert.equal(existsSync(lost.mutex), false);
   } finally { f.close(); }
 });

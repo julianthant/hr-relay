@@ -17,7 +17,7 @@ export type AuthorityBackupSourceReadOnly = Readonly<{
 }>;
 
 
-export export function inspectOpenDatabase(database:DatabaseSync,expectedSchemaVersion?:number) {
+export function inspectOpenDatabase(database:DatabaseSync,expectedSchemaVersion?:number) {
  const inspection=expectedSchemaVersion===undefined?inspectNormalAuthority(database):inspectNativeAuthority(database,expectedSchemaVersion);
  return Object.freeze({...inspection,invariantViolations:inspection.invariants.violations,exactTableRegistry:true as const});
 }
