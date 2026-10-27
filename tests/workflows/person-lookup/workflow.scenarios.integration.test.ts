@@ -27,6 +27,7 @@ import { CrmDiscoveredRecordSchema } from "../../../src/models/systems/crm/searc
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
+import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import type { z } from "zod";
@@ -307,7 +308,7 @@ describe("approved Person Lookup scenarios", () => {
     } };
     const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: personLookupDescriptor.id, stores: harness.deps.stores,
       factory, clock, scheduler: harness.scheduler, acquireDeadlineMs: 60000,
-      duoCeremony: await (await import("../../support/helpers/duo-ceremony-fixtures.js")).fixtureDuoCeremonyGates(clock), browserScreenshotCapture: createRunBrowserScreenshotCapture({ service }) });
+      duoCeremony: duoCeremonyGatesOver(database, clock), browserScreenshotCapture: createRunBrowserScreenshotCapture({ service }) });
     sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint), "headless", { runId: queued.envelope.runId, descriptorFingerprint: personLookupDescriptor.contractFingerprint, captureBrowserScreenshots: !failed });
     const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: !failed } }, clock.now().toISOString());
     assert.equal((await executeClaimedRun({ ...harness.deps, sessions, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 }) }, { ...claimed, signal: world.SIGNAL })).state, failed ? "failed" : "done");
@@ -346,7 +347,7 @@ describe("approved Person Lookup scenarios", () => {
     const events: unknown[] = [];
     const sessions = new (await import("../../../src/backend/runtime/workers/worker-sessions.js")).WorkerSessionManager({
       workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: WorkflowIdSchema.parse("person-lookup"), stores: harness.deps.stores, factory, clock: harness.authority.clock, scheduler: harness.scheduler,
-      acquireDeadlineMs: 60000, duoCeremony: await (await import("../../support/helpers/duo-ceremony-fixtures.js")).fixtureDuoCeremonyGates(harness.authority.clock), onEvent: (event) => { events.push(event); },
+      acquireDeadlineMs: 60000, duoCeremony: duoCeremonyGatesOver(harness.authority.database, harness.authority.clock), onEvent: (event) => { events.push(event); },
     });
     sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint));
     const { database, clock } = harness.authority;
