@@ -59,7 +59,7 @@ return { fixture, snapshot };
 }
 
 export function createCredentialDoctorWriter(COMMAND_ID: string, WRITE_ID: string) {
-function writeCredentials(f: ReturnType<Awaited<ReturnType<typeof createCredentialDoctorFixtures>>["fixture"]>, entries: ProtectedSettingsPatch) {
+function writeCredentials(f: Awaited<ReturnType<ReturnType<typeof createCredentialDoctorFixtures>["fixture"]>>, entries: ProtectedSettingsPatch) {
   const outcome = f.credentialStore.apply(ProtectedSettingsApplyInputSchema.parse({
     commandId: COMMAND_ID,
     commandFingerprint: "1".repeat(64),

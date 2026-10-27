@@ -710,6 +710,7 @@ it_m0("verifies real cascade tombstones after a lost delete reply and explicit e
     assert_m0.deepEqual(result.reply.affectedTargets.map(target => target.family === "run" ? target.runId : undefined), [childId, parentId]);
   } finally {
     for (const database of world.openDatabases.splice(0)) database.close();
+    for (const profile of world.profiles.splice(0)) await profile.close();
     for (const path of world.roots.splice(0)) rmSync_m0(path, { recursive: true, force: true });
   }
 });

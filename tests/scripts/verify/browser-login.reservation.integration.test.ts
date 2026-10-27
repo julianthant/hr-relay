@@ -12,7 +12,7 @@ import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { createDashboardPoolTestWorld } from "../../support/helpers/backend/dashboard-pool-world.js";
 
-function pendingSpawn(world: Awaited<ReturnType<typeof createDashboardPoolTestWorld>>, harness: ReturnType<Awaited<ReturnType<typeof createDashboardPoolTestWorld>>["openControlHarness"]>, workerId: string) {
+function pendingSpawn(world: Awaited<ReturnType<typeof createDashboardPoolTestWorld>>, harness: Awaited<ReturnType<ReturnType<typeof createDashboardPoolTestWorld>["openControlHarness"]>>, workerId: string) {
   const pool = harness.database.authority.workerPools.get("person-lookup");
   const commandId = world.nextCommandId();
   const request = CommandRequestSchema.parse({ ...world.envelope(harness, commandId), type: "spawn-worker",
