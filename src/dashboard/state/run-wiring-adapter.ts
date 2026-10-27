@@ -443,7 +443,9 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   commandRef.current = command;
   const active = useRef(request);
   active.current = request;
-  const refreshedBehind = useMemo(() => new Set<number>(), [client, row.runId, binding?.scope.actorId, binding?.authority.epoch, binding?.authority.day]);
+  const refreshBudget = useMemo(() => ({ client, runId: row.runId, actorId: binding?.scope.actorId,
+    epoch: binding?.authority.epoch, day: binding?.authority.day, revisions: new Set<number>() }),
+  [client, row.runId, binding?.scope.actorId, binding?.authority.epoch, binding?.authority.day]);
   const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>({ request, value: { state: "loading" } });
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
     && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
@@ -456,8 +458,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       if (active.current === request && !controller.signal.aborted) setSettled({ request, value: { state: "loaded", snapshot } });
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
-      if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && !refreshedBehind.has(request.revision)) {
-        refreshedBehind.add(request.revision);
+      if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && !refreshBudget.revisions.has(request.revision)) {
+        refreshBudget.revisions.add(request.revision);
         request.refreshDay();
         return;
       }
@@ -472,7 +474,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         ...(current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
     return () => controller.abort();
-  }, [client, request, row.runId, refreshedBehind]);
+  }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
   const detailGate = value.snapshot?.detail.gate;
   const matchesGate = useCallback((envelope: CommandRequest) => envelope.family === "gate" && gate?.section === "identity-gate" && gate.payload.state === "available"

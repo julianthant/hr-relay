@@ -352,7 +352,7 @@ function LoadedApp({
   const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => workflowSource(row.workflowId, dataSources) === "served"), [dayWire, dataSources]);
   const queueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
   const selectedRow = dayWire?.queueSurfaces.find(row => row.runId === route.run);
-  const logIdentity = useMemo(() => ({}), [client, authorityEpoch, boot.actor.id, day, route.run]);
+  const logIdentity = useMemo(() => ({ client, authorityEpoch, actorId: boot.actor.id, day, runId: route.run }), [client, authorityEpoch, boot.actor.id, day, route.run]);
   const retainedLogRow = useRef<{ identity: object; row: QueueSurfaceWire } | undefined>(undefined);
   if (selectedRow !== undefined) retainedLogRow.current = { identity: logIdentity, row: selectedRow };
   else if (dayResource.state !== "loading" || retainedLogRow.current?.identity !== logIdentity) retainedLogRow.current = undefined;
