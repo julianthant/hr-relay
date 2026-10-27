@@ -90,7 +90,14 @@ for (const change of ["no-selection", "unfinished", "foreign-binding"] as const)
     const path = join(fixture.stateRoot, "state.db");
     if (change === "foreign-binding") {
       const database = new DatabaseSync(path);
-      try { database.prepare("UPDATE database_states SET profile_id = ? WHERE id = 1").run(randomUUID()); }
+      try {
+        const trigger = database.prepare("SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = 'database_states_binding_immutable'").get()?.sql;
+        assert.ok(typeof trigger === "string");
+        database.exec("DROP TRIGGER database_states_binding_immutable");
+        assert.equal(database.prepare("UPDATE database_states SET profile_id = ? WHERE id = 1").run(randomUUID()).changes, 1);
+        database.exec(trigger);
+        assert.equal(database.prepare("SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = 'database_states_binding_immutable'").get()?.sql, trigger);
+      }
       finally { database.close(); }
     }
     const source = existsSync(path) ? readFileSync(path) : undefined;
