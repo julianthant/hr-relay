@@ -25,7 +25,7 @@ export interface KernelStubHarness {
 export function createKernelStubCommandFixtures(input: {
   readonly roots: string[];
   readonly openDatabases: AuthorityDatabase[];
-  readonly profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[];
+  readonly profiles: { close(): Promise<void> }[];
   readonly prefix: string;
   readonly migrationOwner: string;
   readonly resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined;
