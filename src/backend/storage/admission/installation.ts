@@ -17,7 +17,7 @@ import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "n
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot, inspectStoppedDeviceRecertificationCustody, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
-  captureWorkerProcessRecoveryFile, readProcessCustodyFile, WorkerProcessRecoveryCaptureSchema,
+  assertWorkerProcessRecoveryRuntimeStopped, captureWorkerProcessRecoveryFile, readProcessCustodyFile, WorkerProcessRecoveryCaptureSchema,
   assertRuntimeRestoreAdmission, type ProcessStartIdentity, type RestoreAdmissionHandle, authoritySourceDatabaseIdentity, RUNTIME_PROCESS_LOCK_NAMES, runtimeProcessLockIsActive, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
@@ -3477,6 +3477,7 @@ export function inspectFlatWorkerProcessRecovery(workspacePath: string, acquisit
     .map(path => readProcessCustodyFile(path).witness);
   return WorkerProcessRecoveryCaptureSchema.parse({ workspace, installationId: locator.installationId, processLockRoot: locks,
     ...captureWorkerProcessRecoveryFile(locks, acquisitionId), witnesses,
+    singletonClaims: assertWorkerProcessRecoveryRuntimeStopped(locks, acquisitionId),
     roots: [state, artifacts, locks].map(path => {
       assertNoSymlinkComponents(path);
       const stat = lstatSync(path);

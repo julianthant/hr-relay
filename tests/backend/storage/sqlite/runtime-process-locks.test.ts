@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { retireWorkerStartupCustody, authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, assertWorkerProcessCustody, bindWorkerProcessAdmission, observeRuntimeLockSnapshot, RestoreAdmissionFileSchema, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { assertWorkerProcessRecoveryRuntimeStopped, retireWorkerStartupCustody, authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, assertWorkerProcessCustody, bindWorkerProcessAdmission, observeRuntimeLockSnapshot, RestoreAdmissionFileSchema, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { createFirstInstallCustodyFixture } from "../../../support/helpers/storage/first-install-custody-fixtures.js";
@@ -27,6 +27,26 @@ function fixture() {
 }
 describe("immutable singleton process custody", () => {
 afterEach(_afterEachFixture0);
+
+  for (const role of ["server", "live-smoke", "geocode"] as const) {
+    it(`requires start-identity proof for unreleased ${role} recovery custody`, () => {
+      const f = fixture();
+      const lock = acquireRuntimeProcessLock({ processLockRoot: f.root, name: role, pid: 4100 }, f.clock,
+        { observeProcessIdentity: f.observer });
+      const path = join(f.root, `${role}-claims`, `${lock.generation}.claim.json`), before = readFileSync(path);
+      const capture = () => assertWorkerProcessRecoveryRuntimeStopped(f.root, "00000000-0000-4000-8000-000000000001", f.observer);
+      expect(capture).toThrow("worker-process-recovery-other-owner-unreleased");
+      const unavailable = new Error("synthetic-start-identity-unavailable"), acquisitionId = z.uuid().parse(lock.acquisitionId);
+      expect(() => assertWorkerProcessRecoveryRuntimeStopped(f.root, acquisitionId, () => { throw unavailable; })).toThrow(unavailable);
+      f.owners.delete(4100);
+      expect(capture()).toMatchObject([{ role, generation: lock.generation, acquisitionId: lock.acquisitionId, pid: 4100,
+        observation: { state: "gone" } }]);
+      f.owners.set(4100, "reused-pid");
+      expect(capture()).toMatchObject([{ role, observation: { state: "alive", identity: { platform: "darwin", startToken: "reused-pid" } } }]);
+      expect(readFileSync(path)).toEqual(before);
+      expect(readdirSync(join(f.root, `${role}-claims`))).toEqual([`${lock.generation}.claim.json`]);
+    });
+  }
 
   it("authenticates only the actual stable live worker acquisition and retains immutable recovery evidence", () => {
     const f = fixture();
