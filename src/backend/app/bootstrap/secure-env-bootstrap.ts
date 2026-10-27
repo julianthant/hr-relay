@@ -1,5 +1,6 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { fileURLToPath } from "node:url";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
 import { acquireStorageBackupEntrypointAdmission, acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../../storage/admission/installation.js";
@@ -46,6 +47,17 @@ export async function runSecureEnvironmentBootstrap(
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
   const workspace = fileURLToPath(new URL("../../../..", import.meta.url));
+  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-worker-process") {
+    const { runOfflineWorkerProcessRecovery } = await import("../../storage/maintenance/worker-process-recovery.js");
+    try {
+      const { report, json } = runOfflineWorkerProcessRecovery(workspace, entrypointArgs.slice(2));
+      process.stdout.write(json ? `${JSON.stringify(report)}\n` : `storage worker process: ${report.state}; acquisition ${report.acquisitionId}\n`);
+    } catch (error) {
+      process.stderr.write(`WORKER_PROCESS_RECOVERY_REFUSED: ${ERROR_CATALOG.WORKER_PROCESS_RECOVERY_REFUSED.text}\n`);
+      throw error;
+    }
+    return;
+  }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-admission") {
     const empty = entrypointArgs.length === 3 && entrypointArgs[2] === "--empty";
     if (!empty && (entrypointArgs.length !== 4 || entrypointArgs[2] !== "--pid"

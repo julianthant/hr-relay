@@ -477,6 +477,8 @@ const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage backup [--json]  verified SQLite backup; stopped flat native6 includes private coupled companions",
   "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
+  "       storage recover-worker-process --acquisition <uuid> --plan [--json]",
+  "       storage recover-worker-process --acquisition <uuid> --capture <digest> --apply [--json]",
   "       storage recover-duo-publication",
   "       storage restore --from <manifest.json> [--json]",
   "       storage recover-restore --operation <id> --from <manifest.json> --outcome <unchanged|replaced> [--json]",
