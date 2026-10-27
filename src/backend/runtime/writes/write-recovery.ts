@@ -92,7 +92,7 @@ export function requireParkedWriteCheckTarget(repositories: Pick<AuthorityReposi
 export async function checkParkedWrite(input: Readonly<{
   repositories: AuthorityRepositories; descriptor: AnyWorkflowDescriptor | undefined; target: ParkedWriteCheckTarget;
   commandId: string; requestedBy: string; signal: AbortSignal;
-  probe: Omit<ProbeReadDeps, "sessions">;
+  probe: Omit<ProbeReadDeps, "sessions" | "retainCallback">;
   sessions: Pick<TransactionSessionHost, "withDriver" | "closeAll"> & RunConfigFingerprintBinding;
   configureRun: (run: RunRecord) => Readonly<{ taskDeadlineMs: number }>;
 }>): Promise<Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>> {
@@ -114,9 +114,11 @@ export async function checkParkedWrite(input: Readonly<{
     await input.sessions.closeAll("parked");
     const resources = input.configureRun(run);
     input.sessions.bindRunConfigFingerprint(FingerprintSchema.parse(run.envelope.configFingerprint), run.envelope.browserMode);
+    let callbackSettlement: Promise<unknown> | undefined;
     try {
       try {
-        const verdict = await executeIdempotencyProbe({ ...input.probe, taskDeadlineMs: resources.taskDeadlineMs, sessions: input.sessions }, { commitContract: node.commit.uses,
+        const verdict = await executeIdempotencyProbe({ ...input.probe, taskDeadlineMs: resources.taskDeadlineMs, sessions: input.sessions,
+          retainCallback: settlement => { callbackSettlement = settlement; } }, { commitContract: node.commit.uses,
           commitInput, instance, signal: input.signal });
         input.signal.throwIfAborted();
         evidence = { schemaHash: deriveSchemaHash(task.contract.output, "output"), value: JsonValueSchema.parse(verdict) };
@@ -130,7 +132,10 @@ export async function checkParkedWrite(input: Readonly<{
       }
     } finally {
       try { await input.sessions.closeAll("parked"); }
-      finally { input.sessions.releaseRunConfigFingerprint(); }
+      finally {
+        await callbackSettlement;
+        input.sessions.releaseRunConfigFingerprint();
+      }
     }
   }
   input.signal.throwIfAborted();
