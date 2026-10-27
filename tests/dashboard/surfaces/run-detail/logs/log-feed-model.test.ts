@@ -35,8 +35,8 @@ describe_m1("approved log decisions", () => {
 afterEach_m1(_afterEachFixture0);
 
   it_m1("keeps every approved example and search/copy/count visibility", () => {
-    assert_m1.equal(logDecisionExamples_m1.length, 33);
-    assert_m1.equal(new Set(logDecisionExamples_m1.map(item => item.id)).size, 33);
+    assert_m1.equal(logDecisionExamples_m1.length, 34);
+    assert_m1.equal(new Set(logDecisionExamples_m1.map(item => item.id)).size, 34);
     const steps: readonly LogStep_m1[] = [{ id: "file", time: "09:32:17", title: "File termination", entries: [example("failure-prepared")] }];
     assert_m1.equal(logRowCount_m1(steps), 1);
     assert_m1.equal(filterLogSteps_m1(steps, "employment record confirmed").length, 1);

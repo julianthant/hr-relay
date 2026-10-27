@@ -137,8 +137,8 @@ function decisionStep(id: string): LogStep {
 }
 const decisionStepIds: Readonly<Record<string, string>> = {
   parked: "file", verification: "file", "write-absent": "file", "park-unavailable": "file", "failure-prepared": "file", "failure-attempting": "file", implementation: "file", "failure-unavailable": "file", "screenshot-unavailable": "file", "screenshot-fields": "file", "screenshot-form": "file", "screenshot-browsers": "file",
-  "failure-no-write": "read-document", "review-fields": "read-document", configuration: "find-document",
-  "review-identity": "search-person", "review-candidates": "search-person", "review-employment": "read-job", "review-held": "search-person", "review-approved": "read-job", "review-rejected": "search-person", "identity-mismatch": "search-person", loading: "search-person", "authority-changed": "read-job", "transport-unknown": "search-person", cancelled: "read-job", "screenshot-person": "search-person",
+  "failure-no-write": "read-document", "document-not-found": "find-document", "review-fields": "read-document", configuration: "find-document",
+  "review-identity": "search-person", "employee-not-found": "search-person", "review-candidates": "search-person", "review-employment": "read-job", "review-held": "search-person", "review-approved": "read-job", "identity-mismatch": "search-person", loading: "search-person", "authority-changed": "read-job", "transport-unknown": "search-person", cancelled: "read-job", "screenshot-person": "search-person",
   "failure-committed": "verify-termination", "failure-unknown": "verify-termination", "write-present": "verify-termination", "failure-verified": "finalize", warning: "verify-document", "screenshot-forms": "finalize",
 };
 export const decisionScenarios = logDecisionExamples.map(example => {

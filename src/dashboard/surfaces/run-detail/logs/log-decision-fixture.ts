@@ -30,6 +30,17 @@ export const logDecisionExamples = [
         "footer": "Alex Morgan · DEMO-1042",
         "actions": [
           {
+            "id": "parked-check",
+            "label": "Check again",
+            "primary": false,
+            "result": {
+              "title": "Record check finished",
+              "message": "The termination is still not where Relay looked. The run remains held.",
+              "tone": "info",
+              "continues": false
+            }
+          },
+          {
             "id": "parked-0",
             "label": "Check result",
             "primary": true,
@@ -207,6 +218,113 @@ export const logDecisionExamples = [
               "message": "Continued from the failed action.",
               "tone": "info",
               "continues": false
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "employee-not-found",
+    "label": "Employee not found",
+    "category": "Failures",
+    "entry": {
+      "id": "employee-not-found",
+      "kind": "decision",
+      "time": "09:32:39",
+      "decision": {
+        "title": "Look up employee",
+        "state": "failed",
+        "message": "UCPath has no employee for Alex Morgan where Relay looked.",
+        "attemptedAction": "find the employee",
+        "screenshots": [
+          {
+            "src": "/logs-preview/ucpath-person.svg",
+            "alt": "Employee search",
+            "time": "09:32:39",
+            "width": 850,
+            "height": 340,
+            "label": "Employee search",
+            "kind": "browser",
+            "system": "UCPath"
+          }
+        ],
+        "footer": "No write attempted",
+        "actions": [
+          {
+            "id": "employee-not-found-check",
+            "label": "Check again",
+            "primary": false,
+            "result": {
+              "title": "Step retry started",
+              "message": "Looking up the employee again.",
+              "tone": "info",
+              "continues": false
+            }
+          },
+          {
+            "id": "employee-not-found-enter",
+            "label": "Enter EID",
+            "primary": true,
+            "input": {
+              "kind": "text",
+              "label": "Employee ID",
+              "placeholder": "8-digit EID from UCPath",
+              "hint": "Relay reads this EID in UCPath before continuing",
+              "pattern": "^\\d{8}$"
+            },
+            "result": {
+              "title": "Employee ID entered",
+              "message": "Reading this employee in UCPath.",
+              "tone": "info",
+              "continues": true
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "document-not-found",
+    "label": "Document not found",
+    "category": "Failures",
+    "entry": {
+      "id": "document-not-found",
+      "kind": "decision",
+      "time": "09:32:39",
+      "decision": {
+        "title": "Read separation document",
+        "state": "failed",
+        "message": "Kuali has no separation document 48216 where Relay looked.",
+        "attemptedAction": "open the separation document",
+        "footer": "No write attempted",
+        "actions": [
+          {
+            "id": "document-not-found-check",
+            "label": "Check again",
+            "primary": false,
+            "result": {
+              "title": "Step retry started",
+              "message": "Looking for the document again.",
+              "tone": "info",
+              "continues": false
+            }
+          },
+          {
+            "id": "document-not-found-enter",
+            "label": "Enter document number",
+            "primary": true,
+            "input": {
+              "kind": "text",
+              "label": "Document number",
+              "placeholder": "Kuali document number",
+              "hint": "Relay opens this document in Kuali before continuing"
+            },
+            "result": {
+              "title": "Document number entered",
+              "message": "Opening this document in Kuali.",
+              "tone": "info",
+              "continues": true
             }
           }
         ]
@@ -790,17 +908,6 @@ export const logDecisionExamples = [
               "tone": "positive",
               "continues": true
             }
-          },
-          {
-            "id": "review-identity-1",
-            "label": "Reject match",
-            "primary": false,
-            "result": {
-              "title": "Employee match rejected",
-              "message": "This run stopped before any write.",
-              "tone": "danger",
-              "continues": true
-            }
           }
         ]
       }
@@ -1020,18 +1127,6 @@ export const logDecisionExamples = [
       "time": "09:49:02",
       "message": "Employee match approved. Alex Morgan · DEMO-1042. Continued to Read Workforce Job Summary.",
       "tone": "positive"
-    }
-  },
-  {
-    "id": "review-rejected",
-    "label": "Rejected · run stopped",
-    "category": "Review",
-    "entry": {
-      "id": "review-rejected",
-      "kind": "note",
-      "time": "09:49:02",
-      "message": "Employee match rejected. The employee match was rejected. This run stopped before any write.",
-      "tone": "danger"
     }
   },
   {
