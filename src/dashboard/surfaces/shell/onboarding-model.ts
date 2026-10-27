@@ -83,7 +83,7 @@ export function parseDuoMessage(value: unknown): DuoMethods | undefined {
   if (typeof value !== "object" || value === null || !("type" in value) || value.type !== "hub-duo-mock" || !("key" in value) || !("touch" in value)) return;
   if (typeof value.key === "boolean" && typeof value.touch === "boolean") return { key: value.key, touch: value.touch };
 }
-export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMethods) => void, source: "mock" | "served" = "mock") {
+export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMethods) => void, source: "mock" | "served" = "mock", operationId?: string) {
   const child = useRef<Window | null>(null);
   const latest = useRef(methods);
   latest.current = methods;
@@ -107,7 +107,7 @@ export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMetho
     window.addEventListener("pagehide", close);
     if (source === "mock") window.addEventListener("message", message);
     return () => { window.clearInterval(timer); window.removeEventListener("message", message); window.removeEventListener("pagehide", close); close(); };
-  }, [source]);
+  }, [source, operationId]);
   return { status, open() {
     if (child.current && !child.current.closed) { child.current.focus(); return; }
     child.current = window.open(`${location.pathname}?onboardingSetup=fast`, "hub-duo-setup", "popup,width=1200,height=900");
@@ -245,8 +245,9 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
   const [pending, setPending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const generation = useRef(0);
+  const child = useRef<Window | null>(null);
   const draft = port?.onboarding;
-  useEffect(() => { generation.current++; setPending(false); setUnavailable(false); return () => { generation.current++; }; }, [draft?.operationId]);
+  useEffect(() => { generation.current++; setPending(false); setUnavailable(false); return () => { generation.current++; child.current?.close(); child.current = null; }; }, [draft?.operationId]);
   const run = async (action: () => Promise<PublicProfileState>) => {
     if (pending || !port) return;
     const request = ++generation.current; setPending(true); setUnavailable(false);
@@ -258,7 +259,15 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
     connected: draft !== undefined && !port?.unavailable, unavailable: unavailable || port?.unavailable || draft?.methods[method].state === "unknown" || draft?.methods[method].state === "unavailable", listening: pending || draft?.methods[method].state === "pending", method, setMethod,
     returnToParent() { window.opener?.focus(); },
     cancel() { const attemptId = draft?.methods[method].attemptId; if (port && attemptId) void run(() => port.cancelDuo(method, attemptId)); },
-    open(_capture: boolean) { if (port && draft?.methods[method].state === "idle") void run(() => port.start(method)); },
+    open(capture: boolean) {
+      if (!port || !draft || port.unavailable) return;
+      if (!capture) {
+        if (child.current && !child.current.closed) { child.current.focus(); return; }
+        child.current = window.open(`${location.pathname}?onboardingSetup=duo`, "hub-duo-devices", "popup,width=900,height=800");
+        setUnavailable(child.current === null); return;
+      }
+      if (draft.methods[method].state === "idle") void run(() => port.start(method));
+    },
     start(selected: ProfileOnboardingMethod) { if (port && draft?.methods[selected].state === "idle") void run(() => port.start(selected)); },
     confirm() { const attemptId = draft?.methods[method].attemptId; if (attemptId && port) void run(() => port.confirmDuo(method, attemptId)); else setUnavailable(true); },
   };

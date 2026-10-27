@@ -210,3 +210,20 @@ it("exact-attempt cancellation preserves the other method and rejects premature 
   await assert.rejects(served.confirmDuo("touch", attemptId));
   assert.equal(settled.length, 1);
 });
+
+
+it("served Open Duo browser opens existing confirmation UI without starting capture", async () => {
+  const host = document.createElement("div"), root = createRoot(host), open = vi.spyOn(window, "open").mockReturnValue(null);
+  const draft = onboardingDraft(); let calls = 0;
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async () => { calls++; return Response.json(draft); } });
+  let setup!: ReturnType<typeof useServedDuoSetup>;
+  function Probe() { setup = useServedDuoSetup(createServedOnboardingPort(client, () => {}, draft)); return null; }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => setup.open(false));
+    assert.equal(open.mock.calls.length, 1); assert.equal(calls, 0);
+    assert.deepEqual(setup.methods, { key: false, touch: false });
+    await act(async () => setup.open(true));
+    assert.equal(calls, 1); assert.equal(open.mock.calls.length, 1);
+  } finally { await act(async () => root.unmount()); open.mockRestore(); }
+});
