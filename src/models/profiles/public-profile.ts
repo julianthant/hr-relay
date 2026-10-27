@@ -28,7 +28,7 @@ export const ProfileOnboardingStateSchema = z.strictObject({
   if ((value.step === "ready") !== complete) context.addIssue({ code: "custom", message: "profile-onboarding-readiness-invalid" });
   for (const [name, method] of Object.entries(value.methods)) {
     const confirmed = method.operatorConfirmed || name === "key" && method.exactCredentialRequestObserved;
-    if (method.state === "complete" && (!method.ceremonyObserved || !method.portalAccepted || !confirmed)) {
+    if (method.state === "complete" && (!method.ceremonyObserved || name === "touch" && !method.portalAccepted || !confirmed)) {
       context.addIssue({ code: "custom", message: "profile-onboarding-method-incomplete" });
     }
   }
