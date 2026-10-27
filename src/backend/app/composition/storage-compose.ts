@@ -985,7 +985,7 @@ export async function composeStorageCommand(
         const { hostConfigFacts } = await import("../../../models/config/host-display.js");
         const { workerBootstrapEnvironment } = await import("../../../models/config/secrets.js");
         const report = await upgradeStoppedMachineControl(admission, { plan: rest.includes("--plan"), hostFacts: hostConfigFacts(workerBootstrapEnvironment()) }, clock, composeStoppedControlCredentialInventory);
-        return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: machine-control ${report.state} (${String(report.profileCount)} profiles)`, exitCode: 0 };
+        return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: machine-control ${report.state} (${String(report.profileCount)} profiles)\nruntime access: ${report.runtimeAccess}`, exitCode: 0 };
       }
       const { upgradeStorage } = await import("../../storage/maintenance/upgrade.js");
       const report = await upgradeStorage(admission,{ stateRoot: admission.stateRoot,

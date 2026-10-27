@@ -2946,7 +2946,7 @@ export interface StoppedProfileControlUpgradeAdmission {
   registeredProfileIds(): readonly string[];
   profileInventory(profileId: string): StoppedControlProfileInventory;
   recordProfileInventory(claim: StoppedControlProfileInventory, proof: StoppedControlCredentialAttestation): void;
-  run(plan: boolean): Readonly<{ state: "current" | "planned" | "upgraded"; profileCount: number; receiptId?: string }>;
+  run(plan: boolean): Readonly<{ state: "current" | "planned" | "upgraded"; runtimeAccess: "owner-claim-required" | "unchanged"; profileCount: number; receiptId?: string }>;
   release(): void;
 }
 
@@ -3242,18 +3242,19 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       return mutex(control, () => {
         held();
         const registrations = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
-        if (registrations.profiles.some(row => row.registration.onboardingCompletion === undefined)) fail("profile-control-upgrade-owner-claim-required");
+        const runtimeAccess = registrations.profiles.some(row => row.registration.onboardingCompletion === undefined)
+          ? "owner-claim-required" as const : "unchanged" as const;
         if (lstatMaybe(intentPath)) {
           if (plan) fail("profile-control-upgrade-recovery-required");
           const receipt = readControlUpgradeReceipt(intentPath);
           const registry = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
           finish(receipt, publicationProofs(registry.profiles, true));
-          return { state: "upgraded" as const, profileCount: receipt.current.duo.length, receiptId: receipt.operationId };
+          return { state: "upgraded" as const, runtimeAccess, profileCount: receipt.current.duo.length, receiptId: receipt.operationId };
         }
         const observedMarker = readProfileEvidence(markerPath, z.strictObject({ schemaVersion: z.number().int() }));
         if (observedMarker.schemaVersion !== 2 && observedMarker.schemaVersion !== 3) fail("profile-control-upgrade-pending-conversion-unsupported");
         const marker = { schemaVersion: observedMarker.schemaVersion };
-        if (marker.schemaVersion === 3) return { state: "current" as const, profileCount: readMachineRegistry(control, locator, false).profiles.length };
+        if (marker.schemaVersion === 3) return { state: "current" as const, runtimeAccess, profileCount: readMachineRegistry(control, locator, false).profiles.length };
         const prior = readProfileEvidence(controlPath, PriorProfileContinuitySchema), sourceEvidence = priorControlUpgradeEvidence(locator, prior);
         const registry = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
         const current = ProfileContinuitySchema.parse({ ...prior, schemaVersion: 2,
@@ -3261,7 +3262,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         if (lstatMaybe(backupDirectory)) fail("profile-control-upgrade-orphan-or-rollback");
         if (Buffer.byteLength(JSON.stringify({ prior, current, sourceEvidence })) + 4096 > 16 * 1024 * 1024) fail("profile-control-upgrade-evidence-too-large");
         const afterPublication = publicationProofs(registry.profiles, !plan);
-        if (plan) return { state: "planned" as const, profileCount: registry.profiles.length };
+        if (plan) return { state: "planned" as const, runtimeAccess, profileCount: registry.profiles.length };
         mkdirSync(backupDirectory, { mode: 0o700 }); syncDir(control);
         privateDirectory(backupDirectory);
         const operationId = randomUUID(), prefix = join(backupDirectory, operationId), priorControl = controlUpgradeFile(controlPath), priorMarker = controlUpgradeFile(markerPath);
@@ -3278,7 +3279,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         if (!sameControlUpgradeFile(controlPath, priorControl) || !sameControlUpgradeFile(markerPath, priorMarker)
           || priorControlUpgradeEvidence(locator, prior) !== sourceEvidence) fail("profile-control-upgrade-source-changed");
         atomicJson(intentPath, receipt); finish(receipt, afterPublication);
-        return { state: "upgraded" as const, profileCount: registry.profiles.length, receiptId: operationId };
+        return { state: "upgraded" as const, runtimeAccess, profileCount: registry.profiles.length, receiptId: operationId };
       });
     },     release() {
       for (const snapshot of inventorySnapshots) {

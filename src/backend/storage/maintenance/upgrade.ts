@@ -257,7 +257,7 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
   const restore = heldRestore ?? acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
   let control: ReturnType<RuntimeAdmission["beginStoppedMachineControlUpgrade"]> | undefined;
   const inventories: Array<{ dispose(): void }> = [];
-  let result: { state: "planned" | "current" | "upgraded"; profileCount: number; receiptId?: string } | undefined;
+  let result: ReturnType<StoppedMachineControl["run"]> | undefined;
   let primary: { error: unknown } | undefined;
   try {
     control = machine.beginStoppedMachineControlUpgrade(restore);
@@ -272,7 +272,7 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
     const report = control.run(input.plan);
     if (!input.plan && report.state === "upgraded") {
       const readback = control.run(false);
-      if (readback.state !== "current" || readback.profileCount !== report.profileCount) throw new Error("profile-control-upgrade-readback-failed");
+      if (readback.state !== "current" || readback.profileCount !== report.profileCount || readback.runtimeAccess !== report.runtimeAccess) throw new Error("profile-control-upgrade-readback-failed");
     }
     result = report;
   } catch (error) { primary = { error }; }
