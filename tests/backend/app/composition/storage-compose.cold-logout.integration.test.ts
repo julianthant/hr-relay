@@ -27,11 +27,11 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/pr
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture, readAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
 
-function fixture() {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+async function fixture() {
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   // This busy answer admits cancellation only; the restarted canonical owner proves closure.
   const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine, activity: { hasUnquiescedWork: () => true } });
-  const active = session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("fixture activation refused");
   clock.advanceWall(60_000);
   const held = session.logOut(active.token, { at: clock.now().toISOString() });
@@ -50,13 +50,13 @@ function fixture() {
       const machine = acquireEntrypointAdmission(f.workspace, "exclusive");
       const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
         processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
-      return { machine, runtime, async close() { await runtime.close(); machine.release(); f.close(); } };
+      return { machine, runtime, async close() { await runtime.close(); machine.release(); await f.close(); } };
     },
-    close() { owner.release(); f.close(); } };
+    async close() { owner.release(); await f.close(); } };
 }
 
 for (const phase of ["early", "captured", "incomplete", "journal", "erased"] as const) it(`finishes genuine cold ${phase} cancellation without ordinary authority or replacement erasure identity`, async () => {
-  const f = fixture();
+  const f = await fixture();
   let operation = f.readOperation();
   if (phase === "early") appendEmergencyFault({ stateRoot: f.f.stateRoot, code: "SYNTHETIC", build: "fixture", error: new Error("synthetic diagnostic"), now: f.clock.now() });
   else {
@@ -81,7 +81,7 @@ for (const phase of ["early", "captured", "incomplete", "journal", "erased"] as 
   const stopped = f.restart();
   try {
     assert.throws(() => stopped.runtime.selectedContext("unissued"));
-    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@example.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
+    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
     assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("fresh verifier refused continuation");
     const result = authorized.resume();
     assert.equal(authorized.resume().state, "refused");
@@ -115,7 +115,7 @@ for (const phase of ["early", "captured", "incomplete", "journal", "erased"] as 
 });
 
 it("refuses incomplete late captured values with a surviving clean canonical log instead of blessing tombstones", async () => {
-  const f = fixture();
+  const f = await fixture();
   let operation = f.readOperation();
   operation = LogoutOperationSchema.parse({ ...operation, phase: "erasing", commandId: randomUUID(), writeId: randomUUID(), expectedRevision: readForErasure(f.store, operation.operationId).revision });
   f.f.machine.publishProfileOperation(operation);
@@ -125,7 +125,7 @@ it("refuses incomplete late captured values with a surviving clean canonical log
   const protectedPath = join(f.f.stateRoot, "credentials", "protected.json"), priorProtected = readFileSync(protectedPath), priorOperation = readFileSync(f.operationPath);
   const stopped = f.restart();
   try {
-    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@example.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
+    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
     assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("fresh verifier refused continuation");
     assert.throws(() => authorized.resume(), /credential-maintenance-copy-capture-incomplete/u);
     assert.equal(authorized.resume().state, "refused");
@@ -135,8 +135,8 @@ it("refuses incomplete late captured values with a surviving clean canonical log
   } finally { await stopped.close(); }
 });
 
-for (const mutation of ["copy", "process-root", "key", "head"] as const) it(`revalidates actual ${mutation} membership around constructor-owned private inspection`, () => {
-  const f = fixture(), operation = f.readOperation();
+for (const mutation of ["copy", "process-root", "key", "head"] as const) it(`revalidates actual ${mutation} membership around constructor-owned private inspection`, async () => {
+  const f = await fixture(), operation = f.readOperation();
   if (mutation === "head") {
     const machineRoot = join(f.f.machine.stateRoot, "machine");
     ensureChildDirectory(machineRoot, join(machineRoot, "erasures"), "erasure journal", 0o700, 0o700);
@@ -168,11 +168,11 @@ for (const mutation of ["copy", "process-root", "key", "head"] as const) it(`rev
     assert.equal(mutated, true, "actual canonical inventory must succeed before the injected mutation");
     assert.equal(readFileSync(join(f.f.stateRoot, "credentials", "protected.json")).equals(before), true);
     assert.equal(f.readOperation().commandId, undefined);
-  } finally { restore?.(); f.close(); }
+  } finally { restore?.(); await f.close(); }
 });
 
-it("rejects a genuine live process record and an unavailable observation before any erase identity is captured", () => {
-  const f = fixture(), operation = f.readOperation();
+it("rejects a genuine live process record and an unavailable observation before any erase identity is captured", async () => {
+  const f = await fixture(), operation = f.readOperation();
   const lock = acquireRuntimeProcessLock({ processLockRoot: join(f.f.workspace, rebuildRuntimeIsolation.processLockRoot), name: "workers", pid: process.pid,
     admission: { kind: "unbound-worker", authorityPath: f.f.path } }, f.clock);
   const kill = process.kill.bind(process);
@@ -185,12 +185,12 @@ it("rejects a genuine live process record and an unavailable observation before 
     });
     assert.throws(() => preparePendingLogoutInventory(f.store, operation));
     assert.equal(f.readOperation().commandId, undefined);
-  } finally { vi.restoreAllMocks(); lock.release(); f.close(); }
+  } finally { vi.restoreAllMocks(); lock.release(); await f.close(); }
 });
 
 
-it("refuses a symlink at the actual saved browser root before erasure or database effects", () => {
-  const f = fixture(), operation = f.readOperation(), facts = AuthorityDatabase.readProfileMaintenanceInventory(f.owner);
+it("refuses a symlink at the actual saved browser root before erasure or database effects", async () => {
+  const f = await fixture(), operation = f.readOperation(), facts = AuthorityDatabase.readProfileMaintenanceInventory(f.owner);
   const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
     : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
   const browserRoot = resolveConfigWithProvenance(settings, { primaryDisplay: null }, f.clock,
@@ -202,12 +202,12 @@ it("refuses a symlink at the actual saved browser root before erasure or databas
   } finally {
     unlinkSync(browserRoot);
     assert.equal(AuthorityDatabase.readProfileMaintenanceInventory(f.owner).authorityGeneration, facts.authorityGeneration);
-    f.close();
+    await f.close();
   }
 });
 
 it("refuses the unreleased process record of an actual exited child without inventing an idle owner", async () => {
-  const f = fixture(), child = spawn(process.execPath, ["-e", "process.stdout.write('ready');setInterval(()=>{},1000)"], { stdio: ["ignore", "pipe", "pipe"] });
+  const f = await fixture(), child = spawn(process.execPath, ["-e", "process.stdout.write('ready');setInterval(()=>{},1000)"], { stdio: ["ignore", "pipe", "pipe"] });
   let lock: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
   try {
     await once(child.stdout, "data"); assert.ok(child.pid);
@@ -218,25 +218,25 @@ it("refuses the unreleased process record of an actual exited child without inve
     assert.equal(f.readOperation().commandId, undefined);
   } finally {
     if (child.exitCode === null && child.signalCode === null) { const exited = once(child, "exit"); child.kill("SIGTERM"); await exited; }
-    lock?.release(); f.close();
+    lock?.release(); await f.close();
   }
 });
 
 
 it("requires the genuine verifier and revokes one-use cold continuations on operation change and owner close", async () => {
-  const f = fixture(), operation = f.readOperation(), before = readFileSync(join(f.f.stateRoot, "credentials", "protected.json"));
+  const f = await fixture(), operation = f.readOperation(), before = readFileSync(join(f.f.stateRoot, "credentials", "protected.json"));
   const stopped = f.restart();
   try {
-    const wrong = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@example.edu", password: "incorrect-synthetic-password", at: f.clock.now().toISOString() });
+    const wrong = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@ucsd.edu", password: "incorrect-synthetic-password", at: f.clock.now().toISOString() });
     assert.equal(wrong.state, "refused");
     assert.equal(readFileSync(join(f.f.stateRoot, "credentials", "protected.json")).equals(before), true);
-    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@example.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
+    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
     assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("fresh verifier refused continuation");
     stopped.machine.publishProfileOperation({ ...operation, phase: "incomplete" });
     assert.equal(authorized.resume().state, "refused");
     assert.equal(authorized.resume().state, "refused");
     assert.equal(f.readOperation().commandId, undefined);
-    const closed = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@example.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
+    const closed = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
     assert.equal(closed.state, "authorized"); if (closed.state !== "authorized") throw new Error("fresh verifier refused continuation");
     await stopped.runtime.close();
     assert.equal(closed.resume().state, "refused");
@@ -247,8 +247,8 @@ it("requires the genuine verifier and revokes one-use cold continuations on oper
 });
 
 
-it("disposes the exact retained pending inventory copy and fences its returned revalidation before releasing profile custody", () => {
-  const f = fixture(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
+it("disposes the exact retained pending inventory copy and fences its returned revalidation before releasing profile custody", async () => {
+  const f = await fixture(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
   const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
     const snapshot = capture(path); copies.push(snapshot.path); return snapshot;
   });
@@ -262,5 +262,5 @@ it("disposes the exact retained pending inventory copy and fences its returned r
     assert.equal(copies.every(path => !existsSync(path)), true);
     assert.throws(() => inventory?.revalidate(), /missing or released admission/u);
     f.owner.assertLive(); f.f.machine.assertLive();
-  } finally { inventory?.dispose(); observer.mockRestore(); f.close(); }
+  } finally { inventory?.dispose(); observer.mockRestore(); await f.close(); }
 });

@@ -59,7 +59,7 @@ function deriveReceipts(value: FinalizationHarness) {
 
 describe("supplied-EID executor authority", () => {
   it("writes through the real sequencer with machine provenance and no operator gate", async () => {
-    const value = harness();
+    const value = await harness();
     const claimed = enqueueFromComparison(value, true);
     const outcome = await value.bound(() =>
       executeClaimedRun(executorDependencies(value), { ...claimed, signal }),
@@ -95,7 +95,7 @@ describe("supplied-EID executor authority", () => {
 
 describe("current Kuali finalization transaction is terminal evidence", () => {
   it("settles through the real executor and derives a verified receipt from the stored read-back", async () => {
-    const value = harness();
+    const value = await harness();
     const claimed = await parkApproveAndReclaim(value);
 
     const outcome = await value.bound(() =>
@@ -202,7 +202,7 @@ describe("current Kuali finalization transaction is terminal evidence", () => {
   });
 
   it("does not accept a sequencer-only settlement that bypasses the executor", async () => {
-    const value = harness();
+    const value = await harness();
     const { run, claim } = finalizationClaimRunning(
       value.database,
       value.clock,

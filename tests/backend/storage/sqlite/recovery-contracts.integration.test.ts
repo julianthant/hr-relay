@@ -28,7 +28,7 @@ describe("DB-only authority backups", () => {
 afterEach(_afterEachFixture0);
 
   it("writes manifest v3 and never reads or copies settings or credentials", async () => {
-    const world = openCurrentWorld();
+    const world = await openCurrentWorld();
     const canary = "CANARY-CREDENTIAL-must-not-enter-backup";
     const applied = world.credentials.apply(ProtectedSettingsApplyInputSchema.parse({
       commandId: randomUUID(), commandFingerprint: "a".repeat(64), writeId: randomUUID(),
@@ -148,7 +148,7 @@ it("withholds absence of custody for an unreadable live database and inaccessibl
   let primary: { error: unknown } | undefined = undefined;
   let changedDirectory: string | undefined = undefined;
   try {
-    const world = openCurrentWorld();
+    const world = await openCurrentWorld();
     const f = { root: world.stateRoot, path: world.authorityPath };
     await takeBackup(world);
     world.closeDatabase();

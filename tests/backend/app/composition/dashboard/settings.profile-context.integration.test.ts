@@ -19,7 +19,7 @@ import { ProfileBrowserRootRefusalError } from "../../../../../src/backend/stora
 import { createProfileRegistry } from "../../../../../src/backend/profiles/registry.js";
 
 it("preserves supported authenticated retained saved-but-inactive Settings across context recreation", async () => {
-  const f = createBoundProfileFixture();
+  const f = await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const hostFacts = { primaryDisplay: null };
   const runtimeStoragePair = { stateRoot: f.admission.stateRoot, artifactRoot: f.admission.artifactRoot };
@@ -72,11 +72,11 @@ it("preserves supported authenticated retained saved-but-inactive Settings acros
       assert.throws(() => inspection.withAuthorityTransaction(repositories => repositories.commands.assertIdentity(unownedCommand)), CredentialContextRequiredError);
       assert.equal(inspection.authority.commands.get(unownedCommand.commandId), undefined);
     } finally { inspection.close(); }
-  } finally { database.close(); f.close(); }
+  } finally { database.close(); await f.close(); }
 });
 
 it("binds browser roots and selected Settings resolution to the genuine ordinary profile child", async () => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const credentials = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
     erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${f.admission.profileBinding.profileId}.json`) });
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials, clock, hostFacts: { primaryDisplay: null } });
@@ -95,5 +95,5 @@ it("binds browser roots and selected Settings resolution to the genuine ordinary
     createProfileRegistry(f.machine).advanceSession(null);
     assert.throws(() => assertProfileBrowserRoot(f.admission, contained));
     assert.throws(() => context.resolveSettings(saved));
-  } finally { await context.account.close(); context.database.close(); f.close(); }
+  } finally { await context.account.close(); context.database.close(); await f.close(); }
 });

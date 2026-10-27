@@ -23,7 +23,7 @@ it("rearms idle refresh from genuine native admission, browser settlement and cu
   const schedule = new IdleSessionSchedule();
   let refresh: SessionPreviewRequest | undefined;
   const signal = new AbortController().signal;
-  const h = world.openControlHarness({ interceptPool: pool => ({ ...pool, refreshPoolBrowser: async context => {
+  const h = await world.openControlHarness({ interceptPool: pool => ({ ...pool, refreshPoolBrowser: async context => {
     h.database.authority.workerControls.transition(context.command.commandId, "admitted", { state: "ready" });
     assert(refresh);
     schedule.sync(view(), elapsed(), { [world.WORKER_1]: { request: refresh, state: "uncertain", message: "awaiting native evidence" } });
@@ -36,7 +36,7 @@ it("rearms idle refresh from genuine native admission, browser settlement and cu
   const fingerprint = FingerprintSchema.parse("a".repeat(64));
   let refreshes = 0;
   const sessions = new WorkerSessionManager({ workerId: world.WORKER_1, workflowId: world.WORKFLOW, stores: taskStoreRegistry, clock: h.clock, scheduler: h.scheduler,
-    acquireDeadlineMs: 1000, duoCeremony: fixtureDuoCeremonyGates(h.clock), onObservation: value => h.database.authority.workerControls.observe({ ...value, leaseGeneration: 1 }),
+    acquireDeadlineMs: 1000, duoCeremony: await fixtureDuoCeremonyGates(h.clock), onObservation: value => h.database.authority.workerControls.observe({ ...value, leaseGeneration: 1 }),
     factory: { open: async input => {
       const sessionId = BrowserSessionIdSchema.parse(randomUUID());
       return { sessionId, system: input.system, instance: input.instance, configFingerprint: fingerprint, signInFingerprint: fingerprint,

@@ -36,8 +36,8 @@ const VALIDATING_BACKFILL_GAPS = {
   }),
 };
 
-function harness(nativeWorkers = false): { w: DashboardWorld; hub: DashboardStreamHub } {
-  const original = makeWorld();
+async function harness(nativeWorkers = false): Promise<{ w: DashboardWorld; hub: DashboardStreamHub }> {
+  const original = await makeWorld();
   const projection = nativeWorkers ? createRunQueueProjection({
     timeline: original.timeline, reader: original.runReader, stateRoot: original.stateRoot, clock: original.clock,
     appVersion: "0.1.0", descriptorSetHash: original.projection.descriptorSetHash(),
@@ -66,10 +66,10 @@ function harness(nativeWorkers = false): { w: DashboardWorld; hub: DashboardStre
   return { w, hub };
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const hub of hubs.splice(0)) hub.close();
   for (const handle of workerHandles.splice(0)) handle.release();
-  for (const w of worlds.splice(0)) w.dispose();
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 function admitOwnedWorker(w: DashboardWorld) {
@@ -113,7 +113,7 @@ function applyEnvelope(day: DashboardDayWire | undefined, envelope: DashboardStr
 
 describe("dashboard stream hub", () => {
   it("opens with hello -> snapshot -> health and stamps the projection identity", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
     const [hello, snapshot, health] = connection.initial;
@@ -126,7 +126,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("EXIT: snapshot + any valid live envelope sequence equals a fresh snapshot", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
     let local: DashboardDayWire | undefined;
@@ -161,7 +161,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("resnapshots worker cards when a browser session opens", async () => {
-    const { w, hub } = harness(true);
+    const { w, hub } = await harness(true);
     const lease = admitOwnedWorker(w);
     const connection = await hub.connect({ day: DAY });
     const observed: DashboardStreamEnvelope[] = [];
@@ -206,7 +206,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("resnapshots worker cards when a lease moves without any span", async () => {
-    const { w, hub } = harness(true);
+    const { w, hub } = await harness(true);
     const connection = await hub.connect({ day: DAY });
     const observed: DashboardStreamEnvelope[] = [];
     const [initial] = connection.initial.filter((envelope) => envelope.type === "snapshot");
@@ -232,7 +232,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("replays retained patches for a resumable cursor and never re-snapshots", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const first = await hub.connect({ day: DAY });
@@ -252,7 +252,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("reports the exact historical cursor transition when a retained snapshot forces replacement", async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     worlds.push(w);
     const observed: unknown[] = [];
     const hub = createDashboardStreamHub({
@@ -303,7 +303,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("resnapshots a cursor from an earlier projection generation without reporting missed history", async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     worlds.push(w);
     const observed: unknown[] = [];
     const hub = createDashboardStreamHub({
@@ -333,7 +333,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("resnapshots a historical cursor without generation evidence without reporting missed history", async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     worlds.push(w);
     const observed: unknown[] = [];
     const hub = createDashboardStreamHub({
@@ -358,7 +358,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("never pairs a hello from one generation with a snapshot captured after publish rebuilt projection", async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     worlds.push(w);
     const hub: DashboardStreamHub = createDashboardStreamHub({
       projection: w.projection,
@@ -394,7 +394,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("captures the complete replacement snapshot after durable gap publication without projection movement", async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     worlds.push(w);
     const counts = { beforePublication: -1, afterPublication: -1 };
     const hub = createDashboardStreamHub({
@@ -465,7 +465,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("refuses to serve a replacement handshake when durable gap publication fails", async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     worlds.push(w);
     const hub = createDashboardStreamHub({
       projection: w.projection,
@@ -490,7 +490,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("serves a fresh snapshot for an expired or foreign cursor", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({
       day: DAY,
@@ -502,7 +502,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("broadcasts reset-required when the projection generation changes", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
     w.projection.rebuildFromTimeline();
@@ -514,7 +514,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("replaces an overflowing pending queue with one loud reset-required", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const connection = await hub.connect({ day: DAY });
@@ -530,7 +530,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("greets a degraded projection with health degraded instead of a fabricated snapshot", async () => {
-    const { w } = harness();
+    const { w } = await harness();
     w.projection.apply({
       t: "run.claimed", ts: w.clock.now().toISOString(), workflow: "person-lookup", pid: 1,
       runId: uuidOf(60), attempt: 1, traceId: "pl-100000-6060", spanPath: "pl-100000-6060",
@@ -538,7 +538,7 @@ describe("dashboard stream hub", () => {
     } as never);
     // collectRebuilds is off, so the default schedule ran the rebuild
     // immediately and recovered; force a degraded state via corrupt storage.
-    const degradedWorld = makeWorld({ collectRebuilds: true });
+    const degradedWorld = await makeWorld({ collectRebuilds: true });
     worlds.push(degradedWorld);
     const degradedHub = createDashboardStreamHub({
       projection: degradedWorld.projection,
@@ -559,7 +559,7 @@ describe("dashboard stream hub", () => {
     connection.close();
   });
   it("hands a live envelope straight to an outstanding next() and never queues past it", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const connection = await hub.connect({ day: DAY });
@@ -572,7 +572,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("keeps a consumer that stops asking bounded: N > maxPending publishes leave one reset-required, then nothing", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const connection = await hub.connect({ day: DAY });
@@ -596,7 +596,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("resolves an outstanding next() with undefined when the connection or the hub closes", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const byConnection = await hub.connect({ day: DAY });
     const byHub = await hub.connect({ day: DAY });
@@ -612,7 +612,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("refuses a second concurrent next() instead of racing two consumers over one queue", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
     const outstanding = connection.next();
@@ -622,7 +622,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("builds one snapshot per distinct day for a count-bearing change, however many subscribers share it", async () => {
-    const w = makeWorld();
+    const w = await makeWorld();
     worlds.push(w);
     const builds: string[] = [];
     // A bound Proxy rather than a patched method: the projection keeps private
@@ -655,7 +655,7 @@ describe("dashboard stream hub", () => {
   });
   it("PREMISE: one projection batch stamps its patch and its snapshot with the same cursor, in that order", async () => {
 
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     w.writer.emit({
       t: "span.started",
       kind: "worker",

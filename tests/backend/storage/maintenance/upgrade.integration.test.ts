@@ -37,23 +37,23 @@ import { boundProfileCredentials, createBoundProfileFixture } from "../../../sup
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const clock = manualClock(new Date("2026-10-01T12:00:00Z"));
-const closers: Array<() => void> = [];
-afterEach(() => { vi.restoreAllMocks(); for (const close of closers.splice(0).reverse()) close(); });
-function fixture(){
- const profile=createBoundProfileFixture({ pending: true }); closers.push(() => profile.close());
+const closers: Array<() => void | Promise<void>> = [];
+afterEach(async () => { vi.restoreAllMocks(); for (const close of closers.splice(0).reverse()) await close(); });
+async function fixture(){
+ const profile=await createBoundProfileFixture({ pending: true }); closers.push(async () => await profile.close());
  const root=profile.stateRoot,path=profile.path,input={stateRoot:root,processLockRoot:join(profile.workspace,rebuildRuntimeIsolation.processLockRoot),plan:false};
- return {get admission(){return profile.admission;},profileId:profile.admission.profileBinding.profileId,machine:profile.machine,finish:()=>profile.finish(),root,path,input,run:(plan=false)=>upgradeStorage(profile.admission,{...input,plan},clock)};
+ return {get admission(){return profile.admission;},profileId:profile.admission.profileBinding.profileId,machine:profile.machine,finish:async ()=>await profile.finish(),root,path,input,run:(plan=false)=>upgradeStorage(profile.admission,{...input,plan},clock)};
 }
-function liveFixture(){
- const profile=createBoundProfileFixture();closers.push(()=>profile.close());
+async function liveFixture(){
+ const profile=await createBoundProfileFixture();closers.push(async ()=>await profile.close());
  const root=profile.stateRoot,path=profile.path,input={stateRoot:root,processLockRoot:join(profile.workspace,rebuildRuntimeIsolation.processLockRoot),plan:false};
  return {get admission(){return profile.admission;},root,path,input,run:(plan=false)=>upgradeStorage(profile.admission,{...input,plan},clock)};
 }
-function initialize(f:ReturnType<typeof liveFixture>){const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"admission-fixture"},clock);database.close();}
+function initialize(f:Awaited<ReturnType<typeof liveFixture>>){const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"admission-fixture"},clock);database.close();}
 
 describe("stopped native upgrade admission",()=>{
- function baselineFixture(version=1){
-  const f=fixture();rmSync(f.path,{force:true});
+ async function baselineFixture(version=1){
+  const f=await fixture();rmSync(f.path,{force:true});
   const raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
   try {
    for(const migration of SQLITE_MIGRATIONS.filter(migration=>migration.version<=version))for(const statement of migration.statements)raw.exec(statement);
@@ -72,7 +72,7 @@ describe("stopped native upgrade admission",()=>{
   return f;
  }
  it("upgrades schema 5 retained plans by removing only workers through stopped backup admission",async()=>{
-  const f=baselineFixture(5),raw=new DatabaseSync(f.path);
+  const f=await baselineFixture(5),raw=new DatabaseSync(f.path);
   const plan={...START_PLAN,workers:8};
   try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
    plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
@@ -98,7 +98,7 @@ describe("stopped native upgrade admission",()=>{
   const upgraded=readFileSync(f.path);assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),upgraded);
  });
  it("rolls back schema 5 field removal when migration fails",async()=>{
-  const f=baselineFixture(5),raw=new DatabaseSync(f.path),plan={...START_PLAN,workers:"auto"};
+  const f=await baselineFixture(5),raw=new DatabaseSync(f.path),plan={...START_PLAN,workers:"auto"};
   try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
    plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
   const before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");assert.ok(typeof exec==="function");
@@ -109,14 +109,14 @@ describe("stopped native upgrade admission",()=>{
   await assert.rejects(f.run(),/injected-worker-removal-failure/u);assert.deepEqual(readFileSync(f.path),before);
  });
  it.each([undefined,0,9,1.5,"1",null])("refuses malformed schema 5 workers %j before upgrade effects",async workers=>{
-  const f=baselineFixture(5),raw=new DatabaseSync(f.path);
+  const f=await baselineFixture(5),raw=new DatabaseSync(f.path);
   const plan={...START_PLAN,...(workers===undefined?{}:{workers})};
   try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
    plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
   const before=readFileSync(f.path);await assert.rejects(f.run(true),/run_requests/u);assert.deepEqual(readFileSync(f.path),before);
  });
- function retainedPlan(version: 3 | 4, patch: Record<string, unknown> = {}) {
-  const f=baselineFixture(version), raw=new DatabaseSync(f.path);
+ async function retainedPlan(version: 3 | 4, patch: Record<string, unknown> = {}) {
+  const f=await baselineFixture(version), raw=new DatabaseSync(f.path);
   const prior=START_PLAN;
   const plan={...prior,...patch};
   let workbookRows: Record<string, unknown[]> = {};
@@ -132,7 +132,7 @@ describe("stopped native upgrade admission",()=>{
   return {...f,plan,workbookRows};
  }
  it.each([3,4] as const)("upgrades retained schema %s plans without workers while preserving fields and workbook history",async version=>{
-  const f=retainedPlan(version);
+  const f=await retainedPlan(version);
   const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
   const before=readFileSync(f.path);
@@ -163,12 +163,12 @@ describe("stopped native upgrade admission",()=>{
   try {assert.deepEqual(JSON.parse(String(prior.prepare("SELECT payload_json FROM run_requests").get()?.payload_json)),f.plan);}finally{prior.close();}
  });
  for(const version of [3,4] as const) it.each([{workers:"auto"},{workers:2},{priority:"corrupt"},{plannedBy:""}])(`refuses malformed schema ${version} plan %j without writes`,async patch=>{
-  const f=retainedPlan(version,patch),before=readFileSync(f.path);
+  const f=await retainedPlan(version,patch),before=readFileSync(f.path);
   await assert.rejects(f.run(true),/run_requests/u);
   assert.deepEqual(readFileSync(f.path),before);
  });
  it.each([3,4] as const)("rolls back schema %s worker backfill and preceding migrations on failure",async version=>{
-  const f=retainedPlan(version),before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
+  const f=await retainedPlan(version),before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
   assert.ok(typeof exec==="function");
   vi.spyOn(DatabaseSync.prototype,"exec").mockImplementation(function(this:DatabaseSync,sql:string){
    Reflect.apply(exec,this,[sql]);
@@ -177,15 +177,15 @@ describe("stopped native upgrade admission",()=>{
   await assert.rejects(f.run(),/injected-worker-backfill-failure/u);
   assert.deepEqual(readFileSync(f.path),before);
  });
- it("refuses current retained plans carrying removed workers",()=>{
-  const f=liveFixture();initialize(f);
+ it("refuses current retained plans carrying removed workers",async ()=>{
+  const f=await liveFixture();initialize(f);
   const raw=new DatabaseSync(f.path);const plan={...START_PLAN,workers:"auto"};
   try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
    plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/run_requests/u);
  });
- function populatedV2(){
-  const f=baselineFixture(2), raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
+ async function populatedV2(){
+  const f=await baselineFixture(2), raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
   const now=clock.now().toISOString(), commandId=randomUUID();
   try {
    const pool=WorkerPoolRecordSchema.parse({workflow:"person-lookup",desiredWorkers:1,version:4,plannedBy:"local-operator",plannedAt:now,createdAt:now,updatedAt:now});
@@ -203,7 +203,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  }
  it("upgrades schema 3 only after verifying its exact backup and retains every source table",async()=>{
-  const f=baselineFixture(3),before=readFileSync(f.path);
+  const f=await baselineFixture(3),before=readFileSync(f.path);
   const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
   const raw=new DatabaseSync(f.path,{readOnly:true});
   let retained:Record<string,unknown[]>;
@@ -233,7 +233,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{upgraded.close();}
  });
  it.each([3,4] as const)("refuses a schema %s backup mismatch before migration effects",async version=>{
-  const f=baselineFixture(version),before=readFileSync(f.path),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
+  const f=await baselineFixture(version),before=readFileSync(f.path),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
   vi.spyOn(AuthorityDatabase,"upgradeStopped").mockImplementation((...args)=>{
    const backup=args[5];assert.ok(backup);
    return migrate(args[0],args[1],args[2],args[3],args[4],
@@ -243,7 +243,7 @@ describe("stopped native upgrade admission",()=>{
   assert.deepEqual(readFileSync(f.path),before);
  });
  it("rolls back schema 3 workbook DDL and metadata when migration fails",async()=>{
-  const f=baselineFixture(3),before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
+  const f=await baselineFixture(3),before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
   assert.ok(typeof exec==="function");
   vi.spyOn(DatabaseSync.prototype,"exec").mockImplementation(function(this:DatabaseSync,sql:string){
    Reflect.apply(exec,this,[sql]);
@@ -253,7 +253,7 @@ describe("stopped native upgrade admission",()=>{
   assert.deepEqual(readFileSync(f.path),before);
  });
  it("upgrades populated schema 2 with an exact verified backup and retained roster history",async()=>{
-  const f=populatedV2();
+  const f=await populatedV2();
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:2,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.equal((await f.run()).state,"upgraded");
@@ -271,7 +271,7 @@ describe("stopped native upgrade admission",()=>{
   assert.equal(backup.manifest.schemaVersion,2);
  });
  it("rolls back the schema 2 rebuild when the rebuilt pool leaves orphaned slots",async()=>{
-  const f=populatedV2(),before=readFileSync(f.path);
+  const f=await populatedV2(),before=readFileSync(f.path);
   const exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
   assert.ok(typeof exec==="function");
   let injected=false;
@@ -296,7 +296,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  });
  it("verifies a schema 1 backup before converting the source",async()=>{
-  const f=baselineFixture(),bytes=readFileSync(f.path);
+  const f=await baselineFixture(),bytes=readFileSync(f.path);
   const directory=join(f.root,"backups","authority");
   const migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
   let observedManifestPath:string|undefined;
@@ -327,7 +327,7 @@ describe("stopped native upgrade admission",()=>{
   assert.equal(verified.manifest.schemaVersion,1);
  });
  it("keeps schema 1 bytes unchanged when the backup destination refuses",async()=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   mkdirSync(join(f.root,"backups"),{recursive:true});
   writeFileSync(join(f.root,"backups","authority"),"backup destination blocked");
   const bytes=readFileSync(f.path);
@@ -340,7 +340,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  });
  it("settles the forward record with the exact verified backup manifest",async()=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
   assert.equal((await f.run()).state,"upgraded");
   const raw=new DatabaseSync(f.path,{readOnly:true});
@@ -365,14 +365,14 @@ describe("stopped native upgrade admission",()=>{
   assert.deepEqual(record.backup,{manifestPath:verified.manifestPath,sha256:verified.manifest.sha256,authorityGeneration:source.authorityGeneration});
  });
  it("plans the schema 1 upgrade without backup or source effects",async()=>{
-  const f=baselineFixture(),before=storageTree(f.root),bytes=readFileSync(f.path);
+  const f=await baselineFixture(),before=storageTree(f.root),bytes=readFileSync(f.path);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:1,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.deepEqual(storageTree(f.root),before);
   assert.deepEqual(readFileSync(f.path),bytes);
   assert.equal(existsSync(join(f.root,"backups")),false);
  });
  it("forward upgrades a stopped baseline while preserving its settings and history",async()=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   const raw=new DatabaseSync(f.path,{readOnly:true});
   const retained: Record<string,unknown>={};
   try {for(const table of ["settings","settings_snapshots","commands","command_audits","timeline_events","database_upgrades"]) {
@@ -396,7 +396,7 @@ describe("stopped native upgrade admission",()=>{
   assert.equal((await f.run()).state,"already-upgraded");
  });
  it.each(["dashboard","preflight"] as const)("observes a migrated authority as settled through %s",async surface=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   assert.equal((await f.run()).state,"upgraded");
   const doctorOptions={stateRootTrustAnchor:f.root,stateRoot:f.root,authorityPath:f.path,
    backupDirectory:join(f.root,"backups","authority"),busyTimeoutMs:250};
@@ -415,7 +415,7 @@ describe("stopped native upgrade admission",()=>{
   }
  });
  it("reacquires stopped profile admission for a retained baseline",async()=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   f.admission.release();
   const { createProfileRegistry } = await import("../../../../src/backend/profiles/registry.js");
   const admission=f.machine.admitProfile(createProfileRegistry(f.machine).storageClaim(f.profileId));
@@ -424,21 +424,21 @@ describe("stopped native upgrade admission",()=>{
   assert.equal((await upgradeStorage(admission,f.input,clock)).state,"upgraded");
  });
  it("refuses baseline metadata disagreement without effects",async()=>{
-  const f=baselineFixture(),raw=new DatabaseSync(f.path);
+  const f=await baselineFixture(),raw=new DatabaseSync(f.path);
   try {raw.exec("UPDATE database_states SET schema_version=2");}finally{raw.close();}
   const before=storageTree(f.root);
   for(const plan of [true,false])await assert.rejects(f.run(plan),/metadata/u);
   assert.deepEqual(storageTree(f.root),before);
  });
  it("rolls back migration DDL and metadata when strict settings validation fails",async()=>{
-  const f=baselineFixture(),raw=new DatabaseSync(f.path);
+  const f=await baselineFixture(),raw=new DatabaseSync(f.path);
   try {raw.exec("DELETE FROM settings");}finally{raw.close();}
   const before=storageTree(f.root);
   for(const plan of [true,false])await assert.rejects(f.run(plan),/settings/u);
   assert.deepEqual(storageTree(f.root),before);
  });
  it("rechecks the source after restore admission before converting it",async()=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   await assert.rejects(upgradeStorage(f.admission,f.input,clock,input=>{
    const raw=new DatabaseSync(f.path);try{raw.prepare("UPDATE database_states SET updated_at=?").run("2026-10-01T12:01:00.000Z");}finally{raw.close();}
    return acquireRuntimeRestoreAdmission(input,clock);
@@ -449,7 +449,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  });
  it("refuses a source change after the verified backup and before migration",async()=>{
-  const f=baselineFixture(),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
+  const f=await baselineFixture(),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
   let changedBytes:Buffer|undefined;
   vi.spyOn(AuthorityDatabase,"upgradeStopped").mockImplementation((...args)=>{
    assert.ok(args[5],"verified backup evidence reaches migration");
@@ -469,7 +469,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  });
  it("atomically rolls back the real migration when current validation rejects",async()=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   const stopped=f.admission.forStoppedProfileUpgrade();
   closers.push(()=>stopped.release());
   const source=AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock);
@@ -499,7 +499,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  });
  it("refuses restoration of a verified schema 1 backup without changing current authority",async()=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   const stopped=f.admission.forStoppedProfileUpgrade();
   const report=await backupStoppedAuthority(stopped,f.root,clock,f.input.processLockRoot);
   stopped.release();
@@ -508,7 +508,7 @@ describe("stopped native upgrade admission",()=>{
   assert.equal((await verifyBackupManifestAtPath(f.admission,manifestPath)).manifest.schemaVersion,1);
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/profile-bound-authority-required/u);
   await f.run();
-  f.finish();
+  await f.finish();
   const credentials=boundProfileCredentials(f.admission);
   const sourceDatabaseIdentity=AuthorityDatabase.sourceDatabaseIdentity(f.path);
   const proofs=new RecoveryStopProofStore({processLockRoot:f.input.processLockRoot,maxProofAgeMs:60_000},clock);
@@ -522,15 +522,15 @@ describe("stopped native upgrade admission",()=>{
   });
   assert.deepEqual(storageTree(f.root),before);
  });
- it("refuses constructing restore for a pending profile",()=>{
-  const f=fixture();
+ it("refuses constructing restore for a pending profile",async ()=>{
+  const f=await fixture();
   const before=storageTree(f.root);
   assert.throws(()=>new OfflineAuthorityRestoreService(f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
    busyTimeoutMs:250,processLockRoot:f.input.processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>{throw new Error("unexpected projection rebuild");},clock),/profile-bound-authority-required/u);
   assert.deepEqual(storageTree(f.root),before);
  });
  it("refuses schema-valid journal column corruption during read-only preflight without effects",async()=>{
-  const f=liveFixture();const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"journal-corruption-fixture"},clock,undefined,undefined,undefined,boundProfileCredentials(f.admission));
+  const f=await liveFixture();const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"journal-corruption-fixture"},clock,undefined,undefined,undefined,boundProfileCredentials(f.admission));
   const commandId=randomUUID();
   try{database.authority.commands.insert({commandId,family:"worker-browser",type:"refresh-browser",target:{workerId:"person-lookup-worker-1",browserSessionId:randomUUID(),expectedVersion:1,controlBasis:{leaseGeneration:1,controlRevision:1}},source:"dashboard",requestedBy:"local-operator",requestedAt:clock.now().toISOString()});}finally{database.close();}
   const raw=new DatabaseSync(f.path);
@@ -547,23 +547,23 @@ describe("stopped native upgrade admission",()=>{
   assert.deepEqual(storageTree(f.root),before);
  });
  it("plans a missing profile database without writes and initializes it",async()=>{
-  const f=fixture(),before=storageTree(f.root);
+  const f=await fixture(),before=storageTree(f.root);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});assert.deepEqual(storageTree(f.root),before);
   assert.equal((await f.run()).state,"initialized");const current=readFileSync(f.path);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),current);
  });
  it.each([10,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
-  const f=liveFixture();initialize(f);const raw=new DatabaseSync(f.path);
+  const f=await liveFixture();initialize(f);const raw=new DatabaseSync(f.path);
   try{raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),error=>error instanceof AuthoritySchemaVersionError && error.code==="authority-schema-mismatch");assert.deepEqual(storageTree(f.root),before);
  });
  it("refuses a divergent native schema without effects",async()=>{
-  const f=liveFixture();initialize(f);const raw=new DatabaseSync(f.path);try{raw.exec("CREATE TABLE divergent_authority(id TEXT PRIMARY KEY) STRICT");}finally{raw.close();}
+  const f=await liveFixture();initialize(f);const raw=new DatabaseSync(f.path);try{raw.exec("CREATE TABLE divergent_authority(id TEXT PRIMARY KEY) STRICT");}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/schema/u);assert.deepEqual(storageTree(f.root),before);
  });
  it("refuses an active runtime lock before backup or upgrade effects",async()=>{
-  const f=liveFixture();initialize(f);const server=acquireRuntimeProcessLock({processLockRoot:f.input.processLockRoot,name:"server",pid:process.pid},clock);
+  const f=await liveFixture();initialize(f);const server=acquireRuntimeProcessLock({processLockRoot:f.input.processLockRoot,name:"server",pid:process.pid},clock);
   try{const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/runtime-active/u);
    assert.throws(()=>AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock),/runtime-active/u);
    assert.throws(()=>AuthorityDatabase.upgradeStopped(f.admission,f.path,f.input.processLockRoot,clock),/runtime-active/u);
@@ -571,7 +571,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{server.release();}
  });
  it("verifies an explicit native backup without changing authority or credentials",async()=>{
-  const f=liveFixture();initialize(f);const bytes=readFileSync(f.path);
+  const f=await liveFixture();initialize(f);const bytes=readFileSync(f.path);
   const report=await backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot);assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);
   const manifest=report.manifests[0];assert.ok(manifest);
   const verified=await verifyBackupManifestAtPath(f.admission,join(f.root,"backups","authority",manifest.backupFileName+".manifest.json"),AuthorityDatabase.sourceDatabaseIdentity(f.path));
@@ -579,7 +579,7 @@ describe("stopped native upgrade admission",()=>{
   const before=storageTree(f.root);assert.equal((await f.run(true)).state,"planned");assert.deepEqual(storageTree(f.root),before);assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),bytes);
  });
  it("leaves current authority untouched after failed restore admission and admits exact retry",async()=>{
-  const f=fixture(),before=storageTree(f.root);
+  const f=await fixture(),before=storageTree(f.root);
   await assert.rejects(upgradeStorage(f.admission,f.input,clock,()=>{throw new Error("injected-admission-failure");}),/injected-admission-failure/u);
   assert.deepEqual(storageTree(f.root),before);assert.equal((await f.run()).state,"initialized");
  });

@@ -11,7 +11,7 @@ describe("kuali landing verification — a client-rendered positive fact", () =>
   const KUALI_APP = CONFIG.urls.kuali.prod.entry;
 
   it("proves the session when the application chrome renders AFTER the landing URL settles", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: KUALI_APP,
       elements: {
         ...NO_SIGN_IN_FORMS,
@@ -25,7 +25,7 @@ describe("kuali landing verification — a client-rendered positive fact", () =>
   });
 
   it("still refuses when the application chrome never renders", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: KUALI_APP,
       elements: { ...NO_SIGN_IN_FORMS, "kuali-app-chrome": { count: 0 } },
     });
@@ -35,7 +35,7 @@ describe("kuali landing verification — a client-rendered positive fact", () =>
   });
 
   it("never pays the wait off the application host: the URL is checked first", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: SSO,
       elements: { "kuali-app-chrome": { count: 0 } },
     });

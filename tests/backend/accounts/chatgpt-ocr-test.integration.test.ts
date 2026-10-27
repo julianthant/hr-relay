@@ -11,7 +11,7 @@ import { registerChatGptAccountRoutes } from "../../../src/backend/transports/ht
 import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
 
 it("Test OCR dispatches exactly one transient fixed synthetic page and exposes only safe completion metadata", async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     let calls = 0, retained: (() => Promise<unknown>) | undefined;
     const service = createChatGptOcrTestService({ assertCurrent: () => f.admission.assertProfileRuntime(), dispatch: async (input, signal, source) => {
@@ -48,7 +48,7 @@ it("Test OCR dispatches exactly one transient fixed synthetic page and exposes o
 });
 
 it("Test OCR refuses a dispatcher result for a different source without fabricating success", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     const service = createChatGptOcrTestService({ assertCurrent: () => f.admission.assertProfileRuntime(), dispatch: async input => {
       const admitted = admitOcrExtraction({ formType: "oath", sourcePage: 2, sourceSha256: input.page.sha256,
         source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "gpt-6.1-sol" }, readAt: f.clock.now().toISOString(), pageKind: "blank", record: null });
@@ -59,7 +59,7 @@ it("Test OCR refuses a dispatcher result for a different source without fabricat
 });
 
 it("Test OCR rejects a provider that always classifies the known-text form as blank", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     const service = createChatGptOcrTestService({ assertCurrent: () => f.admission.assertProfileRuntime(), dispatch: async input => {
       const admitted = admitOcrExtraction({ formType: "oath", sourcePage: 1, sourceSha256: input.page.sha256,
         source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "gpt-6.1-sol" }, readAt: f.clock.now().toISOString(), pageKind: "blank", record: null });
@@ -70,7 +70,7 @@ it("Test OCR rejects a provider that always classifies the known-text form as bl
 });
 
 it("Test OCR cancellation before its fixed source opens stops without returning page bytes", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     const controller = new AbortController(); let calls = 0;
     const service = createChatGptOcrTestService({ assertCurrent: () => f.admission.assertProfileRuntime(), dispatch: async (input, _signal, source) => {
       calls++; controller.abort(); return source.open(input.page);
@@ -80,7 +80,7 @@ it("Test OCR cancellation before its fixed source opens stops without returning 
 });
 
 it("Test OCR cancellation during dispatch cannot return completed", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     const controller = new AbortController(); let calls = 0;
     const service = createChatGptOcrTestService({ assertCurrent: () => f.admission.assertProfileRuntime(), dispatch: async input => {
       const admitted = admitOcrExtraction({ formType: input.formType, sourcePage: input.sourcePage, sourceSha256: input.page.sha256,
@@ -97,7 +97,7 @@ it("Test OCR cancellation during dispatch cannot return completed", async () => 
 
 for (const [employeeId, accepted] of [["10800001", false], ["10-800-000", true]] as const)
   it(`Test OCR ${accepted ? "accepts the normalized right" : "refuses a different valid"} employee ID`, async () => {
-    const f = chatGptFixture(); try {
+    const f = await chatGptFixture(); try {
         const service = createChatGptOcrTestService({ assertCurrent: () => f.admission.assertProfileRuntime(), dispatch: async input => {
         const admitted = admitOcrExtraction({ formType: input.formType, sourcePage: input.sourcePage, sourceSha256: input.page.sha256,
           source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "gpt-6.1-sol" }, readAt: f.clock.now().toISOString(), pageKind: "oath", record: { answers: {

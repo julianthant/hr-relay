@@ -15,7 +15,7 @@ afterEach(cleanup);
 
 describe("original claim at failure terminalization", () => {
   it("cannot borrow a replacement worker claim after awaiting diagnostic capture", async () => {
-    const h = executorHarness();
+    const h = await executorHarness();
     const { database, clock } = h.authority;
     const invalid = RunRecordSchema.parse(personLookupQueuedRun());
     const claimed = enqueueAndClaim(database, { ...invalid, input: {

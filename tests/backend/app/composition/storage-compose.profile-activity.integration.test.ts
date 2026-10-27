@@ -25,15 +25,15 @@ import { systemClock, manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-function fixture() {
-  const f = createBoundProfileFixture();
+async function fixture() {
+  const f = await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
   const lifecycle = new RunRecordService({ database: context.database, clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("activity proof cannot enqueue"); } });
   const processLockRoot = join(f.workspace, "process-locks");
   const supervisor = { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined };
   const input = { admission: f.admission, database: context.database, clock, processLockRoot, lifecycle, supervisor };
-  return { ...f, context, input, async cleanup() { await context.account.close(); context.database.close(); f.close(); } };
+  return { ...f, context, input, async cleanup() { await context.account.close(); context.database.close(); await f.close(); } };
 }
 
 // Hash outside the SQLite owner's process so descriptor closure cannot release its locks.
@@ -54,7 +54,7 @@ visit(process.argv[1], ""); process.stdout.write(JSON.stringify(rows));
   return JSON.parse(observed.stdout) as unknown;
 }
 
-function reservationReaders(f: ReturnType<typeof fixture>) {
+function reservationReaders(f: Awaited<ReturnType<typeof fixture>>) {
   const generation = f.context.database.getMeta().authorityGeneration, before = byteSnapshot(f.workspace);
   const live = f.context.database.readProfileResourceCustody().reservations;
   const closed = AuthorityDatabase.readProfileMaintenanceInventory(f.admission).reservations;
@@ -64,7 +64,7 @@ function reservationReaders(f: ReturnType<typeof fixture>) {
   return live;
 }
 
-function closedReservationRefuses(f: ReturnType<typeof fixture>, expected: RegExp) {
+function closedReservationRefuses(f: Awaited<ReturnType<typeof fixture>>, expected: RegExp) {
   const generation = f.context.database.getMeta().authorityGeneration, before = byteSnapshot(f.workspace);
   assert.throws(() => AuthorityDatabase.readProfileMaintenanceInventory(f.admission), error => error instanceof Error && expected.test(error.message));
   assert.equal(f.context.database.getMeta().authorityGeneration, generation);
@@ -72,7 +72,7 @@ function closedReservationRefuses(f: ReturnType<typeof fixture>, expected: RegEx
 }
 
 it("observes actual empty canonical owners and awaits synthetic drain scheduling without certifying real browser closure", async () => {
-  const f = fixture();
+  const f = await fixture();
   let settle: (() => void) | undefined;
   const completion = new Promise<void>(resolve => { settle = resolve; });
   try {
@@ -90,7 +90,7 @@ it("observes actual empty canonical owners and awaits synthetic drain scheduling
 });
 
 it("refuses unknown OS identity and a missing process close acknowledgement after a genuine record positive", async () => {
-  const f = fixture();
+  const f = await fixture();
   const record = acquireRuntimeProcessLock({ processLockRoot: f.input.processLockRoot, name: "workers", pid: process.pid,
     admission: { kind: "unbound-worker", authorityPath: f.path } }, f.input.clock);
   try {
@@ -104,7 +104,7 @@ it("refuses unknown OS identity and a missing process close acknowledgement afte
 });
 
 it("includes an idle owned lifetime and refuses absent supervisor acknowledgement", async () => {
-  const f = fixture();
+  const f = await fixture();
   let worker: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
   try {
     const profileId = f.admission.profileBinding.profileId;
@@ -127,7 +127,7 @@ it("includes an idle owned lifetime and refuses absent supervisor acknowledgemen
 });
 
 
-function plan(f: ReturnType<typeof fixture>, settled = true, workflow: "person-lookup" | "separations" = "person-lookup") {
+function plan(f: Awaited<ReturnType<typeof fixture>>, settled = true, workflow: "person-lookup" | "separations" = "person-lookup") {
   const now = f.input.clock.now().toISOString();
   const request = WorkerBrowserCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard",
     family: "worker-browser", type: "plan-worker-count", target: { workflowId: workflow, expectedVersion: 0 }, payload: { desiredWorkers: 1 } });
@@ -152,7 +152,7 @@ function plan(f: ReturnType<typeof fixture>, settled = true, workflow: "person-l
 }
 
 async function stoppedPlanFixture(mode: "plan" | "direct" = "plan") {
-  const f = fixture();
+  const f = await fixture();
   let planned: { slot: ReturnType<typeof plan>["slot"]; request: { commandId: string } } | undefined = mode === "plan" ? plan(f) : undefined;
   const child = spawn(process.execPath, ["-e", "process.stdout.write('ready'); process.stdin.resume(); process.stdin.on('end', () => process.exit(0))"],
     { stdio: ["pipe", "pipe", "pipe"] });
@@ -282,7 +282,7 @@ it("refuses a missing direct-admission audit instead of treating its retained ID
 
 
 it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after canonical %s retirement of the exact origin member", async kind => {
-  const f = createBoundProfileFixture({ sharedMachine: true });
+  const f = await createBoundProfileFixture({ sharedMachine: true });
   const wall = manualClock(systemClock.now());
   const tick = () => { wall.setWall(new Date(Math.max(systemClock.nowMs(), wall.nowMs() + 1))); return wall.now(); };
   const clock = { ...systemClock, now: tick, nowMs: () => tick().getTime() };
@@ -294,7 +294,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
     processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
   try {
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
-    const active = profile.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
+    const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
     assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("retirement-fixture-sign-in-required");
     dashboard = await composeDashboardRuntime({ admission: f.machine, profile: { runtime: profile, token: active.token },
@@ -401,7 +401,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
     }
     try { await dashboard?.stop(); } catch (error) { failures.push(error); }
     try { await profile.close(); } catch (error) { failures.push(error); }
-    try { f.close(); } catch (error) { failures.push(error); }
+    try { await f.close(); } catch (error) { failures.push(error); }
   }
   if (failures.length > 0) throw new AggregateError(failures, "canonical retirement proof failed");
 }, 60_000);
@@ -422,7 +422,7 @@ it("refuses a real other-workflow plan bound to a previously valid stopped slot 
 });
 
 it("authenticates canonical verification pending and exact retired provenance through both readers", async () => {
-  const f = fixture();
+  const f = await fixture();
   const ownerHandle = acquireRuntimeProcessLock({ processLockRoot: f.input.processLockRoot, name: "live-smoke", pid: process.pid }, f.input.clock);
   let released = false;
   try {

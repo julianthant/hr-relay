@@ -26,9 +26,9 @@ import type { DashboardWorld } from "../../support/helpers/backend/dashboard-har
 
 {
 
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
-function databasePath(): string {
-  const profile = createBoundProfileFixture();
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+async function databasePath(): Promise<string> {
+  const profile = await createBoundProfileFixture();
   profiles.push(profile);
   return profile.path;
 }
@@ -40,8 +40,8 @@ function open(path: string): AuthorityDatabase {
   if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   return database;
 }
-const _afterEachFixture0 = () => {
-  for (const profile of profiles.splice(0)) profile.close();
+const _afterEachFixture0 = async () => {
+  for (const profile of profiles.splice(0)) await profile.close();
 };
 
 const RUN_ID_2 = "aaaaaaaa-0002-4000-8000-000200000000";
@@ -62,8 +62,8 @@ function queuedRun(
 describe("run_batches — a durable group whose membership is the run table (§11.1)", () => {
 afterEach(_afterEachFixture0);
 
-  it("inserts immutably, and reads the actor off the origin", () => {
-    const path = databasePath();
+  it("inserts immutably, and reads the actor off the origin", async () => {
+    const path = await databasePath();
     const database = open(path);
     const first = database.authority.runSessions.insert(RUN_SESSION);
     assert.equal(first.state, "inserted");
@@ -84,8 +84,8 @@ afterEach(_afterEachFixture0);
     raw.close();
   });
 
-  it("stores NO member list: membership is the run rows that carry the id, and it survives a reopen", () => {
-    const path = databasePath();
+  it("stores NO member list: membership is the run rows that carry the id, and it survives a reopen", async () => {
+    const path = await databasePath();
     const database = open(path);
     database.authority.runSessions.insert(RUN_SESSION);
     database.authority.runs.enqueue(queuedRun(RUN_ID, { sessionId: RUN_SESSION_ID }));
@@ -115,14 +115,14 @@ const { queuedEventOf } = createSeededDashboardWorld();
 
 const worlds: DashboardWorld[] = [];
 
-function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-  const created = makeWorld(...args);
+async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
+  const created = await makeWorld(...args);
   worlds.push(created);
   return created;
 }
 
-const _afterEachFixture0 = () => {
-  for (const w of worlds.splice(0)) w.dispose();
+const _afterEachFixture0 = async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 };
 
 describe("the queue row's ordinal, class, links and outcome", () => {
@@ -134,8 +134,8 @@ afterEach(_afterEachFixture0);
     heartbeatAt: "2026-08-03T17:00:05.000Z",
   } as const;
 
-  it("serves the run's session off its own row, and names the absence of one", () => {
-    const w = world();
+  it("serves the run's session off its own row, and names the absence of one", async () => {
+    const w = await world();
     w.authority.batches.set(uuidOf(70), RunSessionRecordSchema.parse({ sessionId: uuidOf(70), workflow: "person-lookup", origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 }));
     const nativeBatch = w.authority.batches.get(uuidOf(70)); assert.ok(nativeBatch);
     w.database.authority.runSessions.insert(nativeBatch);
@@ -153,8 +153,8 @@ afterEach(_afterEachFixture0);
     });
   });
 
-  it("publishes batch presentation changes without new run spans and ignores an unchanged tick", () => {
-    const w = world();
+  it("publishes batch presentation changes without new run spans and ignores an unchanged tick", async () => {
+    const w = await world();
     const batch = RunSessionRecordSchema.parse({ sessionId: uuidOf(70), workflow: "person-lookup", origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 });
     w.authority.batches.set(batch.sessionId, batch);
     w.database.authority.runSessions.insert(batch);

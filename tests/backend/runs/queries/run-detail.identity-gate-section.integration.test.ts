@@ -44,14 +44,14 @@ type DashboardWorld,
 
 const worlds: DashboardWorld[] = [];
 const checkpointEvents = new WeakMap<DashboardWorld, Map<string, unknown>>();
-function world(): DashboardWorld {
-  const created = makeWorld();
+async function world(): Promise<DashboardWorld> {
+  const created = await makeWorld();
   worlds.push(created);
   checkpointEvents.set(created, new Map());
   return created;
 }
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
+afterEach(async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 const RUN_ID = uuidOf(1);
@@ -235,8 +235,8 @@ function gateSection(w: DashboardWorld, deps = depsOf(w)) {
 }
 
 describe("the identity-gate run-detail section (ref write-safety §14.4)", () => {
-  it("serves the opened gate's native event identity without deriving it from the park time", () => {
-    const w = world(); seed(w);
+  it("serves the opened gate's native event identity without deriving it from the park time", async () => {
+    const w = await world(); seed(w);
     const run = w.authority.getRun(RUN_ID); assert.ok(run);
     putCheckpoint(w, checkpointOf(packetOf()));
     const record = TimelineEventRecordSchema.parse({ schemaVersion: 1,
@@ -255,15 +255,15 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
       attempt: 1, traceId: run.envelope.traceId, spanPath: run.envelope.traceId, nodeId: "identity-approval" });
   });
 
-  it("advertises the section for a parked-gate run and for no other lifecycle", () => {
-    const w = world();
+  it("advertises the section for a parked-gate run and for no other lifecycle", async () => {
+    const w = await world();
     seed(w);
     const detail = buildRunDetail(depsOf(w), RUN_ID);
     assert.ok(detail.availableSections.includes("identity-gate"));
 
     assert.equal(detail.header.status, "awaiting-approval");
 
-    const queued = world();
+    const queued = await world();
     seed(queued, { lifecycle: { state: "queued" } });
     assert.ok(!availableSections(
       queued.projection.runFold(RUN_ID) ?? (() => { throw new Error("no fold"); })(),
@@ -271,8 +271,8 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     ).includes("identity-gate"));
   });
 
-  it("serves the packet authority stored, with the digest an approval must carry", () => {
-    const w = world();
+  it("serves the packet authority stored, with the digest an approval must carry", async () => {
+    const w = await world();
     seed(w);
     const packet = packetOf();
     putCheckpoint(w, checkpointOf(packet));
@@ -290,8 +290,8 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.equal(value.approvalShape, packet.approvalShape);
   });
 
-  it("publishes the exact gate-result schema hash the kernel will demand", () => {
-    const w = world();
+  it("publishes the exact gate-result schema hash the kernel will demand", async () => {
+    const w = await world();
     seed(w);
     putCheckpoint(w, checkpointOf(packetOf()));
     const payload = gateSection(w);
@@ -333,8 +333,8 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     );
   });
 
-  it("labels every option with the choice the post-gate node will verify", () => {
-    const w = world();
+  it("labels every option with the choice the post-gate node will verify", async () => {
+    const w = await world();
     seed(w);
     const packet = packetOf({ differentName: true });
     putCheckpoint(w, checkpointOf(packet));
@@ -357,9 +357,9 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
   });
 
 
-  it("pins the parity fixture's gate descriptors and option labels to this query's", () => {
+  it("pins the parity fixture's gate descriptors and option labels to this query's", async () => {
     for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_TYPED_EID]) {
-      const w = world();
+      const w = await world();
       seed(w);
       putCheckpoint(w, checkpointOf(fixture.packet));
       const payload = gateSection(w);
@@ -376,9 +376,9 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     }
   });
 
-  it("answers `missing` with a reason rather than a half panel", () => {
+  it("answers `missing` with a reason rather than a half panel", async () => {
     // (a) no registered descriptor at all.
-    const noDescriptor = world();
+    const noDescriptor = await world();
     seed(noDescriptor);
     const a = gateSection(noDescriptor, depsOf(noDescriptor, null));
     assert.equal(a.state, "missing");
@@ -386,7 +386,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
 
     // The packet endpoint cannot fall back to its coarse item-latest reader if
     // the canonical checkpoint and timeline authority are unavailable.
-    const noCanonical = world();
+    const noCanonical = await world();
     seed(noCanonical);
     putCheckpoint(noCanonical, checkpointOf(packetOf()));
     const noAuthority = gateSection(noCanonical, depsOf(noCanonical, GATE_NODES, false));
@@ -394,7 +394,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.match(noAuthority.state === "missing" ? noAuthority.reason : "", /cannot verify checkpoint identity without canonical authority/);
 
     // (b) the build declares no such gate.
-    const wrongGate = world();
+    const wrongGate = await world();
     seed(wrongGate);
     const b = gateSection(wrongGate, depsOf(wrongGate, [{
       ...GATE_NODES[0], nodeId: "some-other-gate",
@@ -403,7 +403,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.match(b.state === "missing" ? b.reason : "", /declares no gate "identity-approval"/);
 
     // (c) the gate exists and its evidence node stored nothing.
-    const noPacket = world();
+    const noPacket = await world();
     seed(noPacket);
     const c = gateSection(noPacket);
     assert.equal(c.state, "missing");
@@ -411,7 +411,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
 
     // A separately stored checkpoint without its timeline link is not enough
     // to authorize a packet, and the fixture keeps that event independent.
-    const noEvent = world();
+    const noEvent = await world();
     seed(noEvent);
     const stored = putCheckpoint(noEvent, checkpointOf(packetOf()));
     checkpointEvents.get(noEvent)?.delete(stored.eventId);
@@ -420,7 +420,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.match(missingLink.state === "missing" ? missingLink.reason : "", /0 of them hold an identity decision packet/);
 
 
-    const changedBinding = world();
+    const changedBinding = await world();
     seed(changedBinding);
     const altered = RunCheckpointRecordSchema.parse({
       ...checkpointOf(packetOf()),
@@ -432,8 +432,8 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.match(d.state === "missing" ? d.reason : "", /0 of them hold an identity decision packet/);
   });
 
-  it("refuses to serve a historical supplied-EID park as a current operator decision", () => {
-    const w = world();
+  it("refuses to serve a historical supplied-EID park as a current operator decision", async () => {
+    const w = await world();
     seed(w);
     putCheckpoint(w, checkpointOf(packetOf({ source: "document-eid" })));
     const payload = gateSection(w);
@@ -444,8 +444,8 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     );
   });
 
-  it("refuses to serve the section for a run that is not parked on a gate", () => {
-    const w = world();
+  it("refuses to serve the section for a run that is not parked on a gate", async () => {
+    const w = await world();
     seed(w, { lifecycle: { state: "queued" } });
     assert.throws(
       () => buildRunSection(depsOf(w), RUN_ID, "identity-gate"),

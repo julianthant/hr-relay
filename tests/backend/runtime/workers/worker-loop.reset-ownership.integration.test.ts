@@ -21,7 +21,7 @@ describe("reset retains actual callback ownership", () => {
       const sessions = sessionFactoryHarness({ ucpath: () => ({ ...driver, searchPersonOrg: async (...args: Parameters<typeof driver.searchPersonOrg>) => {
         started(); await held; return driver.searchPersonOrg(...args);
       } }), crm: () => healthyCrmDriver() });
-      const h = world.loopHarness({ sessions, exitWhenIdle: false });
+      const h = await world.loopHarness({ sessions, exitWhenIdle: false });
       h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
       const database = h.authority.database;
       const workerId = h.deps.workerId;
@@ -84,7 +84,7 @@ describe("reset retains actual callback ownership", () => {
         const resource = await base.factory.open(input);
         return stage === "sign-in" ? { ...resource, authentication: { authenticate: async (_system: Parameters<BrowserAuthenticationHandle["authenticate"]>[0], options: Parameters<BrowserAuthenticationHandle["authenticate"]>[1]) => { activeSignal = options.signal; started(); await held; return "logged-in" as const; } } } : resource;
       } } };
-      const h = world.loopHarness({ sessions, exitWhenIdle: false });
+      const h = await world.loopHarness({ sessions, exitWhenIdle: false });
       const database = h.authority.database, workerId = h.deps.workerId;
       database.authority.runs.enqueue(personLookupQueuedRun());
       let finished = false;

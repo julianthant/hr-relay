@@ -14,9 +14,9 @@ import { countUcsdLoginRows, readProfileDatabaseBinding } from "../../../../src/
 
 const digest = (path: string) => createHash("sha256").update(fs.readFileSync(path)).digest("hex");
 
-it("uses a physical owned snapshot under an aliased temp root without admitting source aliases", () => {
-  const f = createBoundProfileFixture();
-  using _profile = { [Symbol.dispose]() { f.close(); } };
+it("uses a physical owned snapshot under an aliased temp root without admitting source aliases", async () => {
+  const f = await createBoundProfileFixture();
+  await using _profile = { async [Symbol.asyncDispose]() { await f.close(); } };
   const workspace = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "readonly-temp-alias-"));
   using _workspace = { [Symbol.dispose]() { fs.rmSync(workspace, { recursive: true }); } };
   const priorTemp = process.env.TMPDIR;
@@ -38,8 +38,8 @@ it("uses a physical owned snapshot under an aliased temp root without admitting 
   assert.throws(() => readProfileDatabaseBinding(sourceAlias), /source-integrity/u);
 });
 
-it("snapshot disposal keeps the same uncertainty and never retries physical removal", () => {
-  const f = createBoundProfileFixture(), before = digest(f.path);
+it("snapshot disposal keeps the same uncertainty and never retries physical removal", async () => {
+  const f = await createBoundProfileFixture(), before = digest(f.path);
   const snapshot = createReadonlyAuthoritySnapshot(f.path), directory = dirname(snapshot.path);
   const actualRemove = fs.rmSync, injected = new Error("snapshot-removal-refused");
   let attempts = 0, proved = false;
@@ -70,11 +70,11 @@ it("snapshot disposal keeps the same uncertainty and never retries physical remo
     assert.throws(() => snapshot.assertUnchanged(), error => error === failure);
     assert.equal(attempts, 1); assert.equal(digest(f.path), before);
     proved = true;
-  } finally { remove.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+  } finally { remove.mockRestore(); syncBuiltinESMExports(); if (proved) await f.close(); }
 });
 
-it("snapshot creation preserves the source failure and failed cleanup with its exact directory", () => {
-  const f = createBoundProfileFixture(), before = digest(f.path);
+it("snapshot creation preserves the source failure and failed cleanup with its exact directory", async () => {
+  const f = await createBoundProfileFixture(), before = digest(f.path);
   const actualCreate = fs.mkdtempSync, actualRemove = fs.rmSync;
   const injected = new Error("snapshot-creation-cleanup-refused");
   let directory: string | undefined, proved = false;
@@ -100,11 +100,11 @@ it("snapshot creation preserves the source failure and failed cleanup with its e
     actualRemove(directory, { recursive: true });
     assert.equal(fs.existsSync(directory), false); assert.equal(digest(f.path), before);
     proved = true;
-  } finally { create.mockRestore(); syncBuiltinESMExports(); remove.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+  } finally { create.mockRestore(); syncBuiltinESMExports(); remove.mockRestore(); syncBuiltinESMExports(); if (proved) await f.close(); }
 });
 
-for (const reader of ["read-only", "binding", "login-copy"] as const) it(`retains the actual ${reader} database on failed close without removing its snapshot`, () => {
-  const f = createBoundProfileFixture(), before = digest(f.path);
+for (const reader of ["read-only", "binding", "login-copy"] as const) it(`retains the actual ${reader} database on failed close without removing its snapshot`, async () => {
+  const f = await createBoundProfileFixture(), before = digest(f.path);
   const actualCreate = fs.mkdtempSync;
   const primary = new Error("read-callback-refused"), cleanup = new Error("native-copy-close-refused");
   const retainedOwner: { database?: DatabaseSync } = {};
@@ -144,21 +144,21 @@ for (const reader of ["read-only", "binding", "login-copy"] as const) it(`retain
       fs.rmSync(directory, { recursive: true }); assert.equal(fs.existsSync(directory), false);
     }
     assert.equal(digest(f.path), before); proved = true;
-  } finally { close.mockRestore(); create.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+  } finally { close.mockRestore(); create.mockRestore(); syncBuiltinESMExports(); if (proved) await f.close(); }
 });
 
-it("ordinary read refusal and unreadable login copy stay ordinary after proved cleanup", () => {
-  const f = createBoundProfileFixture(), before = digest(f.path), primary = new Error("ordinary-read-refused");
+it("ordinary read refusal and unreadable login copy stay ordinary after proved cleanup", async () => {
+  const f = await createBoundProfileFixture(), before = digest(f.path), primary = new Error("ordinary-read-refused");
   try {
     assert.throws(() => withAuthorityDatabaseReadOnly(f.admission, f.path, () => { throw primary; }), error => error === primary);
     assert.equal(countUcsdLoginRows(f.path), "unreadable");
     assert.equal(digest(f.path), before);
     assert.equal(readProfileDatabaseBinding(f.path).state, "bound");
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-for (const invalid of [false, true]) it(`retains a private source descriptor and its primary failure on close refusal ${invalid}`, () => {
-  const f = createBoundProfileFixture(), path = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
+for (const invalid of [false, true]) it(`retains a private source descriptor and its primary failure on close refusal ${invalid}`, async () => {
+  const f = await createBoundProfileFixture(), path = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
   f.machine.assertProfileCredentialKey(f.admission, path);
   const before = digest(path), identity = fs.lstatSync(path), actualClose = fs.closeSync;
   const injected = new Error("private-source-descriptor-close-refused");
@@ -184,11 +184,11 @@ for (const invalid of [false, true]) it(`retains a private source descriptor and
     actualClose(heldDescriptor);
     assert.throws(() => fs.fstatSync(heldDescriptor), error => error instanceof Error && Reflect.get(error, "code") === "EBADF");
     assert.equal(digest(path), before); proved = true;
-  } finally { close.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+  } finally { close.mockRestore(); syncBuiltinESMExports(); if (proved) await f.close(); }
 });
 
-for (const failSync of [false, true]) it(`retains the real sync descriptor and primary error after close refusal ${failSync}`, () => {
-  const f = createBoundProfileFixture(), path = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
+for (const failSync of [false, true]) it(`retains the real sync descriptor and primary error after close refusal ${failSync}`, async () => {
+  const f = await createBoundProfileFixture(), path = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
   f.machine.assertProfileCredentialKey(f.admission, path);
   const before = digest(path);
   const actualClose = fs.closeSync, actualSync = fs.fsyncSync;
@@ -218,5 +218,5 @@ for (const failSync of [false, true]) it(`retains the real sync descriptor and p
     actualClose(held);
     assert.throws(() => fs.fstatSync(held), error => error instanceof Error && Reflect.get(error, "code") === "EBADF");
     assert.equal(digest(path), before); proved = true;
-  } finally { sync.mockRestore(); syncBuiltinESMExports(); close.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+  } finally { sync.mockRestore(); syncBuiltinESMExports(); close.mockRestore(); syncBuiltinESMExports(); if (proved) await f.close(); }
 });

@@ -1,6 +1,7 @@
+import { finishProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
 import nativeFs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
+import { createSyntheticProfileSession as createProfileSession } from "../../../support/helpers/admission-fixture.js";
 import { composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { verifyStoppedControlCredentialAttestation } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { execFileSync, fork, spawnSync, type ChildProcess } from "node:child_process";
@@ -25,8 +26,8 @@ import { DuoCredentialDocumentSchema } from "../../../../src/models/config/duo-c
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-function setup(options: { sharedMachine?: true } = {}) {
-  const fixture = createBoundProfileFixture(options), clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
+async function setup(options: { sharedMachine?: true } = {}) {
+  const fixture = await createBoundProfileFixture(options), clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
   const store = createDuoCredentialStore(fixture.admission, fixture.machine, clock);
   const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const input = { credentialId: Buffer.from(randomUUID()).toString("base64url"),
@@ -38,8 +39,8 @@ function setup(options: { sharedMachine?: true } = {}) {
   return { ...fixture, clock, store, input, documentPath: path };
 }
 
-it("durably stages pending enrollment before acknowledgement and holds signing until exact confirmation", () => {
-  const f = setup();
+it("durably stages pending enrollment before acknowledgement and holds signing until exact confirmation", async () => {
+  const f = await setup();
   try {
     const registry = readFileSync(join(f.machine.stateRoot, "machine", "profiles.json"));
     const protectedBytes = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
@@ -58,11 +59,11 @@ it("durably stages pending enrollment before acknowledgement and holds signing u
     assert.equal(readFileSync(join(f.machine.stateRoot, "machine", "profiles.json")).equals(registry), true);
     assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).equals(protectedBytes), true);
     assert.throws(() => f.store.confirm(f.input.credentialId, f.input.scope), /duo-pending-credential-mismatch/u);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("burns committed attempts across new store instances and refuses document rollback or substitution", () => {
-  const f = setup();
+it("burns committed attempts across new store instances and refuses document rollback or substitution", async () => {
+  const f = await setup();
   try {
     f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
     const prior = readFileSync(f.documentPath), first = f.store.reserve(f.input.credentialId);
@@ -75,11 +76,11 @@ it("burns committed attempts across new store instances and refuses document rol
     const substituted = `${f.documentPath}.substitute`;
     copyFileSync(f.documentPath, substituted); chmodSync(substituted, 0o600); renameSync(substituted, f.documentPath);
     assert.throws(() => fresh.read(), /duo-document-custody-changed/u);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("rejects unsafe files and a missing established document without treating either as initial state", () => {
-  const f = setup();
+it("rejects unsafe files and a missing established document without treating either as initial state", async () => {
+  const f = await setup();
   try {
     f.store.enroll(f.input);
     chmodSync(f.documentPath, 0o644);
@@ -87,28 +88,28 @@ it("rejects unsafe files and a missing established document without treating eit
     chmodSync(f.documentPath, 0o600);
     unlinkSync(f.documentPath);
     assert.throws(() => f.store.read(), /duo-document-membership-mismatch|duo-document-required/u);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("explicit erasure retires identities and counters without reviving a retired key", () => {
-  const f = setup();
+it("explicit erasure retires identities and counters without reviving a retired key", async () => {
+  const f = await setup();
   try {
     f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope); f.store.reserve(f.input.credentialId);
     const revision = f.store.erase().revision;
     assert.deepEqual(f.store.read(), { state: "erased", revision, credentials: [] });
     assert.throws(() => f.store.reserve(f.input.credentialId), /duo-ready-credential-required/u);
     assert.throws(() => f.store.enroll(f.input), /duo-credential-id-reused/u);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("refuses expired pending confirmation and released profile custody", () => {
-  const f = setup();
+it("refuses expired pending confirmation and released profile custody", async () => {
+  const f = await setup();
   try {
     f.store.enroll(f.input); f.clock.advanceWall(600_000);
     assert.throws(() => f.store.confirm(f.input.credentialId, f.input.scope), /duo-arm-expired/u);
     f.admission.release();
     assert.throws(() => f.store.read(), /released|expired/u);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 it("rejects divergent duplicate reservation lineage in authenticated document models", () => {
@@ -118,8 +119,8 @@ it("rejects divergent duplicate reservation lineage in authenticated document mo
     credentials: [], retired: [{ credentialId, highWater: 1 }], reservations: [attempt, { ...attempt, attemptId: randomUUID() }] }).success, false);
 });
 
-it("authenticates encrypted payloads with the issued anchored key and distinct purpose", () => {
-  const f = setup();
+it("authenticates encrypted payloads with the issued anchored key and distinct purpose", async () => {
+  const f = await setup();
   try {
     f.store.enroll(f.input);
     const purpose = issueDuoCredentialPurpose(f.admission, f.machine);
@@ -130,11 +131,11 @@ it("authenticates encrypted payloads with the issued anchored key and distinct p
     assert.throws(() => openDuoCredentialDocument(purpose, bytes, 2), /duo-envelope-binding-mismatch/u);
     assert.throws(() => openDuoCredentialDocument({ profileId: purpose.profileId }, bytes, 1), /duo-purpose-unissued/u);
     assert.equal(f.store.read().revision, 1);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("fails closed at uint32 exhaustion without changing the last committed count", () => {
-  const f = setup();
+it("fails closed at uint32 exhaustion without changing the last committed count", async () => {
+  const f = await setup();
   try {
     f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
     f.clock.setWall(new Date(0xffff_ffff * 1000));
@@ -143,16 +144,16 @@ it("fails closed at uint32 exhaustion without changing the last committed count"
     assert.throws(() => f.store.reserve(f.input.credentialId), /duo-counter-exhausted/u);
     assert.equal(readFileSync(f.documentPath).equals(before), true);
     assert.equal(f.store.read().credentials[0]?.highWater, 0xffff_ffff);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 const retainedStoppedControlSetupOwners = new Set<object>();
-function stoppedControlFixture(retainedCredential?: unknown) {
-  const held: { fixture?: ReturnType<typeof createBoundProfileFixture>; restore?: ReturnType<typeof acquireRuntimeRestoreAdmission>;
+async function stoppedControlFixture(retainedCredential?: unknown) {
+  const held: { fixture?: Awaited<ReturnType<typeof createBoundProfileFixture>>; restore?: ReturnType<typeof acquireRuntimeRestoreAdmission>;
     upgrade?: ReturnType<typeof acquireStoppedProfileControlUpgrade>; primary?: unknown } = {};
   retainedStoppedControlSetupOwners.add(held);
   try {
-    const fixture = createBoundProfileFixture();
+    const fixture = await createBoundProfileFixture();
     held.fixture = fixture;
     const profileId = fixture.admission.profileBinding.profileId;
     if (retainedCredential !== undefined) writeFileSync(join(fixture.stateRoot, "credentials", "duo-webauthn.json"), JSON.stringify(retainedCredential), { mode: 0o600 });
@@ -172,15 +173,15 @@ function stoppedControlFixture(retainedCredential?: unknown) {
       held.upgrade = upgrade;
       retainedStoppedControlSetupOwners.delete(held);
       return { ...fixture, profileId, controlPath, upgrade, restore,
-        close() { upgrade.release(); restore.release(); fixture.close(); } };
+        async close() { upgrade.release(); restore.release(); await fixture.close(); } };
 
 
   } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 
 const retainedCredential = { rpId: "duosecurity.com", credentialId: "synthetic-retained-id", privateKey: "synthetic-retained-key", signCount: 42, transport: "internal" };
-for (const shape of ["object", "array", "wrapper"] as const) it(`authenticates retained active-engine ${shape} bytes without changing them during control-only assessment`, () => {
-  const f = stoppedControlFixture(shape === "object" ? retainedCredential : shape === "array" ? [retainedCredential] : { credentials: [retainedCredential] });
+for (const shape of ["object", "array", "wrapper"] as const) it(`authenticates retained active-engine ${shape} bytes without changing them during control-only assessment`, async () => {
+  const f = await stoppedControlFixture(shape === "object" ? retainedCredential : shape === "array" ? [retainedCredential] : { credentials: [retainedCredential] });
   let inventory: ReturnType<typeof composeStoppedControlCredentialInventory> | undefined;
   const capture = vi.spyOn(nativeFs, "mkdtempSync");
   let issued: string[];
@@ -203,24 +204,24 @@ for (const shape of ["object", "array", "wrapper"] as const) it(`authenticates r
       return result.value;
     });
   } finally {
-    try { inventory?.dispose(); f.close(); }
+    try { inventory?.dispose(); await f.close(); }
     finally { capture.mockRestore(); syncBuiltinESMExports(); }
   }
   for (const directory of issued) assert.equal(existsSync(directory), false);
 });
 
-it("refuses malformed retained active-engine bytes rather than granting a control-only absence proof", () => {
-  const f = stoppedControlFixture({ ...retainedCredential, signCount: -1 });
+it("refuses malformed retained active-engine bytes rather than granting a control-only absence proof", async () => {
+  const f = await stoppedControlFixture({ ...retainedCredential, signCount: -1 });
   try {
     const path = join(f.stateRoot, "credentials", "duo-webauthn.json"), bytes = readFileSync(path);
     assert.throws(() => composeStoppedControlCredentialInventory({ claim: f.upgrade.profileInventory(f.profileId), hostFacts: { primaryDisplay: null },
       clock: manualClock(new Date()) }), /credential-maintenance-copy-capture-incomplete/u);
     assert.equal(readFileSync(path).equals(bytes), true);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it.each(["noncanonical", "symlink", "hardlink"] as const)("refuses %s active-engine membership during stopped control assessment", problem => {
-  const f = stoppedControlFixture(retainedCredential);
+it.each(["noncanonical", "symlink", "hardlink"] as const)("refuses %s active-engine membership during stopped control assessment", async problem => {
+  const f = await stoppedControlFixture(retainedCredential);
   try {
     const path = join(f.stateRoot, "credentials", "duo-webauthn.json"), bytes = readFileSync(path);
     const other = problem === "noncanonical" ? join(f.stateRoot, "credentials", "duo-copy.json") : join(f.workspace, "retained-link-target.json");
@@ -230,11 +231,11 @@ it.each(["noncanonical", "symlink", "hardlink"] as const)("refuses %s active-eng
     assert.throws(() => composeStoppedControlCredentialInventory({ claim: f.upgrade.profileInventory(f.profileId), hostFacts: { primaryDisplay: null },
       clock: manualClock(new Date()) }), problem === "noncanonical" ? /profile-inventory-credential-unowned/u : /profile-inventory-path-unsafe/u);
     assert.equal(readFileSync(problem === "noncanonical" ? other : path).equals(bytes), true);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("refuses an attestation from another genuinely issued stopped profile", () => {
-  const first = stoppedControlFixture(retainedCredential), second = stoppedControlFixture(retainedCredential);
+it("refuses an attestation from another genuinely issued stopped profile", async () => {
+  const first = await stoppedControlFixture(retainedCredential), second = await stoppedControlFixture(retainedCredential);
   let inventory: ReturnType<typeof composeStoppedControlCredentialInventory> | undefined;
   try {
     const claim = first.upgrade.profileInventory(first.profileId);
@@ -242,11 +243,11 @@ it("refuses an attestation from another genuinely issued stopped profile", () =>
     assert.notEqual(first.profileId, second.profileId);
     assert.throws(() => verifyStoppedControlCredentialAttestation(inventory!.proof, second.upgrade.profileInventory(second.profileId), false),
       /profile-control-upgrade-attestation-unissued-or-used/u);
-  } finally { inventory?.dispose(); second.close(); first.close(); }
+  } finally { inventory?.dispose(); await second.close(); await first.close(); }
 });
 
-it("does not apply retained-engine disposition to ordinary credential initialization", () => {
-  const f = createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
+it("does not apply retained-engine disposition to ordinary credential initialization", async () => {
+  const f = await createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
   const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot,
     initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine, admission: child,
       clock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
@@ -257,14 +258,14 @@ it("does not apply retained-engine disposition to ordinary credential initializa
     mkdirSync(join(f.stateRoot, "credentials"), { recursive: true, mode: 0o700 });
     writeFileSync(path, JSON.stringify(retainedCredential), { mode: 0o600 });
     const bytes = readFileSync(path);
-    assert.throws(() => session.signUp({ firstName: "Fixture", lastName: "Example", email: "fixture@example.edu", password: "disposable-fixture-password",
-      createdAt: clock.now().toISOString() }), /credential-maintenance-copy-capture-incomplete/u);
+    await assert.rejects(async () => await finishProfileOnboarding(session, session.signUp({ firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu", password: "disposable-fixture-password",
+      createdAt: clock.now().toISOString() })), /credential-maintenance-copy-capture-incomplete/u);
     assert.equal(readFileSync(path).equals(bytes), true);
-  } finally { session.close(); f.close(); }
+  } finally { await session.close(); await f.close(); }
 });
 
-it("issues only finite read-only stopped-control inventory and preserves database and control bytes", () => {
-  const f = stoppedControlFixture();
+it("issues only finite read-only stopped-control inventory and preserves database and control bytes", async () => {
+  const f = await stoppedControlFixture();
   let admission: RuntimeAdmission | undefined;
   try {
     const before = createHash("sha256").update(readFileSync(f.path)).digest("hex");
@@ -305,11 +306,11 @@ it("issues only finite read-only stopped-control inventory and preserves databas
     admission.release();
     assert.throws(() => admission?.readStoppedControlCredentialInventorySource(issued));
     assert.throws(() => admission?.assertLive(), /missing or released admission/u);
-  } finally { admission?.release(); f.close(); }
+  } finally { admission?.release(); await f.close(); }
 });
 
-it.each(["control", "database"] as const)("revokes the genuine stopped inventory when its %s source is replaced", target => {
-  const f = stoppedControlFixture();
+it.each(["control", "database"] as const)("revokes the genuine stopped inventory when its %s source is replaced", async target => {
+  const f = await stoppedControlFixture();
   let admission: RuntimeAdmission | undefined;
   try {
     admission = RuntimeAdmission.forStoppedControlInventory(f.upgrade.profileInventory(f.profileId));
@@ -318,7 +319,7 @@ it.each(["control", "database"] as const)("revokes the genuine stopped inventory
     writeFileSync(substitute, readFileSync(path), { mode: 0o600 }); renameSync(substitute, path);
     assert.throws(() => admission?.assertLive(), target === "control"
       ? /profile-control-upgrade-inventory-expired/u : /authority-readonly-source-changed/u);
-  } finally { admission?.release(); f.close(); }
+  } finally { admission?.release(); await f.close(); }
 });
 
 it("refuses a high-water head without its exact durable reservation lineage", () => {
@@ -337,7 +338,7 @@ const DuoChildEventSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("reserved"), attemptId: z.uuid(), count: z.number().int().positive().max(0xffff_ffff), revision: z.number().int().positive() }),
   z.strictObject({ type: z.literal("failed"), code: z.literal("DUO_FIXTURE_RESERVATION_FAILED") }),
 ]);
-async function duoChild(f: ReturnType<typeof setup>) {
+async function duoChild(f: Awaited<ReturnType<typeof setup>>) {
   const child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
     [f.workspace, f.admission.profileBinding.profileId, f.input.credentialId, f.clock.now().toISOString()],
     { execArgv: ["--import", "tsx"], stdio: ["ignore", "ignore", "pipe", "ipc"] });
@@ -397,7 +398,7 @@ async function duoChild(f: ReturnType<typeof setup>) {
 }
 
 it("reserves increasing counts in independent processes and burns a committed attempt after process death", async () => {
-  const f = setup({ sharedMachine: true });
+  const f = await setup({ sharedMachine: true });
   const children: Awaited<ReturnType<typeof duoChild>>[] = [];
   const retained: { fixture: typeof f; children: typeof children; primary?: { error: unknown }; failures: unknown[] } = { fixture: f, children, failures: [] };
   retainedPublicationRecoveryOwners.add(retained);
@@ -421,7 +422,7 @@ it("reserves increasing counts in independent processes and burns a committed at
   for (const result of closed) if (result.status === 'rejected') { const reason: unknown = result.reason; failures.push(reason); }
   retained.failures.push(...failures);
   if (primary === undefined && failures.length === 0) {
-    try { f.close(); retainedPublicationRecoveryOwners.delete(retained); }
+    try { await f.close(); retainedPublicationRecoveryOwners.delete(retained); }
     catch (error) { failures.push(error); retained.failures.push(error); }
   }
   if (primary !== undefined && failures.length > 0) throw new AggregateError([primary.error, ...failures], 'Duo process scenario failed', { cause: primary.error });
@@ -429,8 +430,8 @@ it("reserves increasing counts in independent processes and burns a committed at
   if (failures.length > 0) throw new AggregateError(failures, 'Duo process cleanup failed', { cause: failures[0] });
 }, 30_000);
 
-it("recovers an interrupted Duo publication only for the issued claim and keeps the reserved count burned", () => {
-  const f = setup();
+it("recovers an interrupted Duo publication only for the issued claim and keeps the reserved count burned", async () => {
+  const f = await setup();
   const retained: { fixture: typeof f; other?: ReturnType<typeof createDuoCredentialStore>; primary?: { error: unknown } } = { fixture: f };
   retainedPublicationRecoveryOwners.add(retained);
   try {
@@ -445,7 +446,7 @@ it("recovers an interrupted Duo publication only for the issued claim and keeps 
     assert.ok(burned);
     assert.equal(f.store.reserve(f.input.credentialId).count, burned.highWater + 1);
     assert.throws(() => f.store.recoverInterruptedPublication(), /duo-transaction-unissued/u);
-    f.close();
+    await f.close();
     retainedPublicationRecoveryOwners.delete(retained);
   } catch (error) { retained.primary = { error }; throw error; }
 });
@@ -470,7 +471,7 @@ function assertChildProcessReleased(pid: number): void {
   if (listed.error !== undefined || listed.signal !== null || listed.status !== 1) throw new Error("duo-child-fd-unproved", { cause: listed.error });
 }
 
-function controlPaths(fixture: ReturnType<typeof createBoundProfileFixture>) {
+function controlPaths(fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
   const stateRoot = fixture.machine.stateRoot;
   return { stateRoot, workspace: fixture.workspace, databasePath: fixture.path, database: readFileSync(fixture.path),
     controlPath: join(fixture.workspace, ".tracker/control", "profile-registry.json"),
@@ -478,7 +479,7 @@ function controlPaths(fixture: ReturnType<typeof createBoundProfileFixture>) {
     processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot) };
 }
 
-function downgradeStoppedControl(fixture: ReturnType<typeof createBoundProfileFixture>, markerVersion: 1 | 2, dropCredentialKey = false) {
+function downgradeStoppedControl(fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>, markerVersion: 1 | 2, dropCredentialKey = false) {
   const paths = controlPaths(fixture);
   const current = JSON.parse(readFileSync(paths.controlPath, "utf8")) as { schemaVersion: number; duo?: unknown; erasures?: Array<Record<string, unknown>> };
   fixture.admission.release();
@@ -499,7 +500,7 @@ function assertUnchanged(paths: { controlPath: string; markerPath: string; datab
 const retainedPublicationRecoveryOwners = new Set<unknown>();
 
 it("finishes one interrupted Duo publication after the producing process exits and refuses a changed or released claim", async () => {
-  const f = setup({ sharedMachine: true });
+  const f = await setup({ sharedMachine: true });
   const retained: { fixture: typeof f; child?: ChildProcess; maintenance?: RuntimeAdmission; machine?: RuntimeAdmission; admission?: RuntimeAdmission; events?: unknown; failures: unknown[] } = { fixture: f, failures: [] };
   retainedPublicationRecoveryOwners.add(retained);
   let recoveryCompleted = false;
@@ -648,7 +649,7 @@ it("finishes one interrupted Duo publication after the producing process exits a
     } catch (error) { cleanup.push(error); }
   }
   if (primary === undefined && cleanup.length === 0 && recoveryCompleted && childReleased) {
-    try { f.close(); retainedPublicationRecoveryOwners.delete(retained); }
+    try { await f.close(); retainedPublicationRecoveryOwners.delete(retained); }
     catch (error) { cleanup.push(error); }
   }
   retained.failures.push(...cleanup);
@@ -659,8 +660,8 @@ it("finishes one interrupted Duo publication after the producing process exits a
   if (!recoveryCompleted || !childReleased) throw new Error('duo-recovery-closure-unproved');
 }, 30_000);
 
-it("refuses unmanaged Duo copies, then backup erase and restore keep burned counters and do not revive erased key material", () => {
-  const f = setup();
+it("refuses unmanaged Duo copies, then backup erase and restore keep burned counters and do not revive erased key material", async () => {
+  const f = await setup();
   try {
     f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
     const first = f.store.reserve(f.input.credentialId);
@@ -717,14 +718,14 @@ it("refuses unmanaged Duo copies, then backup erase and restore keep burned coun
     assert.deepEqual(reopened.read().credentials, []);
     assert.throws(() => reopened.reserve(f.input.credentialId), /duo-ready-credential-required/u);
     assert.equal(readFileSync(enginePath).equals(engineBefore), true);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 const hostFacts = { primaryDisplay: null };
 const upgradeClock = () => manualClock(new Date("2026-01-15T00:00:00.000Z"));
 
 it("admits only the finite stopped machine-control pair through maintenance admission", async () => {
-  const unsupported = createBoundProfileFixture();
+  const unsupported = await createBoundProfileFixture();
   const unsupportedPaths = downgradeStoppedControl(unsupported, 1);
   try {
     assert.throws(() => RuntimeAdmission.acquireMachine(unsupported.workspace, "exclusive"));
@@ -733,8 +734,8 @@ it("admits only the finite stopped machine-control pair through maintenance admi
       await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /profile-control-upgrade-pending-conversion-unsupported/u);
       assertUnchanged(unsupportedPaths);
     } finally { maintenance.release(); }
-  } finally { unsupported.close(); }
-  const missingKey = createBoundProfileFixture();
+  } finally { await unsupported.close(); }
+  const missingKey = await createBoundProfileFixture();
   const missingPaths = downgradeStoppedControl(missingKey, 2, true);
   try {
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(missingKey.workspace);
@@ -742,18 +743,18 @@ it("admits only the finite stopped machine-control pair through maintenance admi
       await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /profile-credential-key-unowned/);
       assertUnchanged(missingPaths);
     } finally { maintenance.release(); }
-  } finally { missingKey.close(); }
-  const live = createBoundProfileFixture();
+  } finally { await missingKey.close(); }
+  const live = await createBoundProfileFixture();
   const livePaths = downgradeStoppedControl(live, 2);
   const lock = acquireRuntimeProcessLock({ processLockRoot: livePaths.processLockRoot, name: "server", pid: process.pid });
   try {
     assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(live.workspace), /profile-control-upgrade-runtime-active/u);
     assertUnchanged(livePaths);
-  } finally { lock.release(); live.close(); }
+  } finally { lock.release(); await live.close(); }
 });
 
 it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and rolls back a mutated stage", async () => {
-  const fixture = createBoundProfileFixture();
+  const fixture = await createBoundProfileFixture();
   const paths = downgradeStoppedControl(fixture, 2);
   assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "exclusive"));
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
@@ -798,11 +799,11 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(current.state, "current");
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
-  } finally { maintenance.release(); fixture.close(); }
+  } finally { maintenance.release(); await fixture.close(); }
 });
 
 it("recovers a machine-control publication stopped between the control and marker renames", async () => {
-  const fixture = createBoundProfileFixture();
+  const fixture = await createBoundProfileFixture();
   const paths = downgradeStoppedControl(fixture, 2);
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
   try {
@@ -820,11 +821,11 @@ it("recovers a machine-control publication stopped between the control and marke
     assert.equal(readFileSync(join(backupDirectory, controlName ?? "")).equals(paths.controlBytes), true);
     assert.equal(readFileSync(join(backupDirectory, (controlName ?? "").replace(".control.before.json", ".marker.before.json"))).equals(paths.markerBytes), true);
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
-  } finally { maintenance.release(); fixture.close(); }
+  } finally { maintenance.release(); await fixture.close(); }
 });
 
 it("keeps the restore admission when stopped-control snapshot disposal is unproved", async () => {
-  const fixture = createBoundProfileFixture();
+  const fixture = await createBoundProfileFixture();
   const held: { fixture: typeof fixture; maintenance?: RuntimeAdmission; restore?: ReturnType<RuntimeAdmission['maintenanceRestore']>; control?: ReturnType<RuntimeAdmission['beginStoppedMachineControlUpgrade']>; processLockRoot?: string; snapshot?: { path: string; device: number; inode: number; uid: number; originalFlags: number; injected: boolean }; primary?: { error: unknown }; cleanup?: { error: unknown } } = { fixture };
   retainedPublicationRecoveryOwners.add(held);
   const readSnapshotFlags = (path: string) => z.number().int().nonnegative().parse(Number(z.string().regex(/^\d+$/).parse(execFileSync('/usr/bin/stat', ['-f', '%f', path], { encoding: 'utf8' }).trim())));
@@ -896,8 +897,8 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
 });
 
 
-it('keeps erased managed material revoked after a distinct valid enrollment', () => {
-  const f = setup();
+it('keeps erased managed material revoked after a distinct valid enrollment', async () => {
+  const f = await setup();
   const retained: { fixture: typeof f; error?: unknown } = { fixture: f };
   retainedPublicationRecoveryOwners.add(retained);
   try {
@@ -944,14 +945,14 @@ it('keeps erased managed material revoked after a distinct valid enrollment', ()
     assert.equal(openDuoCredentialDocument(freshPurpose, readFileSync(newBackupPath), newBackup.revision).credentials.some(row => row.credentialId === replacement.credentialId), true);
     assert.throws(() => openDuoCredentialDocument(issueDuoCredentialPurpose(f.admission, f.machine), readFileSync(backupPath), backedUp.revision), /duo-erased-key-material-refused/u);
   } catch (error) { retained.error = error; throw error; }
-  try { f.close(); }
+  try { await f.close(); }
   catch (error) { retained.error = error; throw error; }
   retainedPublicationRecoveryOwners.delete(retained);
 });
 
 const retainedInventoryCloseFailures = new Set<object>();
-for (const readOwner of ['scan', 'parse'] as const) it(`retains the actual stopped inventory ${readOwner} descriptor and purpose on failed native close`, () => {
-  const f = stoppedControlFixture(retainedCredential);
+for (const readOwner of ['scan', 'parse'] as const) it(`retains the actual stopped inventory ${readOwner} descriptor and purpose on failed native close`, async () => {
+  const f = await stoppedControlFixture(retainedCredential);
   const held: { fixture: typeof f; descriptor?: number; path?: string; identity?: object; closeFailure?: Error; primary?: unknown; competing?: RuntimeAdmission;
     inventory?: ReturnType<typeof composeStoppedControlCredentialInventory>; claim?: ReturnType<typeof f.upgrade.profileInventory>; hooks?: Array<{ mockRestore(): void }> } = { fixture: f };
   retainedInventoryCloseFailures.add(held);

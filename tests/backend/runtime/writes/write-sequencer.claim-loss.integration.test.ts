@@ -12,8 +12,8 @@ afterEach(cleanup);
 describe("write fence claim admission", () => {
   for (const operation of ["fenceAttempt", "refenceRetryable"] as const) {
     for (const violation of ["released", "wrong-worker", "stale-generation", "claimed", "cancelled"] as const) {
-      it(`${operation} refuses ${violation} without changing write authority`, () => {
-        const h = harness();
+      it(`${operation} refuses ${violation} without changing write authority`, async () => {
+        const h = await harness();
         const { run, claim } = claimRunning(h.database, h.clock);
         const original = attemptingIntentFixture(run.envelope.runId);
         let fence = original;
@@ -64,7 +64,7 @@ describe("write fence claim admission", () => {
     }
   }
   it("refuses a released claim before creating an intent or clicking", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.onPrepare = () => {

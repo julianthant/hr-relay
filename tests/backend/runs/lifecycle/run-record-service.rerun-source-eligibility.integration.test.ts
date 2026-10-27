@@ -14,9 +14,9 @@ import { sourceBoundReadDescriptor,sourceBoundReadStores } from "../../../suppor
 
 const disposers: (() => void)[] = [];
 afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
-type Harness = ReturnType<typeof sourceBoundHarness>;
-function harness() {
-  const h = sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores);
+type Harness = Awaited<ReturnType<typeof sourceBoundHarness>>;
+async function harness() {
+  const h = await sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores);
   disposers.push(h.dispose); return h;
 }
 
@@ -53,15 +53,15 @@ function snapshot(h: Harness, source: RunRecord) {
 
 describe("Rerun source eligibility at planning and final consumption", () => {
   for (const kind of ["cancelled", "discarded", "superseded"] as const) {
-    it(`refuses ${kind} source planning without persisting a plan or lifecycle effects`, () => {
-      const h = harness(); const source = sourceOf(h, kind);
+    it(`refuses ${kind} source planning without persisting a plan or lifecycle effects`, async () => {
+      const h = await harness(); const source = sourceOf(h, kind);
       const before = snapshot(h, source); const planIdsBefore = h.planIds.minted().length;
       assert.throws(() => h.proposal(source), (error) => error instanceof RerunRefusedError && error.code === "invalid-state");
       assert.equal(snapshot(h, source), before);
       for (const id of h.planIds.minted().slice(planIdsBefore)) assert.equal(h.database.authority.startPlans.get(id), undefined);
     });
-    it(`refuses a persisted ineligible ${kind} plan without consuming it or creating work`, () => {
-      const h = harness(); const source = sourceOf(h, kind);
+    it(`refuses a persisted ineligible ${kind} plan without consuming it or creating work`, async () => {
+      const h = await harness(); const source = sourceOf(h, kind);
       const plan = storedIneligibleSourcePlan(h, source); const command = h.command(plan);
       const before = snapshot(h, source);
       const result = h.kernel.execute(command);

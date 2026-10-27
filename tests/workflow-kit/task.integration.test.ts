@@ -54,7 +54,7 @@ describe("failure, retry, and resume", () => {
     };
     const registry = defineTaskStoreRegistry(stores, corpus);
 
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const deps: RunExecutorDependencies = {
@@ -62,7 +62,7 @@ describe("failure, retry, and resume", () => {
       descriptor: personLookupDescriptor,
       stores: registry,
       authority: database,
-      sessions: sessionManagerFor(happySessionHarness(), clock),
+      sessions: await sessionManagerFor(happySessionHarness(), clock),
       emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
       clock,
       ids: sequentialIdFactory("b"),

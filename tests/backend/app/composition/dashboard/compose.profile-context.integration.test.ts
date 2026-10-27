@@ -26,12 +26,12 @@ import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/pre
 
 vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 
-function fixture() {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+async function fixture() {
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
   const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null },
     processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
-  const signIn = () => runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  const signIn = () => runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   const active = signIn(); assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("synthetic active profile required");
   const input = { admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace, clock,
@@ -41,7 +41,7 @@ function fixture() {
 }
 
 it("starts the actual dashboard from the same token-owned context and proves resource/child/process/parent shutdown", async () => {
-  const f = fixture();
+  const f = await fixture();
   let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
   const kernelFactory = vi.spyOn(kernel, "createCommandKernel");
   try {
@@ -75,12 +75,12 @@ it("starts the actual dashboard from the same token-owned context and proves res
     assert.throws(() => context.database.getMeta(), /closed/u);
     assert.throws(() => context.admission.assertLive());
     assert.throws(() => f.machine.assertLive());
-  } finally { kernelFactory.mockRestore(); if (dashboard !== undefined) await dashboard.stop(); f.close(); }
+  } finally { kernelFactory.mockRestore(); if (dashboard !== undefined) await dashboard.stop(); await f.close(); }
 });
 
 for (const problem of ["absent", "stale", "foreign", "logged-out"] as const) it(`refuses ${problem} dashboard context before ordinary database opening`, async () => {
-  const f = fixture();
-  const other = problem === "foreign" ? fixture() : undefined;
+  const f = await fixture();
+  const other = problem === "foreign" ? await fixture() : undefined;
   try {
     if (problem === "stale") assert.equal(f.signIn().state, "active");
     if (problem === "logged-out") {
@@ -95,13 +95,13 @@ for (const problem of ["absent", "stale", "foreign", "logged-out"] as const) it(
     open.mockRestore();
   } finally {
     vi.restoreAllMocks();
-    await f.runtime.close(); f.close();
-    if (other !== undefined) { await other.runtime.close(); other.close(); }
+    await f.runtime.close(); await f.close();
+    if (other !== undefined) { await other.runtime.close(); await other.close(); }
   }
 });
 
 it("revokes runtime, command and retained producer authority before held actual account closure without changing the session epoch", async () => {
-  const f = fixture();
+  const f = await fixture();
   let release!: () => void, entered!: () => void;
   const barrier = new Promise<void>(resolve => { release = resolve; }), closing = new Promise<void>(resolve => { entered = resolve; });
   const createAccount = accounts.createChatGptAccountService;
@@ -137,12 +137,12 @@ it("revokes runtime, command and retained producer authority before held actual 
   } finally {
     release(); if (stopping !== undefined) await stopping;
     if (dashboard !== undefined && stopping === undefined) await dashboard.stop();
-    factory.mockRestore(); kernelFactory.mockRestore(); f.close();
+    factory.mockRestore(); kernelFactory.mockRestore(); await f.close();
   }
 });
 
 for (const failure of ["account", "database"] as const) it(`retains exact dashboard custody after unproved ${failure} closure and refuses new ordinary work`, async () => {
-  const f = fixture(), primary = new Error(`synthetic ${failure} closure failure`);
+  const f = await fixture(), primary = new Error(`synthetic ${failure} closure failure`);
   const createAccount = accounts.createChatGptAccountService;
   const factory = vi.spyOn(accounts, "createChatGptAccountService").mockImplementation(options => ({ ...createAccount(options) }));
   let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
@@ -165,12 +165,12 @@ for (const failure of ["account", "database"] as const) it(`retains exact dashbo
   } finally {
     vi.restoreAllMocks();
     if (context !== undefined) { await context.account.close(); context.database.close(); context.admission.release(); }
-    factory.mockRestore(); f.close();
+    factory.mockRestore(); await f.close();
   }
 });
 
 for (const failure of ["http", "http-and-feed"] as const) it(`unwinds actual startup with ${failure} failure without releasing unproved producer custody`, async () => {
-  const f = fixture(), context = f.runtime.selectedContext(f.active.token);
+  const f = await fixture(), context = f.runtime.selectedContext(f.active.token);
   const primary = new Error("synthetic actual HTTP starter rejection"), feedFailure = new Error("synthetic actual feed closure failure");
   const createHub = streams.createDashboardStreamHub;
   let closeFeed: (() => void) | undefined;
@@ -207,13 +207,13 @@ for (const failure of ["http", "http-and-feed"] as const) it(`unwinds actual sta
     }
   } finally {
     hubFactory.mockRestore(); closeFeed?.();
-    await f.runtime.close(); f.close();
+    await f.runtime.close(); await f.close();
   }
 });
 
 
 it("settles actual artifact initialization before releasing startup database and profile custody after a constructor failure", async () => {
-  const f = fixture(), context = f.runtime.selectedContext(f.active.token);
+  const f = await fixture(), context = f.runtime.selectedContext(f.active.token);
   const primary = new Error("synthetic Explorer constructor failure");
   let release!: () => void, entered!: () => void, readyObserved!: () => void, databaseClosing!: () => void;
   const barrier = new Promise<void>(resolve => { release = resolve; });
@@ -259,6 +259,6 @@ it("settles actual artifact initialization before releasing startup database and
   } finally {
     release(); await boot; await observation;
     filesystemProbe.mockRestore(); readerFactory.mockRestore(); constructor.mockRestore(); databaseClose.mockRestore();
-    await f.runtime.close(); f.close();
+    await f.runtime.close(); await f.close();
   }
 });

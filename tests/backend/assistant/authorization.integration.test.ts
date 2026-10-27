@@ -1,3 +1,4 @@
+import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { createProductionAssistantTools } from "../../../src/backend/assistant/tools.js";
 import { assistantKnowledgeArtifact, createAssistantContext } from "../../../src/backend/assistant/context.js";
 import { AssistantRequestSchema, AssistantResultSchema } from "../../../src/models/dashboard/assistant.js";
@@ -40,14 +41,15 @@ afterEach(async () => {
   }
   if (failures.length > 0) throw new AggregateError(failures, "assistant test cleanup failed");
 });
-function fixture() {
+async function fixture() {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "assistant-authorization-")));
   const machine = acquireEntrypointAdmission(workspace, "exclusive");
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
-  const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot });
-  const active = runtime.session.signUp({ firstName: "Synthetic", lastName: "Operator", email: "operator@example.edu", password: "synthetic-password", createdAt: clock.now().toISOString() });
+  const signUpFields = { firstName: "Synthetic", lastName: "Operator", email: "operator@ucsd.edu", password: "synthetic-password", createdAt: clock.now().toISOString() };
+  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(() => signUpFields.email), admission: machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot });
+  const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(signUpFields));
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("signup required");
   const context = runtime.selectedContext(active.token), database = context.database;
   const unavailable = (): never => { throw new Error("unused runtime port invoked"); };
@@ -82,8 +84,8 @@ function fixture() {
   return { workspace, machine, runtime, active, context, database, clock, kernel, authorization, grant, command, permissionCommand, execute };
 }
 
-it("does not turn the displayed default into a grant, and requires genuine token/chat ownership", () => {
-  const f = fixture(), chat = f.authorization.createChat();
+it("does not turn the displayed default into a grant, and requires genuine token/chat ownership", async () => {
+  const f = await fixture(), chat = f.authorization.createChat();
   assert.equal(f.database.authority.assistantAuthorization.grant(), undefined);
   assert.throws(() => f.authorization.prepare(chat, f.command()), /assistant-grant-required/u);
   assert.throws(() => composeProfileAssistantAuthorization(f.runtime, randomUUID(), f.kernel, f.clock));
@@ -98,8 +100,8 @@ it("does not turn the displayed default into a grant, and requires genuine token
   assert.equal(f.database.getMeta().authorityGeneration, before);
 });
 
-it("claims once and commits the real canonical Settings result in one authority generation", () => {
-  const f = fixture(); assert.equal(f.grant("every-action").state, "applied");
+it("claims once and commits the real canonical Settings result in one authority generation", async () => {
+  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
   const chat = f.authorization.createChat(), command = f.command(), proposal = f.authorization.prepare(chat, command);
   assert.equal(proposal.state, "prepared");
   assert.throws(() => f.authorization.consume(chat, proposal.id), /not-consumable/u);
@@ -116,8 +118,8 @@ it("claims once and commits the real canonical Settings result in one authority 
   assert.throws(() => f.authorization.approve(chat, proposal.id, 1), /state-conflict/u);
 });
 
-it("refuses another chat, changed grant, expiry and profile revocation without command effects", () => {
-  const f = fixture(); assert.equal(f.grant("without-asking").state, "applied");
+it("refuses another chat, changed grant, expiry and profile revocation without command effects", async () => {
+  const f = await fixture(); assert.equal(f.grant("without-asking").state, "applied");
   const chat = f.authorization.createChat(), other = f.authorization.createChat(), command = f.command();
   const proposal = f.authorization.prepare(chat, command);
   assert.throws(() => f.authorization.consume(other, proposal.id), /stale/u);
@@ -132,8 +134,8 @@ it("refuses another chat, changed grant, expiry and profile revocation without c
   assert.throws(() => f.authorization.consume(chat, next.id));
 });
 
-it("refuses private or self-granting commands before storing an action", () => {
-  const f = fixture(); assert.equal(f.grant("without-asking").state, "applied");
+it("refuses private or self-granting commands before storing an action", async () => {
+  const f = await fixture(); assert.equal(f.grant("without-asking").state, "applied");
   const chat = f.authorization.createChat(), command = f.command(); assert.equal(command.type, "apply-settings");
   if (command.type !== "apply-settings") throw new Error("settings required");
   const patch = { "actor.label": { set: "Synthetic Person" } };
@@ -142,8 +144,8 @@ it("refuses private or self-granting commands before storing an action", () => {
   assert.equal(f.database.authority.assistantAuthorization.actionByCommand(command.commandId), undefined);
 });
 
-it("refuses cancellation, changed manifest and reissued service capability without resurrecting durable approval", () => {
-  const f = fixture(); assert.equal(f.grant("without-asking").state, "applied");
+it("refuses cancellation, changed manifest and reissued service capability without resurrecting durable approval", async () => {
+  const f = await fixture(); assert.equal(f.grant("without-asking").state, "applied");
   const chat = f.authorization.createChat(), command = f.command(), proposal = f.authorization.prepare(chat, command);
   f.authorization.cancel(chat, proposal.id, proposal.revision);
   assert.throws(() => f.authorization.consume(chat, proposal.id), /not-consumable/u);
@@ -160,7 +162,7 @@ it("refuses cancellation, changed manifest and reissued service capability witho
 });
 
 it("does not resurrect an approval copied back by the real stopped restore", async () => {
-  const f = fixture(); assert.equal(f.grant("without-asking").state, "applied");
+  const f = await fixture(); assert.equal(f.grant("without-asking").state, "applied");
   const chat = f.authorization.createChat(), command = f.command(), proposal = f.authorization.prepare(chat, command);
   const directory = join(f.context.admission.stateRoot, "backups", "authority");
   const report = await new AuthorityBackupService(f.context.admission, f.database, { directory }, f.clock)
@@ -178,7 +180,7 @@ it("does not resurrect an approval copied back by the real stopped restore", asy
   assert.equal((await restore.restore({ manifestPath: join(directory, `${manifest.backupFileName}.manifest.json`), stoppedSystemProof: proof })).state, "restored");
   assert.throws(() => f.authorization.consume(chat, proposal.id));
   const restarted = composeProfileRuntime({ admission: f.machine, clock: f.clock, hostFacts: { primaryDisplay: null }, processLockRoot });
-  const active = restarted.session.signIn({ email: "operator@example.edu", password: "synthetic-password", at: f.clock.now().toISOString() });
+  const active = restarted.session.signIn({ email: "operator@ucsd.edu", password: "synthetic-password", at: f.clock.now().toISOString() });
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("active restored profile required");
   const context = restarted.selectedContext(active.token);
   cleanups.push(async () => { await context.account.close(); context.database.close(); context.admission.release(); });
@@ -190,8 +192,8 @@ it("does not resurrect an approval copied back by the real stopped restore", asy
   assert.equal(context.database.authority.commands.get(command.commandId), undefined);
 });
 
-it("requires both grant and Settings CAS and keeps exact permission replay idempotent", () => {
-  const f = fixture(), first = f.permissionCommand("every-action");
+it("requires both grant and Settings CAS and keeps exact permission replay idempotent", async () => {
+  const f = await fixture(), first = f.permissionCommand("every-action");
   assert.equal(first.type, "apply-settings"); if (first.type !== "apply-settings") throw new Error("settings required");
   const initial = f.context.settings.read().record, generation = f.database.getMeta().authorityGeneration;
   assert.equal(f.grant("without-asking", initial.revision, 1).state, "conflict");
@@ -218,7 +220,7 @@ it("requires both grant and Settings CAS and keeps exact permission replay idemp
 });
 
 it.each(["without-asking", "every-action"] as const)("binds opaque notification references to actual canonical %s authorization without exposing local rows", async mode => {
-  const f = fixture();
+  const f = await fixture();
   assert.equal(f.grant(mode).state, "applied");
   const notification = NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "a".repeat(64),
     trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local-only title", summary: "Local-only content",
@@ -266,7 +268,7 @@ it.each(["without-asking", "every-action"] as const)("binds opaque notification 
 });
 
 it.each(["manifest", "row", "added", "session"] as const)("refuses a production notification reference changed at the %s boundary without an effect", async boundary => {
-  const f = fixture(); assert.equal(f.grant("without-asking").state, "applied");
+  const f = await fixture(); assert.equal(f.grant("without-asking").state, "applied");
   const notification = NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "a".repeat(64),
     trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local-only title", summary: "Local-only content",
     links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1,
@@ -293,7 +295,7 @@ it.each(["manifest", "row", "added", "session"] as const)("refuses a production 
 });
 
 it.each(["cancel", "expired", "manifest", "grant", "target", "added", "restart"] as const)("keeps an issued confirmation bound through %s without an unauthorized effect", async change => {
-  const f = fixture(); assert.equal(f.grant("every-action").state, "applied");
+  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
   const notification = NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "a".repeat(64),
     trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary",
     links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1,
@@ -328,8 +330,8 @@ it.each(["cancel", "expired", "manifest", "grant", "target", "added", "restart"]
 });
 
 it.each(["handler-cancel", "service-cancel", "service-account", "pre-effect", "definite-abort", "transport"] as const)("retains genuine automatic canonical settlement through the %s boundary without redispatch", async boundary => {
-  const f = fixture(); assert.equal(f.grant("without-asking").state, "applied");
-  const account = chatGptFixture(f.context.admission); cleanups.push(() => account.cleanup()); await account.connected();
+  const f = await fixture(); assert.equal(f.grant("without-asking").state, "applied");
+  const account = await chatGptFixture(f.context.admission); cleanups.push(() => account.cleanup()); await account.connected();
   const notification = NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "a".repeat(64),
     trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary",
     links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1,
@@ -400,8 +402,8 @@ it.each(["handler-cancel", "service-cancel", "service-account", "pre-effect", "d
   }
 });
 
-it.each(["confirm", "cancel"] as const)("keeps stale collection confirmation refused but permits exact inert %s", decision => {
-  const f = fixture(); assert.equal(f.grant("every-action").state, "applied");
+it.each(["confirm", "cancel"] as const)("keeps stale collection confirmation refused but permits exact inert %s", async decision => {
+  const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
   const notification = NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "a".repeat(64),
     trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary",
     links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1,

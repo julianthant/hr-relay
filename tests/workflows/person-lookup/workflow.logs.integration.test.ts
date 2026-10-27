@@ -13,8 +13,8 @@ afterEach(cleanup);
 it.each([
   { crm: "Check failed", reason: "" },
   { crm: "Not checked", reason: "UCPath HR status is blank" },
-])("serves candidate EIDs, check states and the retained status note $reason", ({ crm, reason }) => {
-  const w = world();
+])("serves candidate EIDs, check states and the retained status note $reason", async ({ crm, reason }) => {
+  const w = await world();
   queuedEventOf(w, { seed: 83, descriptor: personLookupModule.descriptor });
   const run = w.authority.records.get(uuidOf(83)); assert.ok(run);
   const at = w.clock.now().toISOString();
@@ -50,8 +50,8 @@ it.each([
   { nodeId: "active-status", taskId: "workflow:person-lookup/read-active-status", field: "hdh", label: "HDH department", value: false, text: "No" },
   { nodeId: "active-status", taskId: "workflow:person-lookup/read-active-status", field: "hdh", label: "HDH department", value: null, text: null },
   ...["Found", "Not found", "Not checked", "Check failed"].map(value => ({ nodeId: "crm-identity", taskId: "workflow:person-lookup/read-resolved-identity", field: "crmState", label: "CRM", value, text: value })),
-])("maps only declared Person Lookup $nodeId.$field=$value at display", ({ nodeId, taskId, field, label, value, text }) => {
-  const w=world();queuedEventOf(w,{seed:86,descriptor:personLookupModule.descriptor});const run=w.authority.records.get(uuidOf(86));assert.ok(run);
+])("maps only declared Person Lookup $nodeId.$field=$value at display", async ({ nodeId, taskId, field, label, value, text }) => {
+  const w=await world();queuedEventOf(w,{seed:86,descriptor:personLookupModule.descriptor});const run=w.authority.records.get(uuidOf(86));assert.ok(run);
   const at=w.clock.now().toISOString();w.writer.emit({t:"data.observed",ts:at,observedAt:at,workflow:"person-lookup",runId:run.envelope.runId,attempt:1,traceId:run.envelope.traceId,spanPath:`${run.envelope.traceId}/${nodeId}#1.1`,nodeId,taskId,points:[{direction:"read",field,values:[{key:field,state:"allowed",classification:"safe-diagnostic",transform:"allow",value}]}]});w.projection.ingestFromTimeline();
   const deps={runReader:w.runReader,timeline:w.timeline,stateRoot:w.stateRoot,projection:w.projection,authority:w.authority,descriptors:{resolve:()=>({dataOrigins:dataOriginViewsOf(personLookupModule)})}};
   const section=buildRunLogsSection(deps,run.envelope.runId,undefined,run);assert.ok(section.section==="logs");
@@ -63,8 +63,8 @@ it.each([
  {field:"method",value:null,redacted:false,refused:false},
  {field:"method",value:"unknown-method",redacted:true,refused:false},
  {field:"hdh",value:"true",redacted:false,refused:true},
-])("preserves PL null/redaction and refuses unmapped typed values $field=$value",({field,value,redacted,refused})=>{
- const w=world();queuedEventOf(w,{seed:87,descriptor:personLookupModule.descriptor});const run=w.authority.records.get(uuidOf(87));assert.ok(run);
+])("preserves PL null/redaction and refuses unmapped typed values $field=$value",async ({field,value,redacted,refused})=>{
+ const w=await world();queuedEventOf(w,{seed:87,descriptor:personLookupModule.descriptor});const run=w.authority.records.get(uuidOf(87));assert.ok(run);
  const nodeId=field==="method"?"search-identity":"active-status",taskId=field==="method"?"workflow:person-lookup/read-resolved-identity":"workflow:person-lookup/read-active-status";
  const at=w.clock.now().toISOString();
  w.writer.emit({t:"data.observed",ts:at,observedAt:at,workflow:"person-lookup",runId:run.envelope.runId,attempt:1,traceId:run.envelope.traceId,spanPath:`${run.envelope.traceId}/${nodeId}#1.1`,nodeId,taskId,points:[{direction:"read",field,values:[redacted?{key:field,state:"redacted",classification:"sensitive-hr",transform:"drop"}:{key:field,state:"allowed",classification:"safe-diagnostic",transform:"allow",value}]}]});

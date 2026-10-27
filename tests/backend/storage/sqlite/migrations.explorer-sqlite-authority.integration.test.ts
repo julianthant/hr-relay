@@ -7,8 +7,8 @@ const SECOND = "22222222-2222-4222-8222-222222222222";
 const THIRD = "33333333-3333-4333-8333-333333333333";
 
 describe("Explorer SQLite command authority", () => {
-  it("commits one override revision and one audit in the command transaction, with hot readback and restart replay", () => {
-    const f = explorerAuthorityFixture();
+  it("commits one override revision and one audit in the command transaction, with hot readback and restart replay", async () => {
+    const f = await explorerAuthorityFixture();
     try {
       const command = f.command(FIRST);
       const generation = f.database.getMeta().authorityGeneration;
@@ -27,11 +27,11 @@ describe("Explorer SQLite command authority", () => {
       f.restart();
       assert.equal(f.kernel.execute(command).state, "already-applied");
       assert.equal(f.read().workflows.find(row => row.id === "person-lookup")?.label, "People search");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
-  it("refuses an executor's fabricated successful readback when the transaction repository has no override", () => {
-    const f = explorerAuthorityFixture();
+  it("refuses an executor's fabricated successful readback when the transaction repository has no override", async () => {
+    const f = await explorerAuthorityFixture();
     try {
       f.omitOverrideWrite(true);
       assert.throws(() => f.kernel.execute(f.command(FIRST)), /readback that does not exactly advance/u);
@@ -40,11 +40,11 @@ describe("Explorer SQLite command authority", () => {
       assert.deepEqual(f.database.authority.explorerOverrides.readAll(), []);
       f.omitOverrideWrite(false);
       assert.equal(f.kernel.execute(f.command(SECOND)).state, "applied");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
-  it("rolls back override, revision, command, audit and generation on audit failure; stale then valid competitors work", () => {
-    const f = explorerAuthorityFixture();
+  it("rolls back override, revision, command, audit and generation on audit failure; stale then valid competitors work", async () => {
+    const f = await explorerAuthorityFixture();
     try {
       const generation = f.database.getMeta().authorityGeneration;
       f.failAudit(true);
@@ -59,11 +59,11 @@ describe("Explorer SQLite command authority", () => {
       assert.equal(f.kernel.execute(f.command(THIRD, 0, "Directory search")).state, "applied");
       assert.equal(f.kernel.execute(f.command(FIRST)).state, "conflict");
       assert.equal(f.database.authority.explorerOverrides.read("person-lookup")?.presentation.label, "Directory search");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
-  it.each(["reason", "requestedAt", "source", "requestedBy"] as const)("refuses a divergent %s on restart replay before mutation", field => {
-    const f = explorerAuthorityFixture();
+  it.each(["reason", "requestedAt", "source", "requestedBy"] as const)("refuses a divergent %s on restart replay before mutation", async field => {
+    const f = await explorerAuthorityFixture();
     try {
       const command = f.command(FIRST);
       assert.equal(f.kernel.execute(command).state, "applied");
@@ -71,11 +71,11 @@ describe("Explorer SQLite command authority", () => {
       const value = field === "requestedAt" ? "2026-09-13T11:00:00Z" : field === "source" ? "cli" : field === "requestedBy" ? "other-operator" : "Changed reason";
       assert.throws(() => f.kernel.execute({ ...command, [field]: value }), /reused|identity|different/u);
       assert.equal(f.database.authority.explorerOverrides.read("person-lookup")?.revision, 1);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
-  it("refuses stale descriptor/version/revision and restores appearance through a new revision", () => {
-    const f = explorerAuthorityFixture();
+  it("refuses stale descriptor/version/revision and restores appearance through a new revision", async () => {
+    const f = await explorerAuthorityFixture();
     try {
       const command = f.command(FIRST);
       for (const target of [ { expectedVersion: command.target.expectedVersion + 1 }, { contractFingerprint: "0".repeat(64) }, { expectedOverrideRevision: 8 } ]) {
@@ -87,6 +87,6 @@ describe("Explorer SQLite command authority", () => {
       assert.equal(f.read().workflows.find(row => row.id === "person-lookup")?.label, f.descriptor.label);
       assert.equal(f.database.authority.explorerOverrides.read("person-lookup")?.revision, 2);
       assert.equal(f.kernel.execute(command).state, "already-applied");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });

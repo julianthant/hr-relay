@@ -46,8 +46,8 @@ import { makeWorld, receiptWithWarningsOf } from "../../../support/helpers/backe
 
 {
 
-it("keeps the resolved subject and operator label distinct in the derived summary day", () => {
-const f = foundationFixture();
+it("keeps the resolved subject and operator label distinct in the derived summary day", async () => {
+const f = await foundationFixture();
 const { descriptor: subjectDescriptor } = createSubjectTitleTestWorld();
 try {
   const runId = id(720);
@@ -136,28 +136,28 @@ hdh: true };
   assert.equal(afterRename.detailTitle, 'Synthetic Operator Rename');
   assert.deepEqual(afterRename.canonicalDisplayName, { state: 'present', value: 'Synthetic Operator Rename' });
   assert.deepEqual(afterRename.servedDisplayName, afterRename.canonicalDisplayName);
-} finally { f.dispose(); }
+} finally { await f.dispose(); }
 });
 }
 
 {
 
-it("serializes only safe Queue facts and aggregate Activity values",()=>{
-  const f=foundationFixture();try{
+it("serializes only safe Queue facts and aggregate Activity values",async ()=>{
+  const f=await foundationFixture();try{
 
     const queue=queryQueueSummaries(f.db,{limit:10});
     const report=queryActivitySummaries(f.db,{from:"2026-09-09",to:"2026-09-09",generatedAt:f.run.createdAt},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})}});
     const serialized=JSON.stringify({queue,report});
     for(const forbidden of ['"person":','"identity":','"sourceDigest":','"configFingerprint":'])assert.ok(!serialized.includes(forbidden));
     assert.deepEqual(report.people,{state:"present",distinct:0,evidenceRows:0});
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
 }
 
 {
 
 it("keeps JSON, CSV and XLSX write evidence through restart and terminal run deletion", async () => {
-  const f = foundationFixture();
+  const f = await foundationFixture();
   let database = f.db;
   try {
     const run = f.run;
@@ -231,11 +231,11 @@ it("keeps JSON, CSV and XLSX write evidence through restart and terminal run del
     database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "summary-delete-reopen" }, f.clock);
     assert.equal(read().totalRuns, 0);
     assert.deepEqual(read().ledger, before.ledger);
-  } finally { database.close(); f.dispose(); }
+  } finally { database.close(); await f.dispose(); }
 });
 
-it("keeps deterministic cursor ties, day/status/workflow/system membership and canonical stale-action refusal", () => {
-  const f = summaryFixture();
+it("keeps deterministic cursor ties, day/status/workflow/system membership and canonical stale-action refusal", async () => {
+  const f = await summaryFixture();
   try {
     const ids = [id(8860), id(8861), id(8862), id(8863)];
     f.db.withAuthorityTransaction(() => ids.forEach((runId, n) => f.db.authority.runs.enqueue(RunRecordSchema.parse({ ...f.run,
@@ -267,14 +267,14 @@ it("keeps deterministic cursor ties, day/status/workflow/system membership and c
     const refreshed = f.projection.buildDashboardDayWire("2026-09-09");
     assert.equal(refreshed.queueSurfaces.find(item => item.runId === row.runId)?.status, "cancelled");
     assert.equal(refreshed.statusCounts.find(item => item.status === "queued")?.count, 2);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 }
 
 {
 
-it("reads current heartbeats and publishes creation and presentation atomically",()=>{
-  const f=foundationFixture();try {
+it("reads current heartbeats and publishes creation and presentation atomically",async ()=>{
+  const f=await foundationFixture();try {
     testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 2, browserSystems: workflowProjections(personLookupDescriptor).systems });
     const before=f.db.readRunSummaries();
     if(f.run.lifecycle.state!=="running")throw new Error("fixture-state");
@@ -294,10 +294,10 @@ it("reads current heartbeats and publishes creation and presentation atomically"
     const stable=f.db.readRunSummaries();
     assert.throws(()=>f.db.withAuthorityTransaction(()=>{f.db.authority.runs.updatePresentation({runId:current.envelope.runId,expectedVersion:current.version+1,displayName:"Rolled back",now:NOW});throw new Error("outer");}),/outer/);
     assert.deepEqual(f.db.readRunSummaries(),stable);
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
-it("maintains parent rollups and dependencies while batch grouping stays a bounded current relation",()=>{
-  const f=foundationFixture();try{
+it("maintains parent rollups and dependencies while batch grouping stays a bounded current relation",async ()=>{
+  const f=await foundationFixture();try{
     const batch={...RUN_SESSION,sessionId:id(5000),workflow:"person-lookup"};
     f.db.authority.runSessions.insert(batch);
     const parent=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,runId:id(5001),itemId:id(5001),shape:"operation",enqueuedAt:NOW},sessionId:batch.sessionId,lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:NOW,updatedAt:NOW});
@@ -320,11 +320,11 @@ it("maintains parent rollups and dependencies while batch grouping stays a bound
     assert.equal(query().items[0].session?.groupInQueue,true);
     const report=queryActivitySummaries(f.db,{from:"2026-09-09",to:"2026-09-09",generatedAt:NOW},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})}});
     assert.equal(report.totalRuns,1);assert.equal(report.terminalRuns,0);
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
 
-it("consumes relevant timeline cursors transactionally and exact replay does not rewrite",()=>{
-  const f=foundationFixture();try{
+it("consumes relevant timeline cursors transactionally and exact replay does not rewrite",async ()=>{
+  const f=await foundationFixture();try{
     const run=f.run,envelope=run.envelope;
     const event={schemaVersion:1,eventId:id(5100),workflow:envelope.workflow,scope:{kind:"run",runId:envelope.runId},occurredAt:envelope.enqueuedAt,recordedAt:NOW,retentionDate:"2026-09-09",source:{kind:"native"},payload:{kind:"span",event:{t:"run.queued",kind:"run",pid:1,ts:envelope.enqueuedAt,workflow:envelope.workflow,runId:envelope.runId,attempt:envelope.attempt,traceId:envelope.traceId,spanPath:envelope.traceId,itemId:envelope.itemId,shape:envelope.shape,priority:envelope.priority,dryRun:envelope.dryRun,actorId:"local-operator",title:"Timeline title",descriptorVersion:envelope.descriptorVersion,contractFingerprint:envelope.contractFingerprint,resolvedInstance:envelope.resolvedInstance,configFingerprint:envelope.configFingerprint,configSnapshotId:envelope.configSnapshotId}}};
     f.db.authority.timelineEvents.append(event);
@@ -333,10 +333,10 @@ it("consumes relevant timeline cursors transactionally and exact replay does not
     const claimed={t:"run.claimed",pid:1,ts:envelope.enqueuedAt,workflow:envelope.workflow,runId:envelope.runId,attempt:envelope.attempt,traceId:envelope.traceId,spanPath:envelope.traceId,workerId:run.lifecycle.state==="running"?run.lifecycle.workerId:"invalid"};
     assert.throws(()=>f.db.withAuthorityTransaction(()=>{f.db.authority.timelineEvents.append({...event,eventId:id(5101),payload:{kind:"span",event:claimed}});throw new Error("timeline-rollback");}),/timeline-rollback/);
     assert.deepEqual(f.db.readRunSummaries(),before);
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
-it("updates receipt facts exactly once and cancellation filtering uses the same current snapshot",()=>{
-  const f=foundationFixture();try{
+it("updates receipt facts exactly once and cancellation filtering uses the same current snapshot",async ()=>{
+  const f=await foundationFixture();try{
     const run=f.run;
     const failed = failure_m3();
     assert.equal(terminalizeFixtureFailure(f,run,failed).state,"applied");
@@ -348,14 +348,14 @@ it("updates receipt facts exactly once and cancellation filtering uses the same 
     const changed=f.db.authority.runs.requestCancellation({runId:active.envelope.runId,expectedVersion:active.version,now:NOW});assert.equal(changed.state,"applied");
     assert.equal(queryQueueSummaries(f.db,{limit:10,status:"running"}).items.length,0);
     const cancelling=queryQueueSummaries(f.db,{limit:10,status:"cancelling"});assert.equal(cancelling.items.length,1);assert.equal(cancelling.items[0].status,"cancelling");
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
 }
 
 {
 
-it("pages stable ties over real summary partitions, without whole-source reads",()=>{
-  const f=foundationFixture();try {
+it("pages stable ties over real summary partitions, without whole-source reads",async ()=>{
+  const f=await foundationFixture();try {
     f.db.withAuthorityTransaction(()=>{for(let n=0;n<12;n++)f.db.authority.runs.enqueue(RunRecordSchema.parse({...f.run,
       envelope:{...f.run.envelope,runId:id(3000+n),itemId:id(3000+n)},lifecycle:{state:"queued"},version:1,claimGeneration:0}));});
     f.db.readRunSummaries=()=>{throw new Error("whole-reader-forbidden");};
@@ -372,11 +372,11 @@ it("pages stable ties over real summary partitions, without whole-source reads",
         "USE TEMP B-TREE FOR LAST TERM OF ORDER BY",
       ]);
     }finally{raw.close();}
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
 
-it("agrees with independent expected totals and the retained Activity projector on identical live authority",()=>{
-  const f=foundationFixture(),world=makeWorld();try{
+it("agrees with independent expected totals and the retained Activity projector on identical live authority",async ()=>{
+  const f=await foundationFixture(),world=await makeWorld();try{
     for(let n=0;n<4;n++)f.db.authority.runs.enqueue(RunRecordSchema.parse({...f.run,
       envelope:{...f.run.envelope,runId:id(3100+n),itemId:id(3100+n),enqueuedAt:n===3?"2025-01-01T12:00:00.000Z":NOW},
       lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:n===3?"2025-01-01T12:00:00.000Z":NOW}));
@@ -392,11 +392,11 @@ it("agrees with independent expected totals and the retained Activity projector 
     assert.ok(volume);
     assert.equal(volume.state,"complete");assert.equal(volume.coveredRuns,3);
     assert.equal(volume.buckets.reduce((sum,bucket)=>sum+bucket.runs,0),actual.totalRuns);
-  }finally{world.dispose();f.dispose();}
+  }finally{await world.dispose();await f.dispose();}
 });
 
-it("bins the enqueue instant and refuses a timezone mismatch before an indexed day bound can hide a run",()=>{
-  const f=foundationFixture();try{
+it("bins the enqueue instant and refuses a timezone mismatch before an indexed day bound can hide a run",async ()=>{
+  const f=await foundationFixture();try{
     const enqueuedAt="2026-09-09T07:20:00.000Z";
     const queued=RunRecordSchema.parse({...f.run,
       envelope:{...f.run.envelope,runId:id(3200),itemId:id(3200),enqueuedAt},
@@ -420,11 +420,11 @@ it("bins the enqueue instant and refuses a timezone mismatch before an indexed d
     assert.throws(()=>queryActivitySummaries(f.db,{from:mismatchDay,to:mismatchDay,generatedAt:NOW},
       {descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})},timeZone:mismatchTimeZone}),
     /activity-summary-local-day-time-zone-mismatch/u);
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
 
-it("folds real summary rows into inclusive DST-day boundaries, distinct repeated hours, and known-zero days",()=>{
-  const f=foundationFixture();try{
+it("folds real summary rows into inclusive DST-day boundaries, distinct repeated hours, and known-zero days",async ()=>{
+  const f=await foundationFixture();try{
     const zone="America/Los_Angeles";
     const enqueuedAt=[
       "2026-03-08T07:59:59.000Z",
@@ -478,17 +478,17 @@ it("folds real summary rows into inclusive DST-day boundaries, distinct repeated
     assert.equal(knownZero.volume?.state,"complete");
     assert.equal(knownZero.volume?.coveredRuns,0);
     assert.ok(knownZero.volume?.buckets.every(bucket=>bucket.runs===0));
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
 
-it("keeps the minimum supported date inside its indexed candidate range",()=>{
-  const f=foundationFixture();try{
+it("keeps the minimum supported date inside its indexed candidate range",async ()=>{
+  const f=await foundationFixture();try{
     const report=queryActivitySummaries(f.db,{from:"0000-02-29",to:"0000-02-29",generatedAt:NOW},
       {descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})},timeZone:"UTC"});
     assert.equal(report.totalRuns,0);
     assert.equal(report.volume?.interval.start,"0000-02-29T00:00:00.000+00:00");
     assert.equal(report.volume?.interval.endExclusive,"0000-03-01T00:00:00.000+00:00");
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
 }
 
@@ -497,8 +497,8 @@ it("keeps the minimum supported date inside its indexed candidate range",()=>{
 const semanticRows=(rows:ReturnType<AuthorityDatabase["readRunSummaries"]>)=>rows.map(({sourceGeneration,...row})=>{void sourceGeneration;return row;});
 
 describe("native summary snapshots and transaction hooks", () => {
-  it("derives new runs atomically and rolls failed mutations back", () => {
-    const fixture = foundationFixture();
+  it("derives new runs atomically and rolls failed mutations back", async () => {
+    const fixture = await foundationFixture();
     try {
       testAdmittedWorker(fixture.db, fixture.clock, { path: fixture.path, workflow: "person-lookup", poolIndex: 2, browserSystems: workflowProjections(personLookupDescriptor).systems });
       assert.equal(fixture.db.readRunSummaries().length,1);
@@ -517,11 +517,11 @@ describe("native summary snapshots and transaction hooks", () => {
       assert.ok(after.every(row=>row.sourceGeneration===fixture.db.getMeta().authorityGeneration));
       assert.ok(after.every(row=>row.person.state==="unavailable"));
       assert.equal(fixture.db.authority.workerSlots.list("person-lookup").length,2);
-    } finally { fixture.dispose(); }
+    } finally { await fixture.dispose(); }
   });
 
-  it("notices resolution annotations without replacing immutable UNKNOWN failure evidence", () => {
-    const f = foundationFixture();
+  it("notices resolution annotations without replacing immutable UNKNOWN failure evidence", async () => {
+    const f = await foundationFixture();
     try {
       const record = failure_m3();terminalizeFixtureFailure(f,f.run,record);
       const before=f.db.authority.failures.get(record.failureId);
@@ -534,12 +534,12 @@ describe("native summary snapshots and transaction hooks", () => {
       assert.notEqual(afterSummary.sourceDigest,beforeSummary.sourceDigest);
       assert.deepEqual(f.db.authority.failures.get(record.failureId),before);
       assert.equal(before.writeState,"unknown");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });
 
-it("reads a consistent admitted snapshot across an independent writer and refuses corrupt run mirrors after restart",()=>{
-  const f=foundationFixture();let peer:AuthorityDatabase|undefined;
+it("reads a consistent admitted snapshot across an independent writer and refuses corrupt run mirrors after restart",async ()=>{
+  const f=await foundationFixture();let peer:AuthorityDatabase|undefined;
   try{
     peer=AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"summary-peer"},f.clock);
     const before=f.db.readRunSummaries();
@@ -558,11 +558,11 @@ it("reads a consistent admitted snapshot across an independent writer and refuse
       raw.prepare("UPDATE runs SET version=version+1 WHERE id=?").run(f.run.envelope.runId);
       assert.throws(()=>AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"summary-restart"},f.clock),/run row version does not match its whole-record JSON/u);
     }
-  }finally{peer?.close();f.dispose();}
+  }finally{peer?.close();await f.dispose();}
 });
 
-it("keeps unrelated source facts unchanged, rolls nested mutations back and pages through the real query port",()=>{
-  const f=foundationFixture();
+it("keeps unrelated source facts unchanged, rolls nested mutations back and pages through the real query port",async ()=>{
+  const f=await foundationFixture();
   try {
     testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 2, browserSystems: workflowProjections(personLookupDescriptor).systems });
     const before=f.db.readRunSummaries(),pool=f.db.authority.workerPools.get("person-lookup");assert.ok(pool);
@@ -588,6 +588,6 @@ it("keeps unrelated source facts unchanged, rolls nested mutations back and page
       assert.notEqual(first.items[0].runId,second.items[0].runId);
       assert.deepEqual(f.db.summaryWorkflows(),["person-lookup"]);
     }finally{f.db.readRunSummaries=read;}
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
 }

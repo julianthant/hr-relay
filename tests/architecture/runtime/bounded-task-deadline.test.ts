@@ -126,7 +126,7 @@ describe("bounded task deadline", () => {
   });
 
   it("bounds a task that never settles and ignores its abort signal", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     let wedged: (() => void) | undefined;
     const started = new Promise<void>((resolve) => {
@@ -165,7 +165,7 @@ describe("bounded task deadline", () => {
       descriptor: personLookupDescriptor,
       stores: taskStoreRegistry,
       authority: database,
-      sessions: sessionManagerFor(sessions, authority.clock),
+      sessions: await sessionManagerFor(sessions, authority.clock),
       emitter: recordingEmitter().emitter,
       clock: authority.clock,
       ids: sequentialIdFactory("e"),

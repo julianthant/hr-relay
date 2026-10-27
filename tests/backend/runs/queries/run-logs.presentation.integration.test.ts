@@ -13,8 +13,8 @@ import { traceOf, uuidOf } from "../../../support/helpers/backend/dashboard-harn
 
 const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
-it("labels every observed candidate by exact declared container paths while omitting null and undeclared fields", () => {
-  const w = world();
+it("labels every observed candidate by exact declared container paths while omitting null and undeclared fields", async () => {
+  const w = await world();
   queuedEventOf(w, { seed: 80, descriptor: personLookupModule.descriptor });
   const run = w.authority.records.get(uuidOf(80)); assert.ok(run);
   const at = w.clock.now().toISOString();
@@ -43,8 +43,8 @@ it("labels every observed candidate by exact declared container paths while omit
   assert.equal(unlabelled.payload.rows?.some(row => row.kind === "observed"), false);
 });
 
-it("groups the normal registered Person Lookup helper nodes into four walkthrough headings including skipped dates", () => {
-  const w = world();
+it("groups the normal registered Person Lookup helper nodes into four walkthrough headings including skipped dates", async () => {
+  const w = await world();
   queuedEventOf(w, { seed: 81, descriptor: personLookupModule.descriptor });
   const run = w.authority.records.get(uuidOf(81)); assert.ok(run);
   const at = w.clock.now().toISOString();
@@ -79,8 +79,8 @@ it("groups the normal registered Person Lookup helper nodes into four walkthroug
 });
 
 
-it("lists retained M1b hits and each dropped candidate with its reason through served Logs", () => {
-  const w = world();
+it("lists retained M1b hits and each dropped candidate with its reason through served Logs", async () => {
+  const w = await world();
   queuedEventOf(w, { seed: 82, descriptor: personLookupModule.descriptor });
   const queued = w.authority.records.get(uuidOf(82)); assert.ok(queued);
   const input = PersonLookupInput.parse({ mode: "match", lastName: "Quillan", firstName: "Petra A.", dob: "2/19/2030" });

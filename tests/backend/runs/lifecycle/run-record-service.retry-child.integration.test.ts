@@ -7,9 +7,9 @@ import { settingsFixture } from "../../../support/helpers/backend/settings-activ
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); });
-function fixture() { const f = settingsFixture(); cleanups.push(f.close); return f; }
-for (const operation of ["retry", "restart"] as const) it(`${operation} selects saved configuration without changing inputs or source and replays exactly`, () => {
-  const f = fixture(); const source = f.create();
+async function fixture() { const f = await settingsFixture(); cleanups.push(f.close); return f; }
+for (const operation of ["retry", "restart"] as const) it(`${operation} selects saved configuration without changing inputs or source and replays exactly`, async () => {
+  const f = await fixture(); const source = f.create();
   const terminal = requireLifecycleApplied(f.service.transition({ commandId: randomUUID(), runId: source.envelope.runId,
     expectedVersion: source.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }));
   assert.equal(f.save({ "timeouts.taskMs": { set: 90_000 } }).state, "applied");
@@ -27,8 +27,8 @@ for (const operation of ["retry", "restart"] as const) it(`${operation} selects 
   assert.deepEqual(requireLifecycleApplied(f.service[operation](request, personLookupDescriptor)), next);
   assert.equal(f.database.getMeta().authorityGeneration, generation);
 });
-it("a later parent-linked creation selects current settings while the existing parent retains its own", () => {
-  const f = fixture(); const parent = f.create();
+it("a later parent-linked creation selects current settings while the existing parent retains its own", async () => {
+  const f = await fixture(); const parent = f.create();
   f.save({ "timeouts.taskMs": { set: 90_000 } });
   const child = f.create({ parent: { runId: parent.envelope.runId, tracePrefix: parent.envelope.traceId, edgeId: "members" }, matchKey: "child" });
   assert.equal(child.envelope.configSnapshotId, f.database.authority.runtimeConfig.get()?.configSnapshotId);

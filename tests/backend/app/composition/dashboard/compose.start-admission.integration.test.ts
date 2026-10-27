@@ -15,12 +15,12 @@ import { createBoundProfileFixture } from "../../../../support/helpers/admission
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 
 async function fixture() {
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(profile.workspace, name));
   const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null },
     processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot) });
-  const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("profile activation required");
   let spawns = 0;
@@ -32,8 +32,8 @@ async function fixture() {
     const origin = `http://127.0.0.1:${String(dashboard.port)}`;
     return { clock, context: runtime.selectedContext(active.token), spawns: () => spawns,
       post: (path: string, input: unknown) => fetch(`${origin}/api/v1/${path}`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(input) }),
-      async close() { try { await dashboard.stop(); } finally { profile.close(); } } };
-  } catch (error) { await runtime.close(); profile.close(); throw error; }
+      async close() { try { await dashboard.stop(); } finally { await profile.close(); } } };
+  } catch (error) { await runtime.close(); await profile.close(); throw error; }
 }
 
 for (const input of [

@@ -13,13 +13,13 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
   const workerId = "person-lookup-worker-1";
   const startedAt = instantOffsetOf(0);
   const workerPath = "worker/person-lookup/person-lookup-worker-1";
-  function snapshots(w: ReturnType<typeof world>): number {
+  function snapshots(w: Awaited<ReturnType<typeof world>>): number {
     return w.changes.filter((change) => change.kind === "snapshot").length;
   }
 
   for (const phase of ["running", "starting", "idle", "waiting", "paused", "failed"] as const) {
-    it(`serves exact ${phase} authority independently of the span fold`, () => {
-      const w = world();
+    it(`serves exact ${phase} authority independently of the span fold`, async () => {
+      const w = await world();
       declareProjectionWorker(w.authority, workerId, 1);
       let runId: string | undefined;
       if (phase === "running") {
@@ -41,8 +41,8 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     });
   }
 
-  it("retains member refs and refuses dead idle or an old-generation current run", () => {
-    const w = world();
+  it("retains member refs and refuses dead idle or an old-generation current run", async () => {
+    const w = await world();
     declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId }));
     w.authority.workerOwners.clear();
@@ -60,8 +60,8 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.deepEqual(day.workerCards, []);
   });
 
-  function busyWorld() {
-    const w = world();
+  async function busyWorld() {
+    const w = await world();
     declareProjectionWorker(w.authority, workerId, 1);
     const event = queuedEventOf(w, { seed: 53, lifecycle: { state: "running", workerId, claimedAt: startedAt,
       heartbeatAt: startedAt, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1, version: 2 });
@@ -78,15 +78,15 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     return { w, run };
   }
 
-  function assertWorkerUnavailable(w: ReturnType<typeof world>): void {
+  function assertWorkerUnavailable(w: Awaited<ReturnType<typeof world>>): void {
     const day = w.projection.buildDashboardDayWire(DAY);
     assert.equal(day.workerAuthority.state, "unavailable");
     assert.equal(day.workerAuthority.members.length, 1);
     assert.deepEqual(day.workerCards, []);
   }
 
-  it("serves a busy member with worker-indexed reads and never lists whole history", () => {
-    const { w, run } = busyWorld();
+  it("serves a busy member with worker-indexed reads and never lists whole history", async () => {
+    const { w, run } = await busyWorld();
     const queried: string[] = [];
     const listWorkerRuns = w.authority.listWorkerRuns.bind(w.authority);
     w.authority.listWorkerRuns = id => { queried.push(id); return listWorkerRuns(id); };
@@ -96,35 +96,35 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.deepEqual(queried, [workerId]);
   });
 
-  it("rejects two active claims even when one is absent from summary rows", () => {
-    const { w } = busyWorld();
+  it("rejects two active claims even when one is absent from summary rows", async () => {
+    const { w } = await busyWorld();
     w.authority.put(runRecordOf({ seed: 54, lifecycle: { state: "running", workerId, claimedAt: startedAt,
       heartbeatAt: startedAt, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1, version: 2 }));
     assertWorkerUnavailable(w);
   });
 
-  it("rejects a duplicate run ID from the worker index", () => {
-    const { w, run } = busyWorld();
+  it("rejects a duplicate run ID from the worker index", async () => {
+    const { w, run } = await busyWorld();
     w.authority.listWorkerRuns = () => [run, run];
     assertWorkerUnavailable(w);
   });
 
-  it("rejects a foreign worker row from the worker index", () => {
-    const { w } = busyWorld();
+  it("rejects a foreign worker row from the worker index", async () => {
+    const { w } = await busyWorld();
     w.authority.listWorkerRuns = () => [runRecordOf({ seed: 54, lifecycle: { state: "running", workerId: "person-lookup-worker-2",
       claimedAt: startedAt, heartbeatAt: startedAt, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1, version: 2 })];
     assertWorkerUnavailable(w);
   });
 
-  it("retains an indexed claim as unavailable when canonical read cannot find it", () => {
-    const { w, run } = busyWorld();
+  it("retains an indexed claim as unavailable when canonical read cannot find it", async () => {
+    const { w, run } = await busyWorld();
     w.runReader.read = () => ({ state: "absent", runId: run.envelope.runId });
     assertWorkerUnavailable(w);
   });
 
-  it("rejects canonical readback with a different identity or lifetime", () => {
+  it("rejects canonical readback with a different identity or lifetime", async () => {
     for (const mismatch of ["identity", "lifetime"] as const) {
-      const { w, run } = busyWorld();
+      const { w, run } = await busyWorld();
       w.runReader.read = () => ({ state: "present", disposition: "live", run: runRecordOf({ seed: mismatch === "identity" ? 54 : 53,
         lifecycle: { state: "running", workerId, claimedAt: startedAt, heartbeatAt: startedAt,
           workerLifetime: { membershipRevision: 1, leaseGeneration: mismatch === "lifetime" ? 2 : 1 } }, claimGeneration: 1, version: 2 }) });
@@ -133,8 +133,8 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     }
   });
 
-  it("requires worker-run authority only when a standing member exists", () => {
-    const { w } = busyWorld();
+  it("requires worker-run authority only when a standing member exists", async () => {
+    const { w } = await busyWorld();
     Reflect.deleteProperty(w.authority, "listWorkerRuns");
     assertWorkerUnavailable(w);
     w.authority.workerSlots.clear();
@@ -143,8 +143,8 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.deepEqual(day.workerCards, []);
   });
 
-  it("publishes a snapshot for a lease born before its first span, and an idle tick publishes nothing", () => {
-    const w = world();
+  it("publishes a snapshot for a lease born before its first span, and an idle tick publishes nothing", async () => {
+    const w = await world();
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 0);
     declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
@@ -158,8 +158,8 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.equal(snapshots(w), 1);
   });
 
-  it("ignores heartbeat-only writes and publishes each phase, directive and settlement move exactly once", () => {
-    const w = world();
+  it("ignores heartbeat-only writes and publishes each phase, directive and settlement move exactly once", async () => {
+    const w = await world();
     declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
     w.projection.reconcileWorkerAuthority();
@@ -192,8 +192,8 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0]?.directive, "pause");
   });
 
-  it("publishes a crash or expiry another process settled, keeping the card while its spans are retained", () => {
-    const w = world();
+  it("publishes a crash or expiry another process settled, keeping the card while its spans are retained", async () => {
+    const w = await world();
     declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId }));
     w.writer.emit({
@@ -216,8 +216,8 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.deepEqual(card?.browsers, []);
   });
 
-  it("retains the failed standing member even when its span stream never named it", () => {
-    const w = world();
+  it("retains the failed standing member even when its span stream never named it", async () => {
+    const w = await world();
     declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
     w.projection.reconcileWorkerAuthority();
@@ -235,8 +235,8 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0]?.state, "failed");
   });
 
-  it("publishes a pool declaration the operator planned, which no span carries", () => {
-    const w = world();
+  it("publishes a pool declaration the operator planned, which no span carries", async () => {
+    const w = await world();
     const plannedAt = instantOffsetOf(0, 2_000);
     w.authority.putWorkerPool({
       workflow: "person-lookup", desiredWorkers: 2, plannedBy: "local-operator",
@@ -251,8 +251,8 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.equal(snapshots(w), 1);
   });
 
-  it("degrades loudly when lease authority cannot be read instead of serving a stale card set", () => {
-    const w = world({ collectRebuilds: true });
+  it("degrades loudly when lease authority cannot be read instead of serving a stale card set", async () => {
+    const w = await world({ collectRebuilds: true });
     w.authority.listLiveWorkerLeases = () => {
       throw new Error("leases table unreadable");
     };

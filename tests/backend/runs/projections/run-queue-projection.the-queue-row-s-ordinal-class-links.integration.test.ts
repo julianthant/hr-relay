@@ -22,8 +22,8 @@ function verifyOutputs(receipt: ReturnType<typeof receiptWithOutputOf>) {
 
 
 describe("the queue row's ordinal, class, links and outcome", () => {
-  it("keeps the input title and binds its EID subtitle to the exact verified receipt output", () => {
-    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, details: [] }) } });
+  it("keeps the input title and binds its EID subtitle to the exact verified receipt output", async () => {
+    const w = await world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, details: [] }) } });
     for (const seed of [50, 51, 52, 54, 55]) {
       terminalDone(w, seed, { title: "Example, Person" });
       const receipt = receiptWithOutputOf({ seed, outputs: [{ field: "eid", value: seed === 51 ? null : "10000001", ...(seed === 54 ? { redact: "drop" as const } : {}) }] });
@@ -49,11 +49,11 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     w.authority.receipts.set(uuidOf(50), { ...source, runId: RunIdSchema.parse(uuidOf(51)) });
     assert.throws(() => w.projection.buildDashboardDayWire(DAY), /result-subtitle-receipt-identity-mismatch/u);
   });
-  it("projects a declared result subtitle for an arbitrary workflow identity and result field", () => {
+  it("projects a declared result subtitle for an arbitrary workflow identity and result field", async () => {
     const workflow = "fixture-result-subtitle";
     const fieldPath = "activeStatus.details.matchedEid";
     const descriptor = { ...personLookupDescriptor, titleProjection: undefined, details: [], id: WorkflowIdSchema.parse(workflow), subtitleProjection: { fieldPath, display: "eid" as const } };
-    const w = world({ descriptors: { resolve: () => descriptor } });
+    const w = await world({ descriptors: { resolve: () => descriptor } });
     const seed = 53;
     queuedEventOf(w, { seed, workflow }); claimEventOf(w, seed); runEndedEventOf(w, seed, "done", { workflow });
     w.authority.put(runRecordOf({ seed, workflow, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 60_000) }, claimGeneration: 1, version: 3 }));
@@ -84,8 +84,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     }));
   }
 
-  it("serves the durable ordinal and names the absence of an unstamped one", () => {
-    const w = world();
+  it("serves the durable ordinal and names the absence of an unstamped one", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, runNumber: 12 });
     queuedEventOf(w, { seed: 2 });
     const rows = w.projection.buildDashboardDayWire(DAY).queueSurfaces;
@@ -97,8 +97,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
       reason: "workflow ordinal was not recorded at enqueue",
     });
   });
-  it("serves the worker POOL block from authority — one entry per planned workflow, absent means version 0", () => {
-    const w = world();
+  it("serves the worker POOL block from authority — one entry per planned workflow, absent means version 0", async () => {
+    const w = await world();
     assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workerPools, []);
     w.authority.putWorkerPool({
       workflow: "person-lookup", desiredWorkers: 2, plannedBy: "local-operator",
@@ -118,8 +118,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     assert.equal(day.workerCards.length, 0);
   });
 
-  it("reads priority from the envelope, which is what a bump rewrites", () => {
-    const w = world();
+  it("reads priority from the envelope, which is what a bump rewrites", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, priority: "bulk" });
     assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces[0].priority, "bulk");
 
@@ -128,9 +128,9 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces[0].priority, "interactive");
   });
 
-  it("classifies containment from shape and lineage, and chips only the linked children", () => {
+  it("classifies containment from shape and lineage, and chips only the linked children", async () => {
 
-    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined }) } });
+    const w = await world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined }) } });
     queuedEventOf(w, { seed: 1, shape: "operation" });
     queuedEventOf(w, { seed: 2, shape: "operation-member", parentSeed: 1, title: "Ada Lovelace" });
     queuedEventOf(w, { seed: 3, shape: "operation-member", parentSeed: 1, title: "Grace Hopper" });
@@ -165,7 +165,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     assert.deepEqual(linked.linkedRuns, []);
     // A build that cannot resolve the descriptor labels the chip with what the
     // run IS, never with a guessed pretty name.
-    const unregistered = world();
+    const unregistered = await world();
     queuedEventOf(unregistered, { seed: 1, shape: "operation" });
     queuedEventOf(unregistered, { seed: 4, shape: "single", parentSeed: 1 });
     const bare = unregistered.projection.queueSurface(uuidOf(1));
@@ -174,8 +174,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     assert.deepEqual(group.memberPreview, { state: "present", value: "Ada Lovelace, Grace Hopper" });
   });
 
-  it("names the absence of a member preview a group cannot compose", () => {
-    const w = world();
+  it("names the absence of a member preview a group cannot compose", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, shape: "operation" });
     const group = w.projection.buildDashboardDayWire(DAY).queueSurfaces[0];
     assert.ok(group.surfaceKind === "operation");
@@ -185,8 +185,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     });
   });
 
-  it("omits a satisfied empty-string declared detail without rejecting the feed", () => {
-    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined, details: [{ key: "reason", label: "Reason", source: { kind: "result", fieldPath: "reason" }, display: "text" }] }) } });
+  it("omits a satisfied empty-string declared detail without rejecting the feed", async () => {
+    const w = await world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined, details: [{ key: "reason", label: "Reason", source: { kind: "result", fieldPath: "reason" }, display: "text" }] }) } });
     terminalDone(w, 6);
     const receipt = receiptWithOutputOf({ seed: 6, outputs: [{ field: "reason", value: "" }] });
     verifyOutputs(receipt);
@@ -196,8 +196,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
       { state: "absent", reason: "this run has no applicable detail values" });
   });
 
-  it("chips only declared verified outputs and keeps unknown authority explicit", () => {
-    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined,
+  it("chips only declared verified outputs and keeps unknown authority explicit", async () => {
+    const w = await world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined,
       details: ["displayedName", "hdh", "records"].map(field => ({ key: field === "displayedName" ? "name" : field, label: field, source: { kind: "result", fieldPath: field }, display: "text" })) }) } });
     // 1 — in flight: no terminal result exists to have facts about.
     queuedEventOf(w, { seed: 1 });
@@ -252,8 +252,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     });
   });
 
-  it("sums a step's duration over every execution and leaves an unmeasured step undated", () => {
-    const w = world();
+  it("sums a step's duration over every execution and leaves an unmeasured step undated", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...ORDINAL_CLAIM }, claimGeneration: 1, version: 2 }));
     claimEventOf(w, 1);
@@ -287,8 +287,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
   });
 
 
-  it("binds a close to the LAST OPEN entry at its identity — two executions at one span path stay two facts", () => {
-    const w = world();
+  it("binds a close to the LAST OPEN entry at its identity — two executions at one span path stay two facts", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...ORDINAL_CLAIM }, claimGeneration: 1, version: 2 }));
     claimEventOf(w, 1);

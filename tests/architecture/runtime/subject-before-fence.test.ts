@@ -146,12 +146,12 @@ interface OrderingHarness {
   readonly sequencer: ReturnType<typeof createWriteSequencer>;
 
   readonly execute: (context: WriteSequencerContext) => Promise<unknown>;
-  readonly dispose: () => void;
+  readonly dispose: () => void | Promise<void>;
 }
 
-function orderingHarness(): OrderingHarness {
+async function orderingHarness(): Promise<OrderingHarness> {
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "subject-fence-guard" },
     clock,
@@ -160,7 +160,7 @@ function orderingHarness(): OrderingHarness {
   const world = createWriteFixtureWorld();
   const registry = buildWriteFixtureRegistry(world);
   const sessions = writeFixtureSessions(world);
-  const manager = writeFixtureSessionManager(sessions, registry, clock);
+  const manager = await writeFixtureSessionManager(sessions, registry, clock);
   const sequencer = createWriteSequencer({
     lifecycle: testRunLifecycle(database, clock),
     stores: registry,
@@ -183,10 +183,10 @@ function orderingHarness(): OrderingHarness {
     );
   return {
     world, database, path: profile.path, clock, sessions, sequencer, execute,
-    dispose: () => {
+    dispose: async () => {
       releaseSeededWriteOwners(database, clock.now().toISOString());
       database.close();
-      profile.close();
+      await profile.close();
     },
   };
 }
@@ -237,7 +237,7 @@ function runningContext(
 
 describe("prepare-end < subject-observed < fence-commit < mutation-call", () => {
   it("orders the four events on one lease and binds the capability to the fenced proof digest", async () => {
-    const h = orderingHarness();
+    const h = await orderingHarness();
     try {
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
       h.world.onSubjectRead = () => {
@@ -264,7 +264,7 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
         "commit-click:ucpath.write-fixture.save-submit",
       ]);
     } finally {
-      h.dispose();
+      await h.dispose();
     }
   });
 
@@ -274,7 +274,7 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
     ["missing observation surface", (world: WriteFixtureWorld) => { world.omitDriverRead = true; }],
   ] as const) {
     it(`${name} produces zero fence, zero click, and a poisoned page`, async () => {
-      const h = orderingHarness();
+      const h = await orderingHarness();
       try {
         h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
         mutate(h.world);
@@ -283,13 +283,13 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
         assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")));
         assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
       } finally {
-        h.dispose();
+        await h.dispose();
       }
     });
   }
 
   it("binds each of two alternating EIDs through one pooled page to its own digest", async () => {
-    const h = orderingHarness();
+    const h = await orderingHarness();
     try {
       const otherEid = "10867890";
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -324,7 +324,7 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
         "each EID fenced under its OWN subject digest",
       );
     } finally {
-      h.dispose();
+      await h.dispose();
     }
   });
 

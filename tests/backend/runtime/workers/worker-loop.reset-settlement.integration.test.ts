@@ -42,7 +42,7 @@ describe("same-lifetime durable reset settlement", () => {
           return driver.searchPersonOrg(...args);
         },
       }), crm: () => healthyCrmDriver() });
-      const h = world.loopHarness({ sessions, exitWhenIdle: false });
+      const h = await world.loopHarness({ sessions, exitWhenIdle: false });
       const database = h.authority.database, workerId = h.deps.workerId;
       const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
       if (slot === undefined || lease === undefined) throw new Error("missing owner");
@@ -106,7 +106,7 @@ describe("same-lifetime durable reset settlement", () => {
   }
   for (const mode of ["idle", "current", "paused"] as const) {
     it(`settles ${mode} without a client and records idle before next claim`, async () => {
-      const h = world.loopHarness();
+      const h = await world.loopHarness();
       const database = h.authority.database, workerId = h.deps.workerId;
       const lifecycle = new RunRecordService({ database, clock: h.authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => undefined });
       const current = mode === "current";
@@ -151,8 +151,8 @@ describe("same-lifetime durable reset settlement", () => {
 });
 
 describe("authenticated reset closure", () => {
-  function fixture() {
-    const h = world.loopHarness();
+  async function fixture() {
+    const h = await world.loopHarness();
     const database = h.authority.database, workerId = h.deps.workerId;
     const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
     if (slot === undefined || lease === undefined) throw new Error("missing lifetime");
@@ -172,7 +172,7 @@ describe("authenticated reset closure", () => {
   }
   for (const change of ["absent", "replaced"] as const) {
     it(`does not dispatch the original reset when its pending binding is ${change} after settlement`, async () => {
-      const f = fixture();
+      const f = await fixture();
       const replacement = change === "absent" ? undefined : WorkerResetBindingSchema.parse({ ...f.reset, commandId: randomUUID() });
       let reads = 0, calls = 0;
       await runWorkerLoop({ ...f.h.deps,
@@ -191,7 +191,7 @@ describe("authenticated reset closure", () => {
     });
   }
   it("rejects forged, wrong-command and stale-lifetime proofs without releasing the reservation", async () => {
-    const f = fixture(), manager = f.manager();
+    const f = await fixture(), manager = f.manager();
     expect(() => f.database.settleWorkerReset(f.record.commandId, { kind: "worker-control-owner-closure" }, f.record.admittedAt, randomUUID())).toThrow();
     const wrong = await manager.closeForReset(WorkerResetBindingSchema.parse({ ...f.reset, commandId: randomUUID() }));
     expect(() => f.database.settleWorkerReset(f.record.commandId, wrong, f.record.admittedAt, randomUUID())).toThrow();
@@ -200,7 +200,7 @@ describe("authenticated reset closure", () => {
     expect(f.database.authority.workerControls.pending(f.record.scope)).toHaveLength(1);
   });
   it("invalidates closure on a new driver request and consumes only a successful settlement", async () => {
-    const f = fixture(), manager = f.manager();
+    const f = await fixture(), manager = f.manager();
     const proof = await manager.closeForReset(f.reset);
     await expect(manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod", new AbortController().signal, async () => undefined)).rejects.toThrow("bound config fingerprint");
     expect(() => f.database.settleWorkerReset(f.record.commandId, proof, f.record.admittedAt, randomUUID())).toThrow();
@@ -223,7 +223,7 @@ describe("reset owns active and late callbacks through browser closure", () => {
       const base = sessionFactoryHarness({ ucpath: () => stage === "read" ? { ...driver,
         searchPersonOrg: async () => { started(); await held; throw new Error("actual read callback rejected after reset"); },
       } : driver, crm: () => healthyCrmDriver() });
-      const h = world.loopHarness({ sessions: { ...base, factory: { open: async input => {
+      const h = await world.loopHarness({ sessions: { ...base, factory: { open: async input => {
         signal = input.signal;
         if (stage === "acquisition") { signal = input.signal; started(); await held; }
         const resource = await base.factory.open(input);
@@ -278,7 +278,7 @@ describe("reset owns active and late callbacks through browser closure", () => {
 describe("reset preserves fenced durable write outcomes", () => {
   for (const outcome of ["committed", "unknown", "unknown-generation", "unknown-intent", "unknown-attempt"] as const) {
     it(`${outcome.startsWith("unknown-") ? "refuses malformed" : "allows browserless idle with unchanged"} ${outcome} authority after the admitted callback settles`, async () => {
-      const h = world.loopHarness(), database = h.authority.database;
+      const h = await world.loopHarness(), database = h.authority.database;
       seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, h.authority.path);
       fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
       const run = database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
@@ -368,7 +368,7 @@ describe("reset preserves fenced durable write outcomes", () => {
 });
 
 it("marks held actual browser close uncertain at its scheduled expiry without releasing custody", async () => {
-  const h = world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
+  const h = await world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
   const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
   if (slot === undefined || lease === undefined) throw new Error("missing owner");
   let release!: () => void, started!: () => void;
@@ -410,7 +410,7 @@ it("marks held actual browser close uncertain at its scheduled expiry without re
 
 it("exposes no raw success setter and atomically cancels a safe queued cascade before idle", async () => {
   const { root, modules } = childUnawaitedModules("cascade");
-  const base = world.loopHarness(), database = base.authority.database;
+  const base = await world.loopHarness(), database = base.authority.database;
   const worker = testAdmittedWorker(database, base.authority.clock, { path: base.authority.path, workflow: root.descriptor.id,
     poolIndex: 1, browserSystems: [] });
   const workerId = worker.workerId;
@@ -479,7 +479,7 @@ it("exposes no raw success setter and atomically cancels a safe queued cascade b
 
 for (const succeeded of [false, true]) {
   it(`disposes reset expiry before immediate lifetime/database shutdown (${succeeded ? "after success" : "while pending"})`, async () => {
-    const h = world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
+    const h = await world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
     const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
     if (slot === undefined || lease === undefined) throw new Error("missing owner");
     const now = h.authority.clock.now().toISOString();
@@ -512,8 +512,8 @@ for (const succeeded of [false, true]) {
   });
 }
 
-it("surfaces timer authority failure through the worker failure seam and retains its cause", () => {
-  const h = world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
+it("surfaces timer authority failure through the worker failure seam and retains its cause", async () => {
+  const h = await world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
   const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
   if (slot === undefined || lease === undefined) throw new Error("missing owner");
   const now = h.authority.clock.now().toISOString();
@@ -536,7 +536,7 @@ it("surfaces timer authority failure through the worker failure seam and retains
 });
 
 it("does not redispatch an uncertain owner reset after failed closure authority", async () => {
-  const h = world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
+  const h = await world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
   const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
   if (slot === undefined || lease === undefined) throw new Error("missing owner");
   const now = h.authority.clock.now().toISOString();
@@ -564,7 +564,7 @@ it("does not redispatch an uncertain owner reset after failed closure authority"
 
 
 it("ends failed close activity while exact Stop retains and then closes the resource", async () => {
-  const h = world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
+  const h = await world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
   const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
   if (slot === undefined || lease === undefined) throw new Error("missing owner");
   const activities = new Map<symbol, string>();

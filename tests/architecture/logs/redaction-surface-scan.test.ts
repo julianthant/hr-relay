@@ -390,7 +390,7 @@ describe("redaction surface scan — the declaration audit", () => {
     }
   });
 
-  it("preserves HR-bearing workbook identities through the canonical codec and real library service", () => {
+  it("preserves HR-bearing workbook identities through the canonical codec and real library service", async () => {
     const canary = REDACTION_CANARIES.emplId;
     const workbook = EditableWorkbookSchema.parse({
       name: "Roster.xlsx", themes: [], hasFormulas: false,
@@ -401,7 +401,7 @@ describe("redaction surface scan — the declaration audit", () => {
     assert.deepEqual(decodeEditableWorkbook(encodeEditableWorkbook(workbook)), workbook);
     const incoming = { ...workbook, libraryId: canary };
     assert.equal(WorkbookCreateRequestSchema.parse({ workbook: encodeEditableWorkbook(incoming) }).workbook.libraryId, canary);
-    const service = createWorkbookLibraryService({ repository: openDatabase().authority.workbooks, clock: manualClock(new Date(NOW)) });
+    const service = createWorkbookLibraryService({ repository: (await openDatabase()).authority.workbooks, clock: manualClock(new Date(NOW)) });
     assert.throws(() => service.create(incoming), { code: "WORKBOOK_INVALID" });
     const created = service.create(workbook);
     assert.notEqual(created.libraryId, canary);
@@ -676,16 +676,16 @@ const TRIGGER_EVENTS: readonly Record<string, unknown>[] = [
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
-const profileFixtures: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profileFixtures: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of databases.splice(0)) database.close();
-  for (const fixture of profileFixtures.splice(0)) fixture.close();
+  for (const fixture of profileFixtures.splice(0)) await fixture.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function openDatabase(): AuthorityDatabase {
-  const fixture = createBoundProfileFixture();
+async function openDatabase(): Promise<AuthorityDatabase> {
+  const fixture = await createBoundProfileFixture();
   profileFixtures.push(fixture);
   const database = AuthorityDatabase.open(
     { path: fixture.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -760,9 +760,9 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
     );
   });
 
-  it("retains the exit run's supplied person identifiers in its evidence receipt", () => {
+  it("retains the exit run's supplied person identifiers in its evidence receipt", async () => {
 
-    const database = openDatabase();
+    const database = await openDatabase();
     const seeded = seedPersonLookupExitRun(database);
     const subjectName = "Battistessa, Johnnie";
     assert.ok(

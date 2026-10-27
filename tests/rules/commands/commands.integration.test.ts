@@ -31,12 +31,12 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 {
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const opened: AuthorityDatabase[] = [];
 const now = "2026-09-08T12:00:00.000Z";
 const clock = manualClock(new Date(now));
-function fixture() {
-  const profile = createBoundProfileFixture(); profiles.push(profile);
+async function fixture() {
+  const profile = await createBoundProfileFixture(); profiles.push(profile);
   const { stateRoot, path } = profile;
   const open = () => { const db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "command-group-test" }, clock); opened.push(db); return db; };
   return { path, stateRoot, open };
@@ -54,10 +54,10 @@ function lifecycleCommand(commandId: string) {
     fence: { kind: "none" }, recordedAt: now };
 }
 describe("command groups", () => {
-afterEach(() => { for (const db of opened.splice(0)) db.close(); for (const profile of profiles.splice(0)) profile.close(); });
+afterEach(async () => { for (const db of opened.splice(0)) db.close(); for (const profile of profiles.splice(0)) await profile.close(); });
 
-  it("keeps standalone, parent and child records distinct, fences membership and counts only executable commands", () => {
-    const f = fixture(); const db = f.open(); const parent = acceptance();
+  it("keeps standalone, parent and child records distinct, fences membership and counts only executable commands", async () => {
+    const f = await fixture(); const db = f.open(); const parent = acceptance();
     db.authority.commands.acceptBulk(parent);
     assert.equal(inspectAuthorityBackupReadOnly(f.path).counts.pendingCommands, 0);
     const child = deriveBulkChildCommand(parent.request, parent.request.targets[0]);
@@ -84,8 +84,8 @@ afterEach(() => { for (const db of opened.splice(0)) db.close(); for (const prof
     assert.equal(db.authority.commandAudits.findByCommand(parent.bulkCommandId), undefined);
   });
 
-  it("rejects parent/single collisions and rolls back a failed child without rolling back accepted siblings", () => {
-    const f = fixture(); const db = f.open(); const parent = acceptance();
+  it("rejects parent/single collisions and rolls back a failed child without rolling back accepted siblings", async () => {
+    const f = await fixture(); const db = f.open(); const parent = acceptance();
     db.authority.commands.acceptBulk(parent);
     const [first, second] = parent.request.targets.map((target) => deriveBulkChildCommand(parent.request, target));
     db.authority.commands.insert(first, parent.bulkCommandId);
@@ -108,8 +108,8 @@ afterEach(() => { for (const db of opened.splice(0)) db.close(); for (const prof
     assert.equal(restarted.authority.commands.insert(second, parent.bulkCommandId).state, "inserted");
   });
 
-  it("protects current credential command identities before acceptance", () => {
-    const f = fixture(); const db = f.open(); const parent = acceptance();
+  it("protects current credential command identities before acceptance", async () => {
+    const f = await fixture(); const db = f.open(); const parent = acceptance();
     const store = createCredentialStore({ stateRoot: f.stateRoot });
     assert.equal(store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: parent.bulkCommandId, commandFingerprint: "a".repeat(64), expectedRevision: store.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-command-group-credential" } }, updatedAt: now })).state, "applied");
     assert.throws(() => db.authority.commands.acceptBulk(parent), /command-divergent/);
@@ -117,8 +117,8 @@ afterEach(() => { for (const db of opened.splice(0)) db.close(); for (const prof
 
   });
 
-  it("rejects SQL self/missing/nested parents and keeps acceptance immutable without a fabricated audit", () => {
-    const f = fixture(); const db = f.open(); const parent = acceptance(); db.authority.commands.acceptBulk(parent);
+  it("rejects SQL self/missing/nested parents and keeps acceptance immutable without a fabricated audit", async () => {
+    const f = await fixture(); const db = f.open(); const parent = acceptance(); db.authority.commands.acceptBulk(parent);
     const child = deriveBulkChildCommand(parent.request, parent.request.targets[0]);
     const raw = new DatabaseSync(f.path);
     try {
@@ -134,8 +134,8 @@ afterEach(() => { for (const db of opened.splice(0)) db.close(); for (const prof
     } finally { raw.close(); }
   });
 
-  it.each(["removed", "reassigned"] as const)("detects %s child linkage in current inspection and backup admission", (kind) => {
-    const f = fixture(); const db = f.open(); const parent = acceptance(); db.authority.commands.acceptBulk(parent);
+  it.each(["removed", "reassigned"] as const)("detects %s child linkage in current inspection and backup admission", async (kind) => {
+    const f = await fixture(); const db = f.open(); const parent = acceptance(); db.authority.commands.acceptBulk(parent);
     const child = deriveBulkChildCommand(parent.request, parent.request.targets[0]); db.authority.commands.insert(child, parent.bulkCommandId);
     const other = acceptance(); db.authority.commands.acceptBulk(other); db.close();
     const raw = new DatabaseSync(f.path);
@@ -186,8 +186,8 @@ const { fixture, protectedCommand, failAudit, cleanup } = createSettingsAuthorit
 describe("SQLite settings authority", () => {
 afterEach(cleanup);
 
-  it("protects a retained credential identity from internal lifecycle journal writers", () => {
-    const f = fixture(); const pending = protectedCommand(f.store.read().revision);
+  it("protects a retained credential identity from internal lifecycle journal writers", async () => {
+    const f = await fixture(); const pending = protectedCommand(f.store.read().revision);
     assert.throws(() => f.execute(pending, failAudit(f.database)), /credential-audit-uncertain/u);
     const generation = f.database.getMeta().authorityGeneration;
     const path = join(f.root, "credentials", "protected.json");
@@ -206,9 +206,9 @@ afterEach(cleanup);
 }
 
 {
-type Harness = ReturnType<typeof createIntakeAuthority>;
+type Harness = Awaited<ReturnType<typeof createIntakeAuthority>>;
 const opened: Harness[] = [];
-function harness() { const h = createIntakeAuthority(); opened.push(h); return h; }
+async function harness() { const h = await createIntakeAuthority(); opened.push(h); return h; }
 async function send(h: Harness, wire: { intakeSessionId: string; expectedVersion: number }, type: string, payload?: unknown) {
   const response = await h.post(h.request(wire, type, payload));
   const result = CommandResultSchema.parse(await response.json());
@@ -230,9 +230,9 @@ function noEffects(h: Harness, wire: Awaited<ReturnType<typeof ready>>) {
   assert.ok(h.database.authority.runSessions.list().every(session => session.origin.kind !== "intake-manifest" || session.origin.intakeManifestId !== wire.reservedManifestId));
 }
 it("refuses an unavailable declared protected origin and rolls back the entire prepared fan-out",async()=>{
-  onTestFinished(() => { for (const h of opened.splice(0)) h.close(); });
+  onTestFinished(async () => { for (const h of opened.splice(0)) await h.close(); });
 
-  const h=harness();
+  const h=await harness();
   h.setDescriptor(defineIntakeFixtureDescriptor({id:INTAKE_FIXTURE_WORKFLOW_ID,code:"if",contractFingerprint:"f".repeat(64),enqueue:"allow-parallel",protectedTimekeeper:true}));
   const wire=await ready(h);
   const result=CommandResultSchema.parse(await (await h.post(h.request(wire,"enqueue-intake-manifest",{dryRun:false,reviewBinding:wire.reviewBinding}))).json());
@@ -244,17 +244,17 @@ it("refuses an unavailable declared protected origin and rolls back the entire p
   assert.deepEqual(h.database.authority.runs.listByWorkflow(INTAKE_FIXTURE_WORKFLOW_ID),[]);
 });
 it.each([undefined, "0".repeat(64)])("refuses missing or mismatched confirmation with zero manifest effects (%s)", async reviewBinding => {
-  onTestFinished(() => { for (const h of opened.splice(0)) h.close(); });
+  onTestFinished(async () => { for (const h of opened.splice(0)) await h.close(); });
 
-  const h = harness(); const wire = await ready(h);
+  const h = await harness(); const wire = await ready(h);
   const result = CommandResultSchema.parse(await (await h.post(h.request(wire, "enqueue-intake-manifest", { dryRun: false, ...(reviewBinding === undefined ? {} : { reviewBinding }) }))).json());
   assert.equal(result.state, "rejected"); noEffects(h, wire);
   const committed = await enqueue(h, wire); assert.equal(committed.state, "enqueued"); assert.equal(committed.manifest?.validRows.length, 2);
 });
 it("binds explicit different-file comparison, preserves it on retry/restart, and invalidates old confirmation", async () => {
-  onTestFinished(() => { for (const h of opened.splice(0)) h.close(); });
+  onTestFinished(async () => { for (const h of opened.splice(0)) await h.close(); });
 
-  const h = harness(); const first = await enqueue(h, await ready(h)); assert.ok(first.manifest);
+  const h = await harness(); const first = await enqueue(h, await ready(h)); assert.ok(first.manifest);
   const before = JSON.stringify(h.database.authority.intakeManifests.get(first.manifest.manifestId));
   const changedCsv = INTAKE_CSV.replace("10998801", "10888888");
   const wire = await ready(h, changedCsv); const priorBinding = wire.reviewBinding;
@@ -269,9 +269,9 @@ it("binds explicit different-file comparison, preserves it on retry/restart, and
 });
 
 it("replays a genuinely completed current intake command after its source bytes disappear without rereading or new effects", async () => {
-  onTestFinished(() => { for (const h of opened.splice(0)) h.close(); });
+  onTestFinished(async () => { for (const h of opened.splice(0)) await h.close(); });
 
-  const h = harness();
+  const h = await harness();
   const wire = await ready(h);
   const request = h.request(wire, "enqueue-intake-manifest", { dryRun: false, reviewBinding: wire.reviewBinding });
   const result = CommandResultSchema.parse(await (await h.post(request)).json());
@@ -305,8 +305,8 @@ it("replays a genuinely completed current intake command after its source bytes 
 
 {
 describe("F shared transactional storage contracts",()=>{
- it("rolls annotation and generation back on audit failure, fences competing writes and retains immutable UNKNOWN evidence",()=>{
-  const f=foundationFixture();const raw=new DatabaseSync(f.path);
+ it("rolls annotation and generation back on audit failure, fences competing writes and retains immutable UNKNOWN evidence",async ()=>{
+  const f=await foundationFixture();const raw=new DatabaseSync(f.path);
   try{
    const record=failure();terminalizeFixtureFailure(f,f.run,record);
    const original=raw.prepare("SELECT payload_json FROM run_failures WHERE id=?").get(record.failureId)?.payload_json;
@@ -327,7 +327,7 @@ describe("F shared transactional storage contracts",()=>{
    assert.equal(f.db.authority.failures.get(record.failureId)?.writeState,"unknown");
    assert.throws(()=>raw.prepare("UPDATE run_failures SET payload_json='{}',resolution_version=resolution_version+1,resolution_json=json_set(resolution_json,'$.version',resolution_version+1) WHERE id=?").run(record.failureId),/immutable/u);
    assert.throws(()=>f.db.authority.failureResolution.update({...request,runId:id(99)}),/version-conflict/u);
-  }finally{raw.close();f.dispose();}
+  }finally{raw.close();await f.dispose();}
  });
  it("freezes S's ordinary no-restart result arm while protecting target and journal identity",()=>{
   const input={state:"applied",commandId:id(1),affectedTargets:[{family:"settings",revision:2}],restartRequired:false,settingsRevision:2,settingsFingerprint:HASH};assert.deepEqual(CommandResultSchema.parse(input),input);assert.equal(CommandResultSchema.safeParse({...input,settingsRevision:3}).success,false);assert.equal(CommandResultSchema.safeParse({...input,entries:[]}).success,false);
@@ -336,17 +336,18 @@ describe("F shared transactional storage contracts",()=>{
 }
 
 {
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 const CLOCK = manualClock(new Date(NOW));
 
-function databasePath(): string {
-  const profile = createBoundProfileFixture();
+async function databasePath(): Promise<string> {
+  const profile = await createBoundProfileFixture();
   profiles.push(profile);
   return profile.path;
 }
 
-function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
+async function openDatabase(path: string | undefined = undefined, busyTimeoutMs = 250): Promise<AuthorityDatabase> {
+  path ??= await databasePath();
   const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
   openDatabases.push(database);
 
@@ -354,16 +355,16 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
 }
 
 describe("authority persistence invariants", () => {
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
-  for (const profile of profiles.splice(0)) profile.close();
+  for (const profile of profiles.splice(0)) await profile.close();
 });
 
-  it("finds a protected write-id owner after restart while excluding the replaying command", () => {
-    const path = databasePath();
+  it("finds a protected write-id owner after restart while excluding the replaying command", async () => {
+    const path = await databasePath();
     const ownerCommandId = UUID_6;
     const writeId = UUID_7;
-    const first = openDatabase(path);
+    const first = await openDatabase(path);
     first.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     first.authority.commands.insert(markSettingsCommand({
       commandId: ownerCommandId,
@@ -381,7 +382,7 @@ afterEach(() => {
     }));
     first.close();
 
-    const reopened = openDatabase(path);
+    const reopened = await openDatabase(path);
     const lookup: unknown = Reflect.get(
       reopened.authority.commands,
       "findProtectedSettingsCommandIdByWriteId",

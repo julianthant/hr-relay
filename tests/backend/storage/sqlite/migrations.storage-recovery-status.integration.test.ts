@@ -11,7 +11,7 @@ function options(root: string) {
 }
 
 it("distinguishes byte verification from current release eligibility", async () => {
-  const f = storageRecoveryFixture();
+  const f = await storageRecoveryFixture();
   try {
     AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "current-eligibility" }, f.clock).close();
     await f.backup();
@@ -21,5 +21,5 @@ it("distinguishes byte verification from current release eligibility", async () 
     assert.ok(candidate?.state === "verified-compatible");
     assert.equal(candidate.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(candidate.restoreEligibility.state, "eligible");
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });

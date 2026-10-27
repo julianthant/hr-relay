@@ -13,8 +13,8 @@ afterEach(() => {
 });
 
 
-it("F accepted start replay keeps its original run after active settings change", () => {
- const h = createHarness();
+it("F accepted start replay keeps its original run after active settings change", async () => {
+ const h = await createHarness();
  const plan = createPlan(h, rejectActiveDescriptor, ["10800000"]);
  const command = startCommand(plan);
  const first = h.kernel.execute(command);

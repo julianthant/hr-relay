@@ -41,7 +41,7 @@ function actualReplacement(f: Awaited<ReturnType<typeof fixture>>, commandId: st
       const binding = f.database.authority.workerControls.get(commandId)?.lifecycle;
       if (binding?.operation.kind !== "retry") throw new Error("missing original browserless binding");
       let child: ChildProcess | undefined;
-      birth = f.owner(undefined, actual => { child = actual; }).then(owner => {
+      birth = (f.owner(undefined, actual => { child = actual; })).then(owner => {
         const result = f.database.startOwnedWorker({ workerId: f.slot.workerId, workflow: f.slot.workflow,
           browserSystems: binding.operation.kind === "retry" ? binding.operation.systems : [], processId: owner.pid,
           requestedBy: "local-operator", commandId, now: f.now }, owner.handle);

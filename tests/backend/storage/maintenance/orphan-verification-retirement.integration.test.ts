@@ -31,11 +31,11 @@ beforeEach(() => {
 
 const nativeObserveProcessIdentity = locks.observeProcessIdentity;
 const nativeObserveRuntimeLockSnapshot = locks.observeRuntimeLockSnapshot;
-const cleanups: (() => void)[] = [];
-afterEach(() => { vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0)) cleanup(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0)) await cleanup(); });
 
-function fixture() {
-  const profile = createBoundProfileFixture();
+async function fixture() {
+  const profile = await createBoundProfileFixture();
   const { workspace, stateRoot, admission } = profile;
   const clock = manualClock(new Date("2026-10-16T10:00:00.000Z"));
   const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "orphan-test" }, clock);
@@ -67,11 +67,11 @@ function fixture() {
     selectedAdmission === admission ? boundProfileCredentials(admission) : undefined);
   const snapshot = () => ({ generation: database.getMeta().authorityGeneration, slot: database.authority.workerSlots.get(slot.workerId), pool: database.authority.workerPools.get(slot.workflow) });
   const retained = () => { for (const profile of profiles) expect(readFileSync(join(profile, "retain"), "utf8")).toBe("unchanged"); expect(existsSync(claimPath)).toBe(true); };
-  cleanups.push(() => { database.close(); profile.close(); });
+  cleanups.push(async () => { database.close(); await profile.close(); });
   return { workspace, stateRoot, path: profile.path, admission, clock, database, processLockRoot, owner, releasePath: join(processLockRoot, "live-smoke-claims", `${owner.generation}-${owner.acquisitionId}.release.json`), slot: claim.slot, peer, credentialKey, claimPath, profileRoots, profiles, invoke, snapshot, retained };
 }
 
-async function refuses(f: ReturnType<typeof fixture>, plan = false) {
+async function refuses(f: Awaited<ReturnType<typeof fixture>>, plan = false) {
   const before = f.snapshot();
   const outcome = await f.invoke(plan);
   expect(outcome.exitCode).toBe(1);
@@ -81,13 +81,13 @@ async function refuses(f: ReturnType<typeof fixture>, plan = false) {
 }
 
 describe("offline orphan verification retirement", () => {
-  it("keeps an unbound orphan blocking allocation before retirement", () => {
-    const f = fixture();
+  it("keeps an unbound orphan blocking allocation before retirement", async () => {
+    const f = await fixture();
     expect(() => f.database.authority.workerSlots.allocate({ workflow: f.slot.workflow, poolIndex: 2, commandId: null, now: f.clock.now().toISOString() })).toThrow("worker-verification-reserved");
   });
 
   it("plans without mutation, retires the exact orphan and leaves all profiles and claim evidence", async () => {
-    const f = fixture();
+    const f = await fixture();
     const before = f.snapshot();
     const plan = await f.invoke(true);
     expect(plan.exitCode, plan.output).toBe(0);
@@ -106,7 +106,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it("retires with genuinely absent original release and records observed absence", async () => {
-    const f = fixture();
+    const f = await fixture();
     unlinkSync(f.releasePath);
     const before = f.snapshot();
     const plan = await f.invoke(true);
@@ -124,7 +124,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it.each(["appeared", "disappeared"] as const)("native retirement rejects changed release presence: %s", async change => {
-    const f = fixture();
+    const f = await fixture();
     const releaseBytes = readFileSync(f.releasePath);
     if (change === "appeared") unlinkSync(f.releasePath);
     const proof = f.database.authority.workerSlots.planOrphanRetirement({ acquisitionId: f.owner.acquisitionId,
@@ -143,7 +143,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it.each(["alive-owner", "unknown-owner", "duo-held", "open-file"] as const)("absent release still refuses %s without mutation", async failure => {
-    const f = fixture();
+    const f = await fixture();
     unlinkSync(f.releasePath);
     let fd: number | undefined;
     if (failure === "alive-owner") vi.mocked(locks.observeProcessIdentity).mockReturnValue({ state: "alive", identity: f.owner.processIdentity });
@@ -160,7 +160,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it.each(["malformed", "unsafe", "symlink", "directory"] as const)("refuses a present %s original release", async failure => {
-    const f = fixture();
+    const f = await fixture();
     if (failure === "malformed") writeFileSync(f.releasePath, "{invalid");
     if (failure === "unsafe") chmodSync(f.releasePath, 0o644);
     if (failure === "symlink") { unlinkSync(f.releasePath); symlinkSync(f.claimPath, f.releasePath); }
@@ -169,25 +169,25 @@ describe("offline orphan verification retirement", () => {
   });
 
   it.each([false, true])("refuses an unknown owner without mutation (plan=%s)", async plan => {
-    const f = fixture();
+    const f = await fixture();
     vi.mocked(locks.observeProcessIdentity).mockImplementation(() => { throw new Error("fixture owner unknown"); });
     await refuses(f, plan);
   });
 
   it("refuses a live original owner", async () => {
-    const f = fixture();
+    const f = await fixture();
     vi.mocked(locks.observeProcessIdentity).mockReturnValue({ state: "alive", identity: f.owner.processIdentity });
     await refuses(f);
   });
 
   it.each(["own", "peer"])("refuses any held Duo lease: %s", async kind => {
-    const f = fixture();
+    const f = await fixture();
     f.database.authority.duoCeremonyLeases.acquire({ credentialKey: f.credentialKey, workerId: kind === "own" ? f.slot.workerId : f.peer.workerId, system: "ucpath", now: f.clock.now().toISOString(), ttlMs: 60_000 });
     await refuses(f);
   });
 
   it.each([0, 1])("refuses a real open file anywhere in browser root %s", async index => {
-    const f = fixture();
+    const f = await fixture();
     vi.mocked(orphanProcessQuery.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
     const profile = f.profiles[index];
     if (profile === undefined) throw new Error("fixture profile missing");
@@ -196,7 +196,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it.each(["cwd", "arguments"])("refuses an owned child using a profile through %s", async mode => {
-    const f = fixture();
+    const f = await fixture();
     vi.mocked(orphanProcessQuery.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
     const profile = f.profiles[0];
     if (profile === undefined) throw new Error("fixture profile missing");
@@ -212,7 +212,7 @@ describe("offline orphan verification retirement", () => {
     [0, "cwd", false], [0, "cwd", true], [0, "descriptor", false], [0, "descriptor", true],
     [1, "cwd", false], [1, "cwd", true], [1, "descriptor", false], [1, "descriptor", true],
   ] as const)("refuses root %s with a deleted-descendant %s (plan=%s)", async (rootIndex, kind, plan) => {
-    const f = fixture();
+    const f = await fixture();
     vi.mocked(orphanProcessQuery.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
     const root = f.profileRoots[rootIndex];
     if (root === undefined) throw new Error("fixture profile root missing");
@@ -242,7 +242,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it("refuses a symlink escape in either profile root", async () => {
-    const f = fixture();
+    const f = await fixture();
     const profile = f.profiles[0];
     const root = f.profileRoots[0];
     if (profile === undefined || root === undefined) throw new Error("fixture profile missing");
@@ -251,7 +251,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it.each(["ps-error", "ps-empty", "ps-malformed", "ps-signal", "ps-status", "ps-spawn", "lsof-error", "lsof-malformed", "lsof-empty", "lsof-no-newline", "lsof-orphan-name", "lsof-truncated-file", "lsof-pid-only", "lsof-missing-name", "lsof-unknown-field", "lsof-signal", "lsof-spawn", "lsof-no-type", "lsof-nofd", "lsof-empty-type", "lsof-empty-directory", "lsof-empty-regular", "lsof-empty-unknown", "lsof-trailing-process"])("refuses an incomplete process query: %s", async mode => {
-    const f = fixture();
+    const f = await fixture();
     vi.mocked(orphanProcessQuery.spawnSync).mockImplementation((...args: Parameters<typeof orphanProcessQuery.spawnSync>) => {
       if (args[0] === "/bin/ps" && Array.isArray(args[1]) && args[1][0] === "-axo") {
         return { pid: 0, output: [], stdout: mode === "ps-empty" ? "" : mode === "ps-malformed" ? "unparseable\n" : `${process.pid} node\n`,
@@ -274,7 +274,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it.each(["NPOLICY", "NEXUS", "PIPE"])("accepts a complete nameless %s kernel object record", async fileType => {
-    const f = fixture();
+    const f = await fixture();
     vi.mocked(orphanProcessQuery.spawnSync).mockImplementation((...args: Parameters<typeof orphanProcessQuery.spawnSync>) => {
       if (args[0] === "/usr/sbin/lsof") return { pid: 0, output: [], stdout: `p${process.pid}\nf3\nt${fileType}\nn\n`, stderr: "", status: 0, signal: null };
       return nativeChildProcess.spawnSync(...args);
@@ -287,7 +287,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it("refuses actual shared installation admission for plan and execution", async () => {
-    const f = fixture();
+    const f = await fixture();
     const sharedWorkspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-shared-orphan-")));
     vi.mocked(locks.observeProcessIdentity).mockImplementation(nativeObserveProcessIdentity);
     initializeAdmissionFixture(sharedWorkspace);
@@ -304,7 +304,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it("refuses a released admission without mutation", async () => {
-    const f = fixture();
+    const f = await fixture();
     const bytes = (path: string) => existsSync(path) ? readFileSync(path) : undefined;
     const files = [f.path, `${f.path}-wal`, `${f.path}-shm`];
     const before = files.map(bytes);
@@ -316,7 +316,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it.each(["owner", "slot", "claim", "custody", "root", "time", "runtime", "configuration", "provenance", "expired", "claim-file", "owner-release"])("native retirement rejects a complete changed proof: %s", async field => {
-    const f = fixture();
+    const f = await fixture();
     const planned = await f.invoke(true);
     expect(planned.exitCode, planned.output).toBe(0);
     const proof = f.database.authority.workerSlots.planOrphanRetirement({ acquisitionId: f.owner.acquisitionId, now: f.clock.now().toISOString() }).proof;
@@ -343,7 +343,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it("native retirement rechecks an actual open descriptor after a successful plan", async () => {
-    const f = fixture();
+    const f = await fixture();
     const planned = await f.invoke(true);
     expect(planned.exitCode, planned.output).toBe(0);
     const proof = f.database.authority.workerSlots.planOrphanRetirement({ acquisitionId: f.owner.acquisitionId, now: f.clock.now().toISOString() }).proof;
@@ -363,7 +363,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it.each(["server", "workers", "live-smoke", "geocode"] as const)("refuses an actual held %s runtime lock", async name => {
-    const f = fixture();
+    const f = await fixture();
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { cwd: f.workspace, stdio: "ignore" });
     await new Promise<void>((resolveSpawn, reject) => { child.once("spawn", resolveSpawn); child.once("error", reject); });
     const pid = child.pid;
@@ -380,7 +380,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it.each([false, true])("refuses a configured custom ordinary profile root before appending (plan=%s)", async plan => {
-    const f = fixture();
+    const f = await fixture();
     const custom = join(f.workspace, "custom-browser-root");
     mkdirSync(custom, { mode: 0o700 });
     const config = { ...CONFIG_SNAPSHOT.config, paths: { ...CONFIG_SNAPSHOT.config.paths, browserProfileRoot: custom } };
@@ -390,7 +390,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it("historical native proof stays readable offline checks later change, and refuses captured configuration tampering", async () => {
-    const f = fixture();
+    const f = await fixture();
     const result = await f.invoke();
     expect(result.exitCode, result.output).toBe(0);
     const commandId = f.database.authority.workerSlots.get(f.slot.workerId)?.retirementCommandId;
@@ -412,7 +412,7 @@ describe("offline orphan verification retirement", () => {
   });
 
   it("proves unused missing profile roots without recreating them", async () => {
-    const f = fixture();
+    const f = await fixture();
     for (const root of f.profileRoots) rmSync(root, { recursive: true });
     const before = f.snapshot();
     const plan = await f.invoke(true);
@@ -424,8 +424,8 @@ describe("offline orphan verification retirement", () => {
     expect(existsSync(f.claimPath)).toBe(true);
   });
 
-  it("native retirement refuses forged offline proof before a journal append", () => {
-    const f = fixture();
+  it("native retirement refuses forged offline proof before a journal append", async () => {
+    const f = await fixture();
     const before = f.snapshot();
     expect(() => f.database.withAuthorityTransaction(repositories => retireWorkerVerification(repositories, {
       commandId: randomUUID(), grantCommandId: f.slot.reservationCommandId, workerId: f.slot.workerId,

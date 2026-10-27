@@ -31,8 +31,8 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 afterEach(cleanup);
 
-function fixture() {
-  const harness = executorHarness({ descriptor: plan1Parent.descriptor, stores: plan1Stores });
+async function fixture() {
+  const harness = await executorHarness({ descriptor: plan1Parent.descriptor, stores: plan1Stores });
   const { database, clock, stateRoot: _stateRoot } = harness.authority;
   const patch = { "actor.label": { set: "Different operator" } } as const;
   assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
@@ -49,7 +49,7 @@ function fixture() {
 }
 
 it("executes two canonical children and a nested child, preserving every derived input through real terminal authority and source routes", async () => {
-  const { harness, database, clock, writer, deps } = fixture();
+  const { harness, database, clock, writer, deps } = await fixture();
   const canonical = canonicalChildExecution({ ...harness.deps, taskNotes: writer }, database, harness.authority.path,
     id => plan1Workflows.find(workflow => workflow.descriptor.id === id)?.descriptor);
   const root = canonical.start(plan1Parent.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
@@ -116,7 +116,7 @@ it("executes two canonical children and a nested child, preserving every derived
 });
 
 it("preserves local, protected, replay and operator-corrected provenance in one genuine history", async () => {
-  const { harness, database, clock, fingerprint, configSnapshotId, writer, deps } = fixture();
+  const { harness, database, clock, fingerprint, configSnapshotId, writer, deps } = await fixture();
   let number = 0;
   const createRun = (compiled: typeof plan1Parent, value: unknown, parent?: RunParent, itemId?: string) => {
     const sequence = ++number;

@@ -60,10 +60,10 @@ function commands(database: AuthorityDatabase, descriptors: { resolve(id: string
   return { lifecycle, kernel };
 }
 
-function prepare(arm: "read" | "write" = "read") {
+async function prepare(arm: "read" | "write" = "read") {
   const root = arm === "read" ? childExecutionRoot : childCrashWriteRoot;
   const modules = arm === "read" ? childExecutionModules : childCrashWriteModules(createWriteFixtureWorld()).modules;
-  const profile = createBoundProfileFixture({ sharedMachine: true });
+  const profile = await createBoundProfileFixture({ sharedMachine: true });
   copyFileSync(join(process.cwd(), "package.json"), join(profile.workspace, "package.json"));
   copyFileSync(join(process.cwd(), "package-lock.json"), join(profile.workspace, "package-lock.json"));
   const open = () => AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 500,
@@ -102,7 +102,7 @@ function prepare(arm: "read" | "write" = "read") {
     const failures: unknown[] = [error];
     let closed = false;
     try { database.close(); closed = true; } catch (closeError) { failures.push(closeError); }
-    if (closed) { try { profile.close(); } catch (closeError) { failures.push(closeError); } }
+    if (closed) { try { await profile.close(); } catch (closeError) { failures.push(closeError); } }
     if (failures.length > 1) throw new AggregateError(failures, "child-crash-prepare-cleanup-unproved", { cause: error });
     throw error;
   }
@@ -164,7 +164,7 @@ async function killOwned(owned: ReturnType<typeof launch>): Promise<void> {
 }
 
 it("reconciles an actual child OS crash after its committed read checkpoint without repeating it", async () => {
-  const f = prepare(), children: ReturnType<typeof launch>[] = [];
+  const f = await prepare(), children: ReturnType<typeof launch>[] = [];
   let closureProved = false;
   let primary: { error: unknown } | undefined;
   try {
@@ -220,7 +220,7 @@ it("reconciles an actual child OS crash after its committed read checkpoint with
     const failures: unknown[] = primary === undefined ? [] : [primary.error];
     for (const child of children) { try { await killOwned(child); } catch (error) { failures.push(error); } }
     if (closureProved && failures.length === 0) {
-      try { f.profile.close(); } catch (error) { failures.push(error); }
+      try { await f.profile.close(); } catch (error) { failures.push(error); }
     }
     else failures.push(new Error("child-crash-fixture-custody-retained"));
     if (failures.length !== 0) throw new AggregateError(failures, "child-crash-fixture-cleanup-unproved");
@@ -228,7 +228,7 @@ it("reconciles an actual child OS crash after its committed read checkpoint with
 });
 
 it("parks a real attempting child after its owned OS process dies without retry or manufactured settlement", async () => {
-  const f = prepare("write"), children: ReturnType<typeof launch>[] = [];
+  const f = await prepare("write"), children: ReturnType<typeof launch>[] = [];
   let retainedUnknownProved = false;
   let primary: { error: unknown } | undefined;
   try {

@@ -14,11 +14,11 @@ import { canonicalJsonStringify } from "../../../../../src/rules/validation/cano
 import { HASH_A,HASH_B,NOW } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { trustWorld } from "../../../../support/helpers/backend/trust-authority-fixture.js";
 
-const worlds: ReturnType<typeof trustWorld>[] = [];
-afterEach(() => { for (const world of worlds.splice(0).reverse()) world.dispose(); });
+const worlds: Awaited<ReturnType<typeof trustWorld>>[] = [];
+afterEach(async () => { for (const world of worlds.splice(0).reverse()) await world.dispose(); });
 
 async function fixture() {
-  const f = trustWorld();
+  const f = await trustWorld();
   worlds.push(f);
   const run = f.fail(f.create(301), 302);
   const failure = f.database.authority.failures.listByRun(run.envelope.runId).at(-1);

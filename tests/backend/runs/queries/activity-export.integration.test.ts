@@ -9,8 +9,8 @@ import { describe } from "vitest";
 
 {
 
-it("serves selected Queue rows and Activity without enumerating canonical history", () => {
-  const f = summaryFixture();
+it("serves selected Queue rows and Activity without enumerating canonical history", async () => {
+  const f = await summaryFixture();
   try {
     const selected = RunRecordSchema.parse({ ...f.run, envelope: { ...f.run.envelope, runId: id(8101), itemId: id(8101), enqueuedAt: NOW },
       lifecycle: { state: "queued" }, version: 1, claimGeneration: 0, createdAt: NOW, updatedAt: NOW });
@@ -24,15 +24,15 @@ it("serves selected Queue rows and Activity without enumerating canonical histor
     assert.equal(report.totalRuns, 1);
     assert.match(activityReportCsv(report), /Runs in range,1/);
     assert.doesNotMatch(JSON.stringify(report), /sourceDigest|configFingerprint|"identity"/);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 }
 
 {
 
 describe("Activity consumes the served summary boundary", () => {
-  it("renders the same selected database summaries as Queue and CSV, without reading canonical history", () => {
-    const f = summaryFixture();
+  it("renders the same selected database summaries as Queue and CSV, without reading canonical history", async () => {
+    const f = await summaryFixture();
     try {
       const now = "2026-09-09T12:00:00.000Z";
       for (const runId of [id(9781), id(9782)]) f.db.authority.runs.enqueue(RunRecordSchema.parse({
@@ -46,7 +46,7 @@ describe("Activity consumes the served summary boundary", () => {
       assert.deepEqual(selected.statuses.find((entry) => entry.status === "queued")?.sample, held.map((row) => row.runId));
       assert.match(activityReportCsv(selected), /Runs in range,2/u);
       assert.throws(() => f.projection.buildActivityReportWire("2026-09-10", "2026-09-09"));
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
 });

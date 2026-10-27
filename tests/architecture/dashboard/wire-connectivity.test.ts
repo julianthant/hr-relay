@@ -52,8 +52,8 @@ import {
 } from "./helpers/wire-connectivity.js";
 
 const worlds: DashboardWorld[] = [];
-afterEach(() => {
-  for (const world of worlds.splice(0)) world.dispose();
+afterEach(async () => {
+  for (const world of worlds.splice(0)) await world.dispose();
 });
 
 const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
@@ -133,7 +133,7 @@ function lifecycleCases(): readonly LifecycleCase[] {
 
 /** Every section any lifecycle can advertise, with and without the trust seam. */
 async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<string>; readonly statesSwept: ReadonlySet<string> }> {
-  const world = makeWorld();
+  const world = await makeWorld();
   worlds.push(world);
   queuedEventOf(world, { seed: 1 });
   const row = world.projection.runFold(uuidOf(1));
@@ -167,7 +167,7 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
     for (const section of availableSections(row, record, trust)) reachable.add(section);
   }
 
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open({ path: profile.path,
     busyTimeoutMs: 1000, migrationOwner: "wire-capture-census" }, world.clock);
   try {
@@ -203,7 +203,7 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
     const detail = await readRunDetail(deps, uuidOf(1));
     assert.deepEqual(detail.captures, { state: "available", artifactCount: 1 }, "the async census did not verify its canonical capture");
     for (const section of detail.availableSections) reachable.add(section);
-  } finally { database.close(); profile.close(); }
+  } finally { database.close(); await profile.close(); }
   return { reachable, statesSwept };
 }
 

@@ -41,7 +41,7 @@ const SUBMISSION = Object.freeze({
   documentNumber: "4510",
 });
 
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const databases: AuthorityDatabase[] = [];
 const worlds: DashboardWorld[] = [];
 
@@ -51,20 +51,20 @@ function retainWireFailure(error: unknown): Error {
   retainedSeparationWireOwners.add(held);
   return retainAuthoritySourceClosure([error], { admission: held });
 }
-afterEach(() => {
+afterEach(async () => {
   const held: { databases: AuthorityDatabase[]; profiles: typeof profiles; worlds: DashboardWorld[]; primary?: { error: unknown } } = {
     databases: databases.splice(0), profiles: profiles.splice(0), worlds: worlds.splice(0) };
   retainedSeparationWireOwners.add(held);
   try {
     for (const database of held.databases.reverse()) database.close();
-    for (const profile of held.profiles) profile.close();
-    for (const world of held.worlds) world.dispose();
+    for (const profile of held.profiles) await profile.close();
+    for (const world of held.worlds) await world.dispose();
     retainedSeparationWireOwners.delete(held);
   } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
 });
 
-function openDatabase(): AuthorityDatabase {
-  const profile = createBoundProfileFixture();
+async function openDatabase(): Promise<AuthorityDatabase> {
+  const profile = await createBoundProfileFixture();
   profiles.push(profile);
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -197,9 +197,9 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
 }
 
 describe("separations — the identity-gate wire", () => {
-  it("serves the whole packet INCLUDING the write plan, and the actions that resolve it", () => {
+  it("serves the whole packet INCLUDING the write plan, and the actions that resolve it", async () => {
     try {
-    const world = makeWorld();
+    const world = await makeWorld();
     worlds.push(world);
     const packet = packetWithPlan();
     seedGate(world, packet);

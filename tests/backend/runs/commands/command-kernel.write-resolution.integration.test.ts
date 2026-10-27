@@ -34,7 +34,7 @@ describe("write resolution", () => {
     world.probeResults.push(absentProbeEvidence(NOW)); world.commitThrows = new Error("probe returned unknown");
     await runWorkerLoop({ ...ports, workflowId: writeFixtureDescriptor.id, workerId: slot.workerId, descriptor: writeFixtureDescriptor,
       stores, authority: harness.database, sessionFactory: sessions.factory, emitter, clock: harness.clock, ids, scheduler,
-      taskDeadlineMs: 60_000, sessionAcquireMs: 20_000, duoCeremony: fixtureDuoCeremonyGates(harness.clock), heartbeatIntervalMs: 600_000,
+      taskDeadlineMs: 60_000, sessionAcquireMs: 20_000, duoCeremony: await fixtureDuoCeremonyGates(harness.clock), heartbeatIntervalMs: 600_000,
       idleRepollMs: 1_000, log, stopSignal: new AbortController().signal, exitWhenIdle: true,
       writeSequencerFor: manager => createWriteSequencer({ lifecycle: testRunLifecycle(harness.database, harness.clock), stores,
         authority: harness.database, sessions: manager, emitter, clock: harness.clock, ids, scheduler, taskDeadlineMs: 60_000,
@@ -45,7 +45,7 @@ describe("write resolution", () => {
   }
 
   it("resolves a parked write through the typed executor seam inside the command transaction", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const parked = await parkOnWrite(harness);
     const result = harness.kernel.execute(runCommand("resolve-write-absent", parked.runId, parked.version, {
       target: {
@@ -62,7 +62,7 @@ describe("write resolution", () => {
   });
 
   it("CAS-conflicts on a stale version and rejects a stale intent generation", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const parked = await parkOnWrite(harness);
     const stale = harness.kernel.execute(runCommand("resolve-write-absent", parked.runId, parked.version + 3, {
       target: {

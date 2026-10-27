@@ -29,8 +29,8 @@ function nodeObligation(receipt: RunEvidenceReceipt, nodeId: string) {
 }
 
 describe("evidence receipt under step omission", () => {
-  it("states an asserted node as present, mandatory, and sourced from the operator", () => {
-    const receipt = buildRunEvidenceReceipt(receiptInput(omittedStepFixture()));
+  it("states an asserted node as present, mandatory, and sourced from the operator", async () => {
+    const receipt = buildRunEvidenceReceipt(receiptInput(await omittedStepFixture()));
 
     const obligation = nodeObligation(receipt, ASSERTED_NODE);
     assert.equal(obligation.verdict, "present");
@@ -52,8 +52,8 @@ describe("evidence receipt under step omission", () => {
     }
   });
 
-  it("gives an asserted node no read action and no freshness reuse", () => {
-    const receipt = buildRunEvidenceReceipt(receiptInput(omittedStepFixture()));
+  it("gives an asserted node no read action and no freshness reuse", async () => {
+    const receipt = buildRunEvidenceReceipt(receiptInput(await omittedStepFixture()));
 
     assert.deepEqual(
       receipt.actions.filter((action) => action.taskId === "workflow:person-lookup/read-active-status"),
@@ -68,8 +68,8 @@ describe("evidence receipt under step omission", () => {
     );
   });
 
-  it("keeps a node of the omitted step that nothing rebuilt absent and not mandatory", () => {
-    const receipt = buildRunEvidenceReceipt(receiptInput(omittedStepFixture()));
+  it("keeps a node of the omitted step that nothing rebuilt absent and not mandatory", async () => {
+    const receipt = buildRunEvidenceReceipt(receiptInput(await omittedStepFixture()));
 
     const obligation = nodeObligation(receipt, OMITTED_NODE);
     assert.equal(obligation.verdict, "absent");
@@ -85,8 +85,8 @@ describe("evidence receipt under step omission", () => {
     assert.equal(decision.outcome, "not-taken");
   });
 
-  it("names the omitted step keys once, carries no typed fact, and refuses verified-done", () => {
-    const receipt = buildRunEvidenceReceipt(receiptInput(omittedStepFixture()));
+  it("names the omitted step keys once, carries no typed fact, and refuses verified-done", async () => {
+    const receipt = buildRunEvidenceReceipt(receiptInput(await omittedStepFixture()));
 
     const warnings = receipt.warnings.filter((warning) => warning.code === "OPERATOR_OMITTED_STEP");
     assert.equal(warnings.length, 1, "the omission is stated once for the run, not once per node");
@@ -102,58 +102,58 @@ describe("evidence receipt under step omission", () => {
     assert.equal(receipt.confidence, "partial");
   });
 
-  it("refuses a terminal citation with no marked row behind it", () => {
-    assert.throws(
-      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ dropAssertedCheckpoint: true }))),
+  it("refuses a terminal citation with no marked row behind it", async () => {
+    await assert.rejects(
+      async () => buildRunEvidenceReceipt(receiptInput(await omittedStepFixture({ dropAssertedCheckpoint: true }))),
       /cites node "active-status" as asserted for step "crm-read", and authority holds no checkpoint row/u,
     );
   });
 
-  it("refuses an assertion for a step this run's envelope never omitted", () => {
-    assert.throws(
-      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ stepOmissions: [] }))),
+  it("refuses an assertion for a step this run's envelope never omitted", async () => {
+    await assert.rejects(
+      async () => buildRunEvidenceReceipt(receiptInput(await omittedStepFixture({ stepOmissions: [] }))),
       /asserted for step "crm-read", and its envelope omits no step/u,
     );
   });
 
-  it("refuses a terminal record that calls the asserted node resolved", () => {
-    assert.throws(
-      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ citeAssertedAsResolved: true }))),
+  it("refuses a terminal record that calls the asserted node resolved", async () => {
+    await assert.rejects(
+      async () => buildRunEvidenceReceipt(receiptInput(await omittedStepFixture({ citeAssertedAsResolved: true }))),
       /may not call an asserted value an observed one/u,
     );
   });
 
-  it("refuses a citation whose output schema is not the one that parsed the row", () => {
-    assert.throws(
-      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ citeForeignSchemaHash: true }))),
+  it("refuses a citation whose output schema is not the one that parsed the row", async () => {
+    await assert.rejects(
+      async () => buildRunEvidenceReceipt(receiptInput(await omittedStepFixture({ citeForeignSchemaHash: true }))),
       /disagree about which schema bound this assertion's value/u,
     );
   });
 
-  it("refuses a citation whose output digest is not the row's own value", () => {
-    assert.throws(
-      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ citeForeignOutputDigest: true }))),
+  it("refuses a citation whose output digest is not the row's own value", async () => {
+    await assert.rejects(
+      async () => buildRunEvidenceReceipt(receiptInput(await omittedStepFixture({ citeForeignOutputDigest: true }))),
       /the terminal derive did not consume the value this row carries/u,
     );
   });
 
-  it("refuses a marked row the terminal record calls not-run", () => {
-    assert.throws(
-      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ citeAssertedAsNotRun: true }))),
+  it("refuses a marked row the terminal record calls not-run", async () => {
+    await assert.rejects(
+      async () => buildRunEvidenceReceipt(receiptInput(await omittedStepFixture({ citeAssertedAsNotRun: true }))),
       /cites node "active-status" as not-run \(step-omitted\).*may not call an asserted value a node that produced nothing/su,
     );
   });
 
 
-  it("refuses a marked row the terminal record leaves out of a dependency the derive declares", () => {
-    assert.throws(
-      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ dropAssertedDependency: true }))),
+  it("refuses a marked row the terminal record leaves out of a dependency the derive declares", async () => {
+    await assert.rejects(
+      async () => buildRunEvidenceReceipt(receiptInput(await omittedStepFixture({ dropAssertedDependency: true }))),
       /\[MOVED\] terminal-dependency-set — the stored result was built from \[search-identity, crm-identity, matching, crm-selected-record, crm-results, crm-dates\]/u,
     );
   });
 
-  it("points the asserted obligation at its facts, never back at the decision that cites it", () => {
-    const receipt = buildRunEvidenceReceipt(receiptInput(omittedStepFixture()));
+  it("points the asserted obligation at its facts, never back at the decision that cites it", async () => {
+    const receipt = buildRunEvidenceReceipt(receiptInput(await omittedStepFixture()));
 
     const obligation = nodeObligation(receipt, ASSERTED_NODE);
     const decision = receipt.decisions.find((entry) => entry.kind === "assertion");
@@ -174,9 +174,9 @@ describe("evidence receipt under step omission", () => {
     }
   });
 
-  it("refuses operator-sourced leaves on a row that carries no assertion marker", () => {
-    assert.throws(
-      () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({
+  it("refuses operator-sourced leaves on a row that carries no assertion marker", async () => {
+    await assert.rejects(
+      async () => buildRunEvidenceReceipt(receiptInput(await omittedStepFixture({
         dropAssertionMarker: true,
         citeAssertedAsResolved: true,
       }))),
@@ -186,8 +186,8 @@ describe("evidence receipt under step omission", () => {
 });
 
 describe("explain run under step omission", () => {
-  function explainView() {
-    const fixture = omittedStepFixture();
+  async function explainView() {
+    const fixture = await omittedStepFixture();
     return buildExplainRunView({
       run: fixture.run,
       checkpoints: fixture.checkpoints,
@@ -200,8 +200,8 @@ describe("explain run under step omission", () => {
     });
   }
 
-  it("gives an asserted node its own disposition, its step and its instant", () => {
-    const view = explainView();
+  it("gives an asserted node its own disposition, its step and its instant", async () => {
+    const view = await explainView();
     const entry = view.timeline.find((row) => row.nodeId === ASSERTED_NODE);
     assert.ok(entry !== undefined);
     assert.equal(entry.disposition, "operator-asserted");
@@ -210,8 +210,8 @@ describe("explain run under step omission", () => {
     assert.match(entry.detail, /observed by nobody/u);
   });
 
-  it("still calls a node of the omitted step that nothing rebuilt not-run", () => {
-    const entry = explainView().timeline.find((row) => row.nodeId === OMITTED_NODE);
+  it("still calls a node of the omitted step that nothing rebuilt not-run", async () => {
+    const entry = (await explainView()).timeline.find((row) => row.nodeId === OMITTED_NODE);
     assert.ok(entry !== undefined);
     assert.equal(entry.disposition, "not-run");
     assert.match(entry.detail, /step-omitted/u);

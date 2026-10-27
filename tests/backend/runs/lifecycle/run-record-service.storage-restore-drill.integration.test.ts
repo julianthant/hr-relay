@@ -40,11 +40,11 @@ describe("restore-loss warning after real worker recovery", () => {
     transaction: { ...HISTORICAL_COMMIT.transaction, bindingProofDigest },
     committedSpan: { ...HISTORICAL_COMMIT.committedSpan, bindingProofDigest },
   });
-  function paths(){return drillPaths();}
+  async function paths(){return await drillPaths();}
   function createAuthority(p:DrillPaths){const db=open(p);db.close();}
 it.each([false, true])("restore confirmation evidence survives recovery accounting (backup after commit: %s)", async (backupAfterCommit) => {
   CLOCK.setWall(new Date(WRITE_INTENT_ATTEMPTING.fencedAt));
-  const p = paths(); createAuthority(p);
+  const p = await paths(); createAuthority(p);
   const checkpoint = atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT);
   const inspect = (path: string) => withAuthorityDatabaseReadOnly(p.admission,path,db=>{
     const row=db.prepare("SELECT * FROM runs WHERE id=?").get(WRITE_INTENT_ATTEMPTING.runId);assert.ok(row);const run=runRecordFromRow(row);

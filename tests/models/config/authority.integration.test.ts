@@ -82,20 +82,20 @@ afterEach(() => {
     })),
   ];
 
-  it("accounts for every authority table and increments once per outer authority mutation", () => {
+  it("accounts for every authority table and increments once per outer authority mutation", async () => {
     assert.deepEqual([...new Set(cases.map(({ table }) => table))].sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority"
         && !["database_states", "database_upgrades"].includes(name))
       .map(({ name }) => name)
       .sort());
     for (const mutation of cases) {
-      const database = openDatabase();
+      const database = await openDatabase();
       if (mutation.table !== "settings" && mutation.table !== "settings_snapshots" && database.authority.runtimeConfig.get() === undefined) {
         database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
       }
       mutation.prepare?.(database);
       const before = database.getMeta().authorityGeneration;
-      mutation.mutate(database);
+      await mutation.mutate(database);
       assert.equal(database.getMeta().authorityGeneration, before + 1, mutation.table);
       database.close();
     }

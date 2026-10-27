@@ -28,9 +28,9 @@ import { upgradeStorage } from "../../support/helpers/synthetic-storage-admissio
 
 describe("cross-date search authority read", () => {
 
-  it("authenticates complete retained actor sources and keeps frozen actors through genuine ordinary pruning", () => {
+  it("authenticates complete retained actor sources and keeps frozen actors through genuine ordinary pruning", async () => {
     const clock=manualClock(new Date("2026-11-01T16:00:00.000Z"));
-    const opened=openBoundDatabaseFixture("search-actor-test",clock,1000);
+    const opened=await openBoundDatabaseFixture("search-actor-test",clock,1000);
     const path=opened.path;
     const database=opened.database;
     const raw=new DatabaseSync(path);
@@ -101,7 +101,7 @@ describe("cross-date search authority read", () => {
       const reopened=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-post-prune-genuine-reopen"},clock);
       try { assert.deepEqual(reopened.authority.runs.search({q:e.runId,scope:"run",facets:{},limit:1}),before); }
       finally { reopened.close(); }
-    } finally { raw.close(); releaseSeededWriteOwners(database, clock.now().toISOString()); opened.close(); }
+    } finally { raw.close(); releaseSeededWriteOwners(database, clock.now().toISOString()); await opened.close(); }
   });
 });
 }
@@ -109,14 +109,14 @@ describe("cross-date search authority read", () => {
 {
 
 const roots: string[] = [];
-const pendingProfiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const pendingProfiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
-const _afterEachFixture0 = () => {
-  for (const profile of pendingProfiles.splice(0)) profile.close();
+const _afterEachFixture0 = async () => {
+  for (const profile of pendingProfiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
-function fresh() {
-  const profile = createBoundProfileFixture({ pending: true });
+async function fresh() {
+  const profile = await createBoundProfileFixture({ pending: true });
   pendingProfiles.push(profile);
   const input = { stateRoot: profile.stateRoot, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false };
   return { root: profile.stateRoot, path: profile.path, input, run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
@@ -137,7 +137,7 @@ describe("stopped native SQLite initialization", () => {
 afterEach(_afterEachFixture0);
 
   it("leaves a fresh root untouched when exclusive restore admission fails and permits exact rerun", async () => {
-    const f = fresh(); const before = storageTree(f.root);
+    const f = await fresh(); const before = storageTree(f.root);
     await assert.rejects(upgradeStorage(f.input, clock, () => { throw new Error("injected-admission-failure"); }),
       /injected-admission-failure/u);
     assert.equal(existsSync(f.path), false);
@@ -145,7 +145,7 @@ afterEach(_afterEachFixture0);
     assert.equal((await f.run()).state, "initialized");
   });
   it("preserves complete populated current authority and stale claimed lifecycle bytes without recovery", async () => {
-    const f = foundationFixture();
+    const f = await foundationFixture();
     try {
       const run = f.db.authority.runs.get(f.run.envelope.runId);
       assert.ok(run); assert.equal(run.lifecycle.state, "running");
@@ -161,10 +161,10 @@ afterEach(_afterEachFixture0);
       try { assert.deepEqual(reopened.authority.runs.get(run.envelope.runId), run);
         assert.equal(reopened.getMeta().authorityGeneration, generation); }
       finally { reopened.close(); }
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
   it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1, 29, 46, 999])("refuses schema %s without conversion or source I/O repair", async version => {
-    const f = fresh(); await f.run();
+    const f = await fresh(); await f.run();
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`); }
     finally { raw.close(); }
@@ -174,7 +174,7 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(storageTree(f.root), before);
   });
   it("refuses a missing selected snapshot before healthy open or upgrade with all bytes unchanged", async () => {
-    const f = foundationFixture();
+    const f = await foundationFixture();
     try {
       const snapshotId = f.snapshot.configSnapshotId; detachBoundFixtureWorkers(f.db); f.db.close();
       const raw = new DatabaseSync(f.path);
@@ -191,10 +191,10 @@ afterEach(_afterEachFixture0);
       for (const plan of [true, false]) await assert.rejects(upgradeStorage({
         stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan }, clock));
       assert.deepEqual(storageTree(f.root), before);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
   it("preserves exact native multi-day events and immutable replay through stopped no-op upgrade", async () => {
-    const f = foundationFixture();
+    const f = await foundationFixture();
     try {
       const inputs = ["2026-07-31", "2026-07-31", "2026-07-31", "2026-08-01"].map((day, i) =>
         TimelineAppendSchema.parse({ schemaVersion: 1, eventId: randomUUID(), scope: { kind: "client", clientId: "upgrade-fixture" },
@@ -217,7 +217,7 @@ afterEach(_afterEachFixture0);
         }
         assert.equal(db.getMeta().authorityGeneration, generation);
       } finally { db.close(); }
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });
 }

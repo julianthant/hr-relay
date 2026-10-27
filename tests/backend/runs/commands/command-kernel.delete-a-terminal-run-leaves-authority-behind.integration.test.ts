@@ -39,8 +39,8 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     return run.version + 1;
   }
 
-  it("refuses a run that is not terminal, and leaves it exactly as it was", () => {
-    const harness = createHarness();
+  it("refuses a run that is not terminal, and leaves it exactly as it was", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const before = harness.database.authority.runs.get(runId);
     assert.ok(before !== undefined);
@@ -55,8 +55,8 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     assert.equal(harness.database.authority.deletedRuns.get(runId), undefined);
   });
 
-  it("CASes the caller's version before it reads anything else", () => {
-    const harness = createHarness();
+  it("CASes the caller's version before it reads anything else", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const version = settle(harness, runId);
 
@@ -65,8 +65,8 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     assert.ok(harness.database.authority.runs.get(runId) !== undefined);
   });
 
-  it("deletes a cancelled run entirely, keeps the journal, and refuses a second delete by name", () => {
-    const harness = createHarness();
+  it("deletes a cancelled run entirely, keeps the journal, and refuses a second delete by name", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const version = settle(harness, runId);
     const generationBefore = harness.database.getMeta().authorityGeneration;
@@ -96,8 +96,8 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
 
 
 
-  it("deletes a tree leaves-first, and refuses the tree while any member is not terminal", () => {
-    const harness = createHarness();
+  it("deletes a tree leaves-first, and refuses the tree while any member is not terminal", async () => {
+    const harness = await createHarness();
     const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
     const parent = harness.database.authority.runs.get(parentId);
     assert.ok(parent !== undefined);

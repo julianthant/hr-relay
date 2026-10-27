@@ -16,17 +16,17 @@ import { acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
 const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
-const cleanups: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const cleanup of [...cleanups]) { cleanup(); cleanups.splice(cleanups.indexOf(cleanup), 1); } };
-function fixture() {
-  const bound = createBoundProfileFixture();
+const cleanups: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const cleanup of [...cleanups]) { await cleanup(); cleanups.splice(cleanups.indexOf(cleanup), 1); } };
+async function fixture() {
+  const bound = await createBoundProfileFixture();
   let database: AuthorityDatabase | undefined = undefined;
   let openingFailure: AuthoritySourceClosureUnprovedError | undefined = undefined;
   let cleanupFailure: { error: unknown } | undefined = undefined;
-  cleanups.push(() => {
+  cleanups.push(async () => {
     if (openingFailure !== undefined) throw openingFailure;
     if (cleanupFailure !== undefined) throw cleanupFailure.error;
-    try { database?.close(); bound.close(); }
+    try { database?.close(); await bound.close(); }
     catch (error) { cleanupFailure = { error }; throw error; }
   });
   const admission = bound.admission, stateRoot = bound.stateRoot, path = bound.path;
@@ -46,20 +46,20 @@ function fixture() {
 it("keeps a current authority unchanged through stopped plan and no-op apply", async () => {
 try {
 
-  const f = fixture(), before = inspectAuthorityBackupReadOnly(f.admission, f.path), bytes = readFileSync(f.path);
+  const f = await fixture(), before = inspectAuthorityBackupReadOnly(f.admission, f.path), bytes = readFileSync(f.path);
   assert.equal((await upgradeStorage(f.admission, { ...f, plan: true }, clock)).state, "planned");
   assert.equal((await upgradeStorage(f.admission, { ...f, plan: false }, clock)).state, "already-upgraded");
   assert.deepEqual(inspectAuthorityBackupReadOnly(f.admission, f.path), before);
   assert.deepEqual(readFileSync(f.path), bytes);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 it("verifies a stopped native backup and borrows the caller's exact restore lease without releasing it", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const source = inspectAuthorityBackupReadOnly(f.admission, f.path), bytes = readFileSync(f.path);
   const held = acquireRuntimeRestoreAdmission({ processLockRoot: f.processLockRoot, pid: process.pid }, clock);
   try {
@@ -81,13 +81,13 @@ try {
   assert.equal(existsSync(join(f.processLockRoot, "restore-admission.lock.json")), false);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 it("refuses a lost caller-held restore lease without modifying authority or publishing a backup", async () => {
 try {
 
-  const f = fixture(), bytes = readFileSync(f.path), before = inspectAuthorityBackupReadOnly(f.admission, f.path);
+  const f = await fixture(), bytes = readFileSync(f.path), before = inspectAuthorityBackupReadOnly(f.admission, f.path);
   const held = acquireRuntimeRestoreAdmission({ processLockRoot: f.processLockRoot, pid: process.pid }, clock);
   held.release();
   await assert.rejects(backupStoppedAuthority(f.admission, f.stateRoot, clock, f.processLockRoot, held), /ENOENT|restore-admission/u);
@@ -96,15 +96,15 @@ try {
   assert.equal(existsSync(join(f.stateRoot, "backups", "authority")), false);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 }
 
 {
 
-it.each(["explorer_overrides", "notifications", "notification_states"])("does not hide a missing current authority table %s after a healthy native inspection", table => {
-  const f = fixture();
+it.each(["explorer_overrides", "notifications", "notification_states"])("does not hide a missing current authority table %s after a healthy native inspection", async table => {
+  const f = await fixture();
   try {
     inspectAuthorityBackupReadOnly(f.admission, f.path);
     const database = new DatabaseSync(f.path);
@@ -113,12 +113,12 @@ it.each(["explorer_overrides", "notifications", "notification_states"])("does no
     const inspection = f.machine.verifiedReadOnlyCopy(f.path, createHash("sha256").update(bytes).digest("hex"));
     assert.throws(() => inspection.assertProfileRuntime(), /profile-bound-authority-required/);
     try { assert.throws(() => inspectAuthorityBackupReadOnly(inspection, f.path), /authority|schema|table/u); } finally { inspection.release(); }
-  } finally { _afterEachFixture0(); }
+  } finally { await _afterEachFixture0(); }
 });
 
-it("rechecks the actual native schema after priming its immutable expected identity", () => {
+it("rechecks the actual native schema after priming its immutable expected identity", async () => {
   for (const version of [CURRENT_AUTHORITY_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION]) {
-    const f = fixture();
+    const f = await fixture();
     try {
       assert.equal(inspectAuthorityBackupReadOnly(f.admission, f.path).schemaVersion, version);
       assert.equal(inspectAuthorityBackupReadOnly(f.admission, f.path).schemaVersion, version);
@@ -130,7 +130,7 @@ it("rechecks the actual native schema after priming its immutable expected ident
       assert.throws(() => inspection.assertProfileRuntime(), /profile-bound-authority-required/);
     try { assert.throws(() => inspectAuthorityBackupReadOnly(inspection, f.path), /schema.*match|match.*schema/u); } finally { inspection.release(); }
       assert.deepEqual(readFileSync(f.path), before);
-    } finally { _afterEachFixture0(); }
+    } finally { await _afterEachFixture0(); }
   }
 });
 }

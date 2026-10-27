@@ -12,15 +12,15 @@ import { WriteFixtureProofSchema,absentProbeEvidence,buildWriteFixtureRegistry,w
 
 const disposers: (() => void)[] = [];
 afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
-function harness(parallel = false) { const h = sourceBoundHarness(parallel ? writeFixtureParallelDescriptor : writeFixtureDescriptor); disposers.push(h.dispose); return h; }
-async function completed(h: ReturnType<typeof harness>) {
+async function harness(parallel = false) { const h = await sourceBoundHarness(parallel ? writeFixtureParallelDescriptor : writeFixtureDescriptor); disposers.push(h.dispose); return h; }
+async function completed(h: Awaited<ReturnType<typeof harness>>) {
   const run = h.start(h.proposal());
   h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
   const outcome = await h.execute(run);
   assert.equal(outcome.state, "done", JSON.stringify(outcome.state === "failed" ? h.database.authority.failures.get(outcome.failureId) : outcome));
   return h.fresh(run);
 }
-function effects(h: ReturnType<typeof harness>) {
+function effects(h: Awaited<ReturnType<typeof harness>>) {
   return { runs: h.database.authority.runs.listByWorkflow(h.descriptor.id).length,
     identities: h.lifecycleIds.minted().length, queueRoots: h.queueRoots.length,
     intents: h.database.authority.writeIntents.listByBusinessKey("ucpath",
@@ -29,13 +29,13 @@ function effects(h: ReturnType<typeof harness>) {
 
 describe("source-bound repeat through planner, kernel, service and interpreter", () => {
   it("keeps protected source proof and key digests out of serialized rerun warnings", async () => {
-    const documentHarness = () => { const h = sourceBoundHarness(writeFixtureDocumentDescriptor); disposers.push(h.dispose); return h; };
-    const original = documentHarness(); const completedSource = await completed(original);
+    const documentHarness = async () => { const h = await sourceBoundHarness(writeFixtureDocumentDescriptor); disposers.push(h.dispose); return h; };
+    const original = await documentHarness(); const completedSource = await completed(original);
     const { sessionId: _sessionId, completion: _completion, ...sourceWithoutSession } = completedSource;
     const originalIntent = original.database.authority.writeIntents.listByRun(completedSource.envelope.runId)[0];
     assert.ok(originalIntent.status === "committed");
     const proposal = async (documentNumber: string) => {
-      const h = documentHarness();
+      const h = await documentHarness();
       const source = { ...sourceWithoutSession, envelope: { ...sourceWithoutSession.envelope,
         runId: "eeeeeeee-0001-4000-8000-000100000000" }, input: { ...completedSource.input,
         raw: { eid: "10812345", documentNumber }, parsed: { ...completedSource.input.parsed,
@@ -93,7 +93,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.deepEqual(await proposal("12345678"), await proposal("87654321"));
   });
   it("warning acknowledgment spends no lifecycle identity; final submission commits afresh and exact replay publishes once", async () => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     const original = canonicalJsonStringify({ run: source,
       intents: h.database.authority.writeIntents.listByRun(source.envelope.runId),
       checkpoints: h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId) });
@@ -130,7 +130,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("refuses stale source and stale consent before consuming a plan or minting work", async () => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     const warning = h.proposal(source); assert.ok(warning.rerun);
     const wrong = h.proposal(source, "f".repeat(64)); const before = effects(h);
     assert.equal(h.kernel.execute(h.command(wrong)).state, "confirmation-required");
@@ -140,7 +140,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("dry-run repeats prepare against the acknowledged baseline with zero write effects", async () => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     const warning = h.proposal(source); assert.ok(warning.rerun);
     const preview = h.start(h.proposal(source, warning.rerun.warningDigest, true));
     const intents = effects(h).intents;
@@ -155,7 +155,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("old-only post-click receipt parks the new occurrence without changing the source", async () => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     const warning = h.proposal(source); assert.ok(warning.rerun);
     const repeat = h.start(h.proposal(source, warning.rerun.warningDigest));
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
@@ -168,7 +168,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
       .filter((row) => row.runId === repeat.envelope.runId).length, 0);
   });
   it("requires exact-occurrence attestation and rejects old proof before atomic positive settlement", async () => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     const warning = h.proposal(source); assert.ok(warning.rerun);
     const repeat = h.start(h.proposal(source, warning.rerun.warningDigest));
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
@@ -194,7 +194,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("retains acknowledgment across changed/cleared non-key values while keeping submitted input authoritative", async () => {
-    const h = sourceBoundHarness(writeFixtureMemoDescriptor); disposers.push(h.dispose);
+    const h = await sourceBoundHarness(writeFixtureMemoDescriptor); disposers.push(h.dispose);
     const sourceRun = h.start(h.proposal(undefined, undefined, false, undefined, "old memo"));
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     assert.equal((await h.execute(sourceRun)).state, "done");
@@ -212,7 +212,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("requires renewed consent after a competing confirmation creates fresh completion evidence", async () => {
-    const h = harness(true); const source = await completed(h);
+    const h = await harness(true); const source = await completed(h);
     const warning = h.proposal(source); assert.ok(warning.rerun);
     const one = h.start(h.proposal(source, warning.rerun.warningDigest));
     const two = h.start(h.proposal(source, warning.rerun.warningDigest));
@@ -230,7 +230,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("deletion between planning and final submission refuses before consumption or new identities", async () => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     const warning = h.proposal(source); assert.ok(warning.rerun);
     const accepted = h.proposal(source, warning.rerun.warningDigest);
     const deleted=h.lifecycle.delete({ commandId: h.ids.uuid(), runId: source.envelope.runId, expectedVersion: source.version });
@@ -243,7 +243,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("retains an exact external command proof reference and refuses deletion atomically",async()=>{
-    const h=harness(),source=await completed(h),peer=h.start(h.proposal());
+    const h=await harness(),source=await completed(h),peer=h.start(h.proposal());
     const checkpoint=h.database.authority.runCheckpoints.listByItem(h.descriptor.id,source.envelope.itemId)[0];assert.ok(checkpoint);
     const commandId=h.ids.uuid();
     h.database.authority.commands.insert({commandId,requestedAt:h.clock.now().toISOString(),requestedBy:"local-operator",source:"dashboard",
@@ -257,8 +257,8 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.ok(h.database.authority.commands.get(commandId));
   });
 
-  it("rolls back the plan, session, first creation and publication when the second real service create refuses", () => {
-    const h = harness(true);
+  it("rolls back the plan, session, first creation and publication when the second real service create refuses", async () => {
+    const h = await harness(true);
     const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }, { eid: "10812346" }], dryRun: false });
     const create = h.lifecycle.create.bind(h.lifecycle); let calls = 0;
     h.lifecycle.create = (input, publication) => {
@@ -275,7 +275,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it.each(["old", "new", "absent"] as const)("after claim loss, %s recovery evidence follows the occurrence boundary", async (evidence) => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     const warning = h.proposal(source); assert.ok(warning.rerun);
     const repeat = h.start(h.proposal(source, warning.rerun.warningDigest));
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
@@ -306,7 +306,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("executes selected reads from submitted cleared values and preserves source checkpoints", async () => {
-    const h = sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores); disposers.push(h.dispose);
+    const h = await sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores); disposers.push(h.dispose);
     const first = h.start(h.proposal(undefined, undefined, false, undefined, "old memo"));
     const outcome = await h.execute(first);
     assert.equal(outcome.state, "done", JSON.stringify(outcome.state === "failed" ? h.database.authority.failures.get(outcome.failureId) : outcome)); const source = h.fresh(first);
@@ -321,7 +321,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("derives a fresh item without false retry lineage when submitted match key changes", async () => {
-    const h = sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores); disposers.push(h.dispose);
+    const h = await sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores); disposers.push(h.dispose);
     const first = h.start(h.proposal()); assert.equal((await h.execute(first)).state, "done");
     const source = h.fresh(first);
     const repeat = h.start(h.proposal(source, undefined, false, "10812346"));
@@ -333,7 +333,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("omits a selected-out transaction with submitted facts and no new write evidence", async () => {
-    const h = sourceBoundHarness(writeFixtureOmittableDescriptor, (world) => {
+    const h = await sourceBoundHarness(writeFixtureOmittableDescriptor, (world) => {
       const write = buildWriteFixtureRegistry(world); const read = sourceBoundReadStores(world);
       return defineTaskStoreRegistry([...write.stores, ...read.stores], { scenarioIds: [...write.corpus.scenarioIds, ...read.corpus.scenarioIds], tasks: [...write.corpus.tasks, ...read.corpus.tasks] });
     }); disposers.push(h.dispose);

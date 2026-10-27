@@ -631,7 +631,7 @@ const _afterEachFixture0 = async () => {
   const open = [...servers];
   servers.clear();
   await Promise.all(open.map((server) => server.close()));
-  for (const w of worlds.splice(0)) w.dispose();
+  for (const w of worlds.splice(0)) await w.dispose();
 };
 
 const { harness } = createStreamBackpressureFixtures(worlds, hubs, MAX_PENDING);
@@ -653,7 +653,7 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
 afterEach(_afterEachFixture0);
 
   it("Node adapter: a client that stops reading backs the hub up to its bound, resumes to one reset, and disconnect closes the connection", { timeout: 60_000 }, async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     const captured = Promise.withResolvers<DashboardStreamConnection>();
     const app = new Hono<TestDashboardEnv>();
     app.get("/events", async () => {

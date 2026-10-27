@@ -113,8 +113,8 @@ function startCommand(plan: ReturnType<typeof createPlan>) {
 }
 
 describe("command-kernel start/retry step-omission carry", () => {
-  it("carries the consumed start plan's stepOmissions onto the created run's envelope", () => {
-    const harness = createHarness();
+  it("carries the consumed start plan's stepOmissions onto the created run's envelope", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, ["10800000"], STEP_OMISSIONS);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
@@ -124,8 +124,8 @@ describe("command-kernel start/retry step-omission carry", () => {
     assert.deepEqual(run.envelope.stepOmissions, STEP_OMISSIONS);
   });
 
-  it("omits stepOmissions from the created run's envelope when the plan carried none", () => {
-    const harness = createHarness();
+  it("omits stepOmissions from the created run's envelope when the plan carried none", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, ["10800001"]);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
@@ -134,8 +134,8 @@ describe("command-kernel start/retry step-omission carry", () => {
     assert.equal(Object.hasOwn(run.envelope, "stepOmissions"), false);
   });
 
-  it("carries the retried run's stepOmissions onto the fresh attempt, byte for byte", () => {
-    const harness = createHarness();
+  it("carries the retried run's stepOmissions onto the fresh attempt, byte for byte", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, ["10800000"], STEP_OMISSIONS);
     const started = harness.kernel.execute(startCommand(plan));
     assert.equal(started.state, "applied");

@@ -10,20 +10,20 @@ const { queuedEventOf } = createSeededDashboardWorld();
 
 const worlds: DashboardWorld[] = [];
 
-function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-  const created = makeWorld(...args);
+async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
+  const created = await makeWorld(...args);
   worlds.push(created);
   return created;
 }
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
+afterEach(async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
 
-  it("hands the client a fresh snapshot when a canonically deleted row leaves the payload", () => {
-    const w = world();
+  it("hands the client a fresh snapshot when a canonically deleted row leaves the payload", async () => {
+    const w = await world();
     const deleted = new Map<string, DeletedRunRecord>();
     const canonical = inMemoryRunReaderFake({ ...w.runReaderState, deleted });
     vi.spyOn(w.runReader, "read").mockImplementation(canonical.read);

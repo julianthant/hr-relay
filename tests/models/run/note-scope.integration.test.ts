@@ -10,13 +10,13 @@ import { AT, instantOffsetOf, makeWorld, traceOf, uuidOf, type DashboardWorld } 
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
-function world(): DashboardWorld {
-  const created = makeWorld({ descriptors: { resolve: () => personLookupDescriptor } });
+async function world(): Promise<DashboardWorld> {
+  const created = await makeWorld({ descriptors: { resolve: () => personLookupDescriptor } });
   worlds.push(created);
   return created;
 }
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
+afterEach(async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 
@@ -48,8 +48,8 @@ describe("a logs GET opens only its run partitions", () => {
     return authority;
   }
 
-  it("ADMITS a note filed the day after the run's last durable instant — the margin, from the producer's side", () => {
-    const w = world();
+  it("ADMITS a note filed the day after the run's last durable instant — the margin, from the producer's side", async () => {
+    const w = await world();
     terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
     assertNoteWithinRunScope(authorityOf(w), {
       runId: uuidOf(1),
@@ -58,8 +58,8 @@ describe("a logs GET opens only its run partitions", () => {
     });
   });
 
-  it("REFUSES a note filed two days after the run's terminal instant, naming the run, its day and the bounds", () => {
-    const w = world();
+  it("REFUSES a note filed two days after the run's terminal instant, naming the run, its day and the bounds", async () => {
+    const w = await world();
     terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
 
     assert.throws(
@@ -72,8 +72,8 @@ describe("a logs GET opens only its run partitions", () => {
     );
   });
 
-  it("REFUSES a note filed under a workflow whose partitions this run's logs reader never opens", () => {
-    const w = world();
+  it("REFUSES a note filed under a workflow whose partitions this run's logs reader never opens", async () => {
+    const w = await world();
     terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
     assert.throws(
       () => assertNoteWithinRunScope(authorityOf(w), { runId: uuidOf(1), workflow: "separations", at: AT }),
@@ -81,8 +81,8 @@ describe("a logs GET opens only its run partitions", () => {
     );
   });
 
-  it("REFUSES a note scoped against another run's authority record", () => {
-    const w = world();
+  it("REFUSES a note scoped against another run's authority record", async () => {
+    const w = await world();
     terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
     assert.throws(
       () => assertNoteWithinRunScope(authorityOf(w), { runId: uuidOf(2), workflow: "person-lookup", at: AT }),
@@ -90,8 +90,8 @@ describe("a logs GET opens only its run partitions", () => {
     );
   });
 
-  it("scopes a producer INSIDE the window the reader opens, never outside it", () => {
-    const w = world();
+  it("scopes a producer INSIDE the window the reader opens, never outside it", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const row = w.projection.runFold(uuidOf(1));
     assert.ok(row !== undefined);
@@ -107,8 +107,8 @@ describe("a logs GET opens only its run partitions", () => {
     assert.ok(reader.toDate >= producer.toDate, `${reader.toDate} must not end before ${producer.toDate}`);
   });
 
-  it("refuses producer notes outside the admitted time scope before append", () => {
-    const w = world();
+  it("refuses producer notes outside the admitted time scope before append", async () => {
+    const w = await world();
     terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
     emitNotes(w, 1, 1);
 

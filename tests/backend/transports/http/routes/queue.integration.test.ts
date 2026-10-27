@@ -44,7 +44,7 @@ it("shared Setup admission refuses a late fault without consuming review, then e
     const replay = CommandResultSchema.parse(await (await post("/api/v1/commands", freshCommand)).json());
     assert.deepEqual(replay, { ...applied, state: "already-applied" }); assert.equal(h.publications, 1);
     assert.equal(JSON.stringify({ meta: setup.database.getMeta(), runs: h.runs(), minted: h.mintedRunIdentities }), before);
-  } finally { setup.close(); }
+  } finally { await setup.close(); }
 });
 }
 
@@ -53,7 +53,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 afterEach(cleanupOriginalFixture);
 
   it("round-trips an explicit headed browser presentation from the request through the queued run", async () => {
-    const h = harness();
+    const h = await harness();
     const planResponse = await h.app.request("/api/v1/start-plans", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,
@@ -98,7 +98,7 @@ afterEach(cleanupOriginalFixture);
   });
 
   it("plans, starts, projects, and serves the run through the one payload", async () => {
-    const h = harness();
+    const h = await harness();
 
     const planResponse = await h.app.request("/api/v1/start-plans", {
       method: "POST",
@@ -238,7 +238,7 @@ afterEach(cleanupOriginalFixture);
     "refuses a start plan with %s before the planner or the body is touched",
     async (_label, headers) => {
       let plans = 0;
-      const h = harness({
+      const h = await harness({
         startPlans: (real) => ({ ...real, plan: (input) => { plans += 1; return real.plan(input); } }),
       });
       const request = new Request("http://localhost/api/v1/start-plans", {
@@ -261,7 +261,7 @@ afterEach(cleanupOriginalFixture);
 
   it("refuses a start plan whose JSON body rides text/plain, and admits the same body as JSON", async () => {
     let plans = 0;
-    const h = harness({
+    const h = await harness({
       startPlans: (real) => ({ ...real, plan: (input) => { plans += 1; return real.plan(input); } }),
     });
     const body = JSON.stringify({

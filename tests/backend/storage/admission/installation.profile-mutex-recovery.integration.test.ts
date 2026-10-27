@@ -8,8 +8,8 @@ import { acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission } from ".
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-for (const problem of ["none", "missing", "malformed", "foreign", "unknown-entry"] as const) it(`recovers an established profile mutex only with intact canonical registry evidence: ${problem}`, () => {
-  const f = createBoundProfileFixture();
+for (const problem of ["none", "missing", "malformed", "foreign", "unknown-entry"] as const) it(`recovers an established profile mutex only with intact canonical registry evidence: ${problem}`, async () => {
+  const f = await createBoundProfileFixture();
   f.admission.release(); f.machine.release();
   const control = join(f.workspace, ".tracker", "control"), mutex = join(control, "admission-mutex");
   mkdirSync(mutex, { mode: 0o700 });
@@ -31,5 +31,5 @@ for (const problem of ["none", "missing", "malformed", "foreign", "unknown-entry
       assert.throws(() => recoverAbandonedAdmissionMutex(f.workspace, held, "empty"));
       assert.equal(existsSync(mutex), true);
     }
-  } finally { held.release(); f.close(); }
+  } finally { held.release(); await f.close(); }
 });

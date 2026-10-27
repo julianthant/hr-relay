@@ -84,7 +84,7 @@ it('canonical planner adapter detects subject, descriptor/schema and run-authori
   } finally { await f.close(); }
 });
 it('canonical client validates inputs/results and production app exposes named unavailable without trusted composition', async () => {
-  const h = harness();
+  const h = await harness();
   try {
     let calls = 0;
     const client = createDashboardClient({ baseUrl: 'http://127.0.0.1:3938', fetchImpl: async (url, init) => {

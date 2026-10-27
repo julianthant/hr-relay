@@ -13,7 +13,7 @@ function terminal(output: unknown, model = request.model) {
   return `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_synthetic", model, status: "completed", output } })}\n\n`;
 }
 it("uses private admitted subscription transport with fixed roles and strict namespaced assistant functions", async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); const response = syntheticAssistantResponse(turn); f.setSse(terminal(response.output));
     assert.deepEqual((await f.service.inferAssistant(request)).output, response.output);
@@ -30,7 +30,7 @@ it("uses private admitted subscription transport with fixed roles and strict nam
 });
 for (const problem of ["unknown-namespace", "unknown-function", "malformed-arguments", "unfinished", "excessive-text"] as const)
   it(`rejects ${problem} assistant output`, async () => {
-    const f = chatGptFixture();
+    const f = await chatGptFixture();
     try {
       await f.connected(); const call = syntheticAssistantResponse(turn).output[0]; assert.ok(call?.type === "function_call");
       const output = problem === "excessive-text" ? [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "x".repeat(25_000) }] }]
@@ -40,7 +40,7 @@ for (const problem of ["unknown-namespace", "unknown-function", "malformed-argum
     } finally { await f.cleanup(); }
   });
 it("accepts direct namespaced calls and refuses omitted namespace, asynchronous, programmatic and unknown execution metadata", async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected();
     const call = syntheticAssistantResponse(turn).output[0]; assert.ok(call?.type === "function_call");
@@ -55,7 +55,7 @@ it("accepts direct namespaced calls and refuses omitted namespace, asynchronous,
   } finally { await f.cleanup(); }
 });
 it("rejects conflicting terminal text, forged roles/model, partial streams and cancellation", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     await f.connected(); const valid = completedOcrStream("Synthetic explanation");
     for (const sse of [valid.replace('"role":"assistant"', '"role":"system"'), valid.replaceAll("gpt-6.1-sol", "unverified-model"),
       valid.replace('"delta":"Synthetic', '"delta":"conflictSynthetic'), 'data: {"type":"response.output_text.delta","delta":"partial"}\n\n']) {
@@ -65,7 +65,7 @@ it("rejects conflicting terminal text, forged roles/model, partial streams and c
   } finally { await f.cleanup(); }
 });
 it("preserves disabled, refresh, quota, token-bound auth and signout behavior", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     await assert.rejects(f.service.inferAssistant(request), { code: "CHATGPT_ACCOUNT_EXPIRED" });
     await f.connected(false); await assert.rejects(f.service.inferAssistant(request), { code: "CHATGPT_PLAN_DISABLED" });
     await f.connected(); f.clock.advanceWall(3_600_000); f.setSse(completedAssistantStream(turn));
@@ -78,7 +78,7 @@ it("preserves disabled, refresh, quota, token-bound auth and signout behavior", 
   } finally { await f.cleanup(); }
 });
 it("malformed completed assistant content cannot clear an observed usage limit", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     await f.connected();
     f.setSse('data: {"type":"response.failed","response":{"error":{"code":"subscription_sharing_usage_limit_exceeded"}}}\n\n');
     await assert.rejects(f.service.inferAssistant(request), { code: "CHATGPT_USAGE_LIMIT" });
@@ -90,7 +90,7 @@ it("malformed completed assistant content cannot clear an observed usage limit",
   } finally { await f.cleanup(); }
 });
 it("accepts fragmented strict call arguments only after terminal completion and preserves reasoning bytes", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     await f.connected(); const response = syntheticAssistantResponse(turn), call = response.output[0]; assert.ok(call?.type === "function_call");
     const reasoning = { type: "reasoning", id: "rs_synthetic", summary: [], encrypted_content: "synthetic-opaque-reasoning" };
     const sse = `data: ${JSON.stringify({ type: "response.function_call_arguments.delta", output_index: 1, delta: call.arguments.slice(0, 7) })}\n\n`
@@ -104,7 +104,7 @@ it("accepts fragmented strict call arguments only after terminal completion and 
   } finally { await f.cleanup(); }
 });
 it("requires exact call-ID and namespace/name outputs in continuation and rejects parallel or duplicate calls", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     await f.connected(); const response = syntheticAssistantResponse(turn), call = response.output[0]; assert.ok(call?.type === "function_call");
     const output = { type: "function_call_output" as const, call_id: call.call_id, namespace: call.namespace, name: call.name, output: "{}" };
     f.setSse(completedOcrStream("Finished"));
@@ -120,13 +120,13 @@ it("requires exact call-ID and namespace/name outputs in continuation and reject
   } finally { await f.cleanup(); }
 });
 for (const event of ["response.incomplete", "response.failed", "response.refusal.delta", "error"] as const) it(`keeps ${event} visible after partial assistant data`, async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     await f.connected(); f.setSse(`data: {"type":"response.output_text.delta","delta":"partial"}\n\ndata: ${JSON.stringify({ type: event, response: { error: null } })}\n\n`);
     await assert.rejects(f.service.inferAssistant(request));
   } finally { await f.cleanup(); }
 });
 it("keeps usage-limit events visible midstream and binds catalog order/visibility to the current selected account", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     await f.connected(); f.setModels({ models: [{ slug: "hidden", display_name: "Hidden", visibility: "hide" },
       { slug: "gpt-6.1-sol", display_name: "Current Sol", visibility: "list" }, { slug: "other", display_name: "Other", visibility: "list" }] });
     assert.deepEqual((await f.service.listAssistantModels()).catalog, { models: [{ slug: "gpt-6.1-sol", displayName: "Current Sol" }, { slug: "other", displayName: "Other" }] });
@@ -136,7 +136,7 @@ it("keeps usage-limit events visible midstream and binds catalog order/visibilit
   } finally { await f.cleanup(); }
 });
 it("refuses a catalog that settles after signout and cancels held inference on account closure", async () => {
-  const f = chatGptFixture(); let release!: () => void, entered!: () => void;
+  const f = await chatGptFixture(); let release!: () => void, entered!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
   try {
     await f.connected(); f.setModelsHook(async () => { entered(); await held; return Response.json({ models: [{ slug: request.model, display_name: "Sol", visibility: "list" }] }); });
@@ -153,7 +153,7 @@ it("refuses a catalog that settles after signout and cancels held inference on a
 });
 
 it("refreshes account-specific models after a fresh sign-in without a bundled catalog fallback", async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); f.setModels({ models: [{ slug: "first", display_name: "First", visibility: "list" }] });
     assert.deepEqual((await f.service.listAssistantModels()).catalog.models.map(model => model.slug), ["first"]);
@@ -167,13 +167,13 @@ it("refreshes account-specific models after a fresh sign-in without a bundled ca
 for (const catalog of [{ data: [] }, { models: [{ slug: "bad slug", display_name: "Invalid", visibility: "list" }] },
   { models: [{ slug: "duplicate", display_name: "One", visibility: "list" }, { slug: "duplicate", display_name: "Two", visibility: "list" }] }])
   it("refuses malformed or ambiguous current account catalogs", async () => {
-    const f = chatGptFixture(); try { await f.connected(); f.setModels(catalog); await assert.rejects(f.service.listAssistantModels()); }
+    const f = await chatGptFixture(); try { await f.connected(); f.setModels(catalog); await assert.rejects(f.service.listAssistantModels()); }
     finally { await f.cleanup(); }
   });
 
 
 it("keeps catalog authority privately issued and refreshes before capturing its current view", async () => {
-  const first = chatGptFixture(), second = chatGptFixture();
+  const first = await chatGptFixture(), second = await chatGptFixture();
   try {
     await first.connected(); await second.connected(); first.clock.advanceWall(3_600_000);
     const a = await first.service.listAssistantModels(), b = await second.service.listAssistantModels();
@@ -189,7 +189,7 @@ it("keeps catalog authority privately issued and refreshes before capturing its 
 const capabilityPreference = { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } as const;
 
 it('issues a finite private assistant policy only after the complete public function roundtrip and catalog', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); publicCapabilityResponses(f);
     assert.equal(f.service.captureAssistantModelPolicy(), undefined);
@@ -213,7 +213,7 @@ it('issues a finite private assistant policy only after the complete public func
   } finally { await f.cleanup(); }
 });
 it('ordinary inference and catalog reads cannot issue an assistant capability policy', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); f.setSse(completedOcrStream('Public response', request.model));
     await f.service.inferAssistant(request); await f.service.listAssistantModels();
@@ -221,7 +221,7 @@ it('ordinary inference and catalog reads cannot issue an assistant capability po
   } finally { await f.cleanup(); }
 });
 it('refuses capability verification without plan consent before any response request', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(false); publicCapabilityResponses(f);
     await assert.rejects(f.service.verifyAssistantCapability(capabilityPreference, () => true));
@@ -230,7 +230,7 @@ it('refuses capability verification without plan consent before any response req
   } finally { await f.cleanup(); }
 });
 it('a completed function turn with different public arguments cannot activate the assistant', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); publicCapabilityResponses(f, 'foreign-public-value');
     await assert.rejects(f.service.verifyAssistantCapability(capabilityPreference, () => true), { code: 'CHATGPT_ASSISTANT_REFUSED' });
@@ -240,7 +240,7 @@ it('a completed function turn with different public arguments cannot activate th
   } finally { await f.cleanup(); }
 });
 it('a no-function completed message cannot replace the required capability roundtrip', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); f.setSse(completedOcrStream('Public response', request.model));
     await assert.rejects(f.service.verifyAssistantCapability(capabilityPreference, () => true), { code: 'CHATGPT_ASSISTANT_REFUSED' });
@@ -249,7 +249,7 @@ it('a no-function completed message cannot replace the required capability round
   } finally { await f.cleanup(); }
 });
 it('a model absent from the fresh catalog cannot issue a capability policy', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); publicCapabilityResponses(f); f.setModels({ models: [] });
     await assert.rejects(f.service.verifyAssistantCapability(capabilityPreference, () => true), { code: 'CHATGPT_ASSISTANT_REFUSED' });
@@ -258,7 +258,7 @@ it('a model absent from the fresh catalog cannot issue a capability policy', asy
   } finally { await f.cleanup(); }
 });
 it('invalidates the private capability when the captured profile or preference changes', async () => {
-  const f = chatGptFixture(); let revision = 0;
+  const f = await chatGptFixture(); let revision = 0;
   const assertCurrent = (): true => { assert.equal(revision, 0); return true; };
   try {
     await f.connected(); publicCapabilityResponses(f);
@@ -269,7 +269,7 @@ it('invalidates the private capability when the captured profile or preference c
   } finally { await f.cleanup(); }
 });
 it('does not issue capability after a profile or preference change during the catalog await', async () => {
-  const f = chatGptFixture(); let revision = 0, release!: () => void, entered!: () => void;
+  const f = await chatGptFixture(); let revision = 0, release!: () => void, entered!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
   try {
     await f.connected(); publicCapabilityResponses(f);
@@ -282,7 +282,7 @@ it('does not issue capability after a profile or preference change during the ca
 });
 
 it('retains capability across its own initial refresh and usage publication', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); const state = f.service.readAccount(); assert.equal(state.state, 'connected');
     if (state.state !== 'connected') throw new Error('public-fixture-account-unavailable');
@@ -294,7 +294,7 @@ it('retains capability across its own initial refresh and usage publication', as
   } finally { await f.cleanup(); }
 });
 it('revokes capability for a peer credential revision even when token values stay the same', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); publicCapabilityResponses(f);
     await f.service.verifyAssistantCapability(capabilityPreference, () => true);
@@ -308,7 +308,7 @@ it('revokes capability for a peer credential revision even when token values sta
   } finally { await f.cleanup(); }
 });
 it('aborts explicit capability verification before any response when already cancelled', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); publicCapabilityResponses(f);
     await assert.rejects(f.service.verifyAssistantCapability(capabilityPreference, () => true, AbortSignal.abort()));
@@ -317,7 +317,7 @@ it('aborts explicit capability verification before any response when already can
   } finally { await f.cleanup(); }
 });
 it('revokes a completed private capability at account sign-out', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); publicCapabilityResponses(f);
     await f.service.verifyAssistantCapability(capabilityPreference, () => true);
@@ -326,9 +326,9 @@ it('revokes a completed private capability at account sign-out', async () => {
     assert.equal(captured.isCurrent(), false); assert.equal(f.service.captureAssistantModelPolicy(), undefined);
   } finally { await f.cleanup(); }
 });
-const retainedCapabilityFixtures = new Set<ReturnType<typeof chatGptFixture>>();
+const retainedCapabilityFixtures = new Set<Awaited<ReturnType<typeof chatGptFixture>>>();
 it('refuses capability issuance and another probe after response closure is unproved', async () => {
-  const f = chatGptFixture(); retainedCapabilityFixtures.add(f);
+  const f = await chatGptFixture(); retainedCapabilityFixtures.add(f);
   await f.connected();
   const primary = new Error('public-response-close-fault');
   let releaseAttempts = 0;
@@ -363,7 +363,7 @@ it('refuses capability issuance and another probe after response closure is unpr
 });
 
 it('revokes the private capability when its explicit verification is cancelled', async () => {
-  const f = chatGptFixture(), abort = new AbortController();
+  const f = await chatGptFixture(), abort = new AbortController();
   try {
     await f.connected(); publicCapabilityResponses(f);
     await f.service.verifyAssistantCapability(capabilityPreference, () => true, abort.signal);
@@ -376,7 +376,7 @@ it('revokes the private capability when its explicit verification is cancelled',
 
 for (const kind of ['false', 'fulfilled-promise', 'rejected-promise'] as const) {
   it(`rejects a ${kind} trusted capability validator before any response request`, async () => {
-    const f = chatGptFixture();
+    const f = await chatGptFixture();
     try {
       await f.connected(); publicCapabilityResponses(f);
       const invalid = kind === 'false' ? () => false : kind === 'fulfilled-promise' ? () => Promise.resolve(true)
@@ -388,7 +388,7 @@ for (const kind of ['false', 'fulfilled-promise', 'rejected-promise'] as const) 
   });
 }
 it('rechecks exact synchronous success on a previously issued capability witness', async () => {
-  const f = chatGptFixture(); let valid = true;
+  const f = await chatGptFixture(); let valid = true;
   try {
     await f.connected(); publicCapabilityResponses(f);
     await f.service.verifyAssistantCapability(capabilityPreference, (() => valid) as () => true);
@@ -401,7 +401,7 @@ it('rechecks exact synchronous success on a previously issued capability witness
 
 
 it('prepares a catalog choice before verification without issuing assistant authority', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected();
     const authorityBefore = await f.service.readAuthority();
@@ -431,7 +431,7 @@ it('prepares a catalog choice before verification without issuing assistant auth
   } finally { await f.cleanup(); }
 });
 it('refuses malformed selection authority before credentials or provider requests', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); const before = f.calls.length;
     for (const invalid of [() => false, () => Promise.resolve(true), () => Promise.reject(new Error('invalid authority'))]) {
@@ -442,7 +442,7 @@ it('refuses malformed selection authority before credentials or provider request
   } finally { await f.cleanup(); }
 });
 it('rechecks selection identity across catalog await and after preparation', async () => {
-  const f = chatGptFixture(); let current = true;
+  const f = await chatGptFixture(); let current = true;
   try {
     await f.connected();
     const assertCurrent = (): true => { assert.equal(current, true); return true; };
@@ -452,7 +452,7 @@ it('rechecks selection identity across catalog await and after preparation', asy
   } finally { await f.cleanup(); }
 });
 it('invalidates a prepared selection after a same-token foreign credential revision', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected();
     const current = await f.service.prepareAssistantModelPreference(capabilityPreference, () => true);
@@ -467,7 +467,7 @@ it('invalidates a prepared selection after a same-token foreign credential revis
   } finally { await f.cleanup(); }
 });
 it('allows its own token refresh while preparing a choice but issues no witness', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); const state = f.service.readAccount(); assert.equal(state.state, "connected");
     if (state.state !== "connected") throw new Error('connected account required');
@@ -480,7 +480,7 @@ it('allows its own token refresh while preparing a choice but issues no witness'
 });
 
 it('selection catalog access preserves explicit consent and model availability gates', async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(false); const before = f.calls.length;
     await assert.rejects(f.service.prepareAssistantModelPreference(capabilityPreference, () => true));
@@ -493,7 +493,7 @@ it('selection catalog access preserves explicit consent and model availability g
 });
 
 it('retains an unsettled catalog reader and prevents later selection or probe requests', async () => {
-  const f = chatGptFixture(); retainedCapabilityFixtures.add(f);
+  const f = await chatGptFixture(); retainedCapabilityFixtures.add(f);
   await f.connected();
   const primary = new Error('catalog reader release refused'); let attempts = 0;
   let retained: Response | undefined;

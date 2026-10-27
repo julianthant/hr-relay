@@ -48,7 +48,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
   it("starts the second worker's ceremony strictly after the first worker's verifier returned", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
-    const database = sharedAuthority(clock);
+    const database = await sharedAuthority(clock);
     const events: string[] = [];
     const holdA = deferred();
     const a = recipeFactory(WORKER_A, {
@@ -98,7 +98,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
   it("refuses the waiter by NAME before its acquisition envelope fires, and never retries", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
-    const database = sharedAuthority(clock);
+    const database = await sharedAuthority(clock);
     const holdA = deferred();
     const a = recipeFactory(WORKER_A, { onCeremony: async () => holdA.promise });
     const bCeremonies: number[] = [];
@@ -114,7 +114,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
     await flush();
     // Just inside the budget: still waiting.
     await advance(clock, scheduler, BUDGET_MS - POLL_MS);
-    assert.equal(await Promise.race([refusal.then(() => "settled"), flush().then(() => "pending")]), "pending");
+    assert.equal(await Promise.race([refusal.then(() => "settled"), (await flush()).then(() => "pending")]), "pending");
     // At the budget: refused — 20 s before the 60 s envelope would have fired.
     await advance(clock, scheduler, POLL_MS);
     const error = await refusal;
@@ -138,7 +138,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
   it("a lease past its TTL is taken over at the next generation, and the old holder's in-flight ceremony is cancelled", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
-    const database = sharedAuthority(clock);
+    const database = await sharedAuthority(clock);
     const gatesA = duoCeremonyGatesOver(database, clock, scheduler);
     const gatesB = duoCeremonyGatesOver(database, clock, scheduler);
     const cancellations: Error[] = [];
@@ -185,7 +185,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
   it("lets an ordinary login failure through untouched: no discard, no retry, lease released", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
-    const database = sharedAuthority(clock);
+    const database = await sharedAuthority(clock);
     const a = recipeFactory(WORKER_A, {
       onCeremony: async () => { throw new Error("the SSO form never rendered (fixture)"); },
     });
@@ -204,7 +204,7 @@ describe("Gate#release preserves the original error when the store's release() i
   it("throws DuoCeremonyReleaseFailedError carrying the ceremony error as cause, and leaves #hold set so a later dispose() retries the UPDATE", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
-    const database = sharedAuthority(clock);
+    const database = await sharedAuthority(clock);
     const real = database.authority.duoCeremonyLeases;
     const releaseError = new Error("sqlite: database is locked (fixture)");
     let releaseCalls = 0;
@@ -261,7 +261,7 @@ describe("Gate#release preserves the original error when the store's release() i
   it("dispose(unwindingError) — the shape worker-sessions.ts's #openAndLogin uses when a login error is already in flight — carries that error as cause too", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
-    const database = sharedAuthority(clock);
+    const database = await sharedAuthority(clock);
     const real = database.authority.duoCeremonyLeases;
     const releaseError = new Error("sqlite: database is locked (fixture)");
     let failRelease = true;

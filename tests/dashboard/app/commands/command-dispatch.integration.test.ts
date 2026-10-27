@@ -53,29 +53,29 @@ import { CommandRequestSchema as CommandRequestSchema_m1 } from "../../../../src
 {
 
 
-const cleanup: (() => void)[] = [];
+const cleanup: (() => void | Promise<void>)[] = [];
 
-const _afterEachFixture0 = () => {
-  for (const close of cleanup.splice(0).reverse()) close();
+const _afterEachFixture0 = async () => {
+  for (const close of cleanup.splice(0).reverse()) await close();
 };
 
-function createHarness(): {
+async function createHarness(): Promise<{
   database: AuthorityDatabase_m0;
   kernel: CommandKernel_m0;
   clock: ReturnType<typeof manualClock_m0>;
   lifecycle: RunRecordService_m0;
-} {
-  const profile = createBoundProfileFixture();
+}> {
+  const profile = await createBoundProfileFixture();
   const path = profile.path;
   const clock = manualClock_m0(new Date(NOW_m0));
   const database = AuthorityDatabase_m0.open(
     { path, busyTimeoutMs: 250, migrationOwner: "queue-lifecycle-proof" },
     clock,
   );
-  cleanup.push(() => {
+  cleanup.push(async () => {
     releaseSeededWriteOwners(database, clock.now().toISOString());
     database.close();
-    profile.close();
+    await profile.close();
   });
   seedSyntheticRuntimeConfig_m0(database);
 
@@ -141,13 +141,13 @@ function terminalizeRun(harness: Harness, runId: string, outcome: "completed" | 
   return run.version + 1;
 }
 
-type Harness = ReturnType<typeof createHarness>;
+type Harness = Awaited<ReturnType<typeof createHarness>>;
 
 describe_m0("Queue commands: CAS binding, attribution, in-flight, and replay", () => {
 afterEach_m0(_afterEachFixture0);
 
-  it_m0("binds exact expectedVersion; stale version refuses with CAS conflict and records feed entry without state change", () => {
-    const harness = createHarness();
+  it_m0("binds exact expectedVersion; stale version refuses with CAS conflict and records feed entry without state change", async () => {
+    const harness = await createHarness();
     const runId = "11111111-1111-4000-8000-111111111111";
     enqueueRun(harness, runId);
     testWorkerPorts(harness.database, harness.clock, { path: syntheticDatabasePath(harness.database), descriptor: personLookupDescriptor_m0, poolIndex: 1 });
@@ -295,8 +295,8 @@ afterEach_m0(_afterEachFixture0);
     assert_m0.equal(dispatches, 2);
   });
 
-  it_m0("retains commandId across uncertain network response and exact replay produces single accepted effect", () => {
-    const harness = createHarness();
+  it_m0("retains commandId across uncertain network response and exact replay produces single accepted effect", async () => {
+    const harness = await createHarness();
     const active = harness.database.authority.runtimeConfig.get();
     assert_m0.ok(active);
     const planner = createStartPlanService({ authority: harness.database, authorityRead: harness.database,
@@ -367,8 +367,8 @@ afterEach_m0(_afterEachFixture0);
 describe_m0("Delete: Terminal-only, leaves-first, and selection-switch protection", () => {
 afterEach_m0(_afterEachFixture0);
 
-  it_m0("refuses to delete an active run; leaves no tombstone and removes no bytes", () => {
-    const harness = createHarness();
+  it_m0("refuses to delete an active run; leaves no tombstone and removes no bytes", async () => {
+    const harness = await createHarness();
     const runId = "55555555-5555-4000-8000-555555555555";
     enqueueRun(harness, runId);
 
@@ -407,8 +407,8 @@ afterEach_m0(_afterEachFixture0);
     assert_m0.deepEqual(harness.database.authority.runs.get(runId), runBefore);
   });
 
-  it_m0("deletes a valid terminal run leaves-first with insert-only tombstone", () => {
-    const harness = createHarness();
+  it_m0("deletes a valid terminal run leaves-first with insert-only tombstone", async () => {
+    const harness = await createHarness();
     const runId = "66666666-6666-4000-8000-666666666666";
     enqueueRun(harness, runId);
     const terminalVersion = terminalizeRun(harness, runId, "cancelled");
@@ -467,8 +467,8 @@ afterEach_m0(_afterEachFixture0);
     }
   });
 
-  it_m0("deletes a tree leaves-first, and refuses the tree while any member is not terminal", () => {
-    const harness = createHarness();
+  it_m0("deletes a tree leaves-first, and refuses the tree while any member is not terminal", async () => {
+    const harness = await createHarness();
     const parentId = "aaaaaaaa-1111-4000-8000-111111111111";
     enqueueRun(harness, parentId);
     const parent = harness.database.authority.runs.get(parentId);
@@ -665,7 +665,7 @@ it_m0("verifies real cascade tombstones after a lost delete reply and explicit e
   const { verifyShellCommandEffect } = await import("../../../../src/dashboard/app/commands/command-dispatch.js");
   const world = createCommandKernelTestWorld();
   try {
-    const h = world.createHarness();
+    const h = await world.createHarness();
     const plan = world.createPlan(h, world.rejectActiveDescriptor, ["10800000"]);
     const parentId = singleAppliedRunId(h.kernel.execute(world.startCommand(plan)));
     const parent = h.database.authority.runs.get(parentId); assert_m0.ok(parent);

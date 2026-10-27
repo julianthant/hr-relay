@@ -155,8 +155,8 @@ describe("gate resolution", () => {
     return result;
   }
 
-  it("refuses a stale direct gate dependency under its finite declared freshness bound", () => {
-    const harness = createHarness(undefined, { descriptors: [...DESCRIPTOR_SET, finiteGateDescriptor] });
+  it("refuses a stale direct gate dependency under its finite declared freshness bound", async () => {
+    const harness = await createHarness(undefined, { descriptors: [...DESCRIPTOR_SET, finiteGateDescriptor] });
     const plan = planStart(
       { authority: harness.database, clock: harness.clock, ids: harness.plannerIds, planTtlMs: 600_000 },
       {
@@ -242,8 +242,8 @@ describe("gate resolution", () => {
     }
   });
 
-  it("refuses an operator resolution for a gate owned by its registered external source", () => {
-    const harness = createHarness(undefined, { descriptors: [...DESCRIPTOR_SET, externalGateDescriptor] });
+  it("refuses an operator resolution for a gate owned by its registered external source", async () => {
+    const harness = await createHarness(undefined, { descriptors: [...DESCRIPTOR_SET, externalGateDescriptor] });
     const plan = planStart(
       { authority: harness.database, clock: harness.clock, ids: harness.plannerIds, planTtlMs: 600_000 },
       {

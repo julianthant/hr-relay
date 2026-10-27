@@ -17,8 +17,8 @@ import { AssistantModelPreferenceCommandRequestSchema, CommandIdentityConflictEr
 import type { CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 
 const world = createCommandKernelTestWorld();
-const owners: { profile: ReturnType<typeof createBoundProfileFixture>; database?: ReturnType<typeof world.createHarness>["database"]; initializer?: ReturnType<typeof world.createHarness>['database']; harnessDatabases: typeof world.openDatabases; setupFailure?: Readonly<{ error: unknown }>; closeAttempted: boolean; closeError?: unknown }[] = [];
-afterEach(() => {
+const owners: { profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: Awaited<ReturnType<typeof world.createHarness>>["database"]; initializer?: Awaited<ReturnType<typeof world.createHarness>>['database']; harnessDatabases: typeof world.openDatabases; setupFailure?: Readonly<{ error: unknown }>; closeAttempted: boolean; closeError?: unknown }[] = [];
+afterEach(async () => {
   while (owners.length !== 0) {
     const owner = owners[0];
     assert.ok(owner);
@@ -26,13 +26,13 @@ afterEach(() => {
     if (owner.closeAttempted) throw owner.closeError;
     assert.ok(owner.database);
     owner.closeAttempted = true;
-    try { owner.database.close(); owner.profile.close(); }
+    try { owner.database.close(); await owner.profile.close(); }
     catch (error) { owner.closeError = error; throw error; }
     owners.shift();
   }
 });
-function harness(prepare?: CommandKernelDependencies["prepareAssistantModelPreference"]) {
-  const profile = createBoundProfileFixture();
+async function harness(prepare?: CommandKernelDependencies["prepareAssistantModelPreference"]) {
+  const profile = await createBoundProfileFixture();
   const owner: (typeof owners)[number] = { profile, harnessDatabases: world.openDatabases, closeAttempted: false };
   owners.push(owner);
   try {
@@ -51,7 +51,7 @@ function harness(prepare?: CommandKernelDependencies["prepareAssistantModelPrefe
         config: resolved.config, provenance: resolved.provenance });
     });
     initializer.close();
-    const value = world.createHarness(undefined, { profile, ...(prepare === undefined ? {} : { prepareAssistantModelPreference: prepare }) });
+    const value = await world.createHarness(undefined, { profile, ...(prepare === undefined ? {} : { prepareAssistantModelPreference: prepare }) });
     owner.database = value.database;
     return { ...value, profile };
   } catch (error) { owner.setupFailure = { error }; throw error; }
@@ -64,7 +64,7 @@ function request(profileId: string, expectedRevision = 0) {
 
 describe("operator assistant model preference", () => {
   it("refuses both ordinary and unprepared async paths before journaling", async () => {
-    const h = harness(), command = request(h.profile.admission.profileBinding.profileId);
+    const h = await harness(), command = request(h.profile.admission.profileBinding.profileId);
     assert.equal(h.database.authority.assistantModelPreference.get(), undefined);
     assert.equal(AssistantStoredCommandSchema.safeParse(command).success, false);
     const generation = h.database.getMeta().authorityGeneration;
@@ -77,7 +77,7 @@ describe("operator assistant model preference", () => {
     assert.ok(h.kernel.assistantManifest().entries.every(entry => entry.family !== command.family));
   });
   it("authenticates CAS, audit and exact historical replay without rewinding a newer preference", async () => {
-    const h = harness(async () => () => true as const);
+    const h = await harness(async () => () => true as const);
     const first = request(h.profile.admission.profileBinding.profileId);
     assert.equal((await h.kernel.executeAssistantModelPreference(first)).state, "applied");
     assert.equal(AssistantStoredCommandSchema.safeParse(first).success, false);
@@ -101,7 +101,7 @@ describe("operator assistant model preference", () => {
     assert.deepEqual(h.database.authority.assistantModelPreference.get(), latest);
   });
   it("refuses stale CAS and foreign profile without any command or preference effects", async () => {
-    const h = harness(async () => () => true as const), profileId = h.profile.admission.profileBinding.profileId;
+    const h = await harness(async () => () => true as const), profileId = h.profile.admission.profileBinding.profileId;
     for (const command of [request(profileId, 1), request(randomUUID())]) {
       const generation = h.database.getMeta().authorityGeneration;
       assert.notEqual((await h.kernel.executeAssistantModelPreference(command)).state, "applied");
@@ -113,10 +113,10 @@ describe("operator assistant model preference", () => {
   });
   it("preserves preparation and in-transaction currentness failures without effects", async () => {
     const failure = new Error("synthetic currentness failure");
-    const h = harness(async () => { throw failure; }), command = request(h.profile.admission.profileBinding.profileId);
+    const h = await harness(async () => { throw failure; }), command = request(h.profile.admission.profileBinding.profileId);
     await assert.rejects(h.kernel.executeAssistantModelPreference(command), error => error === failure);
     assert.equal(h.database.authority.commands.get(command.commandId), undefined);
-    const second = harness(async () => { let checks = 0; return () => { if (++checks === 3) throw failure; return true as const; }; });
+    const second = await harness(async () => { let checks = 0; return () => { if (++checks === 3) throw failure; return true as const; }; });
     const guarded = request(second.profile.admission.profileBinding.profileId), generation = second.database.getMeta().authorityGeneration;
     await assert.rejects(second.kernel.executeAssistantModelPreference(guarded), error => error === failure);
     assert.equal(second.database.authority.commands.get(guarded.commandId), undefined);
@@ -124,8 +124,8 @@ describe("operator assistant model preference", () => {
     assert.equal(second.database.authority.assistantModelPreference.get(), undefined);
     assert.equal(second.database.getMeta().authorityGeneration, generation);
   });
-  it("does not admit a preference record without the exact already-inserted command audit", () => {
-    const h = harness(), profileId = h.profile.admission.profileBinding.profileId, generation = h.database.getMeta().authorityGeneration;
+  it("does not admit a preference record without the exact already-inserted command audit", async () => {
+    const h = await harness(), profileId = h.profile.admission.profileBinding.profileId, generation = h.database.getMeta().authorityGeneration;
     assert.throws(() => h.database.withAuthorityTransaction(repositories => repositories.assistantModelPreference.setByCommand({
       format: 1, id: "current", profileId, revision: 1, preference: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT },
       commandId: randomUUID(), auditId: randomUUID(), updatedAt: new Date().toISOString(),
@@ -134,7 +134,7 @@ describe("operator assistant model preference", () => {
     assert.equal(h.database.getMeta().authorityGeneration, generation);
   });
   it.each(["delete", "rollback"] as const)("refuses %s current preference with authenticated successful history", async mutation => {
-    const h = harness(async () => () => true as const), first = request(h.profile.admission.profileBinding.profileId);
+    const h = await harness(async () => () => true as const), first = request(h.profile.admission.profileBinding.profileId);
     assert.equal((await h.kernel.executeAssistantModelPreference(first)).state, "applied");
     const original = h.database.authority.assistantModelPreference.get();
     assert.ok(original);
@@ -152,7 +152,7 @@ describe("operator assistant model preference", () => {
 
   it("independently refuses assistant-origin commands even with a prepared trusted dependency", async () => {
     let preparations = 0;
-    const h = harness(async () => { preparations += 1; return () => true as const; });
+    const h = await harness(async () => { preparations += 1; return () => true as const; });
     const command = { ...request(h.profile.admission.profileBinding.profileId), source: "assistant" };
     const generation = h.database.getMeta().authorityGeneration;
     assert.equal((await h.kernel.executeAssistantModelPreference(command)).state, "rejected");
@@ -172,7 +172,7 @@ describe("operator assistant model preference", () => {
     { name: "resolved promise", produce: (): unknown => Promise.resolve(true) },
     { name: "rejected promise", produce: (): unknown => Promise.reject(new Error("synthetic rejected currentness")) },
   ])("refuses malformed synchronous authority $name before dispatch", async ({ produce }) => {
-    const h = harness(async () => new Proxy((): true => true, { apply: () => produce() }));
+    const h = await harness(async () => new Proxy((): true => true, { apply: () => produce() }));
     const command = request(h.profile.admission.profileBinding.profileId), generation = h.database.getMeta().authorityGeneration;
     await assert.rejects(h.kernel.executeAssistantModelPreference(command));
     assert.equal(h.database.authority.commands.get(command.commandId), undefined);
@@ -182,7 +182,7 @@ describe("operator assistant model preference", () => {
   });
   it.each([2, 3])("rechecks exact true at in-transaction invocation %s and rolls back all effects", async invalidAt => {
     let calls = 0;
-    const h = harness(async () => new Proxy((): true => true, { apply: () => ++calls === invalidAt ? false : true }));
+    const h = await harness(async () => new Proxy((): true => true, { apply: () => ++calls === invalidAt ? false : true }));
     const command = request(h.profile.admission.profileBinding.profileId), generation = h.database.getMeta().authorityGeneration;
     await assert.rejects(h.kernel.executeAssistantModelPreference(command));
     assert.equal(calls, invalidAt);
@@ -194,7 +194,7 @@ describe("operator assistant model preference", () => {
   it("preserves committed outcome and primary cause as an unknown error after post-commit refusal", async () => {
     const failure = new CommandIdentityConflictError();
     let calls = 0;
-    const h = harness(async () => () => { if (++calls === 4) throw failure; return true as const; });
+    const h = await harness(async () => () => { if (++calls === 4) throw failure; return true as const; });
     const command = request(h.profile.admission.profileBinding.profileId);
     await assert.rejects(h.kernel.executeAssistantModelPreference(command), error => error instanceof Error
       && !(error instanceof CommandIdentityConflictError) && error.cause === failure);
@@ -211,7 +211,7 @@ describe("operator assistant model preference", () => {
 
   it.each(["deleted-current", "corrupt-current"] as const)("authenticates current authority before duplicate preference replay: %s", async mutation => {
     let preparations = 0;
-    const h = harness(async () => { preparations += 1; return () => true as const; });
+    const h = await harness(async () => { preparations += 1; return () => true as const; });
     const command = request(h.profile.admission.profileBinding.profileId);
     assert.equal((await h.kernel.executeAssistantModelPreference(command)).state, "applied");
     const record = h.database.authority.assistantModelPreference.get();

@@ -201,8 +201,8 @@ const registry = defineTaskStoreRegistry([defineServiceStore("ocr", { fixture: f
   tasks: [{ id: fixtureContract.id, effect: fixtureContract.effect }],
 });
 
-function harnessFor(descriptor: AnyWorkflowDescriptor) {
-  const authority = openAuthorityHarness();
+async function harnessFor(descriptor: AnyWorkflowDescriptor) {
+  const authority = await openAuthorityHarness();
   disposers.push(authority.dispose);
   testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor, poolIndex: 1 });
   const emitter = {
@@ -215,7 +215,7 @@ function harnessFor(descriptor: AnyWorkflowDescriptor) {
     descriptor,
     stores: registry,
     authority: authority.database,
-    sessions: sessionManagerFor(happySessionHarness(), authority.clock),
+    sessions: await sessionManagerFor(happySessionHarness(), authority.clock),
     emitter: emitter.emitter,
     clock: authority.clock,
     ids: sequentialIdFactory("a"),
@@ -285,7 +285,7 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
 }
 
 
-async function parkAtGate(harness: ReturnType<typeof harnessFor>): Promise<RunRecord> {
+async function parkAtGate(harness: Awaited<ReturnType<typeof harnessFor>>): Promise<RunRecord> {
   const { database } = harness.authority;
   database.authority.runs.enqueue(queuedRunFor(gateOmissionDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
   const first = claim(database, gateOmissionDescriptor);
@@ -297,7 +297,7 @@ async function parkAtGate(harness: ReturnType<typeof harnessFor>): Promise<RunRe
 }
 
 /** Record the operator's approval and release the parked run back to the queue. */
-function resolveApprovalGate(harness: ReturnType<typeof harnessFor>, parkedRun: RunRecord): void {
+function resolveApprovalGate(harness: Awaited<ReturnType<typeof harnessFor>>, parkedRun: RunRecord): void {
   const { database } = harness.authority;
   const gateResult = { schemaHash: deriveSchemaHash(ApprovalSchema, "output"), value: { approved: true } };
   database.authority.gateResults.insert({
@@ -330,7 +330,7 @@ function markedRowsFor(database: AuthorityDatabase, run: RunRecord) {
 describe("executor step omission", () => {
   it("publishes the producer's output without running the task, and the terminal record cites it as asserted", async () => {
     invocations.length = 0;
-    const harness = harnessFor(honestDescriptor);
+    const harness = await harnessFor(honestDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(honestDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
     const claimed = claim(database, honestDescriptor);
@@ -387,7 +387,7 @@ describe("executor step omission", () => {
 
   it("runs every node as before when no step is omitted", async () => {
     invocations.length = 0;
-    const harness = harnessFor(honestDescriptor);
+    const harness = await harnessFor(honestDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(honestDescriptor));
     const claimed = claim(database, honestDescriptor);
@@ -403,7 +403,7 @@ describe("executor step omission", () => {
   });
 
   it("fails the asserted node by name when its producer returns a value the output schema refuses", async () => {
-    const harness = harnessFor(lyingDescriptor);
+    const harness = await harnessFor(lyingDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(lyingDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
     const claimed = claim(database, lyingDescriptor);
@@ -419,7 +419,7 @@ describe("executor step omission", () => {
   });
 
   it("terminalizes as an entry-validation failure when an executing node would read a node the omission leaves unread", async () => {
-    const harness = harnessFor(bareDescriptor);
+    const harness = await harnessFor(bareDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(bareDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
     const claimed = claim(database, bareDescriptor);
@@ -436,7 +436,7 @@ describe("executor step omission", () => {
   });
 
   it("fails an asserted node by name when it also declares an artifact projection — an assertion projects nothing", async () => {
-    const harness = harnessFor(projectingDescriptor);
+    const harness = await harnessFor(projectingDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(projectingDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
     const claimed = claim(database, projectingDescriptor);
@@ -452,7 +452,7 @@ describe("executor step omission", () => {
   });
 
   it("an assertion never replays as an observation across a resume that no longer omits the step", async () => {
-    const harness = harnessFor(honestDescriptor);
+    const harness = await harnessFor(honestDescriptor);
     const { database } = harness.authority;
     // First run: omit "reading" so "read" is durable as a MARKED assertion row.
     database.authority.runs.enqueue(queuedRunFor(honestDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
@@ -479,7 +479,7 @@ describe("executor step omission", () => {
 
   it("an ordinary second run with no omission and no startAt executes the node fresh, writing an unmarked row", async () => {
     invocations.length = 0;
-    const harness = harnessFor(honestDescriptor);
+    const harness = await harnessFor(honestDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(honestDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
     const first = claim(database, honestDescriptor);
@@ -506,7 +506,7 @@ describe("executor step omission", () => {
 
   it("an asserted node upstream of a gate republishes its single marked row across resume", async () => {
     invocations.length = 0;
-    const harness = harnessFor(gateOmissionDescriptor);
+    const harness = await harnessFor(gateOmissionDescriptor);
     const { database } = harness.authority;
     const parkedRun = await parkAtGate(harness);
     // "read" never actually ran — its output is the operator's typed fact, never the task.
@@ -563,7 +563,7 @@ describe("executor step omission", () => {
 
   it("refuses to terminalize when a SECOND marked row binds the same assertion at the attempt", async () => {
     invocations.length = 0;
-    const harness = harnessFor(gateOmissionDescriptor);
+    const harness = await harnessFor(gateOmissionDescriptor);
     const { database } = harness.authority;
     const parkedRun = await parkAtGate(harness);
     const parkedRow = markedRowsFor(database, parkedRun)[0];

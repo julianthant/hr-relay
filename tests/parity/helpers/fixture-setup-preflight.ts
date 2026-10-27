@@ -42,5 +42,5 @@ export async function startSetupPreflightServer(scene: SetupScene, configureRout
   await new Promise<void>(resolve=>{server.listen(0,"127.0.0.1",resolve);});const address=server.address();assert.ok(address&&typeof address!=="string");
   return {baseUrl:`http://127.0.0.1:${String(address.port)}`,scope:runtime.scope,now:runtime.clock.now().toISOString(),requests,
     provenance:()=>({...runtime.provenance,bundle:readBundleStamp(PARITY_DIST_DIR),scene}),
-    async close(){server.closeAllConnections();await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));await shell.close();runtime.close();}};
+    async close(){server.closeAllConnections();await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));await shell.close();await runtime.close();}};
 }

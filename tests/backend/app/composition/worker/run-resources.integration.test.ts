@@ -33,16 +33,16 @@ import { defineWorkflowDescriptor } from "../../../../../src/workflow-kit/workfl
 import { flow } from "../../../../../src/workflow-kit/flow.js";
 import { WorkerIdSchema,WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
 
-type Fixture=ReturnType<typeof foundationFixture>;
+type Fixture=Awaited<ReturnType<typeof foundationFixture>>;
 const scheduler={schedule:()=>({cancel:()=>undefined})};
 const artifacts=(f:Fixture)=>createContentAddressedArtifactWriter({admission: boundProfileAdmission(f.path)});
 describe("F actual four-way baseline independence",()=>{
  const _owners=["P","D","G","S"] as const;
  it("selects actual resources from each retained snapshot and preserves the first run after a newer selection",async()=>{
-  const f=foundationFixture();let account:ReturnType<typeof chatGptFixture>|undefined;try{
+  const f=await foundationFixture();let account:Awaited<ReturnType<typeof chatGptFixture>>|undefined;try{
    const admission=findProfileFixtureAdmission(f.root);assert.ok(admission);
    const writer=artifacts(f);await writer.ready;
-   account=chatGptFixture(admission);
+   account=await chatGptFixture(admission);
    const ocr=createChatGptOcrAdapter({account:account.service,artifacts:writer,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
    const factory=createRunResourcesFactory({ocr,assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},processLockRoot:join(f.root,"locks"),authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("c"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("no browser in snapshot proof");}}});
    const first=factory.forRun(f.run);
@@ -53,7 +53,7 @@ describe("F actual four-way baseline independence",()=>{
    assert.equal(first.providers?.adapters["ocr.extract"],ocr);assert.equal(next.providers?.adapters["ocr.extract"],ocr);
    assert.equal(factory.forRun(f.run),first);assert.equal(first.taskDeadlineMs,f.snapshot.config.timeouts.taskMs);
    assert.throws(()=>factory.forRun({...f.run,envelope:{...f.run.envelope,configFingerprint:FingerprintSchema.parse(HASH)}}),/snapshot-mismatch/u);
-  }finally{await account?.cleanup();f.dispose();}
+  }finally{await account?.cleanup();await f.dispose();}
  });
  it("freezes four distinct existing source sets with no cross-owner mutable imports",()=>{
   const scopes:Record<string,string[]>={P:["src/backend/processing/providers/provider-client.ts","src/backend/processing/providers/nominatim-owner.ts"],D:["src/backend/runs/lifecycle/failure-resolution.ts","src/backend/storage/sqlite/failure-resolution.ts","src/backend/runs/queries/failure-resolution.ts","src/backend/runs/commands/failure-resolution.ts","src/backend/app/composition/dashboard/failure-resolution.ts","src/backend/runs/queries/run-trust.ts"],G:["src/backend/logs/generated-artifact-projection.ts","src/backend/storage/sqlite/generated-artifacts.ts","src/backend/storage/artifacts/artifact-sink-projector.ts","src/backend/storage/artifacts/xlsx-retention-sink.ts","src/backend/runs/exports/operator-xlsx-export-service.ts","src/backend/app/composition/dashboard/generated-exports.ts"],S:["src/backend/runs/settings/run-settings.ts","src/backend/runs/lifecycle/run-claim-admission.ts","src/backend/storage/sqlite/settings-activation.ts","src/backend/app/composition/worker/run-resources.ts","src/backend/runtime/settings/settings-runtime.ts","src/backend/runs/commands/settings-service.ts","src/backend/runs/commands/start-plan-service.ts","src/backend/runs/queries/settings.ts","src/backend/runs/queries/settings-editor.ts","src/dashboard/surfaces/settings/settings.tsx","src/dashboard/surfaces/settings/settings-model.ts"]};
@@ -65,8 +65,8 @@ describe("F actual four-way baseline independence",()=>{
 });
 
 it("registers the real account adapter in run resources and persists canonical admitted extraction through the executor",async()=>{
- const f=foundationFixture(), world=createCapabilityWiringTestWorld();
- const admission=boundProfileAdmission(f.path), account=chatGptFixture(admission);
+ const f=await foundationFixture(), world=createCapabilityWiringTestWorld();
+ const admission=boundProfileAdmission(f.path), account=await chatGptFixture(admission);
  let resources:ReturnType<typeof createRunResourcesFactory>|undefined;
  let sessions:WorkerSessionManager|undefined;
  try{
@@ -112,5 +112,5 @@ it("registers the real account adapter in run resources and persists canonical a
   assert.equal(checkpoint.contractFingerprint,descriptor.contractFingerprint);
   assert.ok(events.events().some(event=>event.t==="data.observed"));
   const calls=account.calls.filter(call=>call.url.endsWith("/responses"));assert.equal(calls.length,1);
- }finally{await sessions?.closeAll("worker-stop");await resources?.stop();await account.cleanup();f.dispose();world.cleanup();}
+ }finally{await sessions?.closeAll("worker-stop");await resources?.stop();await account.cleanup();await f.dispose();world.cleanup();}
 });

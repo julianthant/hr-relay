@@ -13,7 +13,7 @@ afterEach(cleanup);
 
 describe("cancellation racing failure authorization", () => {
   it("settles cancelled when admission commits after the boundary read but before authorization", async () => {
-    const h = executorHarness();
+    const h = await executorHarness();
     const { database, clock } = h.authority;
     const input = RunRecordSchema.parse(personLookupQueuedRun());
     const claimed = enqueueAndClaim(database, { ...input, input: {

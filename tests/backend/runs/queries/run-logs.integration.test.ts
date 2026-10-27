@@ -32,7 +32,7 @@ afterEach(cleanup);
 describe("complete operation display action binding", () => {
 
   it("binds real early confirmation publications to their later buffered action rows by exact identity", async () => {
-    const harness = executorHarness({ descriptor: actionBindingCompiled.descriptor, sessions: actionBindingSessions({ lifecycle: true }) });
+    const harness = await executorHarness({ descriptor: actionBindingCompiled.descriptor, sessions: actionBindingSessions({ lifecycle: true }) });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, actionBindingQueuedRun(clock.now().toISOString(), { protectedValue: false }),
       clock.now().toISOString(), ACTION_BINDING_WORKFLOW_ID);
@@ -82,7 +82,7 @@ describe("complete operation display action binding", () => {
   });
 
   it("refuses missing complete snapshots at record admission and corrupt snapshots before a driver opens", async () => {
-    const missingHarness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
+    const missingHarness = await executorHarness({ descriptor: actionBindingCompiled.descriptor });
     const missingQueued = actionBindingQueuedRun(missingHarness.authority.clock.now().toISOString());
     const { operationDisplaySnapshot: _snapshot, ...missingEnvelope } = missingQueued.envelope;
     assert.throws(
@@ -104,7 +104,7 @@ describe("complete operation display action binding", () => {
       /complete run fixture-operation-action-binding is missing its frozen operation display snapshot/u,
     );
 
-    const corruptHarness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
+    const corruptHarness = await executorHarness({ descriptor: actionBindingCompiled.descriptor });
     const corruptClaim = enqueueAndClaim(
       corruptHarness.authority.database,
       actionBindingQueuedRun(corruptHarness.authority.clock.now().toISOString()),
@@ -153,7 +153,7 @@ describe("person-lookup full walk", () => {
       },
       crm: () => healthyCrmDriver(),
     });
-    const harness = executorHarness({ sessions, autoFireAtOrBelowMs: 2_500 });
+    const harness = await executorHarness({ sessions, autoFireAtOrBelowMs: 2_500 });
     const { database, clock, stateRoot: _stateRoot } = harness.authority;
     const logs = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const stdout = recordingLogger();
@@ -275,8 +275,8 @@ describe("person-lookup full walk", () => {
   });
 });
 
-it("retains a task screenshot association and native node without exposing raw actions", () => {
-  const harness = executorHarness();
+it("retains a task screenshot association and native node without exposing raw actions", async () => {
+  const harness = await executorHarness();
   const { database, clock } = harness.authority;
   const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
   const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
@@ -296,8 +296,8 @@ it("retains a task screenshot association and native node without exposing raw a
   assert.equal("action" in row.note, false);
 });
 
-it("serves registered operator labels for the normal legacy Person Lookup actions without raw targets or values", () => {
-  const harness = executorHarness();
+it("serves registered operator labels for the normal legacy Person Lookup actions without raw targets or values", async () => {
+  const harness = await executorHarness();
   const { database, clock } = harness.authority;
   const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
   assert.equal(claimed.run.envelope.operationDisplaySnapshot, undefined);
@@ -328,7 +328,7 @@ it("serves registered operator labels for the normal legacy Person Lookup action
 });
 
 it("projects retained classified Fill and Read values only through their frozen declared field bindings", async () => {
-  const harness = executorHarness({ descriptor: actionBindingCompiled.descriptor, sessions: actionBindingSessions({ lifecycle: true }) });
+  const harness = await executorHarness({ descriptor: actionBindingCompiled.descriptor, sessions: actionBindingSessions({ lifecycle: true }) });
   const { database, clock } = harness.authority;
   const queued = actionBindingQueuedRun(clock.now().toISOString(), { protectedValue: false });
   const claimed = enqueueAndClaim(database, RunRecordSchema.parse({ ...queued, input: { ...queued.input,

@@ -12,13 +12,13 @@ import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admi
 import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createBoundProfileFixture, createBoundProfileCredentialStore, fixtureAdmission, initializeAdmissionFixture, releaseAdmissionFixture } from "../../../support/helpers/admission-fixture.js";
 
-function fixture(afterRename?: () => void, profile?: ReturnType<typeof createBoundProfileFixture>) {
+function fixture(afterRename?: () => void, profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
   const root = profile?.stateRoot ?? realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-credential-")));
   const admission = profile?.admission ?? RuntimeAdmission.syntheticRoots(root, root);
   const repository = createChatGptCredentialRepository({ admission, stateRoot: root, afterRename }), directory = join(root, "credentials"), path = join(directory, "chatgpt-account.json");
   const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
-  return { root, admission, repository, directory, path, record, cleanup() {
-    if (profile !== undefined) profile.close();
+  return { root, admission, repository, directory, path, record, async cleanup() {
+    if (profile !== undefined) await profile.close();
     else { admission.release(); rmSync(root, { recursive: true, force: true }); }
   } };
 }
@@ -27,18 +27,18 @@ it("absence has no write and credential persistence uses owner-only permissions"
     await f.repository.withLock(async tx => { tx.replace(f.record, null); });
     assert.deepEqual(f.repository.read(), f.record); assert.equal(lstatSync(f.directory).mode & 0o777, 0o700); assert.equal(lstatSync(f.path).mode & 0o777, 0o600);
     verifyChatGptCredentialStore({ admission: f.admission, stateRoot: f.root });
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 it("stale revision refuses without changing confirmed bytes", async () => {
   const f = fixture(); try { await f.repository.withLock(async tx => { tx.replace(f.record, null); }); const before = readFileSync(f.path);
     await assert.rejects(f.repository.withLock(async tx => { tx.replace({ ...f.record, revision: 2 }, null); }), { code: "CHATGPT_CREDENTIAL_CONFLICT" }); assert.deepEqual(readFileSync(f.path), before);
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 it("post-rename uncertainty retains readback and never claims rollback", async () => {
   const f = fixture(() => { throw new Error("synthetic private value must not escape"); }); try {
     await assert.rejects(f.repository.withLock(async tx => { tx.replace(f.record, null); }), error => typeof error === "object" && error !== null && "code" in error && error.code === "CHATGPT_CREDENTIAL_UNCERTAIN" && "message" in error && !String(error.message).includes("private value"));
     assert.deepEqual(f.repository.read(), f.record); assert.equal(existsSync(join(f.directory, ".chatgpt-account.lock")), false);
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 it("concurrent repository owners cannot race a rotating-token transaction", async () => {
   const f = fixture(); try {
@@ -47,7 +47,7 @@ it("concurrent repository owners cannot race a rotating-token transaction", asyn
     const first = f.repository.withLock(async tx => { entered(); await wait; tx.replace(f.record, null); }); await started;
     const peer = createChatGptCredentialRepository({ admission: f.admission, stateRoot: f.root });
     await assert.rejects(peer.withLock(async () => undefined), { code: "CHATGPT_CREDENTIAL_BUSY" }); release(); await first;
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 it("shared admission refuses stale lock cleanup without changing credentials", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-credential-shared-")));
@@ -109,7 +109,7 @@ it("reports credential uncertainty when lock cleanup fails after commit", async 
       rmSync(join(f.directory, ".chatgpt-account.lock"));
     }), { code: "CHATGPT_CREDENTIAL_UNCERTAIN", message: "The ChatGPT credential change could not be confirmed. Read its current state before trying again." });
     assert.deepEqual(f.repository.read(), f.record);
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 for (const unsafe of ["malformed", "oversized", "permission", "hardlink", "symlink", "foreign-file"] as const)
   it(`refuses ${unsafe} credential authority with safe fixed text`, async () => {
@@ -122,14 +122,14 @@ for (const unsafe of ["malformed", "oversized", "permission", "hardlink", "symli
       if (unsafe === "symlink") { rmSync(f.path); symlinkSync(join(f.root, "target"), f.path); }
       if (unsafe === "foreign-file") writeFileSync(join(f.directory, "unexpected"), "synthetic");
       assert.throws(() => f.repository.read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE", message: "ChatGPT credentials could not be read or saved safely." });
-    } finally { f.cleanup(); }
+    } finally { await f.cleanup(); }
   });
 it("refuses directory replacement and unadmitted roots", async () => {
   const f = fixture(); try {
     await f.repository.withLock(async tx => { tx.replace(f.record, null); }); rmSync(f.directory, { recursive: true }); mkdirSync(f.directory, { mode: 0o700 });
     assert.throws(() => f.repository.read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
     assert.throws(() => createChatGptCredentialRepository({ admission: f.admission, stateRoot: join(f.root, "other") }), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
 function protectedRequest(expectedRevision: number) {
@@ -138,7 +138,7 @@ function protectedRequest(expectedRevision: number) {
 }
 
 it("both records retain independent revisions while their writers and authenticated stages coexist", async () => {
-  const f = fixture(undefined, createBoundProfileFixture());
+  const f = fixture(undefined, await createBoundProfileFixture());
   try {
     await f.repository.withLock(async tx => { tx.replace(f.record, null); });
     let protectedStageObserved = false;
@@ -166,11 +166,11 @@ it("both records retain independent revisions while their writers and authentica
     assert.deepEqual(f.repository.read(), { ...f.record, revision: 2 });
     assert.deepEqual(readdirSync(f.directory).sort(), ["chatgpt-account.json", "protected.json"]);
     verifyChatGptCredentialStore({ admission: f.admission, stateRoot: f.root });
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
 it("a private Duo key shares the credential folder with both records", async () => {
-  const f = fixture(undefined, createBoundProfileFixture());
+  const f = fixture(undefined, await createBoundProfileFixture());
   try {
     await f.repository.withLock(async tx => { tx.replace(f.record, null); });
     const store = createBoundProfileCredentialStore(f.admission, { stateRoot: f.root });
@@ -184,11 +184,11 @@ it("a private Duo key shares the credential folder with both records", async () 
     chmodSync(duo, 0o644);
     assert.throws(() => store.read(), /Duo credential permissions or identity are invalid/u);
     assert.throws(() => f.repository.read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
 it("companion stages require exact writer custody and cannot hide unknown entries", async () => {
-  const f = fixture(undefined, createBoundProfileFixture());
+  const f = fixture(undefined, await createBoundProfileFixture());
   try {
     await f.repository.withLock(async tx => { tx.replace(f.record, null); });
     const store = createBoundProfileCredentialStore(f.admission, { stateRoot: f.root });
@@ -209,5 +209,5 @@ it("companion stages require exact writer custody and cannot hide unknown entrie
     writeFileSync(stage, "synthetic-stage", { mode: 0o600 });
     assert.throws(() => f.repository.read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
     assert.equal(existsSync(stage), true);
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });

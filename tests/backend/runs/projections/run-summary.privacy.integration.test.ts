@@ -17,8 +17,8 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { activityPersonPseudonymResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority } from "../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { id,NOW } from "../../../support/helpers/database-foundation/fixtures.js";
-it("deduplicates people across days and computes the lower selected median, matching the retained projector",()=>{
-  const f=foundationFixture(),world=makeWorld();try{
+it("deduplicates people across days and computes the lower selected median, matching the retained projector",async ()=>{
+  const f=await foundationFixture(),world=await makeWorld();try{
     const identities=new Map<string,ReturnType<typeof deriveCanonicalPerson>>();
     Object.assign(world.authority,{canonicalPerson:(runId:string)=>identities.get(runId)??{state:"unavailable",reason:"fixture-unavailable"}});
     for(let n=0;n<6;n++){
@@ -43,5 +43,5 @@ it("deduplicates people across days and computes the lower selected median, matc
     assert.equal(volume.state,"complete");assert.equal(volume.coveredRuns,report.totalRuns);
     assert.equal(volume.buckets.reduce((total,bucket)=>total+bucket.runs,0),report.totalRuns);
     assert.ok(!JSON.stringify(report).includes(CURRENT_SEPARATIONS_RESULT.approved.emplId));
-  }finally{world.dispose();f.dispose();}
+  }finally{await world.dispose();await f.dispose();}
 });

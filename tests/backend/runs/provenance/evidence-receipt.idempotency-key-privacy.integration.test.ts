@@ -29,12 +29,12 @@ import { separationsKualiFinalizationDescriptor } from "../../../support/helpers
 
 const worlds: DashboardWorld[] = [];
 
-afterEach(() => {
-  for (const world of worlds.splice(0)) world.dispose();
+afterEach(async () => {
+  for (const world of worlds.splice(0)) await world.dispose();
 });
 
 describe("idempotency-key privacy across operator projections", () => {
-  it("keeps one raw key out of parked messages, receipts, transactions, Explain, and dashboard wires", () => {
+  it("keeps one raw key out of parked messages, receipts, transactions, Explain, and dashboard wires", async () => {
     const evidence = kualiReceiptEvidence();
     const committed = evidence.writes[0].intent;
     if (committed.status !== "committed") throw new Error("the canary fixture must start committed");
@@ -87,7 +87,7 @@ describe("idempotency-key privacy across operator projections", () => {
       dependencies: [],
     });
 
-    const world = makeWorld();
+    const world = await makeWorld();
     worlds.push(world);
     const runId = uuidOf(1);
     const writeIntentId = uuidOf(11);

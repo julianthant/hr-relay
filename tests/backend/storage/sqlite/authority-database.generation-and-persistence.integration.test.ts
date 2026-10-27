@@ -42,10 +42,10 @@ const INTAKE_SESSION = {
 describe("authority generation accounting", () => {
 afterEach(cleanup);
 
-  it("keeps one read snapshot while another connection commits without waiting", () => {
-    const path = databasePath("concurrent-read-snapshot.sqlite");
-    const reader = openDatabase(path, 10);
-    const writer = openDatabase(path, 10);
+  it("keeps one read snapshot while another connection commits without waiting", async () => {
+    const path = await databasePath("concurrent-read-snapshot.sqlite");
+    const reader = await openDatabase(path, 10);
+    const writer = await openDatabase(path, 10);
 
     const during = reader.withAuthorityReadSnapshot(() => {
       const generation = reader.getMeta().authorityGeneration;
@@ -73,15 +73,15 @@ afterEach(cleanup);
   });
   const _cases: readonly MutationCase[] = authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT });
 
-  it("accounts intake preparation in its single imported authority row", () => {
-    const db=openDatabase();const before=db.getMeta().authorityGeneration;
+  it("accounts intake preparation in its single imported authority row", async () => {
+    const db=await openDatabase();const before=db.getMeta().authorityGeneration;
     db.authority.intakeSessions.create(INTAKE_SESSION);
     assert.equal(db.getMeta().authorityGeneration,before+1);
     assert.deepEqual(db.authority.intakeSessions.get(INTAKE_SESSION.intakeSessionId),INTAKE_SESSION);
   });
 
-  it("accounts parent acceptance in commands once without an execution audit", () => {
-    const db = openDatabase(databasePath("bulk-parent-generation.sqlite"));
+  it("accounts parent acceptance in commands once without an execution audit", async () => {
+    const db = await openDatabase(await databasePath("bulk-parent-generation.sqlite"));
     const before = db.getMeta().authorityGeneration;
     assert.equal(db.authority.commands.acceptBulk(BULK_COMMAND_ACCEPTANCE).state, "inserted");
     assert.equal(db.getMeta().authorityGeneration, before + 1);
@@ -90,8 +90,8 @@ afterEach(cleanup);
     assert.equal(db.authority.commandAudits.findByCommand(BULK_COMMAND_ACCEPTANCE.bulkCommandId), undefined);
   });
 
-  it("shares nested authority transactions and increments exactly once", () => {
-    const database = openDatabase();
+  it("shares nested authority transactions and increments exactly once", async () => {
+    const database = await openDatabase();
     database.withAuthorityTransaction((authority) => {
       authority.commands.insert(COMMAND_FIXTURES[0]);
       database.withAuthorityTransaction((nested) => {
@@ -101,8 +101,8 @@ afterEach(cleanup);
     assert.equal(database.getMeta().authorityGeneration, 1);
   });
 
-  it("rolls back a caught nested atomic outbox failure while committing unrelated outer work once", () => {
-    const path = databasePath();
+  it("rolls back a caught nested atomic outbox failure while committing unrelated outer work once", async () => {
+    const path = await databasePath();
     const database = AuthorityDatabase.open(
       { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
       CLOCK,
@@ -126,8 +126,8 @@ afterEach(cleanup);
     assert.equal(database.getMeta().authorityGeneration, generationBefore + 1);
   });
 
-  it("leaves generation unchanged for empty, projection-only, idempotent, and rolled-back work", () => {
-    const database = openDatabase();
+  it("leaves generation unchanged for empty, projection-only, idempotent, and rolled-back work", async () => {
+    const database = await openDatabase();
     database.withAuthorityTransaction(() => undefined);
     assert.equal(database.getMeta().authorityGeneration, 0);
 
@@ -147,8 +147,8 @@ afterEach(cleanup);
     assert.equal(database.authority.notifications.get(UUID_3), undefined);
   });
 
-  it("exposes no retired projection or OCR placeholder mutation", () => {
-    const database = openDatabase();
+  it("exposes no retired projection or OCR placeholder mutation", async () => {
+    const database = await openDatabase();
     assert.equal("projections" in database, false);
     assert.equal("opaque" in database.authority, false);
     assert.equal(database.getMeta().authorityGeneration, 0);
@@ -198,9 +198,9 @@ afterEach(cleanup);
       sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',json_set(json_extract(payload_json,'$.exportEvidenceJson'),'$.requestedBy',?) || '') WHERE export_id=?",
       values: ["other-operator", UUID_6] as const,
     },
-  ])("refuses a current XLSX $label mismatch at read and boot", ({ label, sql, values }) => {
-    const path = databasePath(`operator-xlsx-${label.replaceAll(" ", "-")}.sqlite`);
-    const database = openDatabase(path);
+  ])("refuses a current XLSX $label mismatch at read and boot", async ({ label, sql, values }) => {
+    const path = await databasePath(`operator-xlsx-${label.replaceAll(" ", "-")}.sqlite`);
+    const database = await openDatabase(path);
     database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT_ALTERNATE);
     corruptXlsx(path, corruptor => {
       assert.equal(corruptor.prepare(sql).run(...values).changes, 1);
@@ -211,15 +211,15 @@ afterEach(cleanup);
       /generated-artifact|generated export/,
     );
     database.close();
-    assert.throws(
-      () => openDatabase(path),
+    await assert.rejects(
+      async () => await openDatabase(path),
       /generated|quick_check|current authority record invariants/,
     );
   });
 
-  it("refuses an XLSX artifact index that disagrees with its strict evidence record", () => {
-    const path = databasePath();
-    const database = openDatabase(path);
+  it("refuses an XLSX artifact index that disagrees with its strict evidence record", async () => {
+    const path = await databasePath();
+    const database = await openDatabase(path);
     database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
     corruptXlsx(path, corruptor => {
       assert.equal(corruptor.prepare("UPDATE artifacts SET payload_json=json_set(payload_json,'$.versions[0].artifact.id',?) WHERE export_id=?")
@@ -232,7 +232,7 @@ afterEach(cleanup);
     );
   });
 
-  it("reconciles every mirrored XLSX evidence column during boot inspection", () => {
+  it("reconciles every mirrored XLSX evidence column during boot inspection", async () => {
     const corruptions = [
       { name: "record key", sql: "UPDATE artifacts SET id = ?", value: UUID_6 },
       { name: "selection kind", sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',json_set(json_extract(payload_json,'$.exportEvidenceJson'),'$.selection.kind',?) || '')", value: "activity" },
@@ -249,24 +249,24 @@ afterEach(cleanup);
     ] as const;
 
     for (const corruption of corruptions) {
-      const path = databasePath(`${corruption.name.replaceAll(" ", "-")}.sqlite`);
-      const database = openDatabase(path);
+      const path = await databasePath(`${corruption.name.replaceAll(" ", "-")}.sqlite`);
+      const database = await openDatabase(path);
       database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
       database.close();
       corruptXlsx(path, corruptor => {
         assert.equal(corruptor.prepare(corruption.sql).run(corruption.value).changes, 1);
       });
 
-      assert.throws(
-        () => openDatabase(path),
+      await assert.rejects(
+        async () => await openDatabase(path),
         /generated|quick_check|current authority record invariants/,
         corruption.name,
       );
     }
   });
 
-  it("makes command insertion idempotent but rejects command-id content reuse", () => {
-    const database = openDatabase();
+  it("makes command insertion idempotent but rejects command-id content reuse", async () => {
+    const database = await openDatabase();
     assert.equal(database.authority.commands.insert(COMMAND_FIXTURES[0]).state, "inserted");
     assert.equal(database.authority.commands.insert(COMMAND_FIXTURES[0]).state, "existing");
     assert.throws(() => database.authority.commands.insert({
@@ -276,8 +276,8 @@ afterEach(cleanup);
     assert.equal(database.getMeta().authorityGeneration, 1);
   });
 
-  it("keeps committed and observed-present idempotency keys permanent", () => {
-    const database = openDatabase();
+  it("keeps committed and observed-present idempotency keys permanent", async () => {
+    const database = await openDatabase();
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, databasePaths.get(database) ?? (() => { throw new Error("missing fixture path"); })());
     const fence = writeFenceFixtureInput(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
@@ -298,8 +298,8 @@ afterEach(cleanup);
     assert.equal(database.getMeta().authorityGeneration, generationBefore + 3);
   });
 
-  it("enforces command, delegation, write-attempt, and outbox foreign keys", () => {
-    const database = openDatabase();
+  it("enforces command, delegation, write-attempt, and outbox foreign keys", async () => {
+    const database = await openDatabase();
     assert.throws(() => database.authority.commandAudits.insert(COMMAND_AUDIT), /FOREIGN KEY constraint failed/);
     assert.throws(() => database.authority.dependencies.insert(DEPENDENCY_RECORD), /FOREIGN KEY constraint failed/);
     assert.throws(
@@ -309,8 +309,8 @@ afterEach(cleanup);
     assert.equal(database.getMeta().authorityGeneration, 0);
   });
 
-  it("rejects authority mutation inside a projection transaction", () => {
-    const database = openDatabase();
+  it("rejects authority mutation inside a projection transaction", async () => {
+    const database = await openDatabase();
     assert.equal("withProjectionTransaction" in database, false);
     assert.equal(database.getMeta().authorityGeneration, 0);
   });
@@ -334,8 +334,8 @@ afterEach(cleanup);
     };
   }
 
-  it("hands out consecutive ordinals per workflow and refuses a spent one", () => {
-    const database = openDatabase();
+  it("hands out consecutive ordinals per workflow and refuses a spent one", async () => {
+    const database = await openDatabase();
     assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 1);
     if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     database.authority.runs.enqueue(queuedRunAt(RUN_ID, { runNumber: 1 }));
@@ -359,8 +359,8 @@ afterEach(cleanup);
     assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 3);
   });
 
-  it("counts each workflow separately and tolerates a gap", () => {
-    const database = openDatabase();
+  it("counts each workflow separately and tolerates a gap", async () => {
+    const database = await openDatabase();
     if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     database.authority.runs.enqueue(queuedRunAt(RUN_ID, { runNumber: 1 }));
     // A different workflow starts at 1 again — the ordinal names a run WITHIN
@@ -379,9 +379,9 @@ afterEach(cleanup);
 describe("workflow batch presentation persistence", () => {
 afterEach(cleanup);
 
-  it("persists genuine grouping, fences presentation edits and preserves batch identity across reopen", () => {
-    const path = databasePath("workflow-batches.sqlite");
-    const db = openDatabase(path);
+  it("persists genuine grouping, fences presentation edits and preserves batch identity across reopen", async () => {
+    const path = await databasePath("workflow-batches.sqlite");
+    const db = await openDatabase(path);
     db.authority.runSessions.insert(RUN_SESSION);
     const migrated = db.authority.runSessions.get(RUN_SESSION.sessionId);
     assert.equal(migrated?.groupInQueue, false);
@@ -393,7 +393,7 @@ afterEach(cleanup);
     assert.throws(() => db.authority.runSessions.setGrouping(RUN_SESSION.sessionId, 1, false), /version conflict/u);
     assert.throws(() => db.authority.runSessions.setGrouping(UUID_4, 1, false), /does not exist/u);
     db.close();
-    const reopened = openDatabase(path);
+    const reopened = await openDatabase(path);
     assert.equal(reopened.authority.runSessions.get(RUN_SESSION.sessionId)?.groupInQueue, true);
     assert.equal(reopened.authority.runSessions.get(RUN_SESSION.sessionId)?.version, 2);
     const sql = new DatabaseSync(path);

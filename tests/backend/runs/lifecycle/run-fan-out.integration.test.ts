@@ -24,14 +24,14 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function openDatabase(): AuthorityDatabase {
-  const profile = createBoundProfileFixture();
+async function openDatabase(): Promise<AuthorityDatabase> {
+  const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     manualClock(new Date(NOW)),
   );
   const close = database.close.bind(database);
-  database.close = () => { close(); profile.close(); };
+  database.close = async () => { close(); await profile.close(); };
   seedSyntheticRuntimeConfig(database);
   databases.push(database);
   return database;
@@ -76,8 +76,8 @@ function baseEnvelope(database: AuthorityDatabase, sessionId: string, stepOmissi
 }
 
 describe("fanOutQueuedRuns", () => {
-  it("carries stepOmissions onto every fanned-out run's envelope byte for byte", () => {
-    const database = openDatabase();
+  it("carries stepOmissions onto every fanned-out run's envelope byte for byte", async () => {
+    const database = await openDatabase();
     const stepOmissions = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/19/2026" } }];
     database.withAuthorityTransaction((repositories) => fanOutQueuedRuns(
       repositories,
@@ -94,8 +94,8 @@ describe("fanOutQueuedRuns", () => {
     assert.deepEqual(run.envelope.stepOmissions, stepOmissions);
   });
 
-  it("omits stepOmissions entirely from the envelope when the fan-out carries none", () => {
-    const database = openDatabase();
+  it("omits stepOmissions entirely from the envelope when the fan-out carries none", async () => {
+    const database = await openDatabase();
     database.withAuthorityTransaction((repositories) => fanOutQueuedRuns(
       repositories,
       new RunRecordService({ database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("a"), publishQueued: () => {} }),

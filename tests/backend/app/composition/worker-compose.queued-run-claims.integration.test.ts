@@ -174,7 +174,7 @@ describe("worker CLI argument parsing", () => {
 
 describe("composed worker runtime", () => {
   it("three workers boot, poll and claim without creating file authority", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const reports = await concurrentWorkers(repoRoot, clock);
@@ -184,7 +184,7 @@ describe("composed worker runtime", () => {
   });
 
   it("keeps a worker live and idle after completion and reuses its exact lifetime for another queued item", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     persistJournaledWorkerSettings(repoRoot, stateRoot, clock, { daemon: { idleRepollMs: 10 } });
@@ -230,7 +230,7 @@ describe("composed worker runtime", () => {
   });
 
   it("starts and awaits shutdown of registered gate source ports", async () => {
-    const { repoRoot } = repoRootWithState();
+    const { repoRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     let subscribed = 0;
     let stopped = 0;
@@ -253,7 +253,7 @@ describe("composed worker runtime", () => {
   });
 
   it("ignores retired unjournaled file bytes and claims using SQLite settings", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     const directory = join(stateRoot, "settings"); mkdirSync(directory);
     const path = join(directory, "settings.json"); writeFileSync(path, "retired invalid authority");
@@ -267,7 +267,7 @@ describe("composed worker runtime", () => {
   it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
     "refuses valid settings bytes with corrupt $label on worker boot",
     async (corruption) => {
-      const { repoRoot, stateRoot } = repoRootWithState();
+      const { repoRoot, stateRoot } = await repoRootWithState();
       const clock = manualClock(new Date(NOW));
       seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
       const sessions = happySessionHarness();
@@ -300,7 +300,7 @@ describe("composed worker runtime", () => {
   );
 
   it("uses persisted settings after restart for the worker session-acquisition bound", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     persistJournaledWorkerSettings(
       repoRoot,
@@ -358,7 +358,7 @@ describe("composed worker runtime", () => {
   });
 
   it("executes a retained queued run after settings change", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const original = reopen(stateRoot, clock).authority.runs.get(RUN_ID); assert.ok(original);
@@ -378,7 +378,7 @@ describe("composed worker runtime", () => {
   });
 
   it("rolls back a nested settings save when ownership fails at claim admission before either browser opens", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const sessions = happySessionHarness();
@@ -435,7 +435,7 @@ describe("composed worker runtime", () => {
   });
 
   it("releases its process record when authority open fails without masking that error", async () => {
-    const { repoRoot } = repoRootWithState();
+    const { repoRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     const openFailure = new Error("injected authority open failure");
     await assert.rejects(
@@ -461,7 +461,7 @@ describe("composed worker runtime", () => {
   });
 
   it("keeps its process record active when database closure cannot be proven", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     const closeFailure = new Error("injected database close failure");
     let stillOpen: AuthorityDatabase | undefined;

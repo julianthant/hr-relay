@@ -63,9 +63,9 @@ sessionManagerFor,
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 /** A recording artifact writer: content-addressed by digest, like the real one. */
@@ -102,19 +102,19 @@ function recordingArtifacts(): DiagnosticArtifactWriter & { readonly puts: () =>
   });
 }
 
-function openDatabase(now = NOW): AuthorityDatabase {
-  const profile = createBoundProfileFixture();
+async function openDatabase(now = NOW): Promise<AuthorityDatabase> {
+  const profile = await createBoundProfileFixture();
   let database: AuthorityDatabase;
   try {
     database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "diagnostic-capture-test" },
       manualClock(new Date(now)), undefined, undefined, undefined, boundProfileCredentials(profile.admission));
   } catch (error) {
     const failures: unknown[] = [error];
-    try { profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+    try { await profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
     if (failures.length > 1) throw new AggregateError(failures, "diagnostic fixture opening cleanup failed", { cause: error });
     throw error;
   }
-  disposers.push(() => { database.close(); profile.close(); });
+  disposers.push(async () => { database.close(); await profile.close(); });
   return database;
 }
 
@@ -136,7 +136,7 @@ function captureService(database: AuthorityDatabase, now = NOW): {
 
 describe("diagnostic values at capture", () => {
   it("retains classified originals and names unclassified values", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const { service } = captureService(database);
     const bundle = await service.prepare({
       trigger: "operator-request",
@@ -168,7 +168,7 @@ describe("diagnostic values at capture", () => {
   });
 
   it("retains a value even when its key names a credential source", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const { service } = captureService(database);
     const bundle = await service.prepare({
         trigger: "operator-request",
@@ -183,7 +183,7 @@ describe("diagnostic values at capture", () => {
   });
 
   it("refuses a non-screenshot attachment that stays restricted", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const { service } = captureService(database);
     await assert.rejects(
       service.prepare({
@@ -207,7 +207,7 @@ describe("diagnostic values at capture", () => {
 
 describe("the failure and its bundle land together", () => {
   for (const rollback of [false, true]) it(`settles diagnostic bundle with failure (rollback=${String(rollback)})`, async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const sessions = sessionFactoryHarness({
@@ -234,7 +234,7 @@ describe("the failure and its bundle land together", () => {
       descriptor: personLookupDescriptor,
       stores: taskStoreRegistry,
       authority: database,
-      sessions: sessionManagerFor(sessions, clock),
+      sessions: await sessionManagerFor(sessions, clock),
       emitter: recordingEmitter().emitter,
       clock,
       ids: sequentialIdFactory("b"),
@@ -329,7 +329,7 @@ describe("the failure and its bundle land together", () => {
   });
 
   it("fails loud when a capture port is injected without an authority transaction", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const { service } = captureService(database);
@@ -344,7 +344,7 @@ describe("the failure and its bundle land together", () => {
       descriptor: personLookupDescriptor,
       stores: taskStoreRegistry,
       authority: transactionless,
-      sessions: sessionManagerFor(happySessionHarness(), clock),
+      sessions: await sessionManagerFor(happySessionHarness(), clock),
       emitter: recordingEmitter().emitter,
       clock,
       ids: sequentialIdFactory("b"),
@@ -377,7 +377,7 @@ describe("the failure and its bundle land together", () => {
 describe("retention and the pin sweep", () => {
 
   it("purges only the due ordinary bundles and never a pin", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     // A run and a failure the bundles can reference.
@@ -429,7 +429,7 @@ describe("retention and the pin sweep", () => {
 
 describe("selected lease screenshot actions", () => {
   it("persists once and records only the real returned screenshot attachment", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database } = authority;
     database.authority.runs.enqueue(personLookupQueuedRun());
@@ -465,7 +465,7 @@ describe("task screenshot persistence before checkpoint", () => {
         },
       });
       const stores = defineTaskStoreRegistry([...taskStoreRegistry.stores.filter(store => store.namespace !== "ucpath"), defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { ...ucpathStore.tasks, searchPersonOrg: captureTask })], taskStoreRegistry.corpus);
-      const harness = world.executorHarness({ stores });
+      const harness = await world.executorHarness({ stores });
       const { database, clock } = harness.authority;
       const queued = RunRecordSchema.parse(personLookupQueuedRun());
       const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: true } }, clock.now().toISOString());
@@ -480,7 +480,7 @@ describe("task screenshot persistence before checkpoint", () => {
             return { state: "available" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 };
           } };
         } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-        duoCeremony: fixtureDuoCeremonyGates(clock), browserScreenshotCapture: failure === "persist" ? { capture: async context => { if (context.system === "ucpath") throw new TypeError("private persistence content"); await capture.capture(context); } } : capture,
+        duoCeremony: await fixtureDuoCeremonyGates(clock), browserScreenshotCapture: failure === "persist" ? { capture: async context => { if (context.system === "ucpath") throw new TypeError("private persistence content"); await capture.capture(context); } } : capture,
       });
       sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
         descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: true });
@@ -529,7 +529,7 @@ describe("task screenshot persistence before checkpoint", () => {
 it("persists a task screenshot through a complete frozen binder into Logs without operation proof", async () => {
   const world = createRunExecutorTestWorld();
   try {
-    const harness = world.executorHarness({ descriptor: world.actionBindingCompiled.descriptor });
+    const harness = await world.executorHarness({ descriptor: world.actionBindingCompiled.descriptor });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, world.actionBindingQueuedRun(clock.now().toISOString()), clock.now().toISOString(), world.ACTION_BINDING_WORKFLOW_ID);
     const snapshot = claimed.run.envelope.operationDisplaySnapshot;
@@ -580,7 +580,7 @@ describe("Person Lookup final capture points", () => {
             verifyOnboardingRecord: async (record: Parameters<typeof baseCrm.verifyOnboardingRecord>[0]) => { pages.set("crm", "crm-record"); return record; },
           }),
         });
-        const harness = world.executorHarness({ sessions: factory });
+        const harness = await world.executorHarness({ sessions: factory });
         const { database, clock } = harness.authority;
         const queued = RunRecordSchema.parse(personLookupQueuedRun());
         const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: enabled } }, clock.now().toISOString());
@@ -595,7 +595,7 @@ describe("Person Lookup final capture points", () => {
               acquired.push(pages.get(input.system) ?? "unexpected-page");
               return { state: "available" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 };
             } };
-          } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: fixtureDuoCeremonyGates(clock),
+          } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: await fixtureDuoCeremonyGates(clock),
           browserScreenshotCapture: { capture: async context => { await capture.capture(context); persisted.push(pages.get(context.system) ?? "unexpected-page"); } },
         });
         sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,

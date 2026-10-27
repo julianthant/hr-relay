@@ -19,7 +19,7 @@ import { testDataInputSource } from "../../../support/helpers/test-data/test-dat
 const retainedPartialInputOwners = new Set<object>();
 
 it("refuses partial signer metadata from a genuinely admitted private producer before executor scope or effects", async () => {
-  const h = sourceBoundHarness(separationsDescriptor);
+  const h = await sourceBoundHarness(separationsDescriptor);
   retainedPartialInputOwners.add(h);
   try {
     const source = testDataInputSource({ separationsKualiFinalizationCanaryDocumentNumber: "4502" });
@@ -71,7 +71,7 @@ it("refuses partial signer metadata from a genuinely admitted private producer b
     assert.deepEqual(h.database.authority.runs.get(run.envelope.runId), claimed);
     assert.equal(h.database.getMeta().authorityGeneration, generation);
     assert.equal(h.lifecycle.requeue({ commandId: h.ids.uuid(), runId: claimed.envelope.runId, expectedVersion: claimed.version, cause: "recovery", claim: { workerId: slot.workerId, claimGeneration: claimed.claimGeneration } }).state, "applied");
-    h.dispose();
+    await h.dispose();
     retainedPartialInputOwners.delete(h);
   } catch (error) { throw retainAuthoritySourceClosure([error], { admission: h }); }
 });

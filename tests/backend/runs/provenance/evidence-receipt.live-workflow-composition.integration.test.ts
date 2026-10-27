@@ -27,13 +27,13 @@ import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-ad
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
-afterEach(() => {
-  for (const database of databases.splice(0)) closePersonLookupReceiptDatabase(database);
+afterEach(async () => {
+  for (const database of databases.splice(0)) await closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function openDatabase(): AuthorityDatabase {
-  return openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-", "receipt-test");
+async function openDatabase(): Promise<AuthorityDatabase> {
+  return await openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-", "receipt-test");
 }
 
 
@@ -89,8 +89,8 @@ function assertNoLeakage(receipt: RunEvidenceReceipt): void {
 /* ── run 1: the live person-lookup exit run ──────────────────────────────── */
 
 describe("the live person-lookup exit run explains itself", () => {
-  it("answers the operator's whole double-check from the receipt alone", () => {
-    const database = openDatabase();
+  it("answers the operator's whole double-check from the receipt alone", async () => {
+    const database = await openDatabase();
     const seeded = seedPersonLookupExitRun(database);
     const receipt = buildRunEvidenceReceipt({
       descriptor: personLookupDescriptor,
@@ -185,8 +185,8 @@ describe("the live person-lookup exit run explains itself", () => {
     assertNoLeakage(receipt);
   });
 
-  it("is a pure function of authority: re-deriving the same run yields the same bytes", () => {
-    const database = openDatabase();
+  it("is a pure function of authority: re-deriving the same run yields the same bytes", async () => {
+    const database = await openDatabase();
     const seeded = seedPersonLookupExitRun(database);
     const build = () => buildRunEvidenceReceipt({
       descriptor: personLookupDescriptor,

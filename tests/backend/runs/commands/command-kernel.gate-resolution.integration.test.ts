@@ -199,9 +199,9 @@ describe("gate resolution", () => {
     return result;
   }
 
-  it("refuses gate resolution after a fingerprint change even when every timeline node remains", () => {
+  it("refuses gate resolution after a fingerprint change even when every timeline node remains", async () => {
     const descriptors = [...DESCRIPTOR_SET];
-    const harness = createHarness(undefined, { descriptors });
+    const harness = await createHarness(undefined, { descriptors });
     const staged = stageIdentityGateRun(harness);
     const index = descriptors.findIndex(descriptor => descriptor.id === identityCheckDescriptor.id);
     assert.ok(index >= 0);
@@ -211,9 +211,9 @@ describe("gate resolution", () => {
   });
 
   it("confirms the real gate node through typed transport and retains uncertainty for divergent readback", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
-    const world = makeWorld();
+    const world = await makeWorld();
     try {
       const reader = sqliteRunReader(harness.database, harness.clock);
       const deps: RunDetailQueryDeps = {
@@ -270,11 +270,11 @@ describe("gate resolution", () => {
       fault = "none";
       assert.equal((await executor.replay(command.commandId, options)).kind, "confirmed");
       assert.equal(harness.database.authority.gateResults.listByRun(staged.runId).length, 1);
-    } finally { world.dispose(); }
+    } finally { await world.dispose(); }
   });
 
-  it("rolls back gate result, resume and command when the required SQLite event cannot persist", () => {
-    const harness = createHarness();
+  it("rolls back gate result, resume and command when the required SQLite event cannot persist", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
     const gate = descriptorRuntimeNodes(identityCheckDescriptor)
       .find((node) => node.kind === "gate" && String(node.id) === "identity-approval");
@@ -305,8 +305,8 @@ describe("gate resolution", () => {
     assert.equal(harness.database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "span" && event.payload.event.t === "gate.resolved").length, 1);
   });
 
-  it("parses the descriptor's exact gate schema, stores the result, and resumes at the parked node", () => {
-    const harness = createHarness();
+  it("parses the descriptor's exact gate schema, stores the result, and resumes at the parked node", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
     const gateNode = descriptorRuntimeNodes(identityCheckDescriptor)
       .find((node) => node.kind === "gate" && String(node.id) === "identity-approval");
@@ -338,8 +338,8 @@ describe("gate resolution", () => {
     assert.equal(resumed?.envelope.startAt, "approval");
   });
 
-  it("refuses a decision bound to the previous write plan before writing authority", () => {
-    const harness = createHarness();
+  it("refuses a decision bound to the previous write plan before writing authority", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness, "name-resolved", {
       currentReason: "the current run does not compose a separation write plan",
       previousReason: "the approved packet showed a prior write plan",
@@ -357,8 +357,8 @@ describe("gate resolution", () => {
     );
   });
 
-  it("records an explicit rejection by the command actor and resumes at the declared node", () => {
-    const harness = createHarness();
+  it("records an explicit rejection by the command actor and resumes at the declared node", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
     const result = harness.kernel.execute(gateCommand(staged.runId, staged.version, {
       schemaHash: deriveSchemaHash(IdentityApprovalResultSchema, "output"),
@@ -375,8 +375,8 @@ describe("gate resolution", () => {
     assert.equal(resumed?.envelope.startAt, "approval");
   });
 
-  it("refuses a newer item checkpoint from an unlinked claim before writing authority", () => {
-    const harness = createHarness();
+  it("refuses a newer item checkpoint from an unlinked claim before writing authority", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
     const sibling = harness.database.authority.runCheckpoints.insert({
       ...staged.checkpoint,
@@ -392,8 +392,8 @@ describe("gate resolution", () => {
     );
   });
 
-  it("refuses a gate whose declared condition is now false before writing authority", () => {
-    const harness = createHarness();
+  it("refuses a gate whose declared condition is now false before writing authority", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness, "document-eid");
     assertGateRefusalHasNoMutation(
       harness,

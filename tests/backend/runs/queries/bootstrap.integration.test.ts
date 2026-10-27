@@ -86,8 +86,8 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
 }
 
 describe("bootstrap start-surface block", () => {
-  it("serves, for every registered workflow, exactly what its descriptor declares", () => {
-    const world = makeWorld();
+  it("serves, for every registered workflow, exactly what its descriptor declares", async () => {
+    const world = await makeWorld();
     try {
       // Re-parsed on purpose: the producer's own `.parse` is what makes this a
       // statement about the WIRE rather than about an object literal.
@@ -131,12 +131,12 @@ describe("bootstrap start-surface block", () => {
       const doors = [...served.values()].map((start) => start?.inputRun !== undefined);
       expect(doors).toContain(true);
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("serves a synthetic bumped descriptor version verbatim", () => {
-    const world = makeWorld();
+  it("serves a synthetic bumped descriptor version verbatim", async () => {
+    const world = await makeWorld();
     try {
       const wire = FrontendBootstrapWireSchema.parse(buildBootstrap({
         ...depsOf(world),
@@ -150,12 +150,12 @@ describe("bootstrap start-surface block", () => {
       expect(WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)[0]?.start.version).toBe(VERSION_SEVEN_DESCRIPTOR.version);
       expect(WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)[0]?.start.inputRun).toBeUndefined();
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("serves a declared omission's form and cascade on the step's control", () => {
-    const world = makeWorld();
+  it("serves a declared omission's form and cascade on the step's control", async () => {
+    const world = await makeWorld();
     try {
       const wire = FrontendBootstrapWireSchema.parse(buildBootstrap({
         ...depsOf(world),
@@ -189,7 +189,7 @@ describe("bootstrap start-surface block", () => {
         },
       ]);
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 });
@@ -246,8 +246,8 @@ function depsOf(
 }
 
 describe("bootstrap storage summary", () => {
-  it("serves both ordinary and protected command schema identities", () => {
-    const world = makeWorld();
+  it("serves both ordinary and protected command schema identities", async () => {
+    const world = await makeWorld();
     try {
       const deps = depsOf(world, { authorityReachable: true, backup: "current" });
       const wire = buildBootstrap(deps);
@@ -258,12 +258,12 @@ describe("bootstrap storage summary", () => {
         protectedSchemaHash: undefined,
       }).success, false);
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("projects the retained strict preflight report in registry order", () => {
-    const world = makeWorld();
+  it("projects the retained strict preflight report in registry order", async () => {
+    const world = await makeWorld();
     try {
       const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup: "current" }));
       assert.deepEqual(wire.preflight, [
@@ -318,12 +318,12 @@ describe("bootstrap storage summary", () => {
         },
       ]);
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("projects retained preflight failures with their exact blocks and remediation", () => {
-    const world = makeWorld();
+  it("projects retained preflight failures with their exact blocks and remediation", async () => {
+    const world = await makeWorld();
     try {
       const deps = depsOf(world, { authorityReachable: true, backup: "current" });
       const retained = deps.preflightReport();
@@ -353,12 +353,12 @@ describe("bootstrap storage summary", () => {
         checkedAt: AT.toISOString(),
       });
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("emits every authority arm the wire declares", () => {
-    const world = makeWorld();
+  it("emits every authority arm the wire declares", async () => {
+    const world = await makeWorld();
     try {
       const reached = new Set<string>();
       for (const authorityReachable of [true, false]) {
@@ -369,12 +369,12 @@ describe("bootstrap storage summary", () => {
       }
       expect([...reached].sort()).toEqual([...armsOf("authority")].sort());
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("emits every backup arm the wire declares", () => {
-    const world = makeWorld();
+  it("emits every backup arm the wire declares", async () => {
+    const world = await makeWorld();
     try {
       const reached = new Set<string>();
       for (const backup of ["current", "stale", "missing", "unavailable"] as const) {
@@ -383,12 +383,12 @@ describe("bootstrap storage summary", () => {
       }
       expect([...reached].sort()).toEqual([...armsOf("backup")].sort());
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("an unreachable authority still serves the backup indicator", () => {
-    const world = makeWorld();
+  it("an unreachable authority still serves the backup indicator", async () => {
+    const world = await makeWorld();
     try {
 
       const wire = buildBootstrap(depsOf(world, { authorityReachable: false, backup: "stale" }));
@@ -397,7 +397,7 @@ describe("bootstrap storage summary", () => {
         { authority: "unavailable", backup: "stale" },
       );
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 });

@@ -16,8 +16,8 @@ import { INTAKE_FIXTURE_WORKFLOW_ID } from "../../support/fixtures/intake-workfl
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;
-const authorities: ReturnType<typeof createIntakeAuthority>[] = [];
-afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); for (const authority of authorities.splice(0)) authority.close(); });
+const authorities: Awaited<ReturnType<typeof createIntakeAuthority>>[] = [];
+afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); for (const authority of authorities.splice(0)) await authority.close(); });
 type Adapter = ReturnType<typeof useIntakeWiringAdapter>;
 let model: Adapter;
 const applied: string[] = [];
@@ -86,7 +86,7 @@ it("retains stale data during refresh, blocks writes and exposes failed refresh 
 });
 
 it("uses real intake mapping validation, keeps excluded rows and admits only the exact reviewed enqueue", async () => {
-  const authority = createIntakeAuthority(); authorities.push(authority);
+  const authority = await createIntakeAuthority(); authorities.push(authority);
   const uploaded = await authority.intake.upload({ workflow: INTAKE_FIXTURE_WORKFLOW_ID, fileName: "synthetic.csv", mediaType: "text/csv",
     bytes: Uint8Array.from(new TextEncoder().encode("Employee ID#,Effective Date,Dept\n10456712,07/01/2026,Housing\n10-4567,07/01/2026,Housing\n10998801,07/01/2026,Student Affairs\n")) });
   assert.notEqual(uploaded.state, "refused"); if (uploaded.state === "refused") throw new Error(uploaded.message);

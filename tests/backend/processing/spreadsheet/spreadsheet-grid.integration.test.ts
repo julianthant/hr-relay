@@ -8,10 +8,10 @@ import { CommandRequestSchema,CommandResultSchema } from "../../../../src/rules/
 import { createIntakeAuthority,INTAKE_CSV } from "../../../support/fixtures/dashboard/fixture-intake-authority.js";
 import { defineIntakeFixtureDescriptor,INTAKE_FIXTURE_WORKFLOW_ID } from "../../../support/fixtures/intake-workflow-fixture.js";
 
-type Harness = ReturnType<typeof createIntakeAuthority>;
+type Harness = Awaited<ReturnType<typeof createIntakeAuthority>>;
 const opened: Harness[] = [];
-afterEach(() => { for (const h of opened.splice(0)) h.close(); });
-function harness() { const h = createIntakeAuthority(); opened.push(h); return h; }
+afterEach(async () => { for (const h of opened.splice(0)) await h.close(); });
+async function harness() { const h = await createIntakeAuthority(); opened.push(h); return h; }
 async function send(h: Harness, wire: { intakeSessionId: string; expectedVersion: number }, type: string, payload?: unknown) {
   const response = await h.post(h.request(wire, type, payload));
   const result = CommandResultSchema.parse(await response.json());
@@ -33,7 +33,7 @@ function noEffects(h: Harness, wire: Awaited<ReturnType<typeof ready>>) {
   assert.ok(h.database.authority.runSessions.list().every(session => session.origin.kind !== "intake-manifest" || session.origin.intakeManifestId !== wire.reservedManifestId));
 }
 it("real HTTP upload refuses malformed bytes and reports exact valid/unresolved/excluded rows", async () => {
-  const h = harness();
+  const h = await harness();
   const response = await h.app.request("http://127.0.0.1/api/v1/intake/files?workflow=intake-fixture&filename=broken.xlsx", { method: "POST", headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }, body: "not a workbook" });
   assert.equal(response.status, 422);
   const wire = await ready(h); assert.ok(wire.reviewBinding);
@@ -43,7 +43,7 @@ it("real HTTP upload refuses malformed bytes and reports exact valid/unresolved/
   assert.equal(wire.validation.validRows + wire.validation.excluded.length + wire.validation.unresolvedRows.length, wire.rowCount);
 });
 it("rejects missing, wrong-workflow, future and stale comparison selection without changing preparation", async () => {
-  const h = harness(); const first = await enqueue(h, await ready(h)); assert.ok(first.intakeManifestId);
+  const h = await harness(); const first = await enqueue(h, await ready(h)); assert.ok(first.intakeManifestId);
   const wire = await ready(h, INTAKE_CSV.replace("Student Affairs", "Changed department"));
   const original = h.database.authority.intakeManifests.get(first.intakeManifestId); assert.ok(original);
   for (const [id, workflow, createdAt] of [["11111111-1111-4111-8111-111111111111", "different-workflow", original.createdAt], ["22222222-2222-4222-8222-222222222222", original.workflow, "2099-01-01T00:00:00.000Z"]]) {
@@ -55,14 +55,14 @@ it("rejects missing, wrong-workflow, future and stale comparison selection witho
   assert.deepEqual(await h.intake.read(wire.intakeSessionId), wire);
 });
 it("contract drift after review invalidates confirmation despite unchanged session revision", async () => {
-  const h = harness(); const wire = await ready(h);
+  const h = await harness(); const wire = await ready(h);
   h.setDescriptor(defineIntakeFixtureDescriptor({ id: INTAKE_FIXTURE_WORKFLOW_ID, code: "if", contractFingerprint: "a".repeat(64), enqueue: "allow-parallel" }));
   const fresh = await h.intake.read(wire.intakeSessionId); assert.equal(fresh.expectedVersion, wire.expectedVersion); assert.notEqual(fresh.reviewBinding, wire.reviewBinding);
   const response = await h.post(h.request(wire, "enqueue-intake-manifest", { dryRun: false, reviewBinding: wire.reviewBinding })); assert.equal(response.status, 422); noEffects(h, wire);
   assert.equal((await enqueue(h, fresh)).state, "enqueued");
 });
 it("replays the exact applied command after restart and preserves source and terminal bytes across independent same-byte imports", async () => {
-  const h = harness(); const wire = await ready(h); const request = h.request(wire, "enqueue-intake-manifest", { dryRun: false, reviewBinding: wire.reviewBinding });
+  const h = await harness(); const wire = await ready(h); const request = h.request(wire, "enqueue-intake-manifest", { dryRun: false, reviewBinding: wire.reviewBinding });
   const first = CommandResultSchema.parse(await (await h.post(request)).json()); assert.equal(CommandResultSchema.parse(first).state, "applied");
   const terminal = await h.intake.read(wire.intakeSessionId); const bytes = readFileSync(h.path); assert.ok(bytes.length > 0);
   h.restart(); assert.deepEqual(await (await h.post(request)).json(), { ...first, state: "already-applied" });
@@ -73,14 +73,14 @@ it("replays the exact applied command after restart and preserves source and ter
 });
 
 it("canonical schema drift without a revision change refuses the old review", async () => {
-  const h = harness(); const wire = await ready(h);
+  const h = await harness(); const wire = await ready(h);
   h.setDescriptor(defineIntakeFixtureDescriptor({ id: INTAKE_FIXTURE_WORKFLOW_ID, code: "if", contractFingerprint: "f".repeat(64), enqueue: "allow-parallel", canonicalDepartmentMaxLength: 200 }));
   const fresh = await h.intake.read(wire.intakeSessionId); assert.equal(fresh.expectedVersion, wire.expectedVersion); assert.notEqual(fresh.reviewBinding, wire.reviewBinding);
   const response = await h.post(h.request(wire, "enqueue-intake-manifest", { dryRun: false, reviewBinding: wire.reviewBinding })); assert.equal(response.status, 422); noEffects(h, wire);
   assert.equal((await enqueue(h, fresh)).state, "enqueued");
 });
 it("keeps import evidence immutable and terminal after a member is explicitly deleted", async () => {
-  const h = harness(); const wire = await ready(h); const terminal = await enqueue(h, wire); assert.ok(terminal.manifest);
+  const h = await harness(); const wire = await ready(h); const terminal = await enqueue(h, wire); assert.ok(terminal.manifest);
   const sourceBefore = await readArtifactBytes(() => h.artifacts.open(wire.artifact));
   const manifestBefore = JSON.stringify(h.database.authority.intakeManifests.get(terminal.manifest.manifestId));
   const member = h.database.authority.runs.listByItem({ workflow: terminal.workflow, itemId: terminal.manifest.validRows[0].itemId })[0]; assert.ok(member);
@@ -106,7 +106,7 @@ for (const [name, mediaType, bytes] of [
   ["partial.csv", "text/csv", Buffer.from('Employee ID#,Effective Date\n"10456712,2026-07-01')],
   ["partial.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Buffer.from([0x50, 0x4b, 3, 4, 0, 0])],
 ] as const) it(`refuses ${name} before creating a session or runs`, async () => {
-  const h = harness();
+  const h = await harness();
   const response = await h.app.request(`http://127.0.0.1/api/v1/intake/files?workflow=intake-fixture&filename=${name}`, { method: "POST", headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": mediaType }, body: new Uint8Array(bytes) });
   assert.equal(response.status, 422);
   assert.deepEqual(h.database.authority.intakeSessions.findActiveBySource(createHash("sha256").update(bytes).digest("hex")), []);
@@ -115,7 +115,7 @@ for (const [name, mediaType, bytes] of [
 });
 
 it.each(["mapping", "correction", "exclusion"])("%s decisions invalidate the reviewed plan before fan-out", async decision => {
-  const h = harness(); const original = await ready(h);
+  const h = await harness(); const original = await ready(h);
   const changed = decision === "mapping"
     ? await send(h, original, "confirm-intake-mapping", { targetFieldId: "department", sourceColumnId: original.columns[2].sourceColumnId, headerFingerprint: original.headerFingerprint })
     : decision === "correction"
@@ -126,7 +126,7 @@ it.each(["mapping", "correction", "exclusion"])("%s decisions invalidate the rev
   assert.equal(refused.status, 422); noEffects(h, reviewed); assert.equal((await enqueue(h, reviewed)).state, "enqueued");
 });
 it("source-backed rejection evidence retains the complete local value and visible operator samples", async () => {
-  const h = harness(); const sentinel = "synthetic-private-6543";
+  const h = await harness(); const sentinel = "synthetic-private-6543";
   let wire = (await h.upload(INTAKE_CSV.replace("10-4567", sentinel))).session;
   assert.ok((await readArtifactBytes(() => h.artifacts.open(wire.artifact))).includes(Buffer.from(sentinel)));
   assert.ok(wire.columns[0].samples.includes(sentinel));

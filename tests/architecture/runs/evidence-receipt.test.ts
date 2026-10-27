@@ -64,17 +64,17 @@ function kualiReceipt() {
   });
 }
 
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const databases: AuthorityDatabase[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of databases.splice(0)) database.close();
-  for (const profile of profiles.splice(0)) profile.close();
+  for (const profile of profiles.splice(0)) await profile.close();
 });
 
 
-function personLookupReceipt() {
-  const profile = createBoundProfileFixture();
+async function personLookupReceipt() {
+  const profile = await createBoundProfileFixture();
   profiles.push(profile);
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "evidence-receipt-guard" },
@@ -94,8 +94,8 @@ function personLookupReceipt() {
 /* ── half 1: receipt strictness ──────────────────────────────────────────── */
 
 describe("evidence receipt — strictness", () => {
-  it("rejects an unknown key at every level of a real receipt", () => {
-    const receipt = JSON.parse(JSON.stringify(personLookupReceipt())) as Record<string, unknown>;
+  it("rejects an unknown key at every level of a real receipt", async () => {
+    const receipt = JSON.parse(JSON.stringify(await personLookupReceipt())) as Record<string, unknown>;
     assert.equal(RunEvidenceReceiptSchema.safeParse(receipt).success, true);
     assert.equal(
       RunEvidenceReceiptSchema.safeParse({ ...receipt, extra: 1 }).success,

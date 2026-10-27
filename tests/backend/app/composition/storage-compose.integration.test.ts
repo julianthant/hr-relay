@@ -83,7 +83,7 @@ describe("SQLite settings authority", () => {
 afterEach(_afterEachFixture0);
 
   it("after uncertain audit, real CLI restore preserves credentials and exact retry repairs the missing audit", async () => {
-    const f = fixture(undefined, true); const revision = f.store.read().revision; const request = protectedCommand(revision); assert.ok(f.admission);
+    const f = await fixture(undefined, true); const revision = f.store.read().revision; const request = protectedCommand(revision); assert.ok(f.admission);
     const backup = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["backup"], f.clock, f.repoRoot, f.admission, f.store);
     assert.equal(backup.exitCode, 0, backup.output);
     const directory = join_m0(f.root, "backups", "authority");
@@ -144,12 +144,12 @@ function composeStorageCommand(isolation: Parameters<typeof composeStorageComman
 const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));
 const ManifestGenerationSchema = z.object({ authorityGeneration: z.number().int().nonnegative() });
 const roots: string[] = [];
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 
-const _afterEachFixture0 = () => {
+const _afterEachFixture0 = async () => {
   for (const database of openedAuthorities.splice(0)) database.close();
   admissions.clear();
-  for (const profile of profiles.splice(0)) profile.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 
@@ -161,8 +161,8 @@ interface Paths {
   readonly renewAfterRestore: () => void;
 }
 
-function paths(mode: "ready" | "pending" | "uninitialized" = "uninitialized"): Paths {
-  const profile = mode === "uninitialized" ? undefined : createBoundProfileFixture(mode === "pending" ? { pending: true } : {});
+async function paths(mode: "ready" | "pending" | "uninitialized" = "uninitialized"): Promise<Paths> {
+  const profile = mode === "uninitialized" ? undefined : await createBoundProfileFixture(mode === "pending" ? { pending: true } : {});
   if (profile !== undefined) profiles.push(profile);
   const repoRoot = profile?.workspace ?? mkdtempSync(join_m0(realpathSync(tmpdir()), "hrauto-storage-backup-"));
   if (profile === undefined) roots.push(repoRoot);
@@ -202,7 +202,7 @@ describe("cli storage backup", () => {
 afterEach(_afterEachFixture0);
 
   it("real restore warns about displaced fenced evidence without resurrecting the run", async () => {
-    const p = paths("ready"); createAuthority(p);
+    const p = await paths("ready"); createAuthority(p);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
@@ -246,7 +246,7 @@ afterEach(_afterEachFixture0);
     } finally { next.close(); }
   });
   it("reports a lost write attempt even when the restored run still exists at the same version", async () => {
-    const p = paths("ready"); createAuthority(p);
+    const p = await paths("ready"); createAuthority(p);
     const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "retained-restore-owner" }, CLOCK);
     try {
       seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT, p.authorityPath);
@@ -316,7 +316,7 @@ afterEach(_afterEachFixture0);
 
   it.each(["corrupt", "file-symlink", "directory-symlink", "changed-during-read"] as const)(
     "refuses %s preserved authority evidence without leaking supplied content", async (damage) => {
-      const p = paths("ready"); createAuthority(p);
+      const p = await paths("ready"); createAuthority(p);
       const directory = join_m0(p.stateRoot, "backups", "suspects");
       const name = "suspect-20260903120000000-87000000-0000-4000-8000-000000000008.sqlite";
       const source = join_m0(directory, name);
@@ -344,7 +344,7 @@ afterEach(_afterEachFixture0);
     });
 
   it.each(["database count", "file count", "bytes"] as const)("bounds preserved authority %s", async (limit) => {
-    const p = paths("ready"); createAuthority(p);
+    const p = await paths("ready"); createAuthority(p);
     const directory = join_m0(p.stateRoot, "backups", "suspects"); mkdirSync(directory, { recursive: true });
     const count = limit === "file count" ? 385 : limit === "database count" ? 129 : 1;
     for (let index = 0; index < count; index++) {
@@ -360,7 +360,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("accounts a preserved run after explicit deletion without reviving it", async () => {
-    const p = paths("ready"); createAuthority(p);
+    const p = await paths("ready"); createAuthority(p);
     const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "deleted-preserved-owner" }, CLOCK);
     try {
       initial.authority.runs.enqueue(QUEUED_RUN);
@@ -385,7 +385,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("ignores all four retired cleanup-only names through plan/apply without importing or removing values", async () => {
-    const p = paths("pending");
+    const p = await paths("pending");
     const retired = ["I9_USER_ID", "I9_PASSWORD", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"];
     const values = retired.map((_, index) => `synthetic-retired-private-${String(index)}`);
     const source = retired.map((name, index) => `${name}=${values[index]}`).join("\n") + "\n";
@@ -427,7 +427,7 @@ afterEach(_afterEachFixture0);
     assert.equal(readFileSync(environmentFile, "utf8"), source);
   });
   it("ignores invalid retired migration values without reading or echoing them", async () => {
-    const p = paths(); const source = "HRAUTO_DEFAULT_WORKERS=synthetic-invalid-private-input\n";
+    const p = await paths(); const source = "HRAUTO_DEFAULT_WORKERS=synthetic-invalid-private-input\n";
     writeFileSync(join_m0(p.repoRoot, ".env"), source, { mode: 0o600 });
     const result = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--plan", "--json"], CLOCK, p.repoRoot);
     assert.equal(result.exitCode, 0);
@@ -436,12 +436,12 @@ afterEach(_afterEachFixture0);
     assert.equal(readFileSync(join_m0(p.repoRoot, ".env"), "utf8"), source);
   });
   it.each(["--force", "--skip-backup", "--allow-mixed"])("refuses unsupported upgrade flag %s before touching the root", async (flag) => {
-    const p = paths(); const before = readdirSync(p.repoRoot);
+    const p = await paths(); const before = readdirSync(p.repoRoot);
     const result = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", flag], CLOCK, p.repoRoot);
     assert.equal(result.exitCode, 2); assert.ok(result.output.includes(flag)); assert.deepEqual(readdirSync(p.repoRoot), before);
   });
   it("writes exactly one verified backup and manifest at the live generation", async () => {
-    const p = paths("ready");
+    const p = await paths("ready");
     const generation = createAuthority(p);
     assert.equal(existsSync(p.backupDirectory), false, "no backup exists before the operator asks");
 
@@ -465,7 +465,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("refuses when no authority database exists and creates nothing", async () => {
-    const p = paths();
+    const p = await paths();
     const outcome = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(outcome.exitCode, 1);
     assert.match(outcome.output, /storage backup REFUSED — no authority database exists/u);
@@ -474,7 +474,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("lets the doctor exit 0 on a healthy reconciled authority with no backup, reporting it missing", async () => {
-    const p = paths("ready");
+    const p = await paths("ready");
     createAuthority(p);
     const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor"], CLOCK, p.repoRoot);
     assert.equal(doctor.exitCode, 0, doctor.output);
@@ -487,7 +487,7 @@ afterEach(_afterEachFixture0);
     assert.match(after.output, /^backup: current/mu);
   });
   it.each(["missing", "malformed"])("refuses %s established credentials without restore writes", async (credentialState) => {
-    const p = paths("ready"); createAuthority(p);
+    const p = await paths("ready"); createAuthority(p);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json"));
@@ -546,7 +546,7 @@ afterEach(_afterEachFixture0);
 it.each([false, true])("restore confirmation evidence survives recovery accounting (backup after commit: %s)", async (backupAfterCommit) => {
 const rehearsal = createParkedWriteRoundTripTestWorld();
 try {
-  const harness = rehearsal.roundTrip();
+  const harness = await rehearsal.roundTrip();
   const { profile, clock } = harness;
   const p: Paths = { repoRoot: profile.workspace, stateRoot: profile.stateRoot, authorityPath: profile.path,
     backupDirectory: join_m0(profile.stateRoot, "backups", "authority"), renewAfterRestore() {
@@ -676,8 +676,8 @@ try {
   if (afterReport.spanAuthority.state !== "degraded") throw new Error("expected restore-loss warning");
   assert.ok(afterReport.spanAuthority.problems.some(problem => problem.state === "restore-loss" && problem.runId === current.runId && problem.possibleExternalWrite === true));
 } finally {
-  _afterEachFixture0();
-  rehearsal.cleanup();
+  await _afterEachFixture0();
+  await rehearsal.cleanup();
 }
 });
 

@@ -17,7 +17,7 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 
 for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt of (["intent", "digest-missing", "orphan-stage", "stage-substitution", "stage-extra-copy", "stage-external-lock", "stage-child-release", "stage-parent-release", "stage-source-change", "stage-registry-change", "legacy-value-tamper", "legacy-timestamp-tamper", "legacy-commandFingerprint-tamper", "legacy-expectedRevision-tamper", "legacy-protectedSchemaHash-tamper", "stage-journal", "stage-intent", "key", "key-phase", "document-phase", "key-substitution", "key-malformed", "key-foreign", "anchor"] as const).filter(boundary => mode === "prove-v2" || !boundary.startsWith("legacy-"))) it(`converts ${mode} through verified sign-in and resumes exact ${interruptedAt} publication without reviving a peer`, async () => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z")), hostFacts = { primaryDisplay: null };
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z")), hostFacts = { primaryDisplay: null };
   const initial = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts });
   await initial.account.close(); initial.database.close();
@@ -27,7 +27,7 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
     return composeProfileCredentialInitializationInventory({ machine: f.machine, admission: child, clock, hostFacts })(operation, writer, copies);
   };
   const peer = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot, initializationInventory });
-  const fields = { email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() };
+  const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() };
   const active = peer.signIn(fields); assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("genuine current-format sign-in refused");
   const child = f.machine.admitProfile(createProfileRegistry(f.machine).storageClaim(active.profileId));
@@ -179,5 +179,5 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
       assert.ok(typeof envelope === "object" && envelope !== null && "schemaVersion" in envelope);
       assert.equal(envelope.schemaVersion, 4);
     } finally { current.release(); }
-  } finally { child.release(); f.close(); }
+  } finally { child.release(); await f.close(); }
 });

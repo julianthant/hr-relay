@@ -19,8 +19,8 @@ import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-ad
 
 {
 
-it("keeps canonical claims fenced until the native pool reservation is audited", () => {
-  const fixture = foundationFixture();
+it("keeps canonical claims fenced until the native pool reservation is audited", async () => {
+  const fixture = await foundationFixture();
   try {
     const ports = testWorkerPorts(fixture.db, fixture.clock, { path: fixture.path, descriptor: personLookupDescriptor, poolIndex: 2 });
     const worker = fixture.db.authority.workerSlots.list("person-lookup").find(slot => slot.poolIndex === 2);
@@ -49,7 +49,7 @@ it("keeps canonical claims fenced until the native pool reservation is audited",
     fixture.db.authority.workerControls.audit(command.commandId, NOW);
     assert.equal(claim().state, "applied");
     assert.equal(fixture.db.authority.runs.get(runId)?.lifecycle.state, "claimed");
-  } finally { fixture.dispose(); }
+  } finally { await fixture.dispose(); }
 });
 }
 

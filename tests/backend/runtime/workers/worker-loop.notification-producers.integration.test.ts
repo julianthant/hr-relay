@@ -31,7 +31,7 @@ describe("canonical notification producers", () => {
         workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID), workerId: WorkerIdSchema.parse(f.db.authority.workerSlots.list(WRITE_FIXTURE_WORKFLOW_ID)[0].workerId),
         descriptor: writeFixtureDescriptor, stores, authority: f.db, sessionFactory: sessions.factory, emitter,
         clock: f.clock, ids, scheduler, taskDeadlineMs: 60_000, sessionAcquireMs: 20_000,
-        duoCeremony: fixtureDuoCeremonyGates(f.clock), heartbeatIntervalMs: 600_000, idleRepollMs: 1_000,
+        duoCeremony: await fixtureDuoCeremonyGates(f.clock), heartbeatIntervalMs: 600_000, idleRepollMs: 1_000,
         log, stopSignal: new AbortController().signal, exitWhenIdle: true,
         writeSequencerFor: manager => createWriteSequencer({ lifecycle: testRunLifecycle(f.db, f.clock), stores,
           authority: f.db, sessions: manager, emitter, clock: f.clock, ids, scheduler, taskDeadlineMs: 60_000,
@@ -40,6 +40,6 @@ describe("canonical notification producers", () => {
       await createTrustNotifications({ database: f.db, reader: f.reader, clock: f.clock, ids: sequentialIdFactory("b") }).observer.observe();
       expect(f.inbox.list("local-operator").map(row => row.trigger)).toEqual(["write-parked"]);
       expect(JSON.stringify(f.inbox.list("local-operator"))).not.toContain("private park");
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 });

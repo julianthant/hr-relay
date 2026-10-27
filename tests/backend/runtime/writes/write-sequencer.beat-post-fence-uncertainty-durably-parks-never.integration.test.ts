@@ -12,7 +12,7 @@ afterEach(cleanup);
 describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, never silent)", () => {
 
   it("retains a parent-aborted transaction lease until its non-cooperative commit callback settles", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     let releaseCallback = (): void => undefined;
@@ -68,7 +68,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
   });
 
   it("keeps a deadline failure primary when parent abort follows during retained callback settlement", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     let releaseCallback = (): void => undefined;
@@ -128,7 +128,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
   });
 
   it("parks by task and field when a buffered commit observation is undeclared", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.recordUndeclaredCommitField = true;
@@ -145,7 +145,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
   });
 
   it("parks with the commit error first when post-settlement fence emission also throws", async () => {
-    const h = harness({ emitterThrowsOn: "transaction.fenced" });
+    const h = await harness({ emitterThrowsOn: "transaction.fenced" });
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.commitThrows = new Error("PRIMARY_COMMIT_TASK_FAILURE");
@@ -180,7 +180,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
   });
 
   it("parks intent and run when the commit impl throws after the fence", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.commitThrows = new Error("browser crashed mid-click");
@@ -202,7 +202,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
   });
 
   it("parks when the receipt fails its proof schema — clicked, cannot prove it landed", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.commitOutput = { transactionId: "" };
@@ -217,7 +217,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
   });
 
   it("save-verify: a present read-back commits; an absent read-back parks", async () => {
-    const h = harness();
+    const h = await harness();
     const first = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
@@ -232,7 +232,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     });
     assert.ok(h.world.events.includes("verify"));
 
-    const h2 = harness();
+    const h2 = await harness();
     const second = claimRunning(h2.database, h2.clock);
     h2.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h2.world.verifyResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));

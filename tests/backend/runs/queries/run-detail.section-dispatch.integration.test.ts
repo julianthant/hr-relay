@@ -22,8 +22,8 @@ function depsOf(current: DashboardWorld): RunDetailQueryDeps {
 }
 
 describe("run-detail section registration", () => {
-  it("routes the served logs and Context/Data arms through the live dispatcher", () => {
-    const current = world();
+  it("routes the served logs and Context/Data arms through the live dispatcher", async () => {
+    const current = await world();
     queuedEventOf(current, { seed: 1 });
     const deps = depsOf(current);
 
@@ -43,7 +43,7 @@ describe("run-detail section registration", () => {
   });
 
   it("refuses a reader that returns authority for a different run", async () => {
-    const current = world();
+    const current = await world();
     queuedEventOf(current, { seed: 1 });
     const deps = depsOf(current);
     const runReader = {
@@ -65,7 +65,7 @@ describe("run-detail section registration", () => {
   });
 
   it("pages bounded Logs responses through readRunSection", async () => {
-    const current = world();
+    const current = await world();
     queuedEventOf(current, { seed: 1 });
     const notes = createNoteTimelineWriter({ repository: current.timeline, clock: current.clock, pid: 4242 });
     for (let index = 0; index < 201; index += 1) {
@@ -97,8 +97,8 @@ describe("run-detail section registration", () => {
     assert.deepEqual(second.payload.nextCursor, { state: "absent", reason: "end-of-page" });
   });
 
-  it("admits run identity before refusing a declared but unserved arm", () => {
-    const current = world();
+  it("admits run identity before refusing a declared but unserved arm", async () => {
+    const current = await world();
     queuedEventOf(current, { seed: 1 });
     const deps = depsOf(current);
 
@@ -117,7 +117,7 @@ describe("run-detail section registration", () => {
   });
 
   it("keeps capture sections on the verified asynchronous read path", async () => {
-    const current = world();
+    const current = await world();
     queuedEventOf(current, { seed: 1 });
     await assert.rejects(
       readRunSection(depsOf(current), uuidOf(1), "captures"),

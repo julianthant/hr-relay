@@ -20,10 +20,11 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames } from "../../../
 import { createCredentialStore, createChatGptCredentialRepository, CredentialErasureHeadSchema, erasureRequestIdentity, readForErasure } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-function pending(f = createBoundProfileFixture()) {
+async function pending(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
+  f ??= await createBoundProfileFixture();
   const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine,
     activity: { hasUnquiescedWork: () => true } });
-  const active = session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
+  const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("fixture activation refused");
   const result = session.logOut(active.token, { at: "2026-10-21T12:01:00.000Z" });
   assert.equal(result.state, "cancelling"); if (result.state !== "cancelling") throw new Error("fixture cancellation refused"); assert.ok(result.operationId);
@@ -33,11 +34,11 @@ function pending(f = createBoundProfileFixture()) {
   const owner = f.machine.admitProfile(createProfileRegistry(f.machine).settlementClaim(operation.operationId));
   const store = createCredentialStore({ admission: owner, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
     erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${operation.profileId}.json`) });
-  return { f, owner, store, operation, path, close() { owner.release(); f.close(); } };
+  return { f, owner, store, operation, path, async close() { owner.release(); await f.close(); } };
 }
 
-it("issues exact early pending-logout inspection without runtime, credential, database-write or artifact authority", () => {
-  const f = pending();
+it("issues exact early pending-logout inspection without runtime, credential, database-write or artifact authority", async () => {
+  const f = await pending();
   const purpose = f.owner.forPendingLogoutInventory(f.operation);
   try {
     assert.equal(f.operation.commandId, undefined); assert.equal(f.operation.expectedRevision, undefined);
@@ -59,18 +60,18 @@ it("issues exact early pending-logout inspection without runtime, credential, da
     finally { sibling.release(); }
     assert.throws(() => purpose.assertPendingLogoutInventory(f.owner, { ...f.operation, operationId: randomUUID() }));
     assert.throws(() => purpose.assertPendingLogoutInventory(f.owner, { ...f.operation, phase: "complete" }));
-    const foreign = pending();
+    const foreign = await pending();
     try {
       assert.throws(() => purpose.assertPendingLogoutInventory(foreign.owner, f.operation));
       assert.throws(() => purpose.assertReadOnlyAuthorityDatabase(foreign.f.path));
       assert.throws(() => purpose.verifiedReadOnlyCopy(foreign.f.path, "a".repeat(64)));
-    } finally { foreign.close(); }
-  } finally { purpose.release(); f.close(); }
+    } finally { await foreign.close(); }
+  } finally { purpose.release(); await f.close(); }
 });
 
 for (const mutation of ["operation-inode", "operation-phase", "operation-at", "database-inode", "selection", "released-child", "released-parent"] as const) {
-  it(`revokes pending inspection after actual ${mutation} changes`, () => {
-    const f = pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
+  it(`revokes pending inspection after actual ${mutation} changes`, async () => {
+    const f = await pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
     let restore: (() => void) | undefined;
     try {
       if (mutation === "operation-inode" || mutation === "database-inode") {
@@ -93,13 +94,13 @@ for (const mutation of ["operation-inode", "operation-phase", "operation-at", "d
         assert.throws(() => f.owner.assertCredentialErasureObservation(randomUUID()));
         f.owner.assertCredentialErasureObservation(f.operation.operationId);
       }
-    } finally { restore?.(); purpose.release(); f.close(); }
+    } finally { restore?.(); purpose.release(); await f.close(); }
   });
 }
 
 
-for (const phase of ["early", "incomplete", "partial"] as const) it(`observes only the exact original ${phase} erasure head without changing phase or granting erasure`, () => {
-  const f = pending();
+for (const phase of ["early", "incomplete", "partial"] as const) it(`observes only the exact original ${phase} erasure head without changing phase or granting erasure`, async () => {
+  const f = await pending();
   let operation = f.operation;
   const revision = readForErasure(f.store, operation.operationId).revision;
   if (phase !== "early") {
@@ -130,31 +131,31 @@ for (const phase of ["early", "incomplete", "partial"] as const) it(`observes on
       assert.throws(() => purpose.assertPendingLogoutErasureHead(f.owner, { ...operation, phase: "erasing" }, head, request));
     } else assert.throws(() => purpose.assertPendingLogoutErasureHead(f.owner, operation, head));
     assert.equal(readFileSync(f.path).equals(before), true, "read-only head observation cannot rewrite the original operation");
-  } finally { purpose.release(); f.close(); }
+  } finally { purpose.release(); await f.close(); }
 });
 
 
 it("reads an ordinary account record but refuses direct pending-purpose access without changing it", async () => {
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   const repository = createChatGptCredentialRepository({ admission: profile.admission, stateRoot: profile.stateRoot });
   const record = { schemaVersion: 1 as const, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
-  let current: ReturnType<typeof pending> | undefined;
+  let current: Awaited<ReturnType<typeof pending>> | undefined;
   try {
     await repository.withLock(async transaction => { transaction.replace(record, null); });
     assert.deepEqual(repository.read(), record);
     const path = join(profile.stateRoot, "credentials", "chatgpt-account.json"), before = readFileSync(path);
-    current = pending(profile);
+    current = await pending(profile);
     const purpose = current.owner.forPendingLogoutInventory(current.operation);
     try {
       const denied = createChatGptCredentialRepository({ admission: purpose, stateRoot: profile.stateRoot });
       assert.throws(() => denied.read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
       assert.equal(readFileSync(path).equals(before), true);
     } finally { purpose.release(); }
-  } finally { if (current === undefined) profile.close(); else current.close(); }
+  } finally { if (current === undefined) await profile.close(); else await current.close(); }
 });
 
-for (const mutation of ["operation", "child", "parent", "copy-bytes", "copy-release"] as const) it(`keeps an exact digest copy read-only and revokes it after ${mutation} changes`, () => {
-  const f = pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
+for (const mutation of ["operation", "child", "parent", "copy-bytes", "copy-release"] as const) it(`keeps an exact digest copy read-only and revokes it after ${mutation} changes`, async () => {
+  const f = await pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
   const path = join(f.f.stateRoot, "pending-inventory-copy.sqlite");
   copyFileSync(f.f.path, path);
   const digest = createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -194,12 +195,12 @@ for (const mutation of ["operation", "child", "parent", "copy-bytes", "copy-rele
     else if (mutation === "copy-bytes") appendFileSync(path, "changed-copy");
     else copy.release();
     assert.throws(() => copy.assertReadOnlyAuthorityDatabase(path));
-  } finally { copy.release(); purpose.release(); unlinkSync(path); f.close(); }
+  } finally { copy.release(); purpose.release(); unlinkSync(path); await f.close(); }
 });
 
 
-it("retains one strict binding snapshot per pending purpose while native facts stay fresh and disposes it on release", () => {
-  const f = pending(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot;
+it("retains one strict binding snapshot per pending purpose while native facts stay fresh and disposes it on release", async () => {
+  const f = await pending(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot;
   const copies: string[] = [];
   const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
     const snapshot = capture(path); copies.push(snapshot.path); return snapshot;
@@ -239,11 +240,11 @@ it("retains one strict binding snapshot per pending purpose while native facts s
     assert.equal(existsSync(held), false);
     assert.throws(() => purpose?.assertLive());
     purpose.release();
-  } finally { purpose?.release(); reads.mockRestore(); observer.mockRestore(); f.close(); }
+  } finally { purpose?.release(); reads.mockRestore(); observer.mockRestore(); await f.close(); }
 });
 
-for (const suffix of ["", "-wal", "-shm", "-journal"] as const) it(`permanently revokes a pending snapshot after a changed ${suffix === "" ? "main" : suffix.slice(1)} source`, () => {
-  const f = pending(), path = f.f.path + suffix;
+for (const suffix of ["", "-wal", "-shm", "-journal"] as const) it(`permanently revokes a pending snapshot after a changed ${suffix === "" ? "main" : suffix.slice(1)} source`, async () => {
+  const f = await pending(), path = f.f.path + suffix;
   if (!existsSync(path)) writeFileSync(path, Buffer.alloc(0), { flag: "wx", mode: 0o600 });
   const purpose = f.owner.forPendingLogoutInventory(f.operation), before = readFileSync(path);
   try {
@@ -256,11 +257,11 @@ for (const suffix of ["", "-wal", "-shm", "-journal"] as const) it(`permanently 
     writeFileSync(path, before);
     assert.throws(() => purpose.assertLive(), error => error === refusal);
     assert.throws(() => AuthorityDatabase.readProfileMaintenanceInventory(purpose), error => error === refusal);
-  } finally { purpose.release(); f.close(); }
+  } finally { purpose.release(); await f.close(); }
 });
 
-for (const suffix of ["-wal", "-shm", "-journal"] as const) it(`remembers a pending ${suffix.slice(1)} absence and cannot re-admit a restored absence`, () => {
-  const f = pending(), path = f.f.path + suffix;
+for (const suffix of ["-wal", "-shm", "-journal"] as const) it(`remembers a pending ${suffix.slice(1)} absence and cannot re-admit a restored absence`, async () => {
+  const f = await pending(), path = f.f.path + suffix;
   let purpose: ReturnType<typeof f.owner.forPendingLogoutInventory> | undefined;
   const rows = () => withAuthorityDatabaseReadOnly(f.owner, f.f.path, database => ({
     inspection: inspectNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION),
@@ -291,11 +292,11 @@ for (const suffix of ["-wal", "-shm", "-journal"] as const) it(`remembers a pend
     });
     unlinkSync(path);
     assert.throws(() => issued.assertLive(), error => error === refusal);
-  } finally { purpose?.release(); f.close(); }
+  } finally { purpose?.release(); await f.close(); }
 });
 
-for (const mutation of ["schema", "binding"] as const) it(`rejects an actual ${mutation} mismatch at issuance and disposes the failed copy`, () => {
-  const f = pending(), database = new DatabaseSync(f.f.path);
+for (const mutation of ["schema", "binding"] as const) it(`rejects an actual ${mutation} mismatch at issuance and disposes the failed copy`, async () => {
+  const f = await pending(), database = new DatabaseSync(f.f.path);
   try {
     if (mutation === "schema") database.exec("PRAGMA user_version=0");
     else {
@@ -314,11 +315,11 @@ for (const mutation of ["schema", "binding"] as const) it(`rejects an actual ${m
     const forged: unknown = Object.create(f.owner);
     assert.ok(forged instanceof RuntimeAdmission);
     assert.throws(() => forged.forPendingLogoutInventory(f.operation));
-  } finally { observer.mockRestore(); f.close(); }
+  } finally { observer.mockRestore(); await f.close(); }
 });
 
-it("keeps the real original writer lock held across pending binding issuance and repeated native inspection", () => {
-  const f = pending(), database = new DatabaseSync(f.f.path);
+it("keeps the real original writer lock held across pending binding issuance and repeated native inspection", async () => {
+  const f = await pending(), database = new DatabaseSync(f.f.path);
   let purpose: ReturnType<typeof f.owner.forPendingLogoutInventory> | undefined;
   try {
     database.exec("PRAGMA wal_autocheckpoint=0; BEGIN IMMEDIATE");
@@ -334,11 +335,11 @@ it("keeps the real original writer lock held across pending binding issuance and
     `, f.f.path], { encoding: "utf8" });
     assert.equal(peer.error, undefined); assert.equal(peer.signal, null); assert.equal(peer.status, 0);
     assert.equal(peer.stdout === "busy", true);
-  } finally { purpose?.release(); database.exec("ROLLBACK"); database.close(); f.close(); }
+  } finally { purpose?.release(); database.exec("ROLLBACK"); database.close(); await f.close(); }
 });
 
-it("retains the exact cleanup failure and refuses all future use when its owned snapshot cannot be disposed", () => {
-  const f = pending(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, failure = new Error("synthetic retained snapshot cleanup failure");
+it("retains the exact cleanup failure and refuses all future use when its owned snapshot cannot be disposed", async () => {
+  const f = await pending(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, failure = new Error("synthetic retained snapshot cleanup failure");
   let owned: ReturnType<typeof capture> | undefined;
   const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
     owned = capture(path); return { ...owned, dispose: () => { throw failure; } };
@@ -353,13 +354,13 @@ it("retains the exact cleanup failure and refuses all future use when its owned 
   } finally {
     observer.mockRestore(); owned?.dispose();
     assert.equal(owned === undefined || !existsSync(owned.path), true);
-    f.close();
+    await f.close();
   }
 });
 
 
-it("disposes the issued copy if actual operation custody changes before pending admission returns", () => {
-  const f = pending(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
+it("disposes the issued copy if actual operation custody changes before pending admission returns", async () => {
+  const f = await pending(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
   const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
     const snapshot = capture(path); copies.push(snapshot.path);
     f.f.machine.publishProfileOperation({ ...f.operation, phase: "incomplete" });
@@ -369,13 +370,13 @@ it("disposes the issued copy if actual operation custody changes before pending 
     assert.throws(() => f.owner.forPendingLogoutInventory(f.operation), /profile-pending-logout-operation-changed/u);
     assert.equal(copies.length, 1);
     assert.equal(copies.every(path => !existsSync(path)), true);
-  } finally { observer.mockRestore(); f.close(); }
+  } finally { observer.mockRestore(); await f.close(); }
 });
 
 
 for (const method of ["state-root", "readonly-database"] as const) {
-  it(`keeps actual physical root checks in direct pending ${method} inspection`, () => {
-    const f = pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
+  it(`keeps actual physical root checks in direct pending ${method} inspection`, async () => {
+    const f = await pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
     const path = method === "state-root" ? f.f.stateRoot : f.f.path;
     const artifactRoot = join(f.f.stateRoot, "artifacts"), mode = lstatSync(artifactRoot).mode & 0o7777;
     const databaseBefore = readFileSync(f.f.path), operationBefore = readFileSync(f.path);
@@ -389,11 +390,11 @@ for (const method of ["state-root", "readonly-database"] as const) {
       assert.equal(readFileSync(f.f.path).equals(databaseBefore), true);
       assert.equal(readFileSync(f.path).equals(operationBefore), true);
       assert.equal(readFileSync(protectedPath).equals(protectedBefore), true);
-    } finally { chmodSync(artifactRoot, mode); purpose.release(); f.close(); }
+    } finally { chmodSync(artifactRoot, mode); purpose.release(); await f.close(); }
   });
 
-  for (const state of ["released", "changed-operation"] as const) it(`checks ${state} pending custody before a refused ${method} path`, () => {
-    const f = pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
+  for (const state of ["released", "changed-operation"] as const) it(`checks ${state} pending custody before a refused ${method} path`, async () => {
+    const f = await pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
     const invalidPath = method === "state-root" ? join(f.f.workspace, "outside-profile") : ":memory:";
     const databaseBefore = readFileSync(f.f.path);
     try {
@@ -402,12 +403,12 @@ for (const method of ["state-root", "readonly-database"] as const) {
       const inspect = () => method === "state-root" ? purpose.assertStateRoot(invalidPath) : purpose.assertReadOnlyAuthorityDatabase(invalidPath);
       assert.throws(inspect, state === "released" ? /runtime-admission: missing or released admission/u : /profile-pending-logout-operation-changed/u);
       assert.equal(readFileSync(f.f.path).equals(databaseBefore), true);
-    } finally { purpose.release(); f.close(); }
+    } finally { purpose.release(); await f.close(); }
   });
 }
 
-it("revalidates actual pending copy custody after its completed digest read", () => {
-  const f = pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
+it("revalidates actual pending copy custody after its completed digest read", async () => {
+  const f = await pending(), purpose = f.owner.forPendingLogoutInventory(f.operation);
   const path = join(f.f.stateRoot, "pending-digest-observation.sqlite");
   copyFileSync(f.f.path, path);
   const sourceBefore = readFileSync(f.f.path), copyBefore = readFileSync(path);
@@ -437,6 +438,6 @@ it("revalidates actual pending copy custody after its completed digest read", ()
     assert.equal(operation.expectedRevision, f.operation.expectedRevision);
   } finally {
     observer.mockRestore(); syncBuiltinESMExports();
-    copy.release(); purpose.release(); unlinkSync(path); f.close();
+    copy.release(); purpose.release(); unlinkSync(path); await f.close();
   }
 });

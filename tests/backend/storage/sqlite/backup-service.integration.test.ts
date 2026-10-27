@@ -20,7 +20,7 @@ const { openCurrentWorld, takeBackup } = createBackupFixtures(cleanups, CLOCK);
 describe("DB-only authority backups", () => {
 
   it("preserves checksum and source-identity refusals", async () => {
-    const world = openCurrentWorld();
+    const world = await openCurrentWorld();
     const { manifest, manifestPath } = await takeBackup(world);
     await assert.rejects(
       verifyBackupManifestAtPath(world.admission, manifestPath, "f".repeat(64)),
@@ -33,8 +33,8 @@ describe("DB-only authority backups", () => {
     );
   });
 
-  it.each([0, 1])("refuses noncurrent schema %s without changing source bytes", version => {
-    const world = openCurrentWorld();
+  it.each([0, 1])("refuses noncurrent schema %s without changing source bytes", async version => {
+    const world = await openCurrentWorld();
     world.closeDatabase();
     const raw = new DatabaseSync(world.authorityPath);
     try { raw.exec(`PRAGMA user_version=${String(version)}`); } finally { raw.close(); }
@@ -52,8 +52,8 @@ describe("DB-only authority backups", () => {
     ["column", "ALTER TABLE runs ADD COLUMN unauthorized_column TEXT"],
     ["index", "CREATE INDEX unauthorized_index ON runs(id)"],
     ["trigger", "CREATE TRIGGER unauthorized_trigger BEFORE DELETE ON runs BEGIN SELECT RAISE(ABORT,'unauthorized'); END"],
-  ])("refuses a current schema with an extra %s", (_kind, statement) => {
-    const world = openCurrentWorld();
+  ])("refuses a current schema with an extra %s", async (_kind, statement) => {
+    const world = await openCurrentWorld();
     world.closeDatabase();
     const raw = new DatabaseSync(world.authorityPath);
     try { raw.exec(statement); } finally { raw.close(); }

@@ -39,14 +39,14 @@ describe("authenticated application URL identity", () => {
     ];
     for (const [name, url] of rejected) {
       it(`${fixture.system} refuses ${name} despite retained positive application evidence`, async () => {
-        const { context } = contextFor({ url, elements, cookies: fixture.cookies }, undefined, fixture.system);
+        const { context } = await contextFor({ url, elements, cookies: fixture.cookies }, undefined, fixture.system);
         const probe = await fixture.verify(context);
         assert.equal(probe.authenticated, false);
       });
     }
     for (const url of fixture.legitimate) {
       it(`${fixture.system} retains the evidenced application route ${new URL(url).pathname}`, async () => {
-        const { context } = contextFor({ url, elements, cookies: fixture.cookies }, undefined, fixture.system);
+        const { context } = await contextFor({ url, elements, cookies: fixture.cookies }, undefined, fixture.system);
         assert.equal((await fixture.verify(context)).authenticated, true);
       });
     }
@@ -58,7 +58,7 @@ describe("authenticated application URL identity", () => {
     [cases[0], "/HR/ONB_SearchOnboardings"], [cases[1], "/APP/api/v0/graphql"],
     [cases[2], "/WFD/home"], [cases[3], "/psc/ucphrprd/employee/hrms/c/app"]] as const) {
     it(`${fixture.system} requires the evidenced path-segment boundary ${pathname}`, async () => {
-      const { context } = contextFor({ url: `https://${fixture.host}${pathname}`, elements, cookies: fixture.cookies }, undefined, fixture.system);
+      const { context } = await contextFor({ url: `https://${fixture.host}${pathname}`, elements, cookies: fixture.cookies }, undefined, fixture.system);
       assert.equal((await fixture.verify(context)).authenticated, false);
     });
   }

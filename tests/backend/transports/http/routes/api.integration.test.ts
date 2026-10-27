@@ -11,7 +11,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("crosses one request-identity checkpoint on every registered route and refuses before effects", async () => {
     let checkpointCalls = 0;
-    const h = harness({
+    const h = await harness({
       requestIdentity: {
         identify: () => {
           checkpointCalls += 1;

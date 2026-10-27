@@ -62,10 +62,10 @@ function settledMove(workspace: string, destination: RuntimePair): { operationId
 
 it.each(["credential key", "erasure journal", "Duo membership"] as const)(
   "revalidates cached profile registry authority after %s changes",
-  (change) => {
+  async (change) => {
     const persistence = createCredentialPersistenceFixtures([], randomUUID(), "2026-10-01T12:01:00.000Z");
-    const erasure = change === "erasure journal" ? persistence.registeredFixture() : undefined;
-    const profile = erasure === undefined ? createBoundProfileFixture() : {
+    const erasure = change === "erasure journal" ? await persistence.registeredFixture() : undefined;
+    const profile = erasure === undefined ? await createBoundProfileFixture() : {
       machine: erasure.machine, admission: erasure.admission, close: persistence.releaseFixtures,
     };
     try {
@@ -104,7 +104,7 @@ it.each(["credential key", "erasure journal", "Duo membership"] as const)(
         } else if (authority !== undefined) chmodSync(authority.path, authority.mode);
       }
       expect(profile.machine.readProfileRegistry()).toEqual(registry);
-    } finally { profile.close(); }
+    } finally { await profile.close(); }
   },
 );
 
@@ -164,15 +164,15 @@ it("freezes issued leases and refuses a changed on-disk lease mode", () => {
   admission.release();
 });
 
-it("binds destination and retained source capabilities to one live relocation operation", () => {
-  let cleanup: () => void = () => undefined;
+it("binds destination and retained source capabilities to one live relocation operation", async () => {
+  let cleanup: () => void | Promise<void> = () => undefined;
   let primary: { error: unknown } | undefined = undefined;
   try {
-    const profile = createBoundProfileFixture();
-    cleanup = () => profile.close();
+    const profile = await createBoundProfileFixture();
+    cleanup = async () => await profile.close();
     const destination = { stateRoot: join(profile.workspace, 'relocation-target'), artifactRoot: join(profile.workspace, 'relocation-target-artifacts') };
     const held = restore(profile.workspace);
-    cleanup = () => { held.release(); profile.close(); };
+    cleanup = async () => { held.release(); await profile.close(); };
 
     const before = currentProfileRelocationSnapshot(profile.workspace);
     const registry = profile.machine.readProfileRegistry();
@@ -187,7 +187,7 @@ it("binds destination and retained source capabilities to one live relocation op
     expect(inspectPendingRelocationStatus(profile.workspace)).toBeUndefined();
   } catch (error) { primary = { error }; }
   let cleanupFailure: { error: unknown } | undefined = undefined;
-  try { cleanup(); } catch (error) { cleanupFailure = { error }; }
+  try { await cleanup(); } catch (error) { cleanupFailure = { error }; }
   if (primary !== undefined) {
     if (cleanupFailure !== undefined) throw new AggregateError([primary.error, cleanupFailure.error], "profile-relocation-test-cleanup-failed", { cause: primary.error });
     throw primary.error;
@@ -195,16 +195,16 @@ it("binds destination and retained source capabilities to one live relocation op
   if (cleanupFailure !== undefined) throw cleanupFailure.error;
 });
 
-it("recovers only the exact operation through a fresh held fixed restore lease", () => {
-  let cleanup: () => void = () => undefined;
+it("recovers only the exact operation through a fresh held fixed restore lease", async () => {
+  let cleanup: () => void | Promise<void> = () => undefined;
   let primary: { error: unknown } | undefined = undefined;
   try {
-    const profile = createBoundProfileFixture();
-    cleanup = () => profile.close();
-    const foreign = createBoundProfileFixture();
-    cleanup = () => { foreign.close(); profile.close(); };
+    const profile = await createBoundProfileFixture();
+    cleanup = async () => await profile.close();
+    const foreign = await createBoundProfileFixture();
+    cleanup = async () => { await foreign.close(); await profile.close(); };
     const held = restore(foreign.workspace);
-    cleanup = () => { held.release(); foreign.close(); profile.close(); };
+    cleanup = async () => { held.release(); await foreign.close(); await profile.close(); };
     const binding = { installationId: profile.machine.locator.installationId,
     fromGeneration: profile.machine.locator.generation, operationId: randomUUID() };
     profile.admission.release(); profile.machine.release();
@@ -217,9 +217,9 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
     expect(inspectPendingRelocationStatus(profile.workspace)).toBeUndefined();
 
     const currentHeld = restore(profile.workspace);
-    cleanup = () => { currentHeld.release(); held.release(); foreign.close(); profile.close(); };
+    cleanup = async () => { currentHeld.release(); held.release(); await foreign.close(); await profile.close(); };
     const lease = acquireInstallation(profile.workspace, "exclusive");
-    cleanup = () => { lease.release(); currentHeld.release(); held.release(); foreign.close(); profile.close(); };
+    cleanup = async () => { lease.release(); currentHeld.release(); held.release(); await foreign.close(); await profile.close(); };
     const { workspace: destinationWorkspace } = fixture();
     const destination = { stateRoot: join(dirname(destinationWorkspace), "recovery-profile-state"),
       artifactRoot: join(dirname(destinationWorkspace), "recovery-profile-artifacts") };
@@ -239,12 +239,12 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
     expect(existsSync(destination.artifactRoot)).toBe(false);
     const reacquired = acquireInstallation(profile.workspace, "exclusive",
       { recoverRelocation: { ...recoveryBinding, restoreAdmission: currentHeld } });
-    cleanup = () => { reacquired.release(); currentHeld.release(); held.release(); foreign.close(); profile.close(); };
+    cleanup = async () => { reacquired.release(); currentHeld.release(); held.release(); await foreign.close(); await profile.close(); };
     reacquired.release();
     expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(recoveryBefore);
   } catch (error) { primary = { error }; }
   let cleanupFailure: { error: unknown } | undefined = undefined;
-  try { cleanup(); } catch (error) { cleanupFailure = { error }; }
+  try { await cleanup(); } catch (error) { cleanupFailure = { error }; }
   if (primary !== undefined) {
     if (cleanupFailure !== undefined) throw new AggregateError([primary.error, cleanupFailure.error], "profile-relocation-test-cleanup-failed", { cause: primary.error });
     throw primary.error;
@@ -268,12 +268,12 @@ it("refuses an unexplained v1 completed generation without a receipt chain", () 
   expect(() => acquireInstallation(workspace, "shared")).toThrow(/active locator receipt chain mismatch/u);
 });
 
-it("binds the first real saved plan at applied revision one and expected revision zero", () => {
-  let cleanup: () => void = () => undefined;
+it("binds the first real saved plan at applied revision one and expected revision zero", async () => {
+  let cleanup: () => void | Promise<void> = () => undefined;
   let primary: { error: unknown } | undefined = undefined;
   try {
-    const profile = createBoundProfileFixture();
-    cleanup = () => profile.close();
+    const profile = await createBoundProfileFixture();
+    cleanup = async () => await profile.close();
     let database: AuthorityDatabase;
     try { database = AuthorityDatabase.open(profile.admission, { path: profile.path,
     busyTimeoutMs: 250, migrationOwner: 'current-profile-relocation-preflight' }, undefined, undefined, undefined,
@@ -282,7 +282,7 @@ it("binds the first real saved plan at applied revision one and expected revisio
     if (error instanceof AuthoritySourceClosureUnprovedError) cleanup = () => { throw error; };
     throw error;
     }
-    cleanup = () => { database.close(); profile.close(); };
+    cleanup = async () => { database.close(); await profile.close(); };
 
     const registry = profile.machine.readProfileRegistry();
     const source = database.getMeta();
@@ -295,7 +295,7 @@ it("binds the first real saved plan at applied revision one and expected revisio
     expect(inspectPendingRelocationStatus(profile.workspace)).toBeUndefined();
   } catch (error) { primary = { error }; }
   let cleanupFailure: { error: unknown } | undefined = undefined;
-  try { cleanup(); } catch (error) { cleanupFailure = { error }; }
+  try { await cleanup(); } catch (error) { cleanupFailure = { error }; }
   if (primary !== undefined) {
     if (cleanupFailure !== undefined) throw new AggregateError([primary.error, cleanupFailure.error], "profile-relocation-test-cleanup-failed", { cause: primary.error });
     throw primary.error;
@@ -303,14 +303,14 @@ it("binds the first real saved plan at applied revision one and expected revisio
   if (cleanupFailure !== undefined) throw cleanupFailure.error;
 });
 
-it("claims destination roots for one operation and refuses foreign witnesses", () => {
-  let cleanup: () => void = () => undefined;
+it("claims destination roots for one operation and refuses foreign witnesses", async () => {
+  let cleanup: () => void | Promise<void> = () => undefined;
   let primary: { error: unknown } | undefined = undefined;
   try {
-    const profile = createBoundProfileFixture();
-    cleanup = () => profile.close();
+    const profile = await createBoundProfileFixture();
+    cleanup = async () => await profile.close();
     const held = restore(profile.workspace);
-    cleanup = () => { held.release(); profile.close(); };
+    cleanup = async () => { held.release(); await profile.close(); };
     const destination = { stateRoot: join(profile.workspace, 'released-relocation-target'), artifactRoot: join(profile.workspace, 'released-relocation-artifacts') };
     const plan = currentProfileRelocationPlan(profile.machine.locator, destination);
     profile.admission.release(); profile.machine.release();
@@ -323,7 +323,7 @@ it("claims destination roots for one operation and refuses foreign witnesses", (
     expect(inspectPendingRelocationStatus(profile.workspace)).toBeUndefined();
   } catch (error) { primary = { error }; }
   let cleanupFailure: { error: unknown } | undefined = undefined;
-  try { cleanup(); } catch (error) { cleanupFailure = { error }; }
+  try { await cleanup(); } catch (error) { cleanupFailure = { error }; }
   if (primary !== undefined) {
     if (cleanupFailure !== undefined) throw new AggregateError([primary.error, cleanupFailure.error], "profile-relocation-test-cleanup-failed", { cause: primary.error });
     throw primary.error;

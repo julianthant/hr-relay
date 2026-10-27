@@ -49,8 +49,8 @@ function lifecycleCommand(
 
 describe("canonical run-record service", () => {
 
-  it("preserves unrelated worker cleanup failure and custody until a successful stop", () => {
-    const f = fixture(), path = syntheticDatabasePath(f.database);
+  it("preserves unrelated worker cleanup failure and custody until a successful stop", async () => {
+    const f = await fixture(), path = syntheticDatabasePath(f.database);
     const failure = new Error("injected-worker-cleanup-failure");
     const release = f.database.assertWorkerLifecycleRelease.bind(f.database);
     assert.equal(boundFixtureWorker(f.database, path, WORKER_ID), true);
@@ -67,8 +67,8 @@ describe("canonical run-record service", () => {
     stopSyntheticDatabaseWorkers({ database: f.database, path });
   });
 
-  it("refuses cross-kind ids and fails loud for every partial or mismatched journal pair", () => {
-    const crossKind = fixture();
+  it("refuses cross-kind ids and fails loud for every partial or mismatched journal pair", async () => {
+    const crossKind = await fixture();
     crossKind.database.withAuthorityTransaction(({ commands }) => {
       commands.insert(COMMAND_FIXTURES[0]);
     });
@@ -79,7 +79,7 @@ describe("canonical run-record service", () => {
     });
     assert.equal(crossKind.database.getMeta().authorityGeneration, crossKindGeneration);
 
-    const commandOnly = fixture();
+    const commandOnly = await fixture();
     const commandOnlyRecord = lifecycleCommand(commandOnly.request, "create");
     commandOnly.database.withAuthorityTransaction(({ lifecycleJournal }) => {
       lifecycleJournal.insertCommand(commandOnlyRecord);
@@ -88,7 +88,7 @@ describe("canonical run-record service", () => {
     assert.throws(() => commandOnly.service.create(commandOnly.request), /has no audit/u);
     assert.equal(commandOnly.database.getMeta().authorityGeneration, commandOnlyGeneration);
 
-    const auditOnly = fixture();
+    const auditOnly = await fixture();
     const auditOnlyRecord = lifecycleCommand(auditOnly.request, "create");
     const audit = RunLifecycleCommandAuditRecordSchema.parse({
       kind: "run-lifecycle",
@@ -134,7 +134,7 @@ describe("canonical run-record service", () => {
     } finally { repair.close(); }
     stopSyntheticDatabaseWorkers({ database: auditOnly.database, path: syntheticDatabasePath(auditOnly.database) });
 
-    const mismatched = fixture();
+    const mismatched = await fixture();
     const matchedCommand = lifecycleCommand(mismatched.request, "create");
     const mismatchedRequest = RunLifecycleCommandRecordSchema.parse({
       ...matchedCommand,
@@ -157,8 +157,8 @@ describe("canonical run-record service", () => {
     assert.equal(mismatched.database.getMeta().authorityGeneration, mismatchedGeneration);
   });
 
-  it("#8 stale CAS reports the current version and writes nothing", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("#8 stale CAS reports the current version and writes nothing", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const run = created(service, request);
     const claimMember1 = database.authority.workerSlots.get(WORKER_ID);
     if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
@@ -173,8 +173,8 @@ describe("canonical run-record service", () => {
     assert.equal(database.getMeta().authorityGeneration, before);
   });
 
-  it("list uses priority, enqueue time and run id, and refuses a stale cursor", () => {
-    const { service, request } = fixture();
+  it("list uses priority, enqueue time and run id, and refuses a stale cursor", async () => {
+    const { service, request } = await fixture();
     const bulk = created(service, request);
     const interactive = created(service, { ...request, commandId: UUID_5, priority: "interactive" });
     const page = service.list({ disposition: "live", limit: 1 });
@@ -190,8 +190,8 @@ describe("canonical run-record service", () => {
   });
 
   for (const operation of ["enqueue", "claim", "terminal"] as const) {
-    it(`rolls back ${operation} state and journal when required timeline persistence fails`, () => {
-      const f = fixture();
+    it(`rolls back ${operation} state and journal when required timeline persistence fails`, async () => {
+      const f = await fixture();
       const run = operation === "enqueue" ? undefined : created(f.service, f.request);
       const raw = new DatabaseSync(join(f.root, "state.db"));
       try {
@@ -218,8 +218,8 @@ describe("canonical run-record service", () => {
     });
   }
 
-  it("keeps one gate opening when a parked run is renamed and the rename is replayed", () => {
-    const f = fixture();
+  it("keeps one gate opening when a parked run is renamed and the rename is replayed", async () => {
+    const f = await fixture();
     const running = runningRun(f.service, f.request, f.runtimeConfig);
     const parked = f.service.workerTransition({ commandId: "83000000-0000-4000-8000-000000000077",
       runId: running.envelope.runId, claim: { workerId: WORKER_ID, claimGeneration: 1 },
@@ -233,18 +233,18 @@ describe("canonical run-record service", () => {
     assert.equal(renamed.run.displayName, request.displayName);
     assert.equal(f.service.transition(request).state, "applied-already");
     assert.deepEqual(f.database.authority.timelineEvents.page({}), before);
-    const world = makeWorld();
+    const world = await makeWorld();
     try {
       world.authority.records.set(running.envelope.runId, renamed.run);
       for (const record of f.database.authority.timelineEvents.page({})) {
         if (record.payload.kind === "span") world.writer.emit(record.payload.event);
       }
       assert.equal(world.projection.runFold(running.envelope.runId)?.openGates.length, 1);
-    } finally { world.dispose(); }
+    } finally { await world.dispose(); }
   });
 
-  it("rolls back gate parking when its required opened event fails", () => {
-    const f = fixture();
+  it("rolls back gate parking when its required opened event fails", async () => {
+    const f = await fixture();
     const running = runningRun(f.service, f.request, f.runtimeConfig);
     const raw = new DatabaseSync(join(f.root, "state.db"));
     try {
@@ -263,8 +263,8 @@ describe("canonical run-record service", () => {
     } finally { raw.close(); }
   });
 
-  it("queue-root publication waits for the outer transaction and disappears on rollback", () => {
-    const { service, request, database, published } = fixture();
+  it("queue-root publication waits for the outer transaction and disappears on rollback", async () => {
+    const { service, request, database, published } = await fixture();
     let rolledBack: RunRecord | undefined;
     assert.throws(() => database.withAuthorityTransaction(() => {
       rolledBack = created(service, request);
@@ -283,8 +283,8 @@ describe("canonical run-record service", () => {
     assert.equal(published.length, 1);
   });
 
-  it("#11 retry and restart create new attempts and preserve source identity", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("#11 retry and restart create new attempts and preserve source identity", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     database.authority.runSessions.insert(RUN_SESSION);
     const run = created(service, { ...request, sessionId: RUN_SESSION_ID, descriptorVersion: personLookupDescriptor.version,
       contractFingerprint: personLookupDescriptor.contractFingerprint });
@@ -315,8 +315,8 @@ describe("canonical run-record service", () => {
     assert.deepEqual(service.read(run.envelope.runId), source);
   });
 
-  it("#12 refuses retry from deleted and unresolved-write sources without minting a run", () => {
-    const deletedWorld = fixture();
+  it("#12 refuses retry from deleted and unresolved-write sources without minting a run", async () => {
+    const deletedWorld = await fixture();
     const deleted = created(deletedWorld.service, {
       ...deletedWorld.request,
       descriptorVersion: personLookupDescriptor.version,
@@ -342,7 +342,7 @@ describe("canonical run-record service", () => {
     }, personLookupDescriptor), { state: "refused", refusal: { reason: "source-deleted" } });
     assert.equal(deletedWorld.database.getMeta().authorityGeneration, deletedGeneration);
 
-    const parkedWorld = fixture();
+    const parkedWorld = await fixture();
     const running = runningRun(parkedWorld.service, parkedWorld.request, parkedWorld.runtimeConfig);
     const intent = parkedWriteIntent(parkedWorld.database, running, {
       writeIntentId: "86000000-0000-4000-8000-000000000099", code: "unknown", message: "external outcome is unknown",
@@ -376,8 +376,8 @@ describe("canonical run-record service", () => {
     }).length, 1);
   });
 
-  it("#20 returns every closed existence arm", () => {
-    const { service, request } = fixture();
+  it("#20 returns every closed existence arm", async () => {
+    const { service, request } = await fixture();
     const live = created(service, request);
     const deletedSource = created(service, {
       ...request,
@@ -408,8 +408,8 @@ describe("canonical run-record service", () => {
     assert.deepEqual(service.read(deletedSource.envelope.runId), { state: "deleted", tombstone });
   });
 
-  it("#17 refuses a non-terminal root without writing a tombstone", () => {
-    const { service, request, database } = fixture();
+  it("#17 refuses a non-terminal root without writing a tombstone", async () => {
+    const { service, request, database } = await fixture();
     const run = created(service, request);
     const before = database.getMeta().authorityGeneration;
     assert.deepEqual(service.delete({
@@ -422,9 +422,9 @@ describe("canonical run-record service", () => {
     assert.equal(database.getMeta().authorityGeneration, before);
   });
 
-  it("#15/#17/#26 delete writes each tombstone first, removes leaves first, and settles each tally once", () => {
+  it("#15/#17/#26 delete writes each tombstone first, removes leaves first, and settles each tally once", async () => {
     const deleteSteps: { runId: string; step: string }[] = [];
-    const { service, request, database } = fixture(undefined, {
+    const { service, request, database } = await fixture(undefined, {
       afterDeleteStep: (event) => deleteSteps.push(event),
     });
     const anchor = created(service, { ...request, shape: "operation" });
@@ -472,9 +472,9 @@ describe("canonical run-record service", () => {
     for (const run of [...members, anchor]) assert.equal(service.read(run.envelope.runId).state, "deleted");
   });
 
-  it("#23 runs a multi-member group through cancel-tree and leaves-first deletion", () => {
+  it("#23 runs a multi-member group through cancel-tree and leaves-first deletion", async () => {
     const writes: RunRecord[] = [];
-    const { service, request } = fixture(undefined, {
+    const { service, request } = await fixture(undefined, {
       afterRunWrite: (run) => writes.push(run),
     });
     const anchor = created(service, { ...request, shape: "operation" });
@@ -529,7 +529,7 @@ describe("canonical run-record service", () => {
 
   for (const kind of ["create", "claim"] as const) {
     it(`${kind === "create" ? "#1" : "#4"} ${kind} serializes independent connections across a held reservation`, async () => {
-      const { root, request, service, runtimeConfig, database, clock } = fixture();
+      const { root, request, service, runtimeConfig, database, clock } = await fixture();
       if (kind === "claim") {
         testWorkerPorts(database, clock, { path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex: 2 });
         created(service, request);
@@ -585,8 +585,8 @@ describe("canonical run-record service", () => {
     });
   }
 
-  it("#22 removes only the deleted run's gate records and tallies them", () => {
-    const { service, request, database } = fixture();
+  it("#22 removes only the deleted run's gate records and tallies them", async () => {
+    const { service, request, database } = await fixture();
     const source = created(service, request);
     const peer = created(service, { ...request, commandId: UUID_5, matchKey: "synthetic-peer" });
     const sourceGate = { ...GATE_RESULT, runId: source.envelope.runId };
@@ -612,8 +612,8 @@ describe("canonical run-record service", () => {
     assert.deepEqual(database.authority.gateResults.listByRun(source.envelope.runId), []);
   });
 
-  it("#2 refuses a minted id already held by a tombstone without touching authority", () => {
-    const { service, request, database, clock } = fixture();
+  it("#2 refuses a minted id already held by a tombstone without touching authority", async () => {
+    const { service, request, database, clock } = await fixture();
     const run = created(service, request);
     service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
@@ -628,8 +628,8 @@ describe("canonical run-record service", () => {
     assert.equal(service.read(run.envelope.runId).state, "deleted");
   });
 
-  it("#17 session membership alone permits deletion and preserves the session", () => {
-    const { service, request, database } = fixture();
+  it("#17 session membership alone permits deletion and preserves the session", async () => {
+    const { service, request, database } = await fixture();
     database.authority.runSessions.insert(RUN_SESSION);
     const run = created(service, { ...request, sessionId: RUN_SESSION_ID });
     service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
@@ -643,7 +643,7 @@ describe("canonical run-record service", () => {
   });
 
   it("ignores a file root in canonical reads and current storage health", async () => {
-    const { service, request, root, clock } = fixture();
+    const { service, request, root, clock } = await fixture();
     const runId = UUID_5;
     const traceId = "pl-120021-0000";
     const authorityPath = join(root, "state.db");

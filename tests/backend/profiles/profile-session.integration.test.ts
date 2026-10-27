@@ -1,3 +1,4 @@
+import { finishProfileOnboarding, readyProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { readAuthenticatedCredentialFixture, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../src/backend/app/composition/profile-credential-inventory.js";
@@ -14,7 +15,7 @@ import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createProfileSession as realCreateProfileSession } from "../../../src/backend/profiles/profile-session.js";
+import { createSyntheticProfileSession as realCreateProfileSession } from "../../support/helpers/admission-fixture.js";
 import { ProfileRegistryDocumentSchema, SignUpOperationSchema, type ProfileRegistryDocument } from "../../../src/models/profiles/profile.js";
 import { manualClock, systemClock } from "../../../src/rules/time/clock.js";
 import { IsoInstantSchema, PositiveIntSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js";
@@ -28,18 +29,21 @@ import { createCredentialStore } from "../../../src/backend/storage/configuratio
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 
 const machineAdmissions = new Map<string, RuntimeAdmission>();
+const sessionOwners = new Set<ReturnType<typeof realCreateProfileSession>>();
 function createProfileSession(input: Omit<Parameters<typeof realCreateProfileSession>[0], "admission">) {
   const admission = machineAdmissions.get(input.machineRoot);
   if (admission === undefined) throw new Error("profile fixture machine admission missing");
-  return realCreateProfileSession({ ...input, admission,
+  const session = realCreateProfileSession({ ...input, admission,
     repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine: admission,
       admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
     initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: admission,
       admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies) });
+  sessionOwners.add(session);
+  return session;
 }
 
 const roots: string[] = [];
-afterEach(() => { for (const admission of machineAdmissions.values()) admission.release(); machineAdmissions.clear(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(async () => { for (const session of sessionOwners) await session.close(); sessionOwners.clear(); for (const admission of machineAdmissions.values()) admission.release(); machineAdmissions.clear(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function temp(): string {
   const root = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hr-profiles-")));
   roots.push(root);
@@ -50,7 +54,7 @@ function temp(): string {
 }
 
 describe("profile session", () => {
-  it("keeps profile B from reading profile A, blocks logout while work is active, and refuses a stale token", () => {
+  it("keeps profile B from reading profile A, blocks logout while work is active, and refuses a stale token", async () => {
     const root = temp();
     let busy = false;
     const session = createProfileSession({
@@ -59,9 +63,9 @@ describe("profile session", () => {
       backupPaths: () => [],
       loginDataPaths: () => [],
     });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     if (alex.state !== "active") return;
     writeFileSync(join(root, "profiles", alex.profileId, "note.txt"), "alex-only\n", { mode: 0o600 });
@@ -76,36 +80,36 @@ describe("profile session", () => {
     assert.equal(wiped.state, "wiped");
     const protectedText = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8");
     assert.equal(protectedText.includes("secret-one"), false);
-    assert.equal(protectedText.includes("alex@example.edu"), false);
+    assert.equal(protectedText.includes("alex@ucsd.edu"), false);
     const retained = readAuthenticatedCredentialFixture(root, alex.profileId) as { record: { entries: { timekeeperName?: { value: string } } } };
     assert.equal(retained.record.entries.timekeeperName?.value, "AR");
     const verifiers = readFileSync(join(root, "machine", "profile-verifiers.json"), "utf8");
     assert.equal(verifiers.includes("secret-one"), false);
-    assert.equal(verifiers.includes("alex@example.edu"), false);
+    assert.equal(verifiers.includes("alex@ucsd.edu"), false);
     const stale = session.readFile(alex.token, "note.txt");
     assert.equal("state" in stale && stale.state === "refused" && stale.code === "PROFILE_SESSION_STALE", true);
-    const returned = session.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:09:00.000Z" });
+    const returned = session.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:09:00.000Z" });
     assert.equal(returned.state, "active");
     if (returned.state !== "active") return;
     const restored = readFileSync(join(root, "profiles", returned.profileId, "credentials", "protected.json"), "utf8");
     assert.equal(restored.includes("secret-one"), false);
-    assert.equal(restored.includes("alex@example.edu"), false);
+    assert.equal(restored.includes("alex@ucsd.edu"), false);
     assert.equal(restored.includes("\"AR\""), false);
     const currentRecord = readAuthenticatedCredentialFixture(root, returned.profileId) as { record: { entries: { ucpathUserId: { value: string }; ucpathPassword: { value: string }; timekeeperName: { value: string } } } };
-    assert.equal(currentRecord.record.entries.ucpathUserId.value, "alex@example.edu");
+    assert.equal(currentRecord.record.entries.ucpathUserId.value, "alex@ucsd.edu");
     assert.equal(currentRecord.record.entries.ucpathPassword.value, "secret-one");
     assert.equal(currentRecord.record.entries.timekeeperName.value, "AR");
     assert.equal(session.logOut(returned.token, { at: "2026-09-06T12:09:00.000Z" }).state, "wiped");
-    const sam = session.signUp({
-      firstName: "Sam", lastName: "Ortiz", email: "sam@example.edu", password: "secret-two", createdAt: "2026-09-06T12:08:00.000Z",
-    });
+    const sam = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", password: "secret-two", createdAt: "2026-09-06T12:08:00.000Z",
+    }));
     assert.equal(sam.state, "active");
     if (sam.state !== "active") return;
     assert.throws(() => session.readFile(sam.token, join("..", alex.profileId, "note.txt")));
     assert.equal(session.changePassword().code, "PROFILE_VERIFIER_UNAVAILABLE");
   });
 
-  it("does not claim logout complete while a backup still holds the secret", () => {
+  it("does not claim logout complete while a backup still holds the secret", async () => {
     const root = temp();
     const session = createProfileSession({
       machineRoot: root,
@@ -113,9 +117,9 @@ describe("profile session", () => {
       backupPaths: (profileId) => [join(root, "backups", `${profileId}.json`)],
       loginDataPaths: () => [],
     });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     if (alex.state !== "active") return;
     mkdirSync(join(root, "backups"), { mode: 0o700 });
@@ -136,16 +140,16 @@ describe("profile session", () => {
       backupPaths: (profileId) => [join(root, "backups", `${profileId}.json`)],
       loginDataPaths: () => [],
     });
-    const signed = restarted.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:10:00.000Z" });
+    const signed = restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:10:00.000Z" });
     assert.notEqual(signed.state, "active");
   });
 
-  it("blocks resumed logout when a schema3 clean copy retains captured secret bytes outside UCPath fields", () => {
+  it("blocks resumed logout when a schema3 clean copy retains captured secret bytes outside UCPath fields", async () => {
     const root = temp(), backup = join(root, "inventory-copy.json");
     const ports = { activity: { hasUnquiescedWork: () => false }, backupPaths: () => existsSync(backup) ? [backup] : [], loginDataPaths: () => [] };
     const session = createProfileSession({ machineRoot: root, ...ports });
     const password = "disposable-inventory-capture-password";
-    const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password, createdAt: "2026-09-06T12:00:00.000Z" });
+    const active = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password, createdAt: "2026-09-06T12:00:00.000Z" }));
     assert.ok(active.state === "active");
     const profile = join(root, "profiles", active.profileId), protectedPath = join(profile, "credentials", "protected.json");
     const restored = readFileSync(protectedPath);
@@ -154,7 +158,7 @@ describe("profile session", () => {
     assert.ok(held.state === "refused" && held.operationId !== undefined);
     const operationId = held.operationId;
     const erased = readAuthenticatedCredentialFixture(root, active.profileId) as { history: { receipt: { commandId: string } }[] };
-    const copyFixture = createBoundProfileFixture();
+    const copyFixture = await createBoundProfileFixture();
     const copyAdmission = copyFixture.admission;
     try {
       const copyStore = createCredentialStore({ admission: copyAdmission, stateRoot: copyAdmission.stateRoot, erasureJournalAdmission: copyFixture.machine,
@@ -163,7 +167,7 @@ describe("profile session", () => {
         commandFingerprint: "e".repeat(64), expectedRevision: copyStore.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
         updatedAt: "2026-09-06T12:00:00.000Z", entries: { ucpathUserId: { clear: true }, ucpathPassword: { clear: true }, timekeeperName: { set: password } } })).state, "applied");
       writeFileSync(backup, readFileSync(join(copyAdmission.stateRoot, "credentials", "protected.json")), { mode: 0o600 });
-    } finally { copyFixture.close(); }
+    } finally { await copyFixture.close(); }
     const copyBytes = readFileSync(backup);
     const withoutCapture = assessCredentialInventory({ profileRoot: profile, entriesAbsent: true, backupPaths: [backup], loginDataPaths: [], capturedSecrets: [], capturedSecretsComplete: false });
     assert.equal(withoutCapture.logoutComplete, false);
@@ -203,7 +207,7 @@ describe("profile session", () => {
     assert.equal(again.resumeLogout(operationId).state, "wiped");
   });
 
-  it("does not cancel another profile when this one signs in", () => {
+  it("does not cancel another profile when this one signs in", async () => {
     const root = temp();
     const cancelled: string[] = [];
     const session = createProfileSession({
@@ -215,21 +219,21 @@ describe("profile session", () => {
       },
     });
     let busyId = "";
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     if (alex.state !== "active") return;
     assert.equal(session.logOut(alex.token, { at: "2026-09-06T12:01:00.000Z" }).state, "wiped");
-    const sam = session.signUp({
-      firstName: "Sam", lastName: "Ortiz", email: "sam@example.edu", password: "secret-two", createdAt: "2026-09-06T12:01:00.000Z",
-    });
+    const sam = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", password: "secret-two", createdAt: "2026-09-06T12:01:00.000Z",
+    }));
     assert.equal(sam.state, "active");
     if (sam.state !== "active") return;
     assert.equal(session.logOut(sam.token, { at: "2026-09-06T12:01:00.000Z" }).state, "wiped");
-    assert.equal(session.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:01:00.000Z" }).state, "active");
+    assert.equal(session.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:01:00.000Z" }).state, "active");
     busyId = alex.profileId;
-    const signed = session.signIn({ email: "sam@example.edu", password: "secret-two", at: "2026-09-06T12:02:00.000Z" });
+    const signed = session.signIn({ email: "sam@ucsd.edu", password: "secret-two", at: "2026-09-06T12:02:00.000Z" });
     assert.notEqual(signed.state, "active");
     const registry = JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as {
       profiles: { profileId: string; lifecycle: string }[];
@@ -239,36 +243,36 @@ describe("profile session", () => {
     assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), false);
   });
 
-  it("refuses non-letter initials before creating a profile", () => {
+  it("refuses non-letter initials before creating a profile", async () => {
     const root = temp();
     const session = createProfileSession({ machineRoot: root });
-    const refused = session.signUp({
-      firstName: "Émile", lastName: "Rivera", email: "emile@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const refused = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Émile", lastName: "Rivera", email: "emile@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(refused.state, "refused");
     if (refused.state === "refused") assert.equal(refused.code, "PROFILE_NAME_REFUSED");
     assert.equal((JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: unknown[] }).profiles.length, 0);
   });
 
-  it("refuses a decomposed non-ASCII name before creating a profile", () => {
+  it("refuses a decomposed non-ASCII name before creating a profile", async () => {
     const root = temp();
     const session = createProfileSession({ machineRoot: root });
     for (const firstName of ["E\u0301mile", "ıvan", "ſmith", "\u212Aelvin"]) {
-      const refused = session.signUp({
-        firstName, lastName: "Rivera", email: "emile@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-      });
+      const refused = await finishProfileOnboarding(session, session.signUp({
+        firstName, lastName: "Rivera", email: "emile@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+      }));
       assert.equal(refused.state, "refused");
       if (refused.state === "refused") assert.equal(refused.code, "PROFILE_NAME_REFUSED");
     }
     assert.equal((JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: unknown[] }).profiles.length, 0);
   });
 
-  it("does not erase when no activity port can close work", () => {
+  it("does not erase when no activity port can close work", async () => {
     const root = temp();
     const session = createProfileSession({ machineRoot: root });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     if (alex.state !== "active") return;
     const result = session.logOut(alex.token, { at: "2026-09-06T12:07:00.000Z" });
@@ -276,21 +280,21 @@ describe("profile session", () => {
     assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), false);
   });
 
-  it("resumes a logout from the retained operation after restart", () => {
+  it("resumes a logout from the retained operation after restart", async () => {
     const root = temp();
     let busy = true;
     const activity = { hasUnquiescedWork: () => busy };
     const session = createProfileSession({ machineRoot: root, activity, backupPaths: () => [], loginDataPaths: () => [] });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     if (alex.state !== "active") return;
     const blocked = session.logOut(alex.token, { at: "2026-09-06T12:06:00.000Z" });
     assert.equal(blocked.state, "cancelling");
     if (blocked.state !== "cancelling" || blocked.operationId === undefined) return;
     const restarted = createProfileSession({ machineRoot: root, activity, backupPaths: () => [], loginDataPaths: () => [] });
-    assert.notEqual(restarted.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:07:00.000Z" }).state, "active");
+    assert.notEqual(restarted.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:07:00.000Z" }).state, "active");
     assert.equal(restarted.resumeLogout(alex.profileId).state, "refused");
     busy = false;
     const wiped = restarted.resumeLogout(blocked.operationId);
@@ -298,7 +302,7 @@ describe("profile session", () => {
     assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), false);
   });
 
-  it("refuses logout completion when the erasure journal resolves inside the profile", () => {
+  it("refuses logout completion when the erasure journal resolves inside the profile", async () => {
     const root = temp();
     const session = createProfileSession({
       machineRoot: root,
@@ -306,9 +310,9 @@ describe("profile session", () => {
       backupPaths: () => [],
       loginDataPaths: () => [],
     });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     if (alex.state !== "active") return;
     const foreign = createProfileSession({ machineRoot: root, backupPaths: () => [], loginDataPaths: () => [] });
@@ -331,7 +335,7 @@ describe("profile session", () => {
     assert.throws(() => session.logOut(alex.token, { at: "2026-09-06T12:07:00.000Z" }));
   });
 
-  it("strips a restored profile file with the external erasure journal", () => {
+  it("strips a restored profile file with the external erasure journal", async () => {
     const root = temp();
     const backup = join(root, "held-backup.bin");
     const session = createProfileSession({
@@ -340,9 +344,9 @@ describe("profile session", () => {
       backupPaths: () => existsSync(backup) ? [backup] : [],
       loginDataPaths: () => [],
     });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     if (alex.state !== "active") return;
     const protectedPath = join(root, "profiles", alex.profileId, "credentials", "protected.json");
@@ -362,29 +366,36 @@ describe("profile session", () => {
     assert.equal(readFileSync(protectedPath, "utf8").includes("secret-one"), false);
   });
 
-  it("does not publish a profile when credential apply fails before commit", () => {
+  it("does not publish a profile when credential apply fails before commit", async () => {
     const root = temp();
     let renames = 0;
     const session = createProfileSession({
       machineRoot: root,
       credentialHooks: { beforeRename: () => { if (++renames === 2) throw new Error("disk"); } },
     });
-    assert.throws(() => session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    }), /disk/);
+    await assert.rejects(async () => await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    })), /disk/);
     assert.equal((JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: unknown[] }).profiles.length, 0);
   });
 
-  it("publishes one sign-up when the credential commit is uncertain", () => {
+  it("publishes one sign-up when the credential commit is uncertain", async () => {
     const root = temp();
     let renames = 0;
     const session = createProfileSession({
       machineRoot: root,
       credentialHooks: { afterRename: () => { if (++renames === 2) throw new Error("uncertain"); } },
     });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    const draft = session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
     });
+    assert.ok(draft.state === "onboarding");
+    const machine = machineAdmissions.get(root); assert.ok(machine);
+    assert.equal(machine.readProfileRegistry().profiles.length, 0);
+    const ready = await readyProfileOnboarding(session, draft);
+    assert.ok(ready.state === "onboarding" && ready.step === "ready");
+    assert.equal(machine.readProfileRegistry().profiles.length, 0);
+    const alex = await session.completeOnboarding(draft.token, draft.operationId);
     assert.equal(alex.state, "active");
     assert.equal(renames, 2);
     if (alex.state !== "active") return;
@@ -409,7 +420,7 @@ describe("profile session", () => {
     assert.equal(readFileSync(outside, "utf8").includes("secret-one"), true);
   });
 
-  it("holds the profile lock until the current operation finishes", () => {
+  it("holds the profile lock until the current operation finishes", async () => {
     const root = temp();
     let nested = false;
     const session = createProfileSession({
@@ -419,21 +430,21 @@ describe("profile session", () => {
           if (nested) return;
           nested = true;
           assert.throws(() => session.signUp({
-            firstName: "Sam", lastName: "Rivera", email: "sam@example.edu", password: "secret-two", createdAt: "2026-09-06T12:00:00.000Z",
+            firstName: "Sam", lastName: "Rivera", email: "sam@ucsd.edu", password: "secret-two", createdAt: "2026-09-06T12:00:00.000Z",
           }), /profile operation lock is unavailable/);
         },
       },
     });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     const registry = JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: { firstName: string }[] };
     assert.equal(registry.profiles.length, 1);
     assert.equal(registry.profiles[0]?.firstName, "Alex");
   }, 20_000);
 
-  it("replaces a dead profile lock before sign-up", () => {
+  it("replaces a dead profile lock before sign-up", async () => {
     const root = temp();
     const machine = join(root, "machine");
     mkdirSync(machine, { mode: 0o700, recursive: true });
@@ -441,23 +452,23 @@ describe("profile session", () => {
       schemaVersion: 1, kind: "profile-ops", pid: 2_147_483_647, platform: "darwin", startToken: "0",
     })}\n`, { mode: 0o600 });
     const session = createProfileSession({ machineRoot: root });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
   });
 
-  it("does not sign in another profile while a logout operation is still open", () => {
+  it("does not sign in another profile while a logout operation is still open", async () => {
     const root = temp();
     const session = createProfileSession({ machineRoot: root, activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active"); if (alex.state !== "active") return;
     assert.equal(session.logOut(alex.token, { at: "2026-09-06T12:01:00.000Z" }).state, "wiped");
-    const sam = session.signUp({
-      firstName: "Sam", lastName: "Rivera", email: "sam@example.edu", password: "secret-two", createdAt: "2026-09-06T12:01:00.000Z",
-    });
+    const sam = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Sam", lastName: "Rivera", email: "sam@ucsd.edu", password: "secret-two", createdAt: "2026-09-06T12:01:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     assert.equal(sam.state, "active");
     if (alex.state !== "active" || sam.state !== "active") return;
@@ -466,19 +477,19 @@ describe("profile session", () => {
     machine.publishProfileOperation({ schemaVersion: 1, kind: "logout", operationId, profileId: alex.profileId,
       at: IsoInstantSchema.parse("2026-09-06T12:06:00.000Z"), phase: "admitted" });
     const restarted = createProfileSession({ machineRoot: root });
-    const blocked = restarted.signIn({ email: "sam@example.edu", password: "secret-two", at: "2026-09-06T12:07:00.000Z" });
+    const blocked = restarted.signIn({ email: "sam@ucsd.edu", password: "secret-two", at: "2026-09-06T12:07:00.000Z" });
     assert.equal(blocked.state, "refused");
     if (blocked.state === "refused") assert.equal(blocked.code, "PROFILE_TRANSITION_BLOCKED");
     const registry = JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: { profileId: string; lifecycle: string }[] };
     assert.equal(registry.profiles.find((row) => row.profileId === alex.profileId)?.lifecycle, "ready");
   });
 
-  it("does not save a different password over an already applied sign-up command", () => {
+  it("does not save a different password over an already applied sign-up command", async () => {
     const root = temp();
     const session = createProfileSession({ machineRoot: root });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     if (alex.state !== "active") return;
     const verifierText = readFileSync(join(root, "machine", "profile-verifiers.json"), "utf8");
@@ -526,7 +537,7 @@ describe("profile session", () => {
     }));
     const restarted = createProfileSession({ machineRoot: root });
     const refused = restarted.signIn({
-      email: "alex@example.edu", password: "secret-two", at: "2026-09-06T12:00:00.000Z",
+      email: "alex@ucsd.edu", password: "secret-two", at: "2026-09-06T12:00:00.000Z",
     });
     assert.equal(refused.state, "refused");
     if (refused.state === "refused") assert.equal(refused.code, "PROFILE_SIGN_IN_REFUSED");
@@ -540,7 +551,7 @@ describe("profile session", () => {
     assert.equal(current.record.entries.ucpathPassword.value, "secret-one");
   });
 
-  it("writes the supplied password again when an old command survives logout", () => {
+  it("writes the supplied password again when an old command survives logout", async () => {
     const root = temp();
     const session = createProfileSession({
       machineRoot: root,
@@ -548,9 +559,9 @@ describe("profile session", () => {
       backupPaths: () => [],
       loginDataPaths: () => [],
     });
-    const alex = session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
     assert.equal(alex.state, "active");
     if (alex.state !== "active") return;
     const wiped = session.logOut(alex.token, { at: "2026-09-06T12:05:00.000Z" });
@@ -582,7 +593,7 @@ describe("profile session", () => {
       expectedRevision: 1,
       phase: "applying",
     }));
-    const again = session.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:07:00.000Z" });
+    const again = session.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:07:00.000Z" });
     assert.equal(again.state, "active");
     const restored = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8");
     assert.equal(restored.includes("secret-one"), false);
@@ -595,12 +606,12 @@ describe("profile session", () => {
 
 
 describe("durable profile authority regressions", () => {
-  const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
+  const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
   const at = "2026-09-06T12:07:00.000Z";
-  it("advances activation after restart and revokes the independent old instance", () => {
+  it("advances activation after restart and revokes the independent old instance", async () => {
     const root = temp();
     const first = createProfileSession({ machineRoot: root });
-    const a = first.signUp(fields);
+    const a = await finishProfileOnboarding(first, first.signUp(fields));
     assert.equal(a.state, "active"); if (a.state !== "active") return;
     writeFileSync(join(root, "profiles", a.profileId, "note.txt"), "fixture", { mode: 0o600 });
     const restarted = createProfileSession({ machineRoot: root });
@@ -611,19 +622,19 @@ describe("durable profile authority regressions", () => {
     assert.equal("state" in stale && stale.state, "refused");
     assert.ok(restarted.readFile(b.token, "note.txt") instanceof Uint8Array);
   });
-  it("refuses a second sign-up before publishing credentials or selection", () => {
+  it("refuses a second sign-up before publishing credentials or selection", async () => {
     const root = temp();
     const first = createProfileSession({ machineRoot: root });
-    assert.equal(first.signUp(fields).state, "active");
+    assert.equal((await finishProfileOnboarding(first, first.signUp(fields))).state, "active");
     const second = createProfileSession({ machineRoot: root });
-    assert.equal(second.signUp({ ...fields, firstName: "Sam", email: "sam@example.edu" }).state, "refused");
+    assert.equal((await finishProfileOnboarding(second, second.signUp({ ...fields, firstName: "Sam", email: "sam@ucsd.edu" }))).state, "refused");
     const registry = JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: unknown[] };
     assert.equal(registry.profiles.length, 1);
   });
-  it("revokes an independent token before cancellation callback or erasure", () => {
+  it("revokes an independent token before cancellation callback or erasure", async () => {
     const root = temp();
     const first = createProfileSession({ machineRoot: root });
-    const a = first.signUp(fields);
+    const a = await finishProfileOnboarding(first, first.signUp(fields));
     assert.equal(a.state, "active"); if (a.state !== "active") return;
     writeFileSync(join(root, "profiles", a.profileId, "note.txt"), "fixture", { mode: 0o600 });
     let currentToken = "";
@@ -656,7 +667,7 @@ it("captures and freshly revalidates each independent authority constituent on t
     account: { readAuthority: async child => { assert.ok(child); issuedChildren.push(child); return { ...account }; }, revalidateAuthority: captured => JSON.stringify(captured) === JSON.stringify(account) },
     settings: { read: () => structuredClone(settings) },
   });
-  const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
+  const active = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" }));
   assert.equal(active.state, "active"); if (active.state !== "active") return;
   let captured = await session.readCurrentAuthority(active.token);
   assert.equal(captured.state, "available"); if (captured.state !== "available") return;
@@ -695,7 +706,7 @@ it("captures and freshly revalidates each independent authority constituent on t
   const fresh = await session.readCurrentAuthority(active.token); assert.equal(fresh.state, "available");
   const priorChild = issuedChildren.at(-1); assert.ok(priorChild);
   priorChild.assertProfileRuntime();
-  const next = session.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:04:00.000Z" });
+  const next = session.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:04:00.000Z" });
   assert.equal(next.state, "active"); if (next.state !== "active") return;
   assert.ok(next.epoch > active.epoch);
   assert.throws(() => priorChild.assertProfileRuntime(), /released admission/);
@@ -719,7 +730,7 @@ it("rechecks profile revocation and settings changes across account awaits", asy
     account: { readAuthority: async () => { await gate; return account; }, revalidateAuthority: () => true },
     activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [],
   });
-  const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
+  const active = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" }));
   assert.equal(active.state, "active"); if (active.state !== "active") return;
   assert.equal((await session.readCurrentAuthority(active.token)).state, "available");
   gate = new Promise<void>(resolve => { settle = resolve; });
@@ -733,13 +744,13 @@ it("rechecks profile revocation and settings changes across account awaits", asy
   settle(); assert.equal((await revoking).state, "refused");
 });
 
-it("refuses missing or corrupt established selection and foreign or released admissions", () => {
+it("refuses missing or corrupt established selection and foreign or released admissions", async () => {
   const root = temp();
   const admission = machineAdmissions.get(root); assert.ok(admission);
   const foreign = temp(), foreignAdmission = machineAdmissions.get(foreign); assert.ok(foreignAdmission);
   assert.throws(() => realCreateProfileSession({ machineRoot: root, admission: foreignAdmission }));
   const session = createProfileSession({ machineRoot: root });
-  const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
+  const active = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" }));
   assert.equal(active.state, "active"); if (active.state !== "active") return;
   const path = join(root, "machine", "profiles.json");
   const current = readFileSync(path);
@@ -759,8 +770,8 @@ it("refuses missing or corrupt established selection and foreign or released adm
 it("allocates distinct durable activation generations under cross-process exclusion", async () => {
   const root = temp();
   const session = createProfileSession({ machineRoot: root });
-  const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
-  const first = session.signUp(fields); assert.equal(first.state, "active"); if (first.state !== "active") return;
+  const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
+  const first = await finishProfileOnboarding(session, session.signUp(fields)); assert.equal(first.state, "active"); if (first.state !== "active") return;
   const source = `
     import { createProfileSession } from ${JSON.stringify(new URL("../../../src/backend/profiles/profile-session.ts", import.meta.url).href)};
     import { acquireEntrypointAdmission } from ${JSON.stringify(new URL("../../../src/backend/storage/admission/bootstrap-admission.ts", import.meta.url).href)};
@@ -830,12 +841,12 @@ it("allocates distinct durable activation generations under cross-process exclus
 });
 
 
-it("quarantines a version-one registry and refuses missing established version evidence", () => {
+it("quarantines a version-one registry and refuses missing established version evidence", async () => {
   const root = temp();
   mkdirSync(join(root, "machine"), { mode: 0o700, recursive: true });
   const path = join(root, "machine", "profiles.json");
   const session = createProfileSession({ machineRoot: root });
-  const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
+  const active = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" }));
   assert.equal(active.state, "active"); if (active.state !== "active") return;
   const current = readFileSync(path);
   const rows = (JSON.parse(current.toString()) as { profiles: unknown[] }).profiles;
@@ -851,7 +862,7 @@ it("quarantines a version-one registry and refuses missing established version e
 it("keeps authority unavailable without account and Settings sources", async () => {
   const session = createProfileSession({ machineRoot: temp() });
   assert.equal((await session.readCurrentAuthority("unissued")).state, "refused");
-  const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
+  const active = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" }));
   assert.equal(active.state, "active"); if (active.state !== "active") return;
   const source = await session.readCurrentAuthority(active.token);
   assert.equal(source.state, "refused"); if (source.state === "refused") assert.equal(source.code, "PROFILE_AUTHORITY_UNAVAILABLE");
@@ -866,7 +877,7 @@ it("joins the real token-free account source with the exact admitted profile roo
     readAuthority: admission => account.readAuthority(admission),
     revalidateAuthority: (captured, admission) => account.revalidateAuthority(captured, admission),
   } });
-  const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
+  const active = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" }));
   assert.equal(active.state, "active"); if (active.state !== "active") return;
   const stateRoot = join(root, "profiles", active.profileId);
   const machine = machineAdmissions.get(root); assert.ok(machine);
@@ -878,7 +889,7 @@ it("joins the real token-free account source with the exact admitted profile roo
     const repository = createChatGptCredentialRepository({ admission, stateRoot });
     await repository.withLock(async transaction => transaction.replace({ schemaVersion: 1, revision: 1,
       hostId: "urn:uuid:11111111-1111-4111-8111-111111111111", clientId: "oaiapp_fixture",
-      registration: { subject: "fixture", name: "Fixture", email: "fixture@example.com" },
+      registration: { subject: "fixture", name: "Fixture", email: "fixture@ucsd.edu" },
       session: { accessToken: "fixture-access", refreshToken: null, idToken: "fixture-id", expiresAt: IsoInstantSchema.parse("2026-09-06T13:00:00.000Z"),
         earliestRefreshAt: null, scopes: ["offline_access", "resource.invoke", "chatgpt.tokens.use.direct"], usePlan: true, usage: "available" },
     }, null));
@@ -892,11 +903,11 @@ it("joins the real token-free account source with the exact admitted profile roo
 });
 
 
-it("checks independently changed durable selection, generation and lifecycle before file preparation", () => {
+it("checks independently changed durable selection, generation and lifecycle before file preparation", async () => {
   const root = temp();
   const session = createProfileSession({ machineRoot: root });
-  const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
-  assert.equal(session.signUp(fields).state, "active");
+  const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
+  assert.equal((await finishProfileOnboarding(session, session.signUp(fields))).state, "active");
   const mutations: ((document: ProfileRegistryDocument) => ProfileRegistryDocument)[] = [
     document => ({ ...document, activeProfileId: null }),
     document => ({ ...document, sessionGeneration: document.sessionGeneration + 1 }),
@@ -919,18 +930,18 @@ it("checks independently changed durable selection, generation and lifecycle bef
   }
 });
 
-function readIsolationFixture() {
+async function readIsolationFixture() {
   const root = temp();
   const session = createProfileSession({ machineRoot: root, activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
-  const a = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
+  const a = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" }));
   assert.equal(a.state, "active"); assert.ok(a.state === "active");
   assert.equal(session.logOut(a.token, { at: "2026-09-06T12:01:00.000Z" }).state, "wiped");
-  const b = session.signUp({ firstName: "Sam", lastName: "Ortiz", email: "sam@example.edu", password: "secret-two", createdAt: "2026-09-06T12:02:00.000Z" });
+  const b = await finishProfileOnboarding(session, session.signUp({ firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", password: "secret-two", createdAt: "2026-09-06T12:02:00.000Z" }));
   assert.equal(b.state, "active"); assert.ok(b.state === "active");
   const sibling = join(root, "profiles", b.profileId), marker = randomBytes(32);
   writeFileSync(join(sibling, "note.bin"), marker, { mode: 0o600 });
   assert.equal(session.logOut(b.token, { at: "2026-09-06T12:03:00.000Z" }).state, "wiped");
-  const active = session.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:04:00.000Z" });
+  const active = session.signIn({ email: "alex@ucsd.edu", password: "secret-one", at: "2026-09-06T12:04:00.000Z" });
   assert.equal(active.state, "active"); assert.ok(active.state === "active");
   const profile = join(root, "profiles", a.profileId), directory = join(profile, "notes"), own = randomBytes(32);
   mkdirSync(directory, { mode: 0o700 });
@@ -942,15 +953,15 @@ function readIsolationFixture() {
   return { root, session, active, profile, directory, path, sibling, own };
 }
 
-it.each(["sibling-directory", "same-profile-directory", "final-file"])("R3 profile read refuses %s symlinks after valid A/B lifecycle", kind => {
-  const f = readIsolationFixture();
+it.each(["sibling-directory", "same-profile-directory", "final-file"])("R3 profile read refuses %s symlinks after valid A/B lifecycle", async kind => {
+  const f = await readIsolationFixture();
   const link = join(f.profile, "linked");
   symlinkSync(kind === "final-file" ? join(f.sibling, "note.bin") : kind === "sibling-directory" ? f.sibling : f.directory, link);
   assert.throws(() => f.session.readFile(f.active.token, kind === "final-file" ? "linked" : "linked/note.bin"), { message: "profile file read refused" });
 });
 
-it.each(["ancestor-before-open", "file-before-open", "ancestor-during-read", "file-during-read", "misbound-open"])("R3 profile read refuses %s before publishing bytes and closes its descriptor", kind => {
-  const f = readIsolationFixture();
+it.each(["ancestor-before-open", "file-before-open", "ancestor-during-read", "file-during-read", "misbound-open"])("R3 profile read refuses %s before publishing bytes and closes its descriptor", async kind => {
+  const f = await readIsolationFixture();
   const realLstat = fs.lstatSync, realOpen = fs.openSync, realRead = fs.readFileSync;
   let changed = false, descriptor: number | undefined;
   const replace = () => {

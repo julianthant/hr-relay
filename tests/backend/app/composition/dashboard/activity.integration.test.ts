@@ -41,8 +41,8 @@ import { runRecordOf } from "../../../../support/helpers/backend/dashboard-harne
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 
-const cleanup:(()=>void)[]=[];
-afterEach(()=>{for(const dispose of cleanup.splice(0))dispose();});
+const cleanup:(()=>void | Promise<void>)[]=[];
+afterEach(async ()=>{for(const dispose of cleanup.splice(0))await dispose();});
 const PRIVATE_ACTIVITY_LABEL = "Private Ingress Subject 10000000";
 const RANGE_AWARE_TODAY = "2026-09-26";
 const RANGE_AWARE_ACTIVITY_DAYS = [
@@ -102,13 +102,13 @@ function shiftActivityVolumeSeries(report:ActivityReportWire):ActivityReportWire
   return {...report,volume:{...volume,buckets:volume.buckets.map((bucket,index)=>({...bucket,
     runs:bucket.runs+(index===source?-1:index===destination?1:0)}))}};
 }
-function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) {
-  const profile=createBoundProfileFixture();
+async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) {
+  const profile=await createBoundProfileFixture();
   const scratch=mkdtempSync(join(tmpdir(),"activity-selection-proof-"));
   const clock=manualClock(new Date("2026-09-21T17:00:00Z"));
   const database=AuthorityDatabase.open({path:profile.path,busyTimeoutMs:500,migrationOwner:"activity-selection-proof"},clock);
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  cleanup.push(()=>{database.close();profile.close();rmSync(scratch,{recursive:true,force:true});});
+  cleanup.push(async ()=>{database.close();await profile.close();rmSync(scratch,{recursive:true,force:true});});
   const activityDays: readonly string[] = options.rangeAware ? RANGE_AWARE_ACTIVITY_DAYS : ["2026-09-20", "2026-09-20", "2026-09-20"];
   for (const [index, day] of activityDays.entries()) {
     const seed = 3701 + index;
@@ -152,7 +152,7 @@ function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) 
 }
 
 it("serves and exports the same reviewed Activity summary snapshot and refuses substitution after mutation",async()=>{
-  const f=fixture();await f.artifacts.ready;
+  const f=await fixture();await f.artifacts.ready;
   const report=ActivityReportSelectionSchema.parse(await (await f.app.request("http://localhost/api/v1/reports/activity?from=2026-09-20&to=2026-09-20")).json());
   assert.equal(report.totalRuns,3);assert.equal(report.inFlightRuns,3);
   const csv=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:report.from,to:report.to,snapshot:report.snapshot.token})}`);
@@ -169,7 +169,7 @@ it("serves and exports the same reviewed Activity summary snapshot and refuses s
 });
 
 it("binds every preset and Custom range to one selected report in decoded CSV and XLSX bytes", async () => {
-  const f = fixture({ rangeAware: true });
+  const f = await fixture({ rangeAware: true });
   await f.artifacts.ready;
   for (const selection of RANGE_AWARE_SELECTIONS) {
     const expectedRuns = f.activityDays.filter((day) => day >= selection.from && day <= selection.to).length;
@@ -254,7 +254,7 @@ it("binds every preset and Custom range to one selected report in decoded CSV an
 });
 
 it("binds Activity volume series into the snapshot digest for CSV and XLSX downloads",async()=>{
-  const f=fixture({dynamicVolumeSeries:true});await f.artifacts.ready;
+  const f=await fixture({dynamicVolumeSeries:true});await f.artifacts.ready;
   const report=ActivityReportSelectionSchema.parse(await (await f.app.request("http://localhost/api/v1/reports/activity?from=2026-09-20&to=2026-09-20")).json());
   const generation=f.database.getMeta().authorityGeneration;
   assert.equal(report.volume.coveredRuns,report.totalRuns);
@@ -285,7 +285,7 @@ it("binds Activity volume series into the snapshot digest for CSV and XLSX downl
 });
 
 it("exports the complete ordered collected search values with coverage and exact snapshot ownership",async()=>{
-  const f=fixture();await f.artifacts.ready;
+  const f=await fixture();await f.artifacts.ready;
   const query={q:"",scope:"all" as const,facets:{from:"2026-09-20",to:"2026-09-20"},limit:1};
   const page=f.search.search(query),selection={kind:"search" as const,query,snapshot:{...page.snapshot,generatedAt:page.generatedAt}};
   assert.equal(page.results.length,1);assert.equal(page.totalMatches,3);
@@ -311,7 +311,7 @@ it("exports the complete ordered collected search values with coverage and exact
 });
 
 it("rejects report token tampering, mismatched range, foreign signer and expiry without returning a replacement report",async()=>{
-  const f=fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20");
+  const f=await fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20");
   assert.throws(()=>f.activity.readSelected(report.from,"2026-09-21",report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" });
   assert.throws(()=>f.activity.readSelected(report.from,report.to,`${report.snapshot.token}x`),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
   const { activity: restarted }=composeActivity({database:f.database,clock:f.clock,descriptors:{resolve:()=>undefined},ledger:createTransactionHistory(f.database.authority)});
@@ -327,7 +327,7 @@ it("rejects report token tampering, mismatched range, foreign signer and expiry 
 });
 
 it("the client checks range and download filename, MIME, length, digest and selected-token identity before delivering bytes",async()=>{
-  const f=fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20"),controller=new AbortController();
+  const f=await fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20"),controller=new AbortController();
   let observedSignal:AbortSignal|undefined;
   const client=createActivityQueries(createDashboardTransport({baseUrl:"http://localhost",fetchImpl:(url,init)=>{
     observedSignal=init?.signal??undefined;return Promise.resolve(f.app.request(url,init));
@@ -366,7 +366,7 @@ it("the client checks range and download filename, MIME, length, digest and sele
 
 
 it("retains complete unregistered open results and distinctive absence reasons in decoded JSON, CSV and XLSX", async () => {
-  const f = fixture();
+  const f = await fixture();
   const query = { q: "", scope: "all" as const, facets: { from: "2026-09-20", to: "2026-09-20" }, limit: 50 };
   const page = f.search.search(query);
   const results = page.results.map(result => CrossDateSearchResultSchema.parse({
@@ -421,7 +421,7 @@ it("retains complete unregistered open results and distinctive absence reasons i
 });
 
 it("serves the complete AP1 population and reuses its nested AS1 report for XLSX", async () => {
-  const f = fixture(); await f.artifacts.ready;
+  const f = await fixture(); await f.artifacts.ready;
   const range = { from: "2026-09-20", to: "2026-09-20" };
   const selected = ActivityPopulationSelectionSchema.parse(await (await f.app.request(`http://localhost/api/v1/reports/activity/population?${new URLSearchParams(range)}`)).json());
   assert.equal(selected.population.length, 3);
@@ -445,7 +445,7 @@ it("serves the complete AP1 population and reuses its nested AS1 report for XLSX
 });
 
 it("keeps population failures named and unexpected read diagnostics out of the response", async () => {
-  const f = fixture();
+  const f = await fixture();
   for (const [error, status, code] of [
     [new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH"), 500, "ACTIVITY_POPULATION_SOURCE_MISMATCH"],
     [new Error("private-read-diagnostic"), 500, "DASHBOARD_READ_FAILED"],

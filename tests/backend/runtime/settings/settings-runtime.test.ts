@@ -8,9 +8,9 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { seedInitialSettingsRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
-it("keeps initial ordinary settings readable after seeding the active runtime", () => {
+it("keeps initial ordinary settings readable after seeding the active runtime", async () => {
   const clock = manualClock(new Date("2026-08-03T17:00:00.000Z"));
-  const opened = openBoundDatabaseFixture("initial-settings-fixture", clock, 1000);
+  const opened = await openBoundDatabaseFixture("initial-settings-fixture", clock, 1000);
   const { database } = opened;
   try {
     seedInitialSettingsRuntimeConfig(database, clock);
@@ -21,5 +21,5 @@ it("keeps initial ordinary settings readable after seeding the active runtime", 
       settingsFingerprint: record.settingsFingerprint, configFingerprint: resolved.fingerprint });
     assert.equal(active.generation, 1);
     assert.deepEqual(database.authority.configSnapshots.get(database.authority.runtimeConfig.get()!.configSnapshotId)?.config, resolved.config);
-  } finally { opened.close(); }
+  } finally { await opened.close(); }
 });

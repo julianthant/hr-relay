@@ -35,7 +35,7 @@ import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/s
 {
 
 it("serves only the genuine token-owned profile and refuses its later missing canonical database", async () => {
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   const workspace = profile.workspace, authorityPath = profile.path;
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(workspace, name));
@@ -45,7 +45,7 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
   let restarted: ReturnType<typeof acquireEntrypointAdmission> | undefined;
   let dashboardStopped = false;
   try {
-    const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+    const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("actual profile sign-in required");
     assert.equal(existsSync(join(profile.machine.stateRoot, "state.db")), false);
@@ -72,7 +72,7 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
   } finally {
     if (dashboard !== undefined) await dashboard.stop();
     if (!dashboardStopped) await runtime.close();
-    restarted?.release(); profile.close();
+    restarted?.release(); await profile.close();
   }
 }, 20_000);
 }
@@ -311,7 +311,7 @@ const _afterEachFixture0 = async () => {
 it("keeps the owned restoring journal after process death and absent staging until explicit exact stopped settlement", async () => {
 try {
 
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   const root = profile.workspace, profileId = profile.admission.profileBinding.profileId; roots.push(root);
   profile.admission.release(); profile.machine.release();
   const url = (path: string) => pathToFileURL(join(process.cwd(), path)).href;
@@ -382,12 +382,12 @@ await _afterEachFixture0();
 {
 
 it("fresh private authority is healthy without creating a backup",async()=>{
-  const f=runtimeFixture(["dashboard.serve"]);
+  const f=await runtimeFixture(["dashboard.serve"]);
   try {const report=await doctorAuthorityStorage(f.admission,f.doctorOptions,f.clock);assert.equal(report.authority.state,"healthy");assert.equal(report.backup.state,"missing");assert.equal((await f.report()).results.find(check=>check.check==="authority.health")?.status,"pass");}
-  finally {f.close();}
+  finally {await f.close();}
 });
 it.each(["wrong","newer","unsupported"] as const)("%s authority refuses read-only inspection without automatic migration",async kind=>{
-  const f=runtimeFixture(["dashboard.serve"]);
+  const f=await runtimeFixture(["dashboard.serve"]);
   try {
     const database=new DatabaseSync(f.databasePath);
     try {if(kind==="wrong")database.exec("DROP TABLE runs");else {const version=kind==="newer"?999:1;database.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}}
@@ -396,11 +396,11 @@ it.each(["wrong","newer","unsupported"] as const)("%s authority refuses read-onl
     assert.equal(report.authority.state,"degraded");if(report.authority.state!=="degraded")throw new Error("unhealthy authority passed");
     assert.equal(report.authority.cause.code,"authority-schema-mismatch");
     assert.equal((await f.report()).results.find(check=>check.check==="authority.health")?.status,"fail");assert.deepEqual(readFileSync(f.databasePath),before);
-  }finally {f.close();}
+  }finally {await f.close();}
 });
 
 it("supported single-authority restore re-checks healthy without inventing repair or substitute authority",async()=>{
-  const profile=createBoundProfileFixture(), workspace=profile.workspace;
+  const profile=await createBoundProfileFixture(), workspace=profile.workspace;
   const admission=profile.admission, stateRoot=profile.stateRoot;
   const clock=manualClock(new Date("2026-09-19T12:00:00.000Z")), authorityPath=join(stateRoot,"state.db");
   try {
@@ -417,7 +417,7 @@ it("supported single-authority restore re-checks healthy without inventing repai
       backupDirectory:join(stateRoot,"backups","authority"),busyTimeoutMs:100},clock,renewed.credentials);
     const observed=await runner.run({signal:new AbortController().signal,timeoutMs:1000,deadlineMonotonicMs:clock.monotonicMs()+1000,redaction:"safe-summary"});
     assert.equal(observed.state,"healthy",JSON.stringify(observed));
-  }finally{profile.close();}
+  }finally{await profile.close();}
 });
 }
 

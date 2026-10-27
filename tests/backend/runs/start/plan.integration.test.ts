@@ -41,23 +41,23 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const worlds: DashboardWorld[] = [];
 
-const _afterEachFixture0 = () => {
+const _afterEachFixture0 = async () => {
   while (databases.length > 0) databases.pop()?.close();
   while (roots.length > 0) {
     const root = roots.pop();
     if (root !== undefined) rmSync(root, { recursive: true, force: true });
   }
-  for (const world of worlds.splice(0)) world.dispose();
+  for (const world of worlds.splice(0)) await world.dispose();
 };
 
-function openDatabase(): AuthorityDatabase {
-  const profile = createBoundProfileFixture();
+async function openDatabase(): Promise<AuthorityDatabase> {
+  const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
   const close = database.close.bind(database);
-  database.close = () => { close(); profile.close(); };
+  database.close = async () => { close(); await profile.close(); };
   databases.push(database);
   return database;
 }
@@ -65,8 +65,8 @@ function openDatabase(): AuthorityDatabase {
 describe("separations — start planning through the existing service", () => {
 afterEach(_afterEachFixture0);
 
-  it("reads protected input once, retains it across rotation, and refuses override/absence before IDs", () => {
-    const authority = openDatabase();
+  it("reads protected input once, retains it across rotation, and refuses override/absence before IDs", async () => {
+    const authority = await openDatabase();
     let current = ProtectedStoreRecordSchema.parse(protectedSecretSource({ timekeeperName: "Synthetic First Operator" }).read());
     let reads = 0;
     let ids = 0;
@@ -108,8 +108,8 @@ afterEach(_afterEachFixture0);
     assert.equal(ids, beforeBlocked);
   });
 
-  it("binds protected canary plans without document-derived titles, match keys or fingerprints", () => {
-    const deps = { authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
+  it("binds protected canary plans without document-derived titles, match keys or fingerprints", async () => {
+    const deps = { authority: await openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
       protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }) };
     const request = { descriptor: separationsDescriptor, submissions: [{ documentNumber: "4511" }],
       protectedSubmissionBindings: [{ kind: "test-data-local" as const, inputPath: "documentNumber" as const,
@@ -130,8 +130,8 @@ afterEach(_afterEachFixture0);
       .planned[0].input, retained);
   });
 
-  it("gives an explicit protected reread a stable new item without changing captured source identity", () => {
-    const deps = { authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
+  it("gives an explicit protected reread a stable new item without changing captured source identity", async () => {
+    const deps = { authority: await openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
       protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }) };
     const request = { descriptor: separationsDescriptor, submissions: [{ documentNumber: "4511" }],
       protectedSubmissionBindings: [{ kind: "test-data-local" as const, inputPath: "documentNumber" as const,
@@ -203,8 +203,8 @@ const _afterEachFixture0 = () => {
 describe("start planning", () => {
 afterEach(_afterEachFixture0);
 
-  it("refuses an unbound reserved private field before planning any submission", () => {
-    const database = openDatabase();
+  it("refuses an unbound reserved private field before planning any submission", async () => {
+    const database = await openDatabase();
     const ids = sequentialIdFactory();
     const generation = database.getMeta().authorityGeneration;
     assert.throws(() => planStart(plannerDeps(database, ids),
@@ -214,8 +214,8 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), []);
     assert.equal(database.getMeta().authorityGeneration, generation);
   });
-  it("retains the actual protected-store origin admitted before canonical planning",()=>{
-    const database=openDatabase();
+  it("retains the actual protected-store origin admitted before canonical planning",async ()=>{
+    const database=await openDatabase();
     const plan=planStart({...plannerDeps(database),protectedSecrets:protectedSecretSource({timekeeperName:"Synthetic signer"})},
       baseRequest([{documentNumber:"12345678"}],{descriptor:separationsDescriptor}));
     assert.equal(plan.refused.length,0);
@@ -227,8 +227,8 @@ afterEach(_afterEachFixture0);
     assert.equal(Reflect.get(value, "timekeeperName"),"Synthetic signer");
     assert.equal(Object.hasOwn(raw,"timekeeperName"),false);
   });
-  it("planning reserves no lifecycle identity", () => {
-    const database = openDatabase();
+  it("planning reserves no lifecycle identity", async () => {
+    const database = await openDatabase();
     const ids = sequentialIdFactory();
     const plan = planStart(plannerDeps(database, ids),
       baseRequest([{ emplId: "10873698" }]));
@@ -237,8 +237,8 @@ afterEach(_afterEachFixture0);
     assert.equal(Object.hasOwn(plan.planned[0], "traceId"), false);
   });
 
-  it("plans every valid submission and derives its identity from the workflow's own match key", () => {
-    const database = openDatabase();
+  it("plans every valid submission and derives its identity from the workflow's own match key", async () => {
+    const database = await openDatabase();
     const plan = planStart(plannerDeps(database), baseRequest([
       { emplId: "10873698" },
       { name: "Battistessa, Johnnie" },
@@ -269,8 +269,8 @@ afterEach(_afterEachFixture0);
     assert.equal(plan.planned[0].canonicalInputDigest, deriveCanonicalInputDigest(plan.planned[0].input.value));
   });
 
-  it("retains the effective browser screenshot choice without backfilling historical plans", () => {
-    const database = openDatabase();
+  it("retains the effective browser screenshot choice without backfilling historical plans", async () => {
+    const database = await openDatabase();
     const captured = planStart(
       plannerDeps(database),
       baseRequest([{ emplId: "10873698" }], { captureBrowserScreenshots: true }),
@@ -285,8 +285,8 @@ afterEach(_afterEachFixture0);
     assert.equal(Object.hasOwn(historical, "captureBrowserScreenshots"), false);
   });
 
-  it("retains the operator's step omissions on the plan record, byte for byte", () => {
-    const database = openDatabase();
+  it("retains the operator's step omissions on the plan record, byte for byte", async () => {
+    const database = await openDatabase();
     const stepOmissions = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/19/2026" } }];
     const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }], { stepOmissions }));
     assert.deepEqual(plan.stepOmissions, stepOmissions);
@@ -295,8 +295,8 @@ afterEach(_afterEachFixture0);
     assert.equal(Object.hasOwn(plain, "stepOmissions"), false);
   });
 
-  it("refuses an unparseable submission by name instead of dropping it", () => {
-    const database = openDatabase();
+  it("refuses an unparseable submission by name instead of dropping it", async () => {
+    const database = await openDatabase();
     const plan = planStart(plannerDeps(database), baseRequest([
       { emplId: "10873698" },
       { emplId: "99" },
@@ -308,8 +308,8 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(plan.refused[0].rawInput, { emplId: "99" });
   });
 
-  it("fails the entire planning request when raw ingress cannot be retained as strict JSON", () => {
-    const database = openDatabase();
+  it("fails the entire planning request when raw ingress cannot be retained as strict JSON", async () => {
+    const database = await openDatabase();
     const ids = sequentialIdFactory();
     assert.throws(() => planStart(plannerDeps(database, ids), baseRequest([
       { emplId: "10873698" },
@@ -318,8 +318,8 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(ids.minted(), [], "no proposal ids were minted");
   });
 
-  it("rejects a sparse submissions array before minting any proposal ids", () => {
-    const database = openDatabase();
+  it("rejects a sparse submissions array before minting any proposal ids", async () => {
+    const database = await openDatabase();
     const ids = sequentialIdFactory();
     const submissions = new Array<unknown>(3);
     submissions[0] = { emplId: "10873698" };
@@ -335,8 +335,8 @@ afterEach(_afterEachFixture0);
     assert.equal(database.getMeta().authorityGeneration, authorityGeneration, "planning failure must not mutate authority");
   });
 
-  it("refuses a repeat of a logical item already in the same plan", () => {
-    const database = openDatabase();
+  it("refuses a repeat of a logical item already in the same plan", async () => {
+    const database = await openDatabase();
     const plan = planStart(plannerDeps(database), baseRequest([
       { emplId: "10873698" },
       { emplId: "10873698", includeCrmDates: true },
@@ -346,8 +346,8 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(plan.refused[0].rawInput, { emplId: "10873698", includeCrmDates: true });
   });
 
-  it("refuses a dry run the GRAPH does not offer, and says which fact refused it", () => {
-    const database = openDatabase();
+  it("refuses a dry run the GRAPH does not offer, and says which fact refused it", async () => {
+    const database = await openDatabase();
     // Person Lookup is read-only. A dry run of it would execute exactly the same
     // nodes as a real run, so "supported" would silently redefine the request.
     assert.equal(supportsDryRun(personLookupDescriptor), false);
@@ -407,8 +407,8 @@ afterEach(_afterEachFixture0);
     );
   });
 
-  it("fingerprints the planned set so a re-plan cannot be started by an old confirmation", () => {
-    const database = openDatabase();
+  it("fingerprints the planned set so a re-plan cannot be started by an old confirmation", async () => {
+    const database = await openDatabase();
     const one = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
     const same = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
     const two = planStart(plannerDeps(database), baseRequest([
@@ -425,8 +425,8 @@ afterEach(_afterEachFixture0);
     ));
   });
 
-  it("binds raw ingress even when defaults produce the same canonical snapshot", () => {
-    const database = openDatabase();
+  it("binds raw ingress even when defaults produce the same canonical snapshot", async () => {
+    const database = await openDatabase();
     const omittedDefault = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
     const explicitDefault = planStart(plannerDeps(database), baseRequest([{
       emplId: "10873698",
@@ -438,8 +438,8 @@ afterEach(_afterEachFixture0);
     assert.notEqual(omittedDefault.inputFingerprint, explicitDefault.inputFingerprint);
   });
 
-  it("rejects schema, digest, and confirmation drift inside a stored plan", () => {
-    const database = openDatabase();
+  it("rejects schema, digest, and confirmation drift inside a stored plan", async () => {
+    const database = await openDatabase();
     const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
     assert.throws(() => StartPlanRecordSchema.parse({
       ...plan,
@@ -456,8 +456,8 @@ afterEach(_afterEachFixture0);
 describe("start plan consumption", () => {
 afterEach(_afterEachFixture0);
 
-  it("refuses to store a plan that claims it was already consumed", () => {
-    const database = openDatabase();
+  it("refuses to store a plan that claims it was already consumed", async () => {
+    const database = await openDatabase();
     const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
     assert.throws(
       () => database.authority.startPlans.create({

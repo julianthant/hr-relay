@@ -12,8 +12,8 @@ import { summaryFixture } from "../../../support/helpers/backend/served-database
 import { foundationFixture,id } from "../../../support/helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-it("reads bounded real month counts and chronological bounds without whole-history readers or writes", () => {
-  const f = summaryFixture();
+it("reads bounded real month counts and chronological bounds without whole-history readers or writes", async () => {
+  const f = await summaryFixture();
   try {
     for (const [i, day] of ["2024-12-31", "2025-01-02", "2026-08-03", "2026-08-03", "2026-09-08"].entries()) {
       const at = `${day}T12:00:00.000Z`;
@@ -53,11 +53,11 @@ it("reads bounded real month counts and chronological bounds without whole-histo
       assert.match(JSON.stringify(plan), /USING INDEX/u);
       assert.doesNotMatch(JSON.stringify(plan), /SCAN runs|TEMP B-TREE/u);
     } finally { raw.close(); }
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("refuses invalid queries and unavailable/corrupt publications instead of reporting empty history", () => {
-  const f = foundationFixture();
+it("refuses invalid queries and unavailable/corrupt publications instead of reporting empty history", async () => {
+  const f = await foundationFixture();
   try {
     const query = createCalendarQuery(f.db, f.clock);
     for (const input of [{ month: "2026-13", day: "2026-08-03" }, { month: "2026-08", day: "2026-02-30" }, { month: "2026-08", day: "2026-09-10" }]) {
@@ -72,11 +72,11 @@ it("refuses invalid queries and unavailable/corrupt publications instead of repo
       raw.prepare("DELETE FROM run_search WHERE run_id=?").run(f.run.envelope.runId);
       assert.throws(() => query.read({ month: "2026-08", day: "2026-08-03" }), /rebuild-required/u);
     } finally { raw.close(); }
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("terminal deletion removes bounds and counts and leaves Today reachable with empty history", () => {
-  const f = foundationFixture();
+it("terminal deletion removes bounds and counts and leaves Today reachable with empty history", async () => {
+  const f = await foundationFixture();
   try {
     let next = 999100;
     const service = new RunRecordService({ database: f.db, clock: f.clock, ids: { uuid: () => id(next++) }, publishQueued: () => {} });
@@ -103,11 +103,11 @@ it("terminal deletion removes bounds and counts and leaves Today reachable with 
     assert.equal(empty.nextDay, "2026-09-09");
     assert.equal(f.db.authority.deletedRuns.get(f.run.envelope.runId)?.runId, f.run.envelope.runId);
     assert.deepEqual(query.read({ month: day.slice(0, 7), day }).monthCounts, []);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
 it("serves the strict calendar route and refuses unknown or duplicate parameters", async () => {
-  const f = summaryFixture();
+  const f = await summaryFixture();
   try {
     const app: DashboardApp = new Hono();
     app.onError((_error, c) => c.json({ error: "refused" }, 400));
@@ -117,5 +117,5 @@ it("serves the strict calendar route and refuses unknown or duplicate parameters
     for (const suffix of ["&extra=1", "&day=2026-08-04", "&month=2026-09"]) {
       assert.equal((await app.request(`/api/v1/calendar?month=2026-08&day=2026-08-03${suffix}`)).status, 400);
     }
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });

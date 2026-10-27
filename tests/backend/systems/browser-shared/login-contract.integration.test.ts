@@ -16,7 +16,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
   it("recovers from ONE Duo terminal refusal on a fresh profile under the SAME lease generation", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
-    const database = sharedAuthority(clock);
+    const database = await sharedAuthority(clock);
     const tokens: DuoCeremonyLeaseToken[] = [];
     let refusalsLeft = 1;
     const a = recipeFactory(WORKER_A, {
@@ -47,7 +47,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
   it("fails loud naming the profile directory on the SECOND refusal, and releases the lease", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
-    const database = sharedAuthority(clock);
+    const database = await sharedAuthority(clock);
     const a = recipeFactory(WORKER_A, {
       onCeremony: async (_token, context) => {
         throw new DuoTerminalRefusalError(SYSTEM, "Duo REFUSED the WebAuthn assertion (fixture)", context.page.url());
@@ -74,7 +74,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
   it("refuses the recovery by name when the factory cannot discard a profile, and releases the lease", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
-    const database = sharedAuthority(clock);
+    const database = await sharedAuthority(clock);
     const a = recipeFactory(WORKER_A, {
       onCeremony: async (_token, context) => {
         throw new DuoTerminalRefusalError(SYSTEM, "Duo REFUSED the WebAuthn assertion (fixture)", context.page.url());

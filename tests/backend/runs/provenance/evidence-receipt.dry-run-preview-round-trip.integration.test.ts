@@ -22,7 +22,7 @@ afterEach(cleanup);
 describe("a dry run previews its transaction node and ends there", () => {
 
   it("records an honest transaction.previewed span and ends the run at the node", async () => {
-    const h = harness();
+    const h = await harness();
     await h.run();
 
     const events = h.emitter.events();
@@ -44,7 +44,7 @@ describe("a dry run previews its transaction node and ends there", () => {
 
 
   it("derives a receipt that says unknown and none, and never verified-done", async () => {
-    const k = finalizationHarness();
+    const k = await finalizationHarness();
     kualiOpen.push(k);
     const held: { k: typeof k; primary?: { error: unknown } } = { k };
     retainedKualiPreviewOwners.add(held);
@@ -118,7 +118,7 @@ describe("a dry run previews its transaction node and ends there", () => {
   it("derives an already-present preview's receipt, naming the probe rather than a subject", async () => {
     // A document whose persisted finalization ALREADY equals all twelve values
     // this run would write is exactly the `already-present` subject.
-    const k = finalizationHarness({ persistedFinalization: FINALIZATION_FIELDS });
+    const k = await finalizationHarness({ persistedFinalization: FINALIZATION_FIELDS });
     kualiOpen.push(k);
     const held: { k: typeof k; primary?: { error: unknown } } = { k };
     retainedKualiPreviewOwners.add(held);
@@ -200,7 +200,7 @@ describe("a dry run previews its transaction node and ends there", () => {
 
 
   it("keeps executeTransaction refusing a dry run, with zero durable footprint", async () => {
-    const k = finalizationHarness();
+    const k = await finalizationHarness();
     kualiOpen.push(k);
     const held: { k: typeof k; primary?: { error: unknown } } = { k };
     retainedKualiPreviewOwners.add(held);
@@ -237,7 +237,7 @@ describe("a dry run previews its transaction node and ends there", () => {
   });
 
   it("refuses a preview of a transaction node that declares no dry-run arm", async () => {
-    const k = finalizationHarness();
+    const k = await finalizationHarness();
     kualiOpen.push(k);
     const held: { k: typeof k; primary?: { error: unknown } } = { k };
     retainedKualiPreviewOwners.add(held);

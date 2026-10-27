@@ -48,13 +48,13 @@ function countingSessions() {
 /** One id factory across every attempt: durable outbox/authorization ids must not collide. */
 const ids = sequentialIdFactory("e");
 
-function depsFor(authority: AuthorityHarness, sessions: ReturnType<typeof sessionFactoryHarness>): RunExecutorDependencies {
+async function depsFor(authority: AuthorityHarness, sessions: ReturnType<typeof sessionFactoryHarness>): Promise<RunExecutorDependencies> {
   return {
     lifecycle: testRunLifecycle(authority.database, authority.clock),
     descriptor: personLookupDescriptor,
     stores: taskStoreRegistry,
     authority: authority.database,
-    sessions: sessionManagerFor(sessions, authority.clock),
+    sessions: await sessionManagerFor(sessions, authority.clock),
     emitter: recordingEmitter().emitter,
     clock: authority.clock,
     ids,
@@ -79,7 +79,7 @@ async function runAttempt(
   });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   const counting = countingSessions();
-  const outcome = await executeClaimedRun(depsFor(authority, counting.sessions), {
+  const outcome = await executeClaimedRun(await depsFor(authority, counting.sessions), {
     run: claimed.run,
     claim: { workerId: workerId, claimGeneration: claimed.run.claimGeneration },
     signal: SIGNAL,
@@ -90,7 +90,7 @@ async function runAttempt(
 
 describe("run executor recovery choices", () => {
   it("resume replays the read checkpoint; restart executes the read again as the same item's next attempt", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database } = authority;
 

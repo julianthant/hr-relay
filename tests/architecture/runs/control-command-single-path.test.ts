@@ -492,13 +492,13 @@ const DEFERRED_KEYS = new Set(
 
 /* ── harness ─────────────────────────────────────────────────────────────── */
 
-const profileFixtures: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profileFixtures: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   const failures: unknown[] = [];
   for (const database of openDatabases.splice(0)) { try { database.close(); } catch (error) { failures.push(error); } }
-  for (const fixture of profileFixtures.splice(0)) { try { fixture.close(); } catch (error) { failures.push(error); } }
+  for (const fixture of profileFixtures.splice(0)) { try { await fixture.close(); } catch (error) { failures.push(error); } }
   if (failures.length) throw new AggregateError(failures, "command guard fixture cleanup failed");
 });
 
@@ -513,8 +513,8 @@ interface GuardHarness {
   readonly plannerIds: ReturnType<typeof sequentialIdFactory>;
 }
 
-function createHarness(wrap?: RepositoryWrap): GuardHarness {
-  const fixture = createBoundProfileFixture();
+async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
+  const fixture = await createBoundProfileFixture();
   profileFixtures.push(fixture);
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(fixture.admission,
@@ -801,7 +801,7 @@ describe("control-command-single-path", () => {
   });
 
   it("dispatches every command family/action: active arms execute and unavailable arms have zero effects", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const seen: string[] = [];
     for (const fixture of CURRENT_COMMAND_FIXTURES) {
       const parsed = CommandRequestSchema.parse(fixture);
@@ -836,8 +836,8 @@ describe("control-command-single-path", () => {
   });
 
 
-  it("CASes every run verb against the caller's version — presentation included", () => {
-    const harness = createHarness();
+  it("CASes every run verb against the caller's version — presentation included", async () => {
+    const harness = await createHarness();
     assert.equal(harness.database.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
       configFingerprint: harness.database.authority.runtimeConfig.get()!.configFingerprint,
       configSnapshotId: harness.database.authority.runtimeConfig.get()!.configSnapshotId } }).state, "inserted");
@@ -896,9 +896,9 @@ describe("control-command-single-path", () => {
     assert.equal(afterRename.envelope.priority, "interactive");
   });
 
-  it("enqueue policy is transactional: an injected active-run lookup error creates zero runs", () => {
+  it("enqueue policy is transactional: an injected active-run lookup error creates zero runs", async () => {
     let shouldFail = false;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       runs: {
         ...repositories.runs,
@@ -919,8 +919,8 @@ describe("control-command-single-path", () => {
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
   });
 
-  it("commands are idempotent: byte-exact replay returns already-applied; a different body on the same id fails loud", () => {
-    const harness = createHarness();
+  it("commands are idempotent: byte-exact replay returns already-applied; a different body on the same id fails loud", async () => {
+    const harness = await createHarness();
     const plan = createFixturePlan(harness);
     const command = startCommandFor(plan);
     const first = harness.kernel.execute(command);
@@ -933,8 +933,8 @@ describe("control-command-single-path", () => {
     );
   });
 
-  it("typed gate results parse the descriptor's exact schema and store a checkpointed result", () => {
-    const harness = createHarness();
+  it("typed gate results parse the descriptor's exact schema and store a checkpointed result", async () => {
+    const harness = await createHarness();
     const plan = createFixturePlan(harness);
     const runId = singleAppliedRunId(harness.kernel.execute(startCommandFor(plan)));
     const slot = harness.database.withAuthorityTransaction(repositories => {

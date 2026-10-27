@@ -7,8 +7,8 @@ import { createCredentialStore } from "../../../../src/backend/storage/configura
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-for (const tamper of ["ciphertext", "nonce", "tag", "installationId", "profileId", "keyId", "algorithm"] as const) it(`authenticates every current field with SQLite closed and refuses altered ${tamper}`, () => {
-  const f = createBoundProfileFixture(), store = boundProfileCredentials(f.admission);
+for (const tamper of ["ciphertext", "nonce", "tag", "installationId", "profileId", "keyId", "algorithm"] as const) it(`authenticates every current field with SQLite closed and refuses altered ${tamper}`, async () => {
+  const f = await createBoundProfileFixture(), store = boundProfileCredentials(f.admission);
   const path = join(f.stateRoot, "credentials", "protected.json");
   try {
     const first = store.read();
@@ -32,11 +32,11 @@ for (const tamper of ["ciphertext", "nonce", "tag", "installationId", "profileId
     assert.throws(() => store.read());
     writeFileSync(path, before, { mode: 0o600 });
     assert.equal(store.read().entries.timekeeperName?.value, "Synthetic Replacement");
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("requires the exact machine-issued child and established key without regeneration", () => {
-  const f = createBoundProfileFixture(), other = createBoundProfileFixture();
+it("requires the exact machine-issued child and established key without regeneration", async () => {
+  const f = await createBoundProfileFixture(), other = await createBoundProfileFixture();
   try {
     const store = boundProfileCredentials(f.admission), before = store.read();
     assert.throws(() => createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot, erasureJournalAdmission: other.machine,
@@ -46,11 +46,11 @@ it("requires the exact machine-issued child and established key without regenera
     assert.throws(() => store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "d".repeat(64),
       expectedRevision: before.revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), updatedAt: "2026-10-21T12:00:00.000Z", entries: {} })));
     writeFileSync(keyPath, bytes, { mode: 0o600 }); assert.throws(() => store.read(), /credential-key-custody-changed/u);
-  } finally { f.close(); other.close(); }
+  } finally { await f.close(); await other.close(); }
 });
 
-it("requires the durable key anchor for current-format ordinary reads without creating one", () => {
-  const f = createBoundProfileFixture();
+it("requires the durable key anchor for current-format ordinary reads without creating one", async () => {
+  const f = await createBoundProfileFixture();
   const path = join(f.workspace, ".tracker", "control", "profile-registry.json"), before = readFileSync(path);
   try {
     const store = boundProfileCredentials(f.admission), record = store.read();
@@ -64,5 +64,5 @@ it("requires the durable key anchor for current-format ordinary reads without cr
     assert.equal(readFileSync(path).equals(missing), true);
     writeFileSync(path, before, { mode: 0o600 });
     assert.equal(store.read().revision, record.revision);
-  } finally { writeFileSync(path, before, { mode: 0o600 }); f.close(); }
+  } finally { writeFileSync(path, before, { mode: 0o600 }); await f.close(); }
 });

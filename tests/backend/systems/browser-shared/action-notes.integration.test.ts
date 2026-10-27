@@ -14,15 +14,15 @@ import { NoteWireSchema } from "../../../../src/models/events/types.js";
 
 const { disposers, harness, claimRunning, contextFor, intentByKey } = createWriteSequencerTestWorld();
 
-const cleanupOriginalFixture = () => {
-  for (const dispose of disposers.splice(0)) dispose();
+const cleanupOriginalFixture = async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 };
 
 describe("completed transaction gesture binding", () => {
 afterEach(cleanupOriginalFixture);
 
   it("binds prepare and commit inside their bounded task roles before the post-settlement drain", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     const bound: { role: "prepare" | "commit"; targetId: string; physicalSessionId?: string }[] = [];
@@ -62,7 +62,7 @@ afterEach(cleanupOriginalFixture);
   });
 
   it("binds probe and verifier from their parsed task inputs and drains only after settlement", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
@@ -90,7 +90,7 @@ afterEach(cleanupOriginalFixture);
 const { readPersistedNotes, disposers, executorHarness, enqueueAndClaim, SIGNAL } = createRunExecutorTestWorld();
 
 const cleanupOriginalFixture = async () => {
-  for (const dispose of disposers.splice(0)) dispose();
+  for (const dispose of disposers.splice(0)) await dispose();
 };
 
 describe("person-lookup full walk", () => {
@@ -112,7 +112,7 @@ afterEach(cleanupOriginalFixture);
       },
       crm: () => healthyCrmDriver(),
     });
-    const harness = executorHarness({ sessions });
+    const harness = await executorHarness({ sessions });
     const { database, clock, stateRoot: _stateRoot } = harness.authority;
     const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());

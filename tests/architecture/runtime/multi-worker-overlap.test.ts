@@ -27,8 +27,8 @@ afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
 
-function sharedAuthority(): AuthorityHarness {
-  const authority = openAuthorityHarness();
+async function sharedAuthority(): Promise<AuthorityHarness> {
+  const authority = await openAuthorityHarness();
   disposers.push(authority.dispose);
   return authority;
 }
@@ -132,7 +132,7 @@ function gatedUcpathSessions(hooks: Readonly<{
 
 describe("two live worker loops drain one queue", () => {
   it("executes every run exactly once, one active claim per worker, and genuinely overlaps", async () => {
-    const authority = sharedAuthority();
+    const authority = await sharedAuthority();
     const observer = overlapObserver(authority.database);
     const enqueued: string[] = [];
     for (let index = 1; index <= 6; index += 1) {
@@ -140,11 +140,11 @@ describe("two live worker loops drain one queue", () => {
       enqueued.push(runIdOf(record.record));
     }
 
-    const first = workerHarness(authority, "1", "a", {
+    const first = await workerHarness(authority, "1", "a", {
       onSpan: observer.sample,
       sessions: gatedUcpathSessions({ onCall: observer.sample }),
     });
-    const second = workerHarness(authority, "2", "b", {
+    const second = await workerHarness(authority, "2", "b", {
       onSpan: observer.sample,
       sessions: gatedUcpathSessions({ onCall: observer.sample }),
     });
@@ -189,7 +189,7 @@ describe("two live worker loops drain one queue", () => {
 
 describe("a live loop's row is invisible to every other claimer", () => {
   it("never serves the held row to a sibling worker and refuses a second claim for the holder", async () => {
-    const authority = sharedAuthority();
+    const authority = await sharedAuthority();
     const { database } = authority;
     database.authority.runs.enqueue(queuedRun(1));
     database.authority.runs.enqueue(queuedRun(2));
@@ -202,7 +202,7 @@ describe("a live loop's row is invisible to every other claimer", () => {
     const driverStarted = new Promise<void>((resolve) => {
       markStarted = resolve;
     });
-    const harness = workerHarness(authority, "1", "a", {
+    const harness = await workerHarness(authority, "1", "a", {
       sessions: gatedUcpathSessions({ gate, started: () => markStarted() }),
     });
     const looping = runWorkerLoop(harness.deps);
@@ -233,7 +233,7 @@ describe("a live loop's row is invisible to every other claimer", () => {
 
 describe("claim sweep overlaps a live heartbeat", () => {
   it("leaves the freshly renewed claim alone and requeues only the genuinely stale one", async () => {
-    const authority = sharedAuthority();
+    const authority = await sharedAuthority();
     const { database, clock } = authority;
     database.authority.runs.enqueue(queuedRun(1));
     database.authority.runs.enqueue(queuedRun(2));
@@ -246,7 +246,7 @@ describe("claim sweep overlaps a live heartbeat", () => {
     const driverStarted = new Promise<void>((resolve) => {
       markStarted = resolve;
     });
-    const harness = workerHarness(authority, "1", "a", {
+    const harness = await workerHarness(authority, "1", "a", {
       sessions: gatedUcpathSessions({ gate, started: () => markStarted() }),
     });
     const looping = runWorkerLoop(harness.deps);
@@ -310,7 +310,7 @@ describe("claim sweep overlaps a live heartbeat", () => {
 
 describe("a heartbeat that lost its row never renews it", () => {
   it("reports lost to the live loop after a sweep re-owned the run, and never resurrects the claim", async () => {
-    const authority = sharedAuthority();
+    const authority = await sharedAuthority();
     const { database, clock } = authority;
     database.authority.runs.enqueue(queuedRun(1));
 
@@ -329,7 +329,7 @@ describe("a heartbeat that lost its row never renews it", () => {
       }),
       crm: () => healthyCrmDriver(),
     });
-    const harness = workerHarness(authority, "1", "a", { sessions });
+    const harness = await workerHarness(authority, "1", "a", { sessions });
     const looping = runWorkerLoop(harness.deps);
     await driverStarted;
 

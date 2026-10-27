@@ -64,7 +64,7 @@ describe("ucpath landing verification", () => {
 
 describe("authenticated-application proof", () => {
   it("proves a UCPath session from the session cookie AND the absent sign-in forms", async () => {
-    const { context, evidence } = contextFor({
+    const { context, evidence } = await contextFor({
       url: UCPATH_APP,
       elements: NO_SIGN_IN_FORMS,
       cookies: [PS_TOKEN],
@@ -81,7 +81,7 @@ describe("authenticated-application proof", () => {
   });
 
   it("refuses the public portal even when a session cookie exists", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: UCPATH_PUBLIC_PORTAL,
       elements: NO_SIGN_IN_FORMS,
       cookies: [PS_TOKEN],
@@ -93,7 +93,7 @@ describe("authenticated-application proof", () => {
 
   it("refuses the PeopleSoft signon page, which shares the application's URL shape", async () => {
 
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: UCPATH_ENTRY,
       elements: { ...NO_SIGN_IN_FORMS, "peoplesoft-signon": { count: 1 } },
     });
@@ -103,7 +103,7 @@ describe("authenticated-application proof", () => {
     // is the backstop for a session that exists but has dropped to signon.
     assert.match(probe.reason, /never issued its PS_TOKEN session cookie/);
 
-    const withStaleSession = contextFor({
+    const withStaleSession = await contextFor({
       url: UCPATH_ENTRY,
       elements: { ...NO_SIGN_IN_FORMS, "peoplesoft-signon": { count: 1 } },
       cookies: [PS_TOKEN],
@@ -114,7 +114,7 @@ describe("authenticated-application proof", () => {
   });
 
   it("refuses a page still showing the UCSD SSO form", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: UCPATH_APP,
       elements: { ...NO_SIGN_IN_FORMS, "sso-submit": { count: 1 } },
       cookies: [PS_TOKEN],
@@ -130,7 +130,7 @@ describe("authenticated-application proof", () => {
       { ...PS_TOKEN, value: "" },
       { ...PS_TOKEN, domain: "ucpath.ucsd.edu" },
     ]) {
-      const { context } = contextFor({
+      const { context } = await contextFor({
         url: UCPATH_APP,
         elements: NO_SIGN_IN_FORMS,
         cookies: [issued],
@@ -142,7 +142,7 @@ describe("authenticated-application proof", () => {
   });
 
   it("treats an unreadable cookie store as unproven, never as proven", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: UCPATH_APP,
       elements: NO_SIGN_IN_FORMS,
       cookieStoreFailsWith: "context detached",
@@ -155,7 +155,7 @@ describe("authenticated-application proof", () => {
 
 describe("ucpath login recipe", () => {
   it("reuses a PROVEN session without navigating, and records what proved it", async () => {
-    const { context, harness, evidence } = contextFor({
+    const { context, harness, evidence } = await contextFor({
       url: UCPATH_APP,
       elements: NO_SIGN_IN_FORMS,
       cookies: [PS_TOKEN],
@@ -169,7 +169,7 @@ describe("ucpath login recipe", () => {
 
   it("REGRESSION: the public portal never short-circuits the login", async () => {
 
-    const { context, harness } = contextFor({
+    const { context, harness } = await contextFor({
       url: "about:blank",
       navigation: { [UCPATH_PORTAL]: UCPATH_PUBLIC_PORTAL },
       elements: {
@@ -190,7 +190,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("walks portal → campus discovery → SSO → verified landing", async () => {
-    const { context, harness, evidence } = contextFor({
+    const { context, harness, evidence } = await contextFor({
       url: "about:blank",
       navigation: { [UCPATH_PORTAL]: UCPATH_PORTAL },
       elements: {
@@ -220,7 +220,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("enters the application when SSO returns to the portal instead", async () => {
-    const { context, harness } = contextFor({
+    const { context, harness } = await contextFor({
       url: "about:blank",
       navigation: { [UCPATH_PORTAL]: UCPATH_PORTAL, [UCPATH_ENTRY]: UCPATH_APP },
       elements: {
@@ -246,8 +246,8 @@ describe("ucpath login recipe", () => {
   ).href;
   const interruptedEntry = `page.goto: Navigation to "${UCPATH_ENTRY}" is interrupted by another navigation to "${buildPage}"`;
 
-  function interruptedLanding(overrides: Partial<FakePageScript> = {}): ReturnType<typeof contextFor> {
-    return contextFor({
+  async function interruptedLanding(overrides: Partial<FakePageScript> = {}): Promise<Awaited<ReturnType<typeof contextFor>>> {
+    return await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
@@ -265,7 +265,7 @@ describe("ucpath login recipe", () => {
   }
 
   it("observes the exact entry after the known BuildPage interruption and proves authentication", async () => {
-    const { context, harness, evidence } = interruptedLanding();
+    const { context, harness, evidence } = await interruptedLanding();
     assert.equal(await ucpathLoginRecipe(context), "logged-in");
     assert.equal(harness.url(), UCPATH_ENTRY);
     assert.equal(harness.actions().filter((action) => action === `goto:${UCPATH_ENTRY}`).length, 1);
@@ -280,7 +280,7 @@ describe("ucpath login recipe", () => {
     ["foreign redirect", { navigationFailures: { [UCPATH_ENTRY]: { message: interruptedEntry, landedAt: "https://example.invalid/psp/ucphrprd/EMPLOYEE/HRMS/s/WEBLIB_IS_PB.ISCRIPT1.FieldFormula.IScript_BuildPage" } } }],
     ["unrelated navigation error", { navigationFailures: { [UCPATH_ENTRY]: { message: "page.goto: net::ERR_CONNECTION_RESET", landedAt: buildPage } } }],
   ] satisfies ReadonlyArray<readonly [string, Partial<FakePageScript>]>) ("refuses the interrupted entry with %s", async (_name, overrides) => {
-    const { context, harness, evidence } = interruptedLanding(overrides);
+    const { context, harness, evidence } = await interruptedLanding(overrides);
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "verify-landing");
@@ -291,7 +291,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("refuses a logged-in landing that never got a PeopleSoft session", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: "about:blank",
       navigation: { [UCPATH_PORTAL]: UCPATH_PORTAL },
       elements: {
@@ -314,7 +314,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("fails loud, naming the step, when the SSO form never renders", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: DISCOVERY },
@@ -333,7 +333,7 @@ describe("ucpath login recipe", () => {
 
   it("fails loud, naming the stale chain, when the username field matches nothing", async () => {
 
-    const { context, harness } = contextFor({
+    const { context, harness } = await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
@@ -354,7 +354,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("fails loud when Duo never clears, and never names a credential", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
@@ -376,7 +376,7 @@ describe("ucpath login recipe", () => {
 
   it("refuses the moment Duo renders its terminal refusal, without waiting out the landing", async () => {
 
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
@@ -401,7 +401,7 @@ describe("ucpath login recipe", () => {
 
   it("still reports a plain Duo stall as a stall — the refusal probe is not a catch-all", async () => {
 
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
@@ -424,7 +424,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("diagnoses a landing before acquisition expires and excludes URL secrets", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
@@ -452,7 +452,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("bounds a stuck diagnosis before the acquisition deadline", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
@@ -474,7 +474,7 @@ describe("ucpath login recipe", () => {
 
   it("recovers a visible Shibboleth stale request once inside the same ceremony deadline", async () => {
     const stale = `${SSO}?execution=private`;
-    const { context, harness } = contextFor({
+    const { context, harness } = await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
@@ -517,7 +517,7 @@ describe("ucpath login recipe", () => {
       [SSO, 1_000, "SHIBBOLETH_STALE_REQUEST", true],
       [SSO, 60_000, "SHIBBOLETH_STALE_REQUEST", false],
     ] as const) {
-      const { context, harness } = contextFor({
+      const { context, harness } = await contextFor({
         url: "about:blank",
         elements: {
           "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
@@ -535,7 +535,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("diagnoses the Shibboleth stale-request page specifically", async () => {
-    const { context, harness } = contextFor({
+    const { context, harness } = await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
@@ -552,7 +552,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("refuses a landing that still shows the SSO form", async () => {
-    const { context } = contextFor({
+    const { context } = await contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
@@ -576,7 +576,7 @@ describe("ucpath login recipe", () => {
   it("stops on cancellation instead of finishing the ceremony", async () => {
     const controller = new AbortController();
     controller.abort();
-    const { context, harness } = contextFor({ url: "about:blank" }, controller.signal);
+    const { context, harness } = await contextFor({ url: "about:blank" }, controller.signal);
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.code, "UCPATH_SIGN_IN_FAILED");

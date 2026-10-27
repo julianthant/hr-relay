@@ -12,10 +12,10 @@ import { absentProbeEvidence, WRITE_FIXTURE_NOW, writeFixtureSaveDescriptor, wri
 
 const { harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
 const worlds: DashboardWorld[] = [];
-afterEach(() => { for (const world of worlds.splice(0)) world.dispose(); cleanup(); });
+afterEach(async () => { for (const world of worlds.splice(0)) await world.dispose(); await cleanup(); });
 
 it.each([false, true])("serves sequencer transaction role spans through run detail and Logs (dryRun=%s)", async dryRun => {
-  const h = harness();
+  const h = await harness();
   const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun }));
   h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
   if (dryRun) {
@@ -33,7 +33,7 @@ it.each([false, true])("serves sequencer transaction role spans through run deta
   assert.deepEqual(starts.map(event => event.spanPath), roles.map(role => `${run.envelope.traceId}/submit-write/${role}`));
   const current = h.database.authority.runs.get(run.envelope.runId);
   assert.ok(current);
-  const w = makeWorld({ reader: sqliteRunReader(h.database, h.clock) }); worlds.push(w);
+  const w = await makeWorld({ reader: sqliteRunReader(h.database, h.clock) }); worlds.push(w);
   w.authority.put(current);
   w.writer.emit({ t: "run.queued", kind: "run", ts: run.envelope.enqueuedAt,
     workflow: run.envelope.workflow, runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,

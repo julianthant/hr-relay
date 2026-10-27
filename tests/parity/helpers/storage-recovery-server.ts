@@ -28,7 +28,7 @@ import { createCredentialStore } from "../../../src/backend/storage/configuratio
 const retainedStorageRecoveryOwners = new Set<object>();
 
 export async function storageRecoveryTarget() {
-  const fixture = createBoundProfileFixture();
+  const fixture = await createBoundProfileFixture();
   const repoRoot = fixture.workspace, profileId = fixture.admission.profileBinding.profileId;
   const held: { fixture: typeof fixture; child?: ReturnType<typeof spawn>; admission?: RuntimeAdmission; machine?: RuntimeAdmission;
     restore?: RestoreAdmissionHandle; server?: Server; shell?: FixtureServer; competing?: RuntimeAdmission;
@@ -153,7 +153,7 @@ export async function storageRecoveryTarget() {
   let baseUrl: string | undefined;
   const requests: {method: string; path: string}[] = [];
   let stopPromise: Promise<void> | undefined, stopFailure: Error | undefined;
-  const stop = () => {
+  const stop = async () => {
     if (held.primary instanceof AuthoritySourceClosureUnprovedError) return Promise.reject(held.primary);
     if (stopPromise !== undefined) return stopPromise;
     stopPromise = (async () => {
@@ -255,7 +255,7 @@ export async function storageRecoveryTarget() {
       surroundingFixtures: "All non-storage API responses, shell/settings, SSE and static transport use createFixtureBff/startFixtureServer; static bytes are the bound working-tree production bundle.",
       runtimeScope: "Diagnostic host over disposable storage, not the full production runtime.", pid: process.pid}),
     dispose: async () => {
-      try { await stop(); if (recoveryCompleted) { fixture.close(); retainedStorageRecoveryOwners.delete(held); } }
+      try { await stop(); if (recoveryCompleted) { await fixture.close(); retainedStorageRecoveryOwners.delete(held); } }
       catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
     }};
 

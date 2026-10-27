@@ -19,7 +19,7 @@ import { AT,makeWorld,queuedEventOf,taskEventsOf,uuidOf } from "../support/helpe
 const EXPLORER_HASH = FingerprintSchema.parse("c".repeat(64));
 
 describe("registry-wide conformance covers every explicit entry kind", () => {
-  it("projects a definition using task, parallel, delegate, gate and transaction entries through bootstrap/start, Explorer and the detail timeline", () => {
+  it("projects a definition using task, parallel, delegate, gate and transaction entries through bootstrap/start, Explorer and the detail timeline", async () => {
     const compiled = compileFixtureWorkflow(everyEntryKindWorkflow);
     const fixtureModule = composeWorkflowModule(compiled, taskStoreRegistry.stores);
     expect(workflowEntryKinds(everyEntryKindWorkflow).toSorted())
@@ -42,7 +42,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
       nodes: group.nodes.map(({ id: nodeId }) => String(nodeId)),
     }))).toEqual(expectedGroups);
 
-    const world = makeWorld();
+    const world = await makeWorld();
     try {
       const bootstrap = buildBootstrap({
         appVersion: "0.1.0",
@@ -101,7 +101,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
           .find((node) => String(node.id) === nodeId)?.label),
       })));
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 });

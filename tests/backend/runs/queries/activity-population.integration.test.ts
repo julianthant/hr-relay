@@ -20,10 +20,10 @@ import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.
 
 const range = { from: "2026-10-01", to: "2026-10-01" };
 const at = "2026-10-01T12:00:00.000Z";
-const cleanup: (() => void)[] = [];
-afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); });
-function fixture() {
-  const profile = createBoundProfileFixture();
+const cleanup: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const dispose of cleanup.splice(0)) await dispose(); });
+async function fixture() {
+  const profile = await createBoundProfileFixture();
   const { path } = profile;
   const clock = manualClock(new Date(at));
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "activity-population-test" }, clock);
@@ -79,15 +79,15 @@ function fixture() {
   };
   const input = { database, clock, descriptors: { resolve: () => undefined }, ledger: createTransactionHistory(database.authority), timeZone: "UTC" };
   const service = createActivityPopulationService(input);
-  cleanup.push(() => { raw.close(); database.close(); profile.close(); });
+  cleanup.push(async () => { raw.close(); database.close(); await profile.close(); });
   return { database, clock, raw, add, publish, service, input };
 }
 const done = (ms: number) => ({ state: "terminal" as const, outcome: "done" as const, endedAt: new Date(Date.parse(at) + ms).toISOString() });
 const cancelled = (ms: number) => ({ state: "terminal" as const, outcome: "cancelled" as const, endedAt: new Date(Date.parse(at) + ms).toISOString() });
 
 describe("selected Analytics population", () => {
-  it("keeps zero, missing, successful-root timing and terminal duration separate with explicit evidence", () => {
-    const f = fixture();
+  it("keeps zero, missing, successful-root timing and terminal duration separate with explicit evidence", async () => {
+    const f = await fixture();
     f.add(1, { lifecycle: done(0) });
     f.add(2, { lifecycle: done(1200) });
     f.add(3, { lifecycle: done(-1) });
@@ -119,8 +119,8 @@ describe("selected Analytics population", () => {
     expect(browse?.rows.map(row => row.runId)).toEqual([uuidOf(1), uuidOf(2)]);
   });
 
-  it("pages the full range and browses exact metrics, search, sorting and selected run membership", () => {
-    const f = fixture();
+  it("pages the full range and browses exact metrics, search, sorting and selected run membership", async () => {
+    const f = await fixture();
     for (let seed = 1; seed <= 506; seed++) f.add(seed);
     f.add(507, { lifecycle: done(1000), displayName: "Zebra 10" });
     f.add(508, { lifecycle: done(2000), displayName: "Zebra 2" });
@@ -149,8 +149,8 @@ describe("selected Analytics population", () => {
     expect(f.service.readSelected(range, selected.snapshot.token, { metric: "failed", page: 0 }).browse?.total).toBe(0);
   });
 
-  it("exports the exact complete snapshot and refuses population-only rename with unchanged aggregates", () => {
-    const f = fixture(); const record = f.add(1, { displayName: "=Formula" }); f.publish();
+  it("exports the exact complete snapshot and refuses population-only rename with unchanged aggregates", async () => {
+    const f = await fixture(); const record = f.add(1, { displayName: "=Formula" }); f.publish();
     const selected = f.service.read(range);
     const exported = f.service.exportSelected(range, selected.snapshot.token);
     expect(exported.selection).toEqual(selected);
@@ -166,8 +166,8 @@ describe("selected Analytics population", () => {
     expect(() => f.service.exportSelected(range, selected.snapshot.token)).toThrow("The selected Analytics population has changed");
   });
 
-  it("keeps summary, workflow, population and export readback counts bound to verified receipts", () => {
-    const f = fixture();
+  it("keeps summary, workflow, population and export readback counts bound to verified receipts", async () => {
+    const f = await fixture();
     for (let seed = 1; seed <= 4; seed++) f.add(seed, { lifecycle: done(1000) });
     const partial = RunEvidenceReceiptSchema.parse({ ...cleanReceiptOf({ seed: 4 }), confidence: "partial", result: "partial" });
     for (const receipt of [cleanReceiptOf({ seed: 1 }), receiptWithWarningsOf({ seed: 2, summaries: ["Synthetic warning"] }), partial]) {
@@ -195,8 +195,8 @@ describe("selected Analytics population", () => {
     ]);
   });
 
-  it("keeps independently confirmed production and test transactions separate from runs", () => {
-    const f = historyWorld(); cleanup.push(() => f.dispose());
+  it("keeps independently confirmed production and test transactions separate from runs", async () => {
+    const f = await historyWorld(); cleanup.push(async () => await f.dispose());
     f.commit(1, { confirmedAt: HISTORY_NOW, instance: "prod" });
     f.commit(2, { confirmedAt: HISTORY_NOW, instance: "test" });
     const service = createActivityPopulationService({ database: f.database, clock: historyClock, descriptors: { resolve: () => undefined }, ledger: f.history });
@@ -206,8 +206,8 @@ describe("selected Analytics population", () => {
     expect(service.exportSelected({ from: "2026-09-09", to: "2026-09-09" }, selected.snapshot.token).csv).toContain("ucpath,2,1,1");
   });
 
-  it("refuses tampering, range/source/generation changes, expiry and process recreation", () => {
-    const f = fixture(); f.add(1); f.publish();
+  it("refuses tampering, range/source/generation changes, expiry and process recreation", async () => {
+    const f = await fixture(); f.add(1); f.publish();
     const selected = f.service.read(range);
     for (const token of [undefined, null, `${selected.snapshot.token}x`, selected.report.snapshot.token]) expect(() => f.service.readSelected(range, token)).toThrow(expect.objectContaining({ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" }));
     expect(() => f.service.readSelected({ ...range, to: "2026-10-02" }, selected.snapshot.token)).toThrow(expect.objectContaining({ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" }));

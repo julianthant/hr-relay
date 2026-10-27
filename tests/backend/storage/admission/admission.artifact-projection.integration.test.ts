@@ -117,7 +117,7 @@ async function workbookRows(root: string): Promise<string[][]> {
 
 describe("artifact sink projector over the xlsx-retention sink", () => {
   it("creates the workbook, records the head at generation 1, and acknowledges the row", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database } = authority;
     const root = tempRoot("hrauto-artifact-sink-");
@@ -141,7 +141,7 @@ describe("artifact sink projector over the xlsx-retention sink", () => {
   });
 
   it("treats a duplicate stable key with identical content as a verified no-op and still acknowledges", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database } = authority;
     const root = tempRoot("hrauto-artifact-sink-");
@@ -164,7 +164,7 @@ describe("artifact sink projector over the xlsx-retention sink", () => {
   });
 
   it("updates a changed record in place under the same stable key", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database } = authority;
     const root = tempRoot("hrauto-artifact-sink-");
@@ -183,7 +183,7 @@ describe("artifact sink projector over the xlsx-retention sink", () => {
   });
 
   it("parks on an operator edit: both files preserved, row stays pending, head untouched", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database } = authority;
     const root = tempRoot("hrauto-artifact-sink-");
@@ -208,7 +208,7 @@ describe("artifact sink projector over the xlsx-retention sink", () => {
   });
 
   it("refuses a workbook with no recorded head, and a recorded head with no workbook", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database } = authority;
     const root = tempRoot("hrauto-artifact-sink-");
@@ -225,7 +225,7 @@ describe("artifact sink projector over the xlsx-retention sink", () => {
   });
 
   it("refuses to project concurrently past the exclusive sink lock", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database } = authority;
     const root = tempRoot("hrauto-artifact-sink-");
@@ -356,8 +356,8 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
   return { run: claimed.run, claim: { workerId, claimGeneration: claimed.run.claimGeneration } };
 }
 
-function executorHarness(descriptor: AnyWorkflowDescriptor, root: string | undefined) {
-  const authority = openAuthorityHarness();
+async function executorHarness(descriptor: AnyWorkflowDescriptor, root: string | undefined) {
+  const authority = await openAuthorityHarness();
   testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const sessions = happySessionHarness();
@@ -372,7 +372,7 @@ function executorHarness(descriptor: AnyWorkflowDescriptor, root: string | undef
     descriptor,
     stores,
     authority: authority.database,
-    sessions: sessionManagerFor(sessions, authority.clock),
+    sessions: await sessionManagerFor(sessions, authority.clock),
     emitter: emitter.emitter,
     clock: authority.clock,
     ids: sequentialIdFactory("f"),
@@ -390,7 +390,7 @@ describe("executor projection wiring", () => {
   it("commits checkpoint + outbox atomically, blocks on ack, and replays without rewriting", async () => {
     const descriptor = projectionDescriptor();
     const root = tempRoot("hrauto-executor-projection-");
-    const harness = executorHarness(descriptor, root);
+    const harness = await executorHarness(descriptor, root);
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(descriptor));
     const first = claim(database, descriptor);
@@ -427,7 +427,7 @@ describe("executor projection wiring", () => {
 
   it("fails the node loudly when no projector is composed", async () => {
     const descriptor = projectionDescriptor();
-    const harness = executorHarness(descriptor, undefined);
+    const harness = await executorHarness(descriptor, undefined);
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(descriptor));
     const claimed = claim(database, descriptor);
@@ -448,7 +448,7 @@ describe("executor projection wiring", () => {
   it("fails the run on a blocking conflict, keeps the durable rows, and resumes on relaunch", async () => {
     const descriptor = projectionDescriptor();
     const root = tempRoot("hrauto-executor-projection-");
-    const harness = executorHarness(descriptor, root);
+    const harness = await executorHarness(descriptor, root);
     const { database } = harness.authority;
     // A foreign workbook this projector cannot vouch for: the sink conflicts.
     writeFileSync(join(root, "retention.xlsx"), "somebody else's workbook");
@@ -480,7 +480,7 @@ describe("F exact checkpoint publication recovery", () => {
     it(`isolates same-run claim generations (${historical ? "historical ambiguity refusal" : "bound updates"})`, async () => {
       const descriptor = projectionDescriptor();
       const root = tempRoot("hrauto-checkpoint-update-");
-      const h = executorHarness(descriptor, root);
+      const h = await executorHarness(descriptor, root);
       const { database } = h.authority;
       writeFileSync(join(root, "retention.xlsx"), "foreign workbook");
       database.authority.runs.enqueue(queuedRunFor(descriptor));
@@ -520,7 +520,7 @@ describe("F exact checkpoint publication recovery", () => {
 
 it("F executor replay holds writer exclusion while selecting checkpoint witnesses and pending updates", async () => {
  const descriptor = projectionDescriptor();
- const h = executorHarness(descriptor, tempRoot("hrauto-replay-selection-"));
+ const h = await executorHarness(descriptor, tempRoot("hrauto-replay-selection-"));
  const { database, clock, path } = h.authority;
  const contender = AuthorityDatabase.open({ path, busyTimeoutMs: 1, migrationOwner: "contender" }, clock);
  disposers.push(() => contender.close());

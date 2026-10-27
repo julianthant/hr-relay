@@ -61,8 +61,8 @@ function realExplorerEdits() {
 }
 
 describe("command idempotency", () => {
-  it("journals Explorer apply with actor/source audit and executes one write across byte-exact replay", () => {
-    const harness = createHarness();
+  it("journals Explorer apply with actor/source audit and executes one write across byte-exact replay", async () => {
+    const harness = await createHarness();
     const command = {
       commandId: nextCommandId(),
       requestedAt: NOW,
@@ -103,10 +103,10 @@ describe("command idempotency", () => {
     assert.equal(harness.explorerCalls.length, 1);
   });
 
-  it("rolls back an Explorer edit with its audit, then accepts a valid intervening command", () => {
+  it("rolls back an Explorer edit with its audit, then accepts a valid intervening command", async () => {
     const explorer = realExplorerEdits();
     let failAudit = true;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       commandAudits: { ...repositories.commandAudits, insert: (input: unknown) => {
         if (failAudit) { failAudit = false; throw new Error("injected Explorer audit failure"); }
@@ -128,10 +128,10 @@ describe("command idempotency", () => {
     assert.equal(harness.database.authority.explorerOverrides.read("person-lookup")?.presentation.label, "Directory search");
   });
 
-  it("recovers an ambiguous authority commit from the journal without a file finalizer", () => {
+  it("recovers an ambiguous authority commit from the journal without a file finalizer", async () => {
     const explorer = realExplorerEdits();
     let throwAfterCommit = true;
-    const harness = createHarness(undefined, { explorerEdits: explorer.service, afterAuthorityCommit: () => {
+    const harness = await createHarness(undefined, { explorerEdits: explorer.service, afterAuthorityCommit: () => {
       if (throwAfterCommit) { throwAfterCommit = false; throw new Error("injected ambiguous authority commit return"); }
     } });
     const original = explorerCommand(explorer.descriptor, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", 0, "People search");
@@ -145,8 +145,8 @@ describe("command idempotency", () => {
     assert.equal(harness.database.authority.explorerOverrides.read("person-lookup")?.presentation.label, "Directory search");
   });
 
-  it("returns already-applied for a byte-exact replay after revalidating the plan bindings", () => {
-    const harness = createHarness();
+  it("returns already-applied for a byte-exact replay after revalidating the plan bindings", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     const command = startCommand(plan);
     const first = harness.kernel.execute(command);
@@ -167,8 +167,8 @@ describe("command idempotency", () => {
     assert.equal(runs.length, 1);
   });
 
-  it("rejects a same-id different-content replay loudly", () => {
-    const harness = createHarness();
+  it("rejects a same-id different-content replay loudly", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     const command = startCommand(plan);
     assert.equal(harness.kernel.execute(command).state, "applied");
@@ -176,8 +176,8 @@ describe("command idempotency", () => {
     assert.throws(() => harness.kernel.execute(conflicting), /reused with different content/);
   });
 
-  it("refuses a spent plan presented by a different command", () => {
-    const harness = createHarness();
+  it("refuses a spent plan presented by a different command", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     assert.equal(harness.kernel.execute(startCommand(plan)).state, "applied");
     const second = harness.kernel.execute(startCommand(plan, nextCommandId()));

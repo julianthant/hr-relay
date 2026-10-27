@@ -10,9 +10,9 @@ afterEach(cleanup);
 
 describe("protected canonical command fingerprints", () => {
 
-  it("binds protected input identity and safe facts in current create journals", () => {
-    const journals = (emplId: string, memo = "ordinary fact", sourceId = "10000000-0000-4000-8000-000000000001") => {
-      const f = fixture();
+  it("binds protected input identity and safe facts in current create journals", async () => {
+    const journals = async (emplId: string, memo = "ordinary fact", sourceId = "10000000-0000-4000-8000-000000000001") => {
+      const f = await fixture();
       const request = { ...f.request, input: { ...f.request.input, raw: { emplId, memo },
         parsed: { ...f.request.input.parsed, value: { emplId, memo }, protectedBindings: [{
           kind: "test-data-local" as const, inputPath: "emplId" as const, name: "personLookupCanaryEid" as const, sourceId }] } } };
@@ -33,10 +33,10 @@ describe("protected canonical command fingerprints", () => {
         return journal.requestFingerprint;
       });
     };
-    assert.deepEqual(journals("10812345"), journals("10854321"));
-    const original = journals("10812345");
-    const changedFact = journals("10812345", "changed ordinary fact");
-    const changedIdentity = journals("10812345", "ordinary fact", "10000000-0000-4000-8000-000000000002");
+    assert.deepEqual(await journals("10812345"), await journals("10854321"));
+    const original = await journals("10812345");
+    const changedFact = await journals("10812345", "changed ordinary fact");
+    const changedIdentity = await journals("10812345", "ordinary fact", "10000000-0000-4000-8000-000000000002");
     original.forEach((fingerprint, index) => {
       assert.notEqual(fingerprint, changedFact[index]);
       assert.notEqual(fingerprint, changedIdentity[index]);

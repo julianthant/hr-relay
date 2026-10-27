@@ -55,14 +55,14 @@ describe("composition-reads-no-environment-leaf", () => {
   it("production dashboard and worker resolve the same config under non-retired hostile noise", async () => {
     const configs: unknown[] = [];
     for (const noisy of [false, true]) for (const role of ["dashboard", "worker"] as const) {
-      const f = createBoundProfileFixture(), root = f.workspace;
+      const f = await createBoundProfileFixture(), root = f.workspace;
       const profileClock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
       const profile = role === "dashboard" ? composeProfileRuntime({ admission: f.machine, clock: profileClock, hostFacts: { primaryDisplay: null },
         processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot) }) : undefined;
       let context: ReturnType<typeof composeSelectedProfileStorage> | undefined;
       let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
       try {
-      const active = profile?.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: profileClock.now().toISOString() });
+      const active = profile?.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: profileClock.now().toISOString() });
       if (profile !== undefined && active?.state !== "active") throw new Error("environment-profile-sign-in-required");
       context = profile !== undefined && active?.state === "active" ? profile.selectedContext(active.token)
         : composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials: boundProfileCredentials(f.admission),
@@ -112,7 +112,7 @@ describe("composition-reads-no-environment-leaf", () => {
         if (dashboard !== undefined) await dashboard.stop();
         else if (profile !== undefined) await profile.close();
         else if (context !== undefined) { await context.account.close(); context.database.close(); }
-        f.close();
+        await f.close();
       }
     }
     for (const config of configs.slice(1)) assert.deepEqual(config, configs[0]);

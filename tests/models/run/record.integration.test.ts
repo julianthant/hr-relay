@@ -52,8 +52,8 @@ function corruptRunSource(raw: DatabaseSync, sql: string, ...values: (string | n
 
 describe("cross-date search authority read", () => {
 
-  it("refuses a strict run record whose authority order instant is foreign", () => {
-    const profile = createBoundProfileFixture();
+  it("refuses a strict run record whose authority order instant is foreign", async () => {
+    const profile = await createBoundProfileFixture();
     const databasePath = profile.path;
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-malformed-test" },
@@ -83,7 +83,7 @@ describe("cross-date search authority read", () => {
     } finally {
       raw.close();
       database.close();
-      profile.close();
+      await profile.close();
     }
   });
 });
@@ -139,7 +139,7 @@ function corruptRunConsequence(
 describe("atomic failure terminal authority", () => {
 afterEach(cleanup);
 
-  it("refuses replay for every schema-valid mismatch from failure authorization to consequence", () => {
+  it("refuses replay for every schema-valid mismatch from failure authorization to consequence", async () => {
     const cases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [
       ["version", (run: RunRecord) => ({ ...run, version: run.version + 1 })],
       ["claim generation", (run: RunRecord) => ({ ...run, claimGeneration: run.claimGeneration + 1 })],
@@ -163,7 +163,7 @@ afterEach(cleanup);
       ["updatedAt", (run: RunRecord) => ({ ...run, updatedAt: AFTER_LATER })],
     ];
     for (const [name, mutate] of cases) {
-      const database = openDatabase();
+      const database = await openDatabase();
       const running = startRunning(database);
       const record = failure(running);
       const request = { failure: record, authorization: failureAuthorization(running) } as const;
@@ -181,7 +181,7 @@ afterEach(cleanup);
 describe("atomic success terminal authority", () => {
 afterEach(cleanup);
 
-  it("refuses replay for every schema-valid mismatch from success authorization to consequence", () => {
+  it("refuses replay for every schema-valid mismatch from success authorization to consequence", async () => {
     const cases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [
       ["version", (run: RunRecord) => ({ ...run, version: run.version + 1 })],
       ["claim generation", (run: RunRecord) => ({ ...run, claimGeneration: run.claimGeneration + 1 })],
@@ -199,7 +199,7 @@ afterEach(cleanup);
       ["updatedAt", (run: RunRecord) => ({ ...run, updatedAt: AFTER_LATER })],
     ];
     for (const [name, mutate] of cases) {
-      const database = openDatabase();
+      const database = await openDatabase();
       const running = startRunning(database);
       const terminal = resultRequest(database, running);
       const request = {
@@ -219,8 +219,8 @@ afterEach(cleanup);
 }
 
 {
-it("contains operation members once and preserves protected titles and missing warning evidence", () => {
-  const f = summaryFixture();
+it("contains operation members once and preserves protected titles and missing warning evidence", async () => {
+  const f = await summaryFixture();
   try {
     const rootId = id(8870), memberId = id(8871);
     f.db.withAuthorityTransaction(() => {
@@ -249,7 +249,7 @@ it("contains operation members once and preserves protected titles and missing w
     assert.equal(JSON.stringify(wire).includes("10812345"), false);
     const report = f.projection.buildActivityReportWire("2026-09-09", "2026-09-09");
     assert.equal(report.totalRuns, 1);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 }
 
@@ -350,8 +350,8 @@ afterEach(cleanupClaims);
 describe("run claim store", () => {
 afterEach(cleanupClaims);
 
-  it("resumes only a parked run, and only to a named node", () => {
-    const database = openDatabase();
+  it("resumes only a parked run, and only to a named node", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const claimed = claimOne(database);
     const validating = database.authority.runs.transition({
@@ -407,8 +407,8 @@ afterEach(cleanupClaims);
 describe("run row column invariants", () => {
 afterEach(cleanupClaims);
 
-  it("keeps the typed columns in lockstep with the record, and rejects a claim outside a claimed state", () => {
-    const database = openDatabase();
+  it("keeps the typed columns in lockstep with the record, and rejects a claim outside a claimed state", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const claimed = claimOne(database);
     assert.equal(runClaim(claimed)?.workerId, WORKER_ID);

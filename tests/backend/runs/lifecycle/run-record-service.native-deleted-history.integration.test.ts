@@ -32,8 +32,8 @@ function assertHistoryRefusal(read: () => unknown, causePattern: RegExp): Error 
   assert.ok(cause);
   return cause;
 }
-it("retains exact same-clock confirmed operations through authenticated deletion and reopen without inventing delivery or disclosure",()=>{
-  const w=historyWorld();try{
+it("retains exact same-clock confirmed operations through authenticated deletion and reopen without inventing delivery or disclosure",async ()=>{
+  const w=await historyWorld();try{
     const first=w.commit(501,{instance:"prod"});const second=w.commit(502,{instance:"test",confirmedAt:first.confirmedAt});
     const live=w.history.query(range);assert.equal(live.rows.length,2);
     assert.equal(new Set(live.rows.map(row=>row.operationId)).size,2);
@@ -88,11 +88,11 @@ it("retains exact same-clock confirmed operations through authenticated deletion
       assert.equal(permanent(w.path), before);
     }
 
-  }finally{w.dispose();}
+  }finally{await w.dispose();}
 });
 
-it.each(["missing-live-delivery", "publication-proof", "attempt-owner"] as const)("refuses %s before a nonmatching history filter without read effects", fault => {
-  const w=historyWorld();try{
+it.each(["missing-live-delivery", "publication-proof", "attempt-owner"] as const)("refuses %s before a nonmatching history filter without read effects", async fault => {
+  const w=await historyWorld();try{
     const fixture=w.commit(511);
     const generation=w.database.getMeta().authorityGeneration;
     const eventId=w.history.query(range).rows[0].eventId;
@@ -128,12 +128,12 @@ it.each(["missing-live-delivery", "publication-proof", "attempt-owner"] as const
         && issue.message === "confirmation publication must preserve its exact native timeline"));
     }
     assert.equal(permanent(w.path),before);assert.equal(raw.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()?.authority_generation,generation);
-  }finally{w.dispose();}
+  }finally{await w.dispose();}
 });
 
 
-it.each(["live-owner-overlap", "forged-deletion-owner"] as const)("refuses %s globally before nonmatching history/export and reopen without effects", fault => {
-  const w = historyWorld();
+it.each(["live-owner-overlap", "forged-deletion-owner"] as const)("refuses %s globally before nonmatching history/export and reopen without effects", async fault => {
+  const w = await historyWorld();
   try {
     const fixture = w.commit(521);
     const surviving = w.commit(522);
@@ -188,5 +188,5 @@ it.each(["live-owner-overlap", "forged-deletion-owner"] as const)("refuses %s gl
     assert.equal(raw.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()?.authority_generation,generation);
     assert.throws(()=>AuthorityDatabase.open({path:w.path,busyTimeoutMs:250,migrationOwner:"corrupt-history-reader"},capturedInstantClock(HISTORY_NOW)),fault === "live-owner-overlap" ? /confirmed-publication-owner-ambiguous/u : /confirmed-publication-deletion-settlement-mismatch/u);
     assert.equal(permanent(w.path),bytes);
-  } finally { w.dispose(); }
+  } finally { await w.dispose(); }
 });

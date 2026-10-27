@@ -22,7 +22,7 @@ const cleanups: (() => void|Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); vi.restoreAllMocks(); });
 
 it("browser launch forwards retained display and mode through a headless custody fixture", async () => {
-  const f = settingsFixture(true); cleanups.push(f.close);
+  const f = await settingsFixture(true); cleanups.push(f.close);
   const admission=findProfileFixtureAdmission(f.root);assert.ok(admission);
   assert.equal(f.save({ "timeouts.taskMs": { set: 60_000 }, "timeouts.sessionAcquireMs": { set: 120_000 } }).state, "applied");
   const old = f.create();
@@ -38,7 +38,7 @@ it("browser launch forwards retained display and mode through a headless custody
   cleanups.push(() => held.processLock.release());
   assert.ok(held.processLock.acquisitionId);
   const acquisitionId = held.processLock.acquisitionId;
-  const account=chatGptFixture(admission);cleanups.push(()=>account.cleanup());
+  const account=await chatGptFixture(admission);cleanups.push(()=>account.cleanup());
   const ocr=createChatGptOcrAdapter({account:account.service,artifacts,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
   const factory = createRunResourcesFactory({ ocr,assertBrowserRoot: root=>assertProfileBrowserRoot(admission,root), assertProfileOwner: workerId => {
     assert.equal(workerId, held.workerId);

@@ -1,3 +1,4 @@
+import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import assert from "node:assert/strict";
@@ -28,7 +29,7 @@ function credentialSnapshot(path: string) {
 }
 
 it("composes actual selected resources without transport and revokes retained ordinary producers while preserving database custody", async () => {
-  const f = createBoundProfileFixture();
+  const f = await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const hostFacts = { primaryDisplay: null };
   const transport = vi.spyOn(globalThis, "fetch").mockImplementation(() => { throw new Error("transport is forbidden in selected-context proof"); });
@@ -65,7 +66,7 @@ it("composes actual selected resources without transport and revokes retained or
   } finally {
     if (context !== undefined) { await context.account.close(); context.database.close(); }
     transport.mockRestore();
-    f.close();
+    await f.close();
   }
 });
 
@@ -75,10 +76,11 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
   const transport = vi.spyOn(globalThis, "fetch").mockImplementation(() => { throw new Error("composed profile proof forbids transport"); });
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
-  const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot });
+  const fields = { firstName: "Synthetic", lastName: "Operator", email: "profile@ucsd.edu", password: "synthetic-profile-password", createdAt: clock.now().toISOString() };
+  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(() => fields.email), admission: machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot });
   try {
-    const fields = { firstName: "Synthetic", lastName: "Operator", email: "profile@example.edu", password: "synthetic-profile-password", createdAt: clock.now().toISOString() };
-    const active = runtime.session.signUp(fields); assert.equal(active.state, "active");
+
+    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(fields)); assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("synthetic signup refused");
     const seed = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
     const credentialPath = join(seed.stateRoot, "credentials", "chatgpt-account.json");
@@ -123,13 +125,13 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
 });
 
 for (const dimension of ["account", "settings"] as const) it(`revalidates real composed ${dimension} dimensions${dimension === "settings" ? " and protected changes across an actual account await" : " with local attempt and expiry transitions"}`, async () => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const transport = vi.spyOn(globalThis, "fetch").mockImplementation(() => { throw new Error("G4 synthetic composition forbids transport"); });
   const createAccount = accounts.createChatGptAccountService;
   const accountFactory = vi.spyOn(accounts, "createChatGptAccountService").mockImplementation(options => ({ ...createAccount(options) }));
   const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, "process-locks") });
   try {
-    const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+    const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("genuine session required");
     const context = runtime.selectedContext(active.token);
     const repository = createChatGptCredentialRepository({ admission: context.admission, stateRoot: context.admission.stateRoot });
@@ -189,16 +191,16 @@ for (const dimension of ["account", "settings"] as const) it(`revalidates real c
     assert.equal((await runtime.session.readCurrentAuthority(active.token)).state, "available");
     }
     assert.equal(transport.mock.calls.length, 0);
-  } finally { await runtime.close(); accountFactory.mockRestore(); transport.mockRestore(); f.close(); }
+  } finally { await runtime.close(); accountFactory.mockRestore(); transport.mockRestore(); await f.close(); }
 });
 
 it("refuses old tokens and issued captures after a real composition restart before opening ordinary resources", async () => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const input = { admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, "process-locks") };
   const first = composeProfileRuntime(input);
   let restarted: ReturnType<typeof composeProfileRuntime> | undefined;
   try {
-    const active = first.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+    const active = first.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("genuine session required");
     const retained = first.selectedContext(active.token), epoch = f.machine.readProfileRegistry().sessionGeneration;
     await first.close();
@@ -209,16 +211,16 @@ it("refuses old tokens and issued captures after a real composition restart befo
     assert.throws(() => retained.protectedSecrets.read());
     assert.throws(() => retained.settings.read());
     await assert.rejects(retained.accountAuthority.readAuthority());
-    const next = restarted.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+    const next = restarted.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     assert.equal(next.state, "active"); if (next.state !== "active") throw new Error("genuine reauthentication required");
     assert.ok(next.epoch > active.epoch);
     assert.notEqual(restarted.selectedContext(next.token).admission, retained.admission);
     assert.throws(() => retained.database.getMeta(), /closed/u);
-  } finally { await first.close(); await restarted?.close(); f.close(); }
+  } finally { await first.close(); await restarted?.close(); await f.close(); }
 });
 
 it("requires the same actual profile credential owner for canonical offline restore and its observation", async () => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   copyFileSync("package.json", join(f.workspace, "package.json"));
   const profileId = f.admission.profileBinding.profileId;
   const credentials = boundProfileCredentials(f.admission);
@@ -230,9 +232,9 @@ it("requires the same actual profile credential owner for canonical offline rest
     await context.account.close(); context.database.close();
     const args = ["restore", "--from", join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), "--json"];
     await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission), /profile-restore-credential-owner-required/u);
-    const foreign = createBoundProfileFixture();
+    const foreign = await createBoundProfileFixture();
     try { await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission, boundProfileCredentials(foreign.admission))); }
-    finally { foreign.close(); }
+    finally { await foreign.close(); }
     const restored = await composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission, credentials);
     assert.equal(restored.exitCode, 0, restored.output);
     const outcome = JSON.parse(restored.output) as { credentials: { state: string } };
@@ -244,11 +246,11 @@ it("requires the same actual profile credential owner for canonical offline rest
         erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${fresh.profileBinding.profileId}.json`) });
       assert.equal(store.read().entries.ucpathPassword?.value, "disposable-fixture-password");
     } finally { fresh.release(); }
-  } finally { await context.account.close(); context.database.close(); f.close(); }
+  } finally { await context.account.close(); context.database.close(); await f.close(); }
 });
 
 it("admits only the exact held stopped projection capability before opening staged authority", async () => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
   await context.account.close(); context.database.close();
@@ -272,12 +274,12 @@ it("admits only the exact held stopped projection capability before opening stag
     assert.equal(database.getMeta().profileId, f.admission.profileBinding.profileId); database.close();
     restore.release();
     assert.throws(() => AuthorityDatabase.openStoppedRestoreProjection(capability!, options, clock));
-  } finally { capability?.release(); restore.release(); f.close(); }
+  } finally { capability?.release(); restore.release(); await f.close(); }
 });
 
 
 for (const state of ['held', 'released-running', 'missing-birth'] as const) it(`missing supervisor evidence refuses a stopped ${state} lifetime`, async () => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date('2025-01-01T00:00:00.000Z'));
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date('2025-01-01T00:00:00.000Z'));
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
   const processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
@@ -310,6 +312,6 @@ for (const state of ['held', 'released-running', 'missing-birth'] as const) it(`
     assert.deepEqual(context.database.readProfileResourceCustody(), before);
     f.machine.assertLive(); f.admission.assertLive();
   } finally {
-    await context.account.close(); context.database.close(); owned?.processLock.release(); f.close();
+    await context.account.close(); context.database.close(); owned?.processLock.release(); await f.close();
   }
 });

@@ -22,7 +22,7 @@ function intentByKey(database: AuthorityDatabase) {
 
 describe("ref write-safety §4 recovery matrix", () => {
   it("re-probes FIRST and backfills a validated present proof through the atomic beat ⑦", async () => {
-    const h = harness();
+    const h = await harness();
     const { run: parkedRun, writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
 
@@ -58,7 +58,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("parks a malformed present proof — never done with unvalidated proof", async () => {
-    const h = harness();
+    const h = await harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     // An invalid proof becomes unknown, never absent; schema refusal must not become negative settlement.
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T1" } });
@@ -77,7 +77,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("treats one early absence as diagnostic only: wait, no retry authority, nothing durable", async () => {
-    const h = harness();
+    const h = await harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     // Observed immediately at the fence instant — before minSinceFenceMs (30s).
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
@@ -94,7 +94,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("keeps waiting while qualified observations are not yet spaced", async () => {
-    const h = harness();
+    const h = await harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     h.clock.advanceWall(31_000);
     const first = absentProbeEvidence(h.clock.now().toISOString(), `observation:${UUID_5}`);
@@ -113,7 +113,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("parks on conflicting observations instead of counting them", async () => {
-    const h = harness();
+    const h = await harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     h.clock.advanceWall(31_000);
     const foreign = absentProbeEvidence(h.clock.now().toISOString());
@@ -137,7 +137,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("grants retry authority ONLY to policy-qualified stabilized absence, then resumes the run", async () => {
-    const h = harness();
+    const h = await harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     h.clock.advanceWall(31_000);
     const first = absentProbeEvidence(h.clock.now().toISOString(), `observation:${UUID_5}`);
@@ -161,7 +161,7 @@ describe("ref write-safety §4 recovery matrix", () => {
 
   for (const failure of ["throwing probe", "invalid present proof"] as const) {
     it(`parks a protected-input ${failure} without retaining secret exception detail or retrying`, async () => {
-      const h = harness();
+      const h = await harness();
       const protectedValue = "PRIVATE_DOCUMENT_RECOVERY_CANARY";
       const exceptionValue = "PRIVATE_EXCEPTION_RECOVERY_CANARY";
       const { run, writeIntentId } = parkedAttemptingWrite(h, undefined, {
@@ -225,7 +225,7 @@ describe("ref write-safety §4 recovery matrix", () => {
       [unknownProbeVerdict(WRITE_FIXTURE_NOW), "unknown", "recovery-probe-unknown"],
       [new Error("target system is down"), "unknown", "recovery-probe-exception"],
     ] as const) {
-      const h = harness();
+      const h = await harness();
       const { writeIntentId } = parkedAttemptingWrite(h);
       h.world.probeResults.push(result);
       const decision = await h.recovery.recover({
@@ -251,7 +251,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("parks an operator-only policy without counting any absence evidence", async () => {
-    const h = harness();
+    const h = await harness();
     const { writeIntentId } = parkedAttemptingWrite(h, "ucpath/save-write-fixture");
     h.clock.advanceWall(120_000);
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
@@ -270,7 +270,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("refuses non-attempting intents and drifted descriptors loudly", async () => {
-    const h = harness();
+    const h = await harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     h.database.withAuthorityTransaction((repositories) => {
       repositories.writeIntents.parkAttempt({
@@ -287,7 +287,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("a session host bound to another run refuses loudly — a precondition failure never parks", async () => {
-    const h = harness();
+    const h = await harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
 
@@ -310,7 +310,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("a worker restarted onto a moved contract closure still recovers the crash it caused", async () => {
-    const h = harness();
+    const h = await harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
 
@@ -322,7 +322,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("recovery still refuses loudly when the permanent key itself moved", async () => {
-    const h = harness();
+    const h = await harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
 
@@ -345,7 +345,7 @@ describe("ref write-safety §4 recovery matrix", () => {
 
 describe("positive recovery composite refusal", () => {
   it("unwinds evidence inserted before continuation refuses", async () => {
-    const h = harness(true);
+    const h = await harness(true);
     const { run, writeIntentId } = parkedAttemptingWrite(h);
     const intent = intentByKey(h.database);
     const generation = h.database.getMeta().authorityGeneration;
@@ -364,7 +364,7 @@ describe("positive recovery composite refusal", () => {
 
 describe("resume-queued helper replay", () => {
   it.each([writeFixtureDescriptor,writeFixtureDescriptorAfterUnrelatedEdit])("preserves continuation and exact recovery owner on replay under $contractFingerprint", async descriptor => {
-    const h = harness();
+    const h = await harness();
     const { run, writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
     await h.recovery.recover({ descriptor, writeIntentId, signal: SIGNAL });

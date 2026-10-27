@@ -350,11 +350,11 @@ describe_m2("diagnostic gallery fixture origin", () => {
 {
 
 
-const disposers: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const dispose of disposers.splice(0)) dispose(); };
-function consumer(transaction = false) {
-  const h = transaction ? mappedTransactionHarness_m3() : rerunValuesHarness_m3();
-  const w = makeWorld_m3(); disposers.push(h.dispose, () => w.dispose());
+const disposers: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const dispose of disposers.splice(0)) await dispose(); };
+async function consumer(transaction = false) {
+  const h = transaction ? await mappedTransactionHarness_m3() : await rerunValuesHarness_m3();
+  const w = await makeWorld_m3(); disposers.push(h.dispose, async () => await w.dispose());
   const app: DashboardApp_m3 = new Hono_m3();
   app.onError((error, c) => { const failure = failureStatus_m3(error); return c.json(failure.body, failure.status); });
   const data = composeDataQueries_m3({ stateRoot: w.stateRoot, projection: w.projection, authority: w.authority,
@@ -371,7 +371,7 @@ function consumer(transaction = false) {
   const launch = createRunLaunchService_m3(client, "local-operator", { uuid: () => h.ids.uuid(), now: () => h.clock.now().toISOString() });
   return { h, client, launch, dropResponse: () => { dropNextResponse = true; } };
 }
-async function completeSource(h: ReturnType<typeof consumer>["h"], transaction = false) {
+async function completeSource(h: Awaited<ReturnType<typeof consumer>>["h"], transaction = false) {
   const run = h.start(h.proposal());
   if (transaction) h.world.probeResults.push(absentProbeEvidence_m3(h.clock.now().toISOString()));
   assert_m3.equal((await h.execute(run)).state, "done"); return h.fresh(run);
@@ -381,7 +381,7 @@ describe_m3("independent Run/Rerun consumer of the released launch service", () 
 afterEach_m3(_afterEachFixture0);
 
   it_m3("reads exact source values, prefills, previews, submits once and replays a lost response through real services", async () => {
-    const { h, client, launch, dropResponse } = consumer(); const source = await completeSource(h);
+    const { h, client, launch, dropResponse } = await consumer(); const source = await completeSource(h);
     const before = h.queueRoots.length;
     const response = await launch.openRerun({ runId: source.envelope.runId, expectedVersion: source.version });
     assert_m3.ok(response.state === "available");
@@ -402,7 +402,7 @@ afterEach_m3(_afterEachFixture0);
     assert_m3.deepEqual(await launch.openRerun({ runId: source.envelope.runId, expectedVersion: source.version }), { state: "refused", code: "target-deleted" });
   });
   it_m3("warning acknowledgement calls the real planner, with no queue effect before final confirmation", async () => {
-    const { h, client, launch } = consumer(true); const source = await completeSource(h, true);
+    const { h, client, launch } = await consumer(true); const source = await completeSource(h, true);
     const selectedStepKeys = h.descriptor.timeline.map((step) => step.key);
     const draft = { workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: true, browserMode: "headless", captureBrowserScreenshots: false,
       selectedStepKeys, rerunSource: { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun", selectedStepKeys } };
@@ -416,7 +416,7 @@ afterEach_m3(_afterEachFixture0);
     assert_m3.equal(h.queueRoots.length, before + 1);
   });
   it_m3("refuses an unresolved write source through both source read and planning, without another run", async () => {
-    const { h, launch } = consumer(true); const source = await completeSource(h, true);
+    const { h, launch } = await consumer(true); const source = await completeSource(h, true);
     const warning = h.proposal(source); assert_m3.ok(warning.rerun);
     const repeat = h.start(h.proposal(source, warning.rerun.warningDigest));
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
@@ -430,7 +430,7 @@ afterEach_m3(_afterEachFixture0);
     assert_m3.equal(h.queueRoots.length, count);
   });
   it_m3("rejects malformed or substituted prefill evidence", async () => {
-    const { h } = consumer(); const source = await completeSource(h);
+    const { h } = await consumer(); const source = await completeSource(h);
     const request = { runId: source.envelope.runId, expectedVersion: source.version };
     const result = readRerunValues_m3(rerunValuesDeps_m3(h), request); assert_m3.ok(result.state === "available");
     for (const body of [ { ...result, snapshot: { ...result.snapshot, source: { ...result.snapshot.source, version: source.version + 1 } } },

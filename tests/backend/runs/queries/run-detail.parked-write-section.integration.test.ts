@@ -114,8 +114,8 @@ function parkedSection(w: DashboardWorld, writeContracts?: RunDetailWriteContrac
 }
 
 describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
-  it("serves the exact recorded parked event identity and leaves absent native evidence absent", () => {
-    const w = world();
+  it("serves the exact recorded parked event identity and leaves absent native evidence absent", async () => {
+    const w = await world();
     const run = runRecordOf({ seed: 1 });
     const proof = { ...SUBJECT_PROOF, runId: RUN_ID, afterPrepareSpanPath: `${run.envelope.traceId}/termination/prepare` };
     seed(w, { intent: parkedIntentOf({ proof }) });
@@ -128,8 +128,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       runId: RUN_ID, attempt: 1, traceId: run.envelope.traceId, nodeId: "termination" });
   });
 
-  it("advertises and serves the section with the durable intent's exact facts", () => {
-    const w = world();
+  it("advertises and serves the section with the durable intent's exact facts", async () => {
+    const w = await world();
     seed(w);
 
     const detail = buildRunDetail(depsOf(w), RUN_ID);
@@ -154,8 +154,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.ok(payload.parkedMessage.includes(IDEMPOTENCY_KEY_DIGEST.slice(0, 12)));
   });
 
-  it("serves the subject as the durable binding evidence, both proof kinds", () => {
-    const w = world();
+  it("serves the subject as the durable binding evidence, both proof kinds", async () => {
+    const w = await world();
     seed(w);
     const subject = parkedSection(w).subject;
     assert.equal(subject.state, "subject-match");
@@ -170,7 +170,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       displaySuffix: "1234",
     });
 
-    const unscoped = world();
+    const unscoped = await world();
     seed(unscoped, { intent: parkedIntentOf({ proof: UNSCOPED_PROOF }) });
     const other = parkedSection(unscoped).subject;
     assert.equal(other.state, "unscoped");
@@ -180,8 +180,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.ok(!("evidence" in other));
   });
 
-  it("leaks no direct identifier or permanent key into the served bytes", () => {
-    const w = world();
+  it("leaks no direct identifier or permanent key into the served bytes", async () => {
+    const w = await world();
     seed(w);
     const serialized = JSON.stringify(parkedSection(w));
 
@@ -196,8 +196,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
 
 
   describe("the served proof contract", () => {
-    it("serves the composition root's derived hash and field list verbatim", () => {
-      const w = world();
+    it("serves the composition root's derived hash and field list verbatim", async () => {
+      const w = await world();
       seed(w);
       const contract = parkedSection(w, [DESCRIBED_TERMINATION_PROOF]).proofContract;
       assert.equal(contract.state, "served");
@@ -209,8 +209,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       assert.deepEqual(contract.fields.map((field) => field.path), ["kind", "transactionId"]);
     });
 
-    it("names the missing descriptor rather than serving a form for a workflow it cannot describe", () => {
-      const w = world();
+    it("names the missing descriptor rather than serving a form for a workflow it cannot describe", async () => {
+      const w = await world();
       seed(w);
       const contract = parkedSection(w).proofContract;
       assert.equal(contract.state, "unavailable");
@@ -222,8 +222,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
         action.kind === "command" && action.command === "resolve-write-absent"));
     });
 
-    it("names the missing transaction node when no contract commits this task", () => {
-      const w = world();
+    it("names the missing transaction node when no contract commits this task", async () => {
+      const w = await world();
       seed(w);
       const contract = parkedSection(w, [{
         ...DESCRIBED_TERMINATION_PROOF,
@@ -235,8 +235,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       assert.match(contract.reason, /transaction-node/);
     });
 
-    it("passes an undescribable proof's own reason through instead of guessing a shape", () => {
-      const w = world();
+    it("passes an undescribable proof's own reason through instead of guessing a shape", async () => {
+      const w = await world();
       seed(w);
       const contract = parkedSection(w, [{
         ...DESCRIBED_TERMINATION_PROOF,
@@ -249,8 +249,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     });
   });
 
-  it("serves both typed resolutions, targeted at this exact intent generation", () => {
-    const w = world();
+  it("serves both typed resolutions, targeted at this exact intent generation", async () => {
+    const w = await world();
     seed(w);
     const { actions } = parkedSection(w);
 
@@ -272,8 +272,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     }
   });
 
-  it("emits every binding the kernel's own command schema requires", () => {
-    const w = world();
+  it("emits every binding the kernel's own command schema requires", async () => {
+    const w = await world();
     seed(w);
     const action = parkedSection(w).actions[0];
     assert.ok(action !== undefined && action.kind === "command");
@@ -305,13 +305,13 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.equal(command.payload.occurrenceKeyDigest, IDEMPOTENCY_KEY_DIGEST);
   });
 
-  it("does not advertise or serve the section for a run that is not parked", () => {
+  it("does not advertise or serve the section for a run that is not parked", async () => {
     for (const lifecycle of [
       { state: "queued" },
       { state: "parked-gate", parkedAt: NOW, gateId: "identity-approval", resumeAt: "probe" },
       { state: "terminal", outcome: "done", endedAt: NOW },
     ]) {
-      const w = world();
+      const w = await world();
       seed(w, { lifecycle, intent: null });
       const record = w.authority.getRun(RUN_ID);
       assert.ok(record);
@@ -325,8 +325,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     }
   });
 
-  it("refuses loudly when the park names an intent authority does not hold", () => {
-    const w = world();
+  it("refuses loudly when the park names an intent authority does not hold", async () => {
+    const w = await world();
     seed(w, { intent: null });
     assert.throws(
       () => parkedSection(w),
@@ -334,20 +334,20 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     );
   });
 
-  it("refuses loudly when the run park and the intent disagree", () => {
+  it("refuses loudly when the run park and the intent disagree", async () => {
     // The intent moved on — exactly the state a stale operator tab would try
     // to resolve. It is a contradiction in authority, never an empty panel.
-    const advanced = world();
+    const advanced = await world();
     seed(advanced, { intent: parkedIntentOf({ generation: 2 }) });
     assert.throws(() => parkedSection(advanced), /is at generation 2/);
 
-    const settled = world();
+    const settled = await world();
     seed(settled, { intent: parkedIntentOf({ status: "attempting" }) });
     assert.throws(() => parkedSection(settled), /which is attempting/);
   });
 
-  it("refuses loudly when the intent belongs to a different run", () => {
-    const w = world();
+  it("refuses loudly when the intent belongs to a different run", async () => {
+    const w = await world();
     const foreign = WriteIntentRecordSchema.parse({
       ...parkedIntentOf(),
       runId: uuidOf(2),
@@ -359,8 +359,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
   });
 
 
-  it("pins the parity fixture's safe message and resolution descriptors to this query", () => {
-    const w = world();
+  it("pins the parity fixture's safe message and resolution descriptors to this query", async () => {
+    const w = await world();
     seed(w);
     const served = parkedSection(w);
 
@@ -397,8 +397,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.deepEqual(normalize(FIXTURE_PARKED_WRITE, FIXTURE_PARKED_WRITE_INTENT), normalize(served, parkedIntentOf()));
   });
 
-  it("re-reads the intent per request rather than folding it into the projection", () => {
-    const w = world();
+  it("re-reads the intent per request rather than folding it into the projection", async () => {
+    const w = await world();
     seed(w);
     assert.equal(parkedSection(w).generation, 1);
 

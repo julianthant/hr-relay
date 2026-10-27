@@ -16,7 +16,7 @@ afterEach(cleanup);
 
 describe("durable worker directives (ref dashboard-surfaces), observed between items", () => {
   it("stops without claiming when the directive says stop", async () => {
-    const harness = loopHarness();
+    const harness = await loopHarness();
     harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());
     const polls: string[] = [];
 
@@ -38,7 +38,7 @@ describe("durable worker directives (ref dashboard-surfaces), observed between i
 
   it("claims nothing while paused and re-polls on the bounded idle cadence", async () => {
     // exitWhenIdle=false so the pause branch is the ONLY reason it loops.
-    const harness = loopHarness({ exitWhenIdle: false });
+    const harness = await loopHarness({ exitWhenIdle: false });
     harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());
     let polls = 0;
 
@@ -61,7 +61,7 @@ describe("durable worker directives (ref dashboard-surfaces), observed between i
 
   for (const directive of ["pause", "stop"] as const) {
     it(`finishes the actual active read run before observing its durable ${directive} directive`, async () => {
-      const harness = loopHarness({ exitWhenIdle: false });
+      const harness = await loopHarness({ exitWhenIdle: false });
       const database = harness.authority.database;
       database.authority.runs.enqueue(personLookupQueuedRun());
       const nextRunId = "ffffffff-ffff-4fff-8fff-fffffffffffe";
@@ -110,7 +110,7 @@ describe("durable worker directives (ref dashboard-surfaces), observed between i
   }
 
   it("finishes the actual active read while an unrelated member has a genuine pending lifecycle control", async () => {
-    const harness = loopHarness(), database = harness.authority.database;
+    const harness = await loopHarness(), database = harness.authority.database;
     database.authority.runs.enqueue(personLookupQueuedRun());
     let pending: ReturnType<typeof admitWorkerReset> | undefined;
     const report = await runWorkerLoop({ ...harness.deps, emitter: { emit(event) {
@@ -146,7 +146,7 @@ describe("durable worker directives (ref dashboard-surfaces), observed between i
   });
 
   it("refuses to run when the directive cannot be read", async () => {
-    const harness = loopHarness();
+    const harness = await loopHarness();
     harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());
     await assert.rejects(
       runWorkerLoop({
@@ -161,7 +161,7 @@ describe("durable worker directives (ref dashboard-surfaces), observed between i
   });
 
   it("refuses two competing write-sequencer seams", async () => {
-    const harness = loopHarness();
+    const harness = await loopHarness();
     const sequencer = {
       executeTransaction: () => Promise.resolve(undefined),
       executeDryRun: () => Promise.resolve(undefined),

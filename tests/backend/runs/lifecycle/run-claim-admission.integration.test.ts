@@ -26,7 +26,7 @@ import { resolutionCommand,resolutionKernel } from "../../../support/helpers/fai
 import { chatGptFixture } from "../../../support/helpers/chatgpt-account-fixtures.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrAdapter } from "../../../../src/backend/processing/providers/chatgpt-ocr-adapter.js";
 
-type Fixture=ReturnType<typeof foundationFixture>;
+type Fixture=Awaited<ReturnType<typeof foundationFixture>>;
 const scheduler={schedule:()=>({cancel:()=>undefined})};
 const artifacts=(f:Fixture)=>createContentAddressedArtifactWriter({admission: boundProfileAdmission(f.path)});
 const flows={
@@ -62,7 +62,7 @@ const flows={
   const token=selectRunRuntime(f.db.authority);assert.ok(runRuntimeMatches(f.db.authority,token));assert.equal(runRuntimeMatches(f.db.authority,{...token,generation:PositiveIntSchema.parse(token.generation+1)}),false);
   assert.deepEqual(selectNewRunIdentity(f.db.authority,f.run.envelope),f.run.envelope);
   const writer=artifacts(f);await writer.ready;
-  const account=chatGptFixture(admission);try{
+  const account=await chatGptFixture(admission);try{
   const ocr=createChatGptOcrAdapter({account:account.service,artifacts:writer,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
   const factory=createRunResourcesFactory({ocr,assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},processLockRoot:join(f.root,"locks"),authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("b"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("synthetic proof must not open a browser");}}});
   const resources=factory.forRun(f.run);assert.equal(resources.taskDeadlineMs,f.snapshot.config.timeouts.taskMs);assert.equal(resources.sessionAcquireMs,f.snapshot.config.timeouts.sessionAcquireMs);assert.equal(resources.defaultBrowserMode,f.snapshot.config.browser.headless?"headless":"headed");assert.ok(resources.providers?.adapters["geocode.nominatim"]);
@@ -73,6 +73,6 @@ const flows={
 describe("F actual four-way baseline independence",()=>{
  const owners=["P","D","G","S"] as const;
  for(const [i,a] of owners.entries())for(const b of owners.slice(i+1))for(const order of [[a,b],[b,a]])it(`${order.join(" then ")} operates independently on one real authority`,async()=>{
-  const f=foundationFixture();try{for(const owner of order)await flows[owner](f);for(const owner of order){if(owner==="D")assert.equal(f.db.authority.failures.get(id(80))?.writeState,"unknown");if(owner==="G")assert.equal(f.db.authority.generatedArtifacts.get("sink:xlsx-retention")?.state,"ready");if(owner==="S")assert.ok(runRuntimeMatches(f.db.authority,selectRunRuntime(f.db.authority)));}}finally{f.dispose();}
+  const f=await foundationFixture();try{for(const owner of order)await flows[owner](f);for(const owner of order){if(owner==="D")assert.equal(f.db.authority.failures.get(id(80))?.writeState,"unknown");if(owner==="G")assert.equal(f.db.authority.generatedArtifacts.get("sink:xlsx-retention")?.state,"ready");if(owner==="S")assert.ok(runRuntimeMatches(f.db.authority,selectRunRuntime(f.db.authority)));}}finally{await f.dispose();}
  });
 });

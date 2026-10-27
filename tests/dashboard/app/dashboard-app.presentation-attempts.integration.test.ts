@@ -19,9 +19,9 @@ import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 const { world, cleanup } = createRunQueueProjectionTestWorld();
-afterEach(() => { cleanup(); document.body.replaceChildren(); localStorage.clear(); window.history.replaceState(null, "", "/"); });
+afterEach(async () => { await cleanup(); document.body.replaceChildren(); localStorage.clear(); window.history.replaceState(null, "", "/"); });
 it("shows the selected day's runs by start time and keeps that day when an attempt is selected", async () => {
-  const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   const selectedDay = "2026-08-03";
   const runs = [
     { seed: 86, attempt: 3, enqueuedAt: "2026-08-03T17:40:00.000Z" },

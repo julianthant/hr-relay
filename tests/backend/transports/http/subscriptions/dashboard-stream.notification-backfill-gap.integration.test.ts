@@ -13,9 +13,9 @@ afterEach(cleanup);
 describe("backfill-gap notification", () => {
 
   it("persists one gap when a requested cursor has fallen outside retained history", async () => {
-    const { inbox } = world();
-    const dashboard = makeDashboardWorld();
-    disposers.push(() => dashboard.dispose());
+    const { inbox } = await world();
+    const dashboard = await makeDashboardWorld();
+    disposers.push(async () => await dashboard.dispose());
     const hub = createDashboardStreamHub({
       projection: dashboard.projection,
       retention: 1,

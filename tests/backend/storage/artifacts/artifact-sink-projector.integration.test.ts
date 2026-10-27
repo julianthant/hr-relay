@@ -11,7 +11,7 @@ import { foundationFixture,id,NOW,update } from "../../../support/helpers/databa
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 async function fixture() {
-  const f = foundationFixture();
+  const f = await foundationFixture();
   const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/data/artifacts")) });
   await artifacts.ready;
   const path = join(f.root, "retention.xlsx");
@@ -65,7 +65,7 @@ describe("G ordered publication and durable intent", () => {
       assert.equal(f.file().head?.generation, 3);
       assert.deepEqual(await f.make().projectOutbox([id(1)]), { projected: 0 });
       assert.deepEqual(readFileSync(f.path), latest);
-    } finally { second.close(); f.dispose(); }
+    } finally { second.close(); await f.dispose(); }
   });
 
   const windows = ["before-stage", "after-stage", "after-stage-sync", "after-prepare", "before-replace", "after-replace", "after-directory-sync", "before-settlement", "after-head", "after-ack"] as const;
@@ -93,7 +93,7 @@ describe("G ordered publication and durable intent", () => {
         assert.deepEqual(restarted.authority.generatedArtifacts.get("sink:xlsx-retention")?.prepared, intended);
       } finally { restarted.close(); }
       assert.equal(existsSync(join(f.root, ".retention.xlsx.writer.lock")), false);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("refuses staged corruption before replacing the verified destination", async () => {
@@ -106,7 +106,7 @@ describe("G ordered publication and durable intent", () => {
       assert.deepEqual(readFileSync(f.path), old.bytes);
       assert.deepEqual(await f.read(old.ref), old.bytes);
       assert.equal(f.file().prepared?.updateId, id(2));
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("detects an external edit during publication without replacing it or losing the last good version", async () => {
@@ -118,7 +118,7 @@ describe("G ordered publication and durable intent", () => {
       assert.equal(f.file().state, "conflict");
       assert.deepEqual(f.file().head, old.head);
       assert.deepEqual(await f.read(old.ref), old.bytes);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("refuses stale preparation, divergent settlement and acknowledgement outside the exact head transaction", async () => {
@@ -138,7 +138,7 @@ describe("G ordered publication and durable intent", () => {
       assert.equal(f.db.getMeta().authorityGeneration, generation);
       assert.deepEqual(f.file().head, old.head);
       assert.equal(f.file().prepared?.updateId, id(2));
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("uses one destination fence through directory aliases and refuses a symlink destination", async () => {
@@ -154,7 +154,7 @@ describe("G ordered publication and durable intent", () => {
         f.db.authority.artifactOutbox.insert(update(3));
         await assert.rejects(f.make(f.db, undefined, undefined, join(f.root, "linked.xlsx")).projectOutbox([id(3)]), /symlink-destination-conflict/u);
       } finally { rmSync(alias); }
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("refuses oversized metadata before committing any member of the producing transaction", async () => {
@@ -169,7 +169,7 @@ describe("G ordered publication and durable intent", () => {
       assert.equal(f.db.getMeta().authorityGeneration, generation);
       await f.seed();
       assert.equal(f.file().state, "ready");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   for (const damage of ["missing", "corrupt"] as const) it(`refuses publication when its retained current immutable version is ${damage}`, async () => {
@@ -189,7 +189,7 @@ describe("G ordered publication and durable intent", () => {
       await f.make().projectOutbox([id(2)]);
       assert.equal(f.file().state, "ready");
       assert.deepEqual(await f.read(old.ref), old.bytes);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("refuses missing or corrupt immutable old versions while keeping shared receipt references", async () => {
@@ -204,6 +204,6 @@ describe("G ordered publication and durable intent", () => {
       writeFileSync(storedPath, stored); assert.deepEqual(await f.read(old.ref), old.bytes);
       rmSync(storedPath); await assert.rejects(f.read(old.ref), /ENOENT/u);
       assert.equal(f.file().versions.length, 2);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });

@@ -105,7 +105,7 @@ describe("read-only upgrade phase reporting", () => {
 afterEach(_afterEachFixture0);
 
   it("keeps a corrupt journal explicitly unavailable without exposing its payload or mutating it", async () => {
-    const f = fixture();
+    const f = await fixture();
     const raw = new DatabaseSync(f.options.authorityPath);
     raw.prepare("INSERT INTO database_upgrades (id, upgrade_id, phase, payload_json, created_at) VALUES (?, ?, ?, ?, ?)")
       .run("broken", "private-upgrade-identity", "planned", JSON.stringify({ private: "private-journal-payload" }), "2026-09-06T20:00:00.000Z");
@@ -159,7 +159,7 @@ afterEach(_afterEachFixture0);
     const { marker, event, field } = testCase;
     const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-diagnostic-redaction-")));
     roots.push(repoRoot);
-    const profile = createBoundProfileFixture({ workspace: repoRoot });
+    const profile = await createBoundProfileFixture({ workspace: repoRoot });
     if (event === "nested-root") {
       const actualParent = join(repoRoot, "owned");
       mkdirSync(actualParent);
@@ -184,7 +184,7 @@ afterEach(_afterEachFixture0);
         assert.equal(error.message.includes(marker), false);
         return true;
       });
-      profile.close();
+      await profile.close();
       return;
     }
     const stateRoot = profile.stateRoot;
@@ -279,24 +279,24 @@ afterEach(_afterEachFixture0);
       assert.match(output, /span-stream-invalid/u);
       if (event === "schema-key" || event === "schema-field") assert.match(output, /timeline-record-invalid/u);
     } else assert.match(output, /span_stream/u);
-    profile.close();
+    await profile.close();
   });
 });
 }
 
 {
 
-const disposers: (() => void)[] = [];
-const _afterEachFixture0 = () => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 };
 
 const MAX_AGE_MS = 45 * 60 * 1000;
 
-function world() {
+async function world() {
   const clock = manualClock(new Date(NOW));
-  const opened = openBoundDatabaseFixture("summary-test", clock, 1000);
-  disposers.push(() => opened.close());
+  const opened = await openBoundDatabaseFixture("summary-test", clock, 1000);
+  disposers.push(async () => await opened.close());
   const database = opened.database;
   const directory = join(opened.stateRoot, "backups", "authority");
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -330,7 +330,7 @@ describe("summarizeBackupHealth", () => {
 afterEach(_afterEachFixture0);
 
   it("reads missing with no directory, and current right after a real verified backup", async () => {
-    const w = world();
+    const w = await world();
     assert.equal(summarizeBackupHealth_m3(w.options, w.database.getMeta().authorityGeneration, w.clock), "missing");
 
     await w.service.request({ trigger: "interval", requiredGeneration: w.database.getMeta().authorityGeneration });
@@ -338,7 +338,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("refuses a missing, nonregular or wrong-size physical copy and distinguishes I/O uncertainty", async () => {
-    const w = world();
+    const w = await world();
     await w.service.request({ trigger: "interval", requiredGeneration: w.database.getMeta().authorityGeneration });
     const name = readdirSync(w.directory).find(name => name.endsWith(".manifest.json"));
     assert.ok(name);
@@ -358,7 +358,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("reads stale on ANY authority-generation gap, and current again after the next backup", async () => {
-    const w = world();
+    const w = await world();
     await w.service.request({ trigger: "interval", requiredGeneration: w.database.getMeta().authorityGeneration });
 
     const generation = dirtyAuthority(w.database);
@@ -370,7 +370,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("reads stale past the age bound even with no gap, and judges by age alone when the live generation is unknown", async () => {
-    const w = world();
+    const w = await world();
     await w.service.request({ trigger: "interval", requiredGeneration: w.database.getMeta().authorityGeneration });
 
     w.clock.advanceWall(MAX_AGE_MS + 1);
@@ -378,13 +378,13 @@ afterEach(_afterEachFixture0);
 
     // Authority unavailable (undefined generation): the fresh-age arm still
     // answers — the summary's documented degraded contract.
-    const fresh = world();
+    const fresh = await world();
     await fresh.service.request({ trigger: "interval", requiredGeneration: fresh.database.getMeta().authorityGeneration });
     assert.equal(summarizeBackupHealth_m3(fresh.options, undefined, fresh.clock), "current");
   });
 
-  it("treats an unparseable manifest as no usable backup — missing, never a guessed state", () => {
-    const w = world();
+  it("treats an unparseable manifest as no usable backup — missing, never a guessed state", async () => {
+    const w = await world();
     mkdirSync(w.directory, { recursive: true });
     writeFileSync(join(w.directory, "authority-1.manifest.json"), "{ not json");
     assert.equal(summarizeBackupHealth_m3(w.options, w.database.getMeta().authorityGeneration, w.clock), "missing");

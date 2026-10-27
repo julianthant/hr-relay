@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 describe("beat ④ — budget expiry and CAS races discard the staged page", () => {
   it("discards on an elapsed probe→fence budget and never clicks", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.onPrepare = () => h.clock.advanceMonotonic(30_001);

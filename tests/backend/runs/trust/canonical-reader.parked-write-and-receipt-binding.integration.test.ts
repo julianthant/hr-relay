@@ -28,8 +28,8 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
 afterEach(cleanup);
 
   it("serves canonical parked-write evidence without a fold and refuses foreign intent membership", async () => {
-    const h = roundTrip(); await h.park();
-    const projection = makeWorld();
+    const h = await roundTrip(); await h.park();
+    const projection = await makeWorld();
     try {
       const deps = { stateRoot: projection.stateRoot, projection: projection.projection,
         runReader: createTrustRunReader(h.database, h.clock), timeline: h.database.authority.timelineEvents,
@@ -68,10 +68,10 @@ afterEach(cleanup);
       assert.throws(() => buildRunSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write"), SectionUnavailableError,
         "stale open evidence cannot regrant resolved write actions");
 
-    } finally { projection.dispose(); }
+    } finally { await projection.dispose(); }
   });
   it("reports parked-write as a first-class outcome over the durable parked state", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     const report = await harness.park();
 
     assert.equal(report.stopped, "idle");
@@ -98,7 +98,7 @@ afterEach(cleanup);
   });
 
   it("confirmed-absent makes the run resumable at the transaction node, intent retryable", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -123,7 +123,7 @@ afterEach(cleanup);
 
 
   it("resolves confirmed-absent after an unrelated edit moved the contract closure", async () => {
-    const harness = roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
+    const harness = await roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -151,7 +151,7 @@ afterEach(cleanup);
   });
 
   it("resolves confirmed-present after an unrelated edit moved the contract closure", async () => {
-    const harness = roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
+    const harness = await roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -174,7 +174,7 @@ afterEach(cleanup);
   });
 
   it("still refuses loudly when the permanent key itself moved, naming the exact check", async () => {
-    const harness = roundTrip(writeFixtureDescriptorWithMovedKey);
+    const harness = await roundTrip(writeFixtureDescriptorWithMovedKey);
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -205,7 +205,7 @@ afterEach(cleanup);
   });
 
   it("gives no arm but the typed resolutions any way out of a park", async () => {
-    const harness = roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
+    const harness = await roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
     await harness.park();
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(parked);
@@ -225,7 +225,7 @@ afterEach(cleanup);
   });
 
   it("refuses a stale resolution against the parked generation", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -248,7 +248,7 @@ describe("a confirmed-present proof that does not fit", () => {
 afterEach(cleanup);
 
   async function refusedPresent(payload: Record<string, unknown>) {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -311,7 +311,7 @@ afterEach(cleanup);
   }
 
   it("refuses the cancel by name and cancels nothing while the intent is parked", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -332,7 +332,7 @@ afterEach(cleanup);
   });
 
   it("refuses it for an ATTEMPTING intent too — the state with no section at all", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     let observed = false;
     harness.world.onCommitClick = () => {
       const attempting = parkedIntent(harness.database);
@@ -353,7 +353,7 @@ afterEach(cleanup);
   });
 
   it("lifts the moment the write is answered ABSENT", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -381,7 +381,7 @@ afterEach(cleanup);
   });
 
   it("lifts the moment the write is answered PRESENT", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -416,7 +416,7 @@ describe("kernel outer resolution rollback", () => {
 afterEach(cleanup);
 
   it("unwinds product/lifecycle journals and all write evidence after inner lifecycle settlement", async () => {
-    const h = roundTrip(writeFixtureDescriptor, { afterSequencedStep: (step) => {
+    const h = await roundTrip(writeFixtureDescriptor, { afterSequencedStep: (step) => {
       if (step === "run-transition") throw new Error("kernel outer resolution rollback");
     } });
     await h.park();
@@ -472,8 +472,8 @@ function refusalFor(overrides: Partial<ReceiptBuildInput>): string {
 /* ── (a) the stranded receipt: a moved closure re-derives byte-identically ── */
 
 describe("receipt derivation binding — a moved closure does not strand a receipt", () => {
-afterEach(() => {
-  for (const database of databases.splice(0)) closePersonLookupReceiptDatabase(database);
+afterEach(async () => {
+  for (const database of databases.splice(0)) await closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -498,8 +498,8 @@ afterEach(() => {
 /* ── (b) a genuinely moved surface refuses, naming it ────────────────────── */
 
 describe("receipt derivation binding — a moved surface refuses by name", () => {
-afterEach(() => {
-  for (const database of databases.splice(0)) closePersonLookupReceiptDatabase(database);
+afterEach(async () => {
+  for (const database of databases.splice(0)) await closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -565,14 +565,14 @@ function storedVariant(
 }
 
 describe("receipt derivation binding — the stored receipt survives a moved closure", () => {
-afterEach(() => {
-  for (const database of databases.splice(0)) closePersonLookupReceiptDatabase(database);
+afterEach(async () => {
+  for (const database of databases.splice(0)) await closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 
-  it("keeps divergent receipt sentences out of the service and HTTP divergence error", () => {
-    const database = openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-binding-http-", "receipt-binding-http-test");
+  it("keeps divergent receipt sentences out of the service and HTTP divergence error", async () => {
+    const database = await openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-binding-http-", "receipt-binding-http-test");
     const seeded = seedPersonLookupExitRun(database);
     const runId = String(seeded.run.envelope.runId);
     const authority = database.authority;

@@ -11,7 +11,7 @@ function storage() { const data = new Map<string, string>(); return { data, getI
   setItem: (key: string, value: string) => { data.set(key, value); }, removeItem: (key: string) => { data.delete(key); } }; }
 describe("minimal final submission recovery through production services", () => {
   it("retains no raw values; lost-response reload and duplicate replay return the same run", async () => {
-    const h = launchHarness(); cleanup.push(h.dispose); const persisted = storage();
+    const h = await launchHarness(); cleanup.push(h.dispose); const persisted = storage();
     const plan = h.proposal(undefined, undefined, true);
     const command = h.launch.prepareFinal(plan); retainLaunchFinal(persisted, command);
     const bytes = [...persisted.data.values()].join(""); assert.ok(!bytes.includes("10812345"));
@@ -24,8 +24,8 @@ describe("minimal final submission recovery through production services", () => 
     assert.throws(() => h.launch.submit({ ...restored, requestedAt: "2026-09-21T00:00:00.000Z" }, h.binding), /divergent|reused/);
     dismissLaunchRecovery(persisted, restored); assert.equal(readLaunchRecovery(persisted, "local-operator"), null);
   });
-  it("refuses divergent pending identities, corrupt records, missing acknowledgments and failed persistence before sending", () => {
-    const h = launchHarness(); cleanup.push(h.dispose); const persisted = storage();
+  it("refuses divergent pending identities, corrupt records, missing acknowledgments and failed persistence before sending", async () => {
+    const h = await launchHarness(); cleanup.push(h.dispose); const persisted = storage();
     const command = h.launch.prepareFinal(h.proposal()); retainLaunchFinal(persisted, command);
     assert.throws(() => retainLaunchFinal(persisted, StartCommandRequestSchema.parse({ ...command, commandId: h.ids.uuid() })), /RECOVERY_PENDING/);
     const key = [...persisted.data.keys()][0]; persisted.data.set(key, "{}");
@@ -35,7 +35,7 @@ describe("minimal final submission recovery through production services", () => 
     assert.equal(h.queueRoots.length, 0);
   });
   it("retains the reviewed verification bindings across reload without retaining subject or source values", async () => {
-    const h = launchHarness(); cleanup.push(h.dispose); const persisted = storage();
+    const h = await launchHarness(); cleanup.push(h.dispose); const persisted = storage();
     const plan = h.proposal(undefined, undefined, true);
     const command = h.launch.prepareFinal(plan);
     retainLaunchFinal(persisted, command, { ...plan, planned: plan.planned.map(entry => ({ ...entry, title: "private-subject-title", subtitle: "private-source-value" })) });

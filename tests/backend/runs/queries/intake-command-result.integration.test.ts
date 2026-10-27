@@ -5,8 +5,8 @@ import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/que
 import { IntakeCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { foundationFixture } from "../../../support/helpers/database-foundation/fixtures.js";
 
-it("keeps an admitted request UNKNOWN without a recorded audit and withholds another actor's request", () => {
-  const f = foundationFixture();
+it("keeps an admitted request UNKNOWN without a recorded audit and withholds another actor's request", async () => {
+  const f = await foundationFixture();
   try {
     const query = createIntakeCommandResultQuery(f.db);
     for (const actor of ["local-operator", "other-actor"]) {
@@ -24,5 +24,5 @@ it("keeps an admitted request UNKNOWN without a recorded audit and withholds ano
         ? { state: "recorded", request, result } : { state: "unavailable" });
       assert.equal(f.db.getMeta().authorityGeneration, settledGeneration);
     }
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });

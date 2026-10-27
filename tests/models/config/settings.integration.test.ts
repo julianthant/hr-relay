@@ -58,8 +58,8 @@ function ordinary(expectedRevision = 1) {
 describe("SQLite settings authority", () => {
 afterEach(_afterEachFixture0);
 
-  it("replays an older ordinary result from its journal and refuses divergent identity reuse", () => {
-    const f = fixture(); const first = ordinary();
+  it("replays an older ordinary result from its journal and refuses divergent identity reuse", async () => {
+    const f = await fixture(); const first = ordinary();
     const applied = f.execute(first);
     assert.equal(applied.state, "applied");
     assert.equal(f.execute(ordinary(2)).state, "applied");
@@ -96,8 +96,8 @@ const _afterEachFixture0 = cleanupClaims;
 describe("run claim store", () => {
 afterEach(_afterEachFixture0);
 
-  it("atomically refuses a claim after settings advance beyond the active runtime", () => {
-    const database = openDatabase();
+  it("atomically refuses a claim after settings advance beyond the active runtime", async () => {
+    const database = await openDatabase();
     const snapshot = {
       ...CONFIG_SNAPSHOT,
       configSnapshotId: RUN_ENVELOPE.configSnapshotId,

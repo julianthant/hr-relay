@@ -46,7 +46,7 @@ afterEach(cleanup);
 
   it("refuses provider admission when the run's retained config snapshot is absent", async () => {
     const adapter = createDeterministicProviderHarness("geocode.census", []);
-    const harness = wiringHarness(providersDescriptor, registryFor(providersOnlyTask));
+    const harness = await wiringHarness(providersDescriptor, registryFor(providersOnlyTask));
     const { database } = harness.authority;
     const deps: RunExecutorDependencies = {
       ...harness.deps,

@@ -19,8 +19,8 @@ import { failure,HASH,NOW } from "../../../support/helpers/database-foundation/f
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-function fixture() {
-  const profile = createBoundProfileFixture();
+async function fixture() {
+  const profile = await createBoundProfileFixture();
   const root = profile.stateRoot, path = profile.path;
   const clock = manualClock(new Date("2026-09-21T12:00:00Z"));
   let db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "search-test" }, clock);
@@ -29,11 +29,11 @@ function fixture() {
     descriptors: { resolve: () => undefined }, authority: { readSnapshot: read => db.withAuthorityReadSnapshot(() => read({
       authorityGeneration: db.getMeta().authorityGeneration, searchRuns: input => db.authority.runs.search(input),
     })) } });
-  return { root, path, clock, get db(){return db;}, service, reopen(){db.close();db=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"search-reopen"},clock);}, dispose() { db.close(); profile.close(); } };
+  return { root, path, clock, get db(){return db;}, service, reopen(){db.close();db=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"search-reopen"},clock);}, async dispose() { db.close(); await profile.close(); } };
 }
 
-it("searches registered and historical workflow metadata without exposing raw inputs or inventing actors", () => {
-  const f = fixture();
+it("searches registered and historical workflow metadata without exposing raw inputs or inventing actors", async () => {
+  const f = await fixture();
   try {
     for (const [seed, workflow, shape] of [[1001, "person-lookup", "single"], [1002, "historical-workflow", "preview"], [1003, "separations", "operation"], [1004,"historical-workflow","operation-member"]] as const) {
       f.db.authority.runs.enqueue(runRecordOf({ seed, workflow, shape, dryRun: true, displayName: "PRIVATE SUBJECT MUST NOT MATCH", enqueuedAt: "2026-09-20T17:00:00Z" }));
@@ -46,11 +46,11 @@ it("searches registered and historical workflow metadata without exposing raw in
     assert.equal(search.search({ q: "", facets: { workflow: "historical-workflow", shape: "preview", state: "queued", dryRun: true, version: 1, evidence: "none" } }).totalMatches, 1);
     assert.equal(search.search({ q: "historical" }).results[0]?.registration.state, "unregistered");
     assert.ok(all.results.every(row => row.metadata.actor.state === "unavailable"));
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("refuses tampered metadata even for nonmatching queries; resumes bounded rebuilds across reopen", () => {
-  const f = fixture();
+it("refuses tampered metadata even for nonmatching queries; resumes bounded rebuilds across reopen", async () => {
+  const f = await fixture();
   try {
     for (let seed = 1101; seed < 1105; seed++) f.db.authority.runs.enqueue(runRecordOf({ seed, workflow: "person-lookup" }));
     const raw = new DatabaseSync(f.path);
@@ -64,11 +64,11 @@ it("refuses tampered metadata even for nonmatching queries; resumes bounded rebu
     assert.equal(f.service().search({ q: "person" }).totalMatches, 4);
     assert.throws(() => f.db.withAuthorityTransaction(() => { f.db.rebuildRunSearchIndex({ restart: true, limit: 1 }); throw new Error("interrupt"); }), /interrupt/);
     assert.equal(f.service().search({ q: "person" }).totalMatches, 4);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("cold and post-mutation pages read only selected run JSON with large unrelated history", () => {
-  const f = fixture();
+it("cold and post-mutation pages read only selected run JSON with large unrelated history", async () => {
+  const f = await fixture();
   try {
     f.db.withAuthorityTransaction(() => {
       for (let seed = 2001; seed < 2501; seed++) f.db.authority.runs.enqueue(runRecordOf({ seed, workflow: "unrelated-workflow" }));
@@ -116,11 +116,11 @@ it("cold and post-mutation pages read only selected run JSON with large unrelate
       assert.equal(observed.reduce((n, row) => n + row.rows, 0), 3);
       process.stdout.write(`P2_QUERY_PROOF ${JSON.stringify({kind:"search-post-mutation",historyRows:505,selectedMatches:5,pageLimit:2,rawReads:observed.reduce((n,row)=>n+row.rows,0)})}\n`);
     } finally { spy.mockRestore(); }
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("expires snapshots and retains exact pages until authority changes", () => {
-  const f = fixture();
+it("expires snapshots and retains exact pages until authority changes", async () => {
+  const f = await fixture();
   try {
     f.db.authority.runs.enqueue(runRecordOf({ seed: 3001 }));
     const search = f.service(), query = { q: "", limit: 1 };
@@ -128,11 +128,11 @@ it("expires snapshots and retains exact pages until authority changes", () => {
     assert.deepEqual(search.searchSelected(query, first.snapshot.token).results, first.results);
     f.clock.setWall(new Date("2026-09-21T12:16:00Z"));
     assert.throws(() => search.searchSelected(query, first.snapshot.token), /expired/);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("publishes declared subject names, authentic recorded actors and typed failure evidence with source writes", () => {
-  const f = fixture();
+it("publishes declared subject names, authentic recorded actors and typed failure evidence with source writes", async () => {
+  const f = await fixture();
   try {
     const { descriptor } = createSubjectTitleTestWorld();
     const queued = runRecordOf({ seed: 4801, descriptor, enqueuedAt: NOW });
@@ -192,11 +192,11 @@ hdh: true };
       contentDigest:deriveDiagnosticContentDigest(diagnostic),retention:{kind:"ordinary",purgeAfter:"2026-12-01T00:00:00.000Z"}}));
     assert.equal(search("", { evidence: "diagnostic",state:"failed" }).totalMatches, 1);
     assert.equal(search("", { evidence: "none" }).totalMatches, 0);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("keeps ordinary authority writes available while a large declaration requires explicit bounded rebuild",()=>{
-  const f=fixture();
+it("keeps ordinary authority writes available while a large declaration requires explicit bounded rebuild",async ()=>{
+  const f=await fixture();
   try {
     f.db.withAuthorityTransaction(()=>{for(let seed=3100;seed<3601;seed++)f.db.authority.runs.enqueue(runRecordOf({seed}));});
     const run=runRecordOf({seed:3100});
@@ -208,11 +208,11 @@ it("keeps ordinary authority writes available while a large declaration requires
     assert.equal(first.state,"building");assert.equal(first.rowCount,500);
     const second=f.db.rebuildRunSearchIndex({limit:500});assert.equal(second.state,"published");assert.equal(second.rowCount,502);
     assert.equal(f.service().search({q:""}).totalMatches,502);
-  } finally {f.dispose();}
+  } finally {await f.dispose();}
 });
 
-it("selects each reachable lifecycle, shape, retained version and mode without narrowing to one workflow",()=>{
-  const f=fixture();
+it("selects each reachable lifecycle, shape, retained version and mode without narrowing to one workflow",async ()=>{
+  const f=await fixture();
   try {
     const targets=["queued","claimed","validating","running","parked-gate","parked-write","cancelled","discarded","superseded","interrupted"] as const;
     for(const [offset,target] of targets.entries()) {
@@ -240,11 +240,11 @@ it("selects each reachable lifecycle, shape, retained version and mode without n
       assert.equal(search().totalMatches,1,target);
       assert.equal(search().results[0]?.metadata.version,7);
     }
-  } finally {f.dispose();}
+  } finally {await f.dispose();}
 });
 
-it("refuses a selection beyond the 10000 metadata bound before reading run JSON",()=>{
-  const f=fixture();
+it("refuses a selection beyond the 10000 metadata bound before reading run JSON",async ()=>{
+  const f=await fixture();
   try {
     const prototype = runRecordOf({seed:1,workflow:"history"});
     const raw = new DatabaseSync(f.path);
@@ -271,11 +271,11 @@ it("refuses a selection beyond the 10000 metadata bound before reading run JSON"
     });
     try {assert.throws(()=>f.service().search({q:""}),/run-search-query-too-broad/u);} finally {spy.mockRestore();}
     assert.equal(f.service().search({q:"needle"}).totalMatches,1);
-  } finally {f.dispose();}
+  } finally {await f.dispose();}
 });
 
-it("requires an explicit restart when native source changes during a persisted rebuild", () => {
-  const f = fixture();
+it("requires an explicit restart when native source changes during a persisted rebuild", async () => {
+  const f = await fixture();
   try {
     for (let seed = 4101; seed <= 4104; seed++) f.db.authority.runs.enqueue(runRecordOf({seed}));
     assert.equal(f.db.rebuildRunSearchIndex({restart:true,limit:1}).state,"building");
@@ -284,11 +284,11 @@ it("requires an explicit restart when native source changes during a persisted r
     assert.throws(() => f.db.rebuildRunSearchIndex({limit:2}),/run-search-rebuild-restart-required/u);
     for (let progress = f.db.rebuildRunSearchIndex({restart:true,limit:2}); progress.state !== "published"; progress = f.db.rebuildRunSearchIndex({limit:2})) assert.equal(progress.state,"building");
     assert.equal(f.service().search({q:""}).totalMatches,5);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("does not cache derived admission when a corruption rebuild rolls back", () => {
-  const f = fixture();
+it("does not cache derived admission when a corruption rebuild rolls back", async () => {
+  const f = await fixture();
   try {
     const run = runRecordOf({seed:4201});
     f.db.authority.runs.enqueue(run);
@@ -297,11 +297,11 @@ it("does not cache derived admission when a corruption rebuild rolls back", () =
     finally { raw.close(); }
     assert.throws(() => f.db.rebuildRunSearchIndex({restart:true,limit:1}));
     assert.throws(() => f.service().search({q:"no-match"}),/run-search-index-rebuild-required/u);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-for (const fault of ["corrupt-completed-row", "hole"] as const) it(`refuses ${fault} in durable rebuild progress and permits explicit repair`, () => {
-  const f = fixture();
+for (const fault of ["corrupt-completed-row", "hole"] as const) it(`refuses ${fault} in durable rebuild progress and permits explicit repair`, async () => {
+  const f = await fixture();
   try {
     for (let seed = 4301; seed <= 4304; seed++) f.db.authority.runs.enqueue(runRecordOf({seed}));
     const progress = f.db.rebuildRunSearchIndex({restart:true,limit:1});
@@ -316,5 +316,5 @@ for (const fault of ["corrupt-completed-row", "hole"] as const) it(`refuses ${fa
     assert.throws(() => AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"corrupt-build-reopen"},f.clock),expected);
     for (let repaired = f.db.rebuildRunSearchIndex({restart:true,limit:2}); repaired.state !== "published"; repaired = f.db.rebuildRunSearchIndex({limit:2})) assert.equal(repaired.state,"building");
     assert.equal(f.service().search({q:""}).totalMatches,4);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });

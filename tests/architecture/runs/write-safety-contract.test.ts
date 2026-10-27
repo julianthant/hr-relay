@@ -116,9 +116,9 @@ describe("write-safety contract completeness (no escape hatch)", () => {
 });
 
 describe("crash recovery routes probe-first with evidence-qualified settlement", () => {
-  function recoveryWorld() {
+  async function recoveryWorld() {
     const clock = manualClock(new Date("2026-08-03T09:00:00.000Z"));
-    const profile = createBoundProfileFixture();
+    const profile = await createBoundProfileFixture();
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "write-safety-guard" },
       clock,
@@ -130,7 +130,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
       continuation: testRunContinuation(database, clock),
       stores: registry,
       authority: database,
-      sessions: writeFixtureSessionManager(writeFixtureSessions(world), registry, clock),
+      sessions: await writeFixtureSessionManager(writeFixtureSessions(world), registry, clock),
       clock,
       ids: sequentialIdFactory("c"),
       scheduler: new ManualScheduler(clock),
@@ -141,7 +141,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
     });
     return {
       clock, database, world, recovery,
-      dispose: () => {
+      dispose: async () => {
         const now = clock.now().toISOString();
         const authorityReason = deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "fixture release");
         for (const run of database.authority.runs.listByWorkflow(writeFixtureDescriptor.id)) {
@@ -155,7 +155,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
         }
         releaseSeededWriteOwners(database, now);
         database.close();
-        profile.close();
+        await profile.close();
       },
     };
   }
@@ -166,7 +166,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
 
     // present → the SAME proof parser beat ⑥ uses, then atomic backfill.
     {
-      const w = recoveryWorld();
+      const w = await recoveryWorld();
       const { writeIntentId } = parkedAttemptingWriteFixture(w.database, w.clock);
       w.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
       const decision = await w.recovery.recover({
@@ -175,11 +175,11 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
       assert.equal(decision.state, "backfilled");
       assert.equal(w.database.authority.writeIntents.get(writeIntentId)?.status, "committed");
       assert.deepEqual(w.world.events, ["probe"], "the probe ran FIRST and nothing else touched a browser");
-      w.dispose();
+      await w.dispose();
     }
     // one early absence → wait; zero retry authority, zero durable change.
     {
-      const w = recoveryWorld();
+      const w = await recoveryWorld();
       const { writeIntentId } = parkedAttemptingWriteFixture(w.database, w.clock);
       w.world.probeResults.push(absentProbeEvidence(w.clock.now().toISOString()));
       const decision = await w.recovery.recover({
@@ -187,11 +187,11 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
       });
       assert.equal(decision.state, "wait");
       assert.equal(w.database.authority.writeIntents.get(writeIntentId)?.status, "attempting");
-      w.dispose();
+      await w.dispose();
     }
     // stabilized same-key negative evidence → retryable (the ONLY retry path).
     {
-      const w = recoveryWorld();
+      const w = await recoveryWorld();
       const { writeIntentId } = parkedAttemptingWriteFixture(w.database, w.clock);
       w.clock.advanceWall(31_000);
       const first = absentProbeEvidence(w.clock.now().toISOString(), "observation:55555555-5555-4555-8555-555555555555");
@@ -205,11 +205,11 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
       });
       assert.equal(decision.state, "safe-to-retry");
       assert.equal(w.database.authority.writeIntents.get(writeIntentId)?.status, "retryable");
-      w.dispose();
+      await w.dispose();
     }
     // a throwing probe is unknown → park; never absent, never retry.
     {
-      const w = recoveryWorld();
+      const w = await recoveryWorld();
       const { writeIntentId } = parkedAttemptingWriteFixture(w.database, w.clock);
       w.world.probeResults.push(new Error("target system unreachable"));
       const decision = await w.recovery.recover({
@@ -217,13 +217,13 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
       });
       assert.equal(decision.state, "parked");
       assert.equal(w.database.authority.writeIntents.get(writeIntentId)?.status, "parked");
-      w.dispose();
+      await w.dispose();
     }
   });
 
   it("blocks a second fence for a permanent key in every non-retryable state", async () => {
     const { parkedAttemptingWriteFixture, foreignAttemptingIntent } = await import("./helpers/write-guard-fixtures.js");
-    const w = recoveryWorld();
+    const w = await recoveryWorld();
     parkedAttemptingWriteFixture(w.database, w.clock);
     const second = foreignAttemptingIntent("55555555-5555-4555-8555-555555555555", "66666666-6666-4666-8666-666666666666");
     const resolution = fenceWriteFixture(w.database, second);
@@ -231,6 +231,6 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
     if (resolution.state === "existing") {
       assert.equal(resolution.intent.idempotencyKey, WRITE_FIXTURE_KEY);
     }
-    w.dispose();
+    await w.dispose();
   });
 });

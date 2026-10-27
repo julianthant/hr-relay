@@ -54,7 +54,7 @@ describe("worker browser session factory", () => {
       const manager = new WorkerSessionManager({
         workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry, factory,
         clock: CLOCK, scheduler: new ManualScheduler(CLOCK),
-        acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: fixtureDuoCeremonyGates(CLOCK),
+        acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: await fixtureDuoCeremonyGates(CLOCK),
       });
       manager.bindRunConfigFingerprint(FINGERPRINT);
       const acquire = () => manager.withDriver(
@@ -69,7 +69,7 @@ describe("worker browser session factory", () => {
       await assert.rejects(factory.open({
         workerId: WORKER_ID, workflowId: WORKFLOW_ID, system: "ucpath", instance: "prod",
         configFingerprint: FINGERPRINT, acceptDownloads: false, exclusive: false,
-        signal: new AbortController().signal, duoCeremony: fixtureDuoCeremonyGate("ucpath", WORKER_ID, CLOCK),
+        signal: new AbortController().signal, duoCeremony: await fixtureDuoCeremonyGate("ucpath", WORKER_ID, CLOCK),
       }));
       assert.equal(launches, 1, "uncertain profile stays reserved");
     });
@@ -95,7 +95,7 @@ describe("worker browser session factory", () => {
         clock: CLOCK,
         scheduler: new ManualScheduler(CLOCK),
         acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-        duoCeremony: fixtureDuoCeremonyGates(CLOCK),
+        duoCeremony: await fixtureDuoCeremonyGates(CLOCK),
       });
       manager.bindRunConfigFingerprint(FINGERPRINT);
       await assert.rejects(
@@ -144,7 +144,7 @@ describe("worker browser sessions", () => {
   it("proves an authored fresh boundary closes before starting the replacement", async () => {
     const harness = sessionFactory();
     const events: WorkerSessionEvent[] = [];
-    const sessions = manager(harness, events);
+    const sessions = await manager(harness, events);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "first");
     await sessions.withDriver(
       { ...UCPATH_REUSE, session: "fresh" },
@@ -176,7 +176,7 @@ describe("worker browser sessions", () => {
       clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
       scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(),
+      duoCeremony: await fixtureDuoCeremonyGates(),
     });
     await assert.rejects(
       sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "must not run"),
@@ -198,7 +198,7 @@ describe("worker browser sessions", () => {
   it("reuses only on an exact fingerprint match and proves the boundary on drift", async () => {
     const harness = sessionFactory();
     const events: WorkerSessionEvent[] = [];
-    const sessions = manager(harness, events);
+    const sessions = await manager(harness, events);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "first");
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "same-run-reuse");
     assert.equal(harness.opens(), 1);
@@ -224,7 +224,7 @@ describe("worker browser sessions", () => {
   it("treats a changed resolved instance as identity drift, not silent reuse", async () => {
     const harness = sessionFactory();
     const events: WorkerSessionEvent[] = [];
-    const sessions = manager(harness, events);
+    const sessions = await manager(harness, events);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "prod-run");
     sessions.releaseRunConfigFingerprint();
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
@@ -237,7 +237,7 @@ describe("worker browser sessions", () => {
   it("treats a changed browser presentation as identity drift, not silent reuse", async () => {
     const harness = sessionFactory();
     const events: WorkerSessionEvent[] = [];
-    const sessions = manager(harness, events);
+    const sessions = await manager(harness, events);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "headless-run");
     sessions.releaseRunConfigFingerprint();
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, "headed");
@@ -266,7 +266,7 @@ describe("worker browser sessions", () => {
       clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
       scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(),
+      duoCeremony: await fixtureDuoCeremonyGates(),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "legacy-headless");
@@ -295,7 +295,7 @@ describe("worker browser sessions", () => {
       clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
       scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(),
+      duoCeremony: await fixtureDuoCeremonyGates(),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     await assert.rejects(
@@ -340,7 +340,7 @@ describe("bounded browser-session acquisition", () => {
       clock,
       scheduler,
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock),
       onEvent: (event) => events.push(event),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
@@ -410,7 +410,7 @@ describe("bounded browser-session acquisition", () => {
       factory: { open: async input => ({ ...await base.factory.open(input),
         authentication: { authenticate: async () => { throw failure; } } }) },
       clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => assert.fail("login failed")), error => error === failure);
@@ -432,7 +432,7 @@ describe("bounded browser-session acquisition", () => {
       factory: { open: async input => ({ ...await base.factory.open(input), authentication: {
         authenticate: () => new Promise<never>((_resolve, reject) => { rejectLogin = reject; loginStarted(); }),
       } }) }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     const acquisition = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => assert.fail("login failed"));
@@ -467,7 +467,7 @@ describe("bounded browser-session acquisition", () => {
     const sessions = new WorkerSessionManager({
       workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry, factory,
       clock, scheduler, acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined);
@@ -500,7 +500,7 @@ describe("bounded browser-session acquisition", () => {
         await opened;
         return resource;
       } }, clock, scheduler, acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => assert.fail("expired acquisition must not run"));
@@ -535,7 +535,7 @@ describe("bounded browser-session acquisition", () => {
     const sessions = new WorkerSessionManager({
       workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
       factory: { open: async () => { throw failure; } }, clock, scheduler: new ManualScheduler(clock),
-      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: fixtureDuoCeremonyGates(clock),
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: await fixtureDuoCeremonyGates(clock),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined), error => error === failure);
@@ -571,7 +571,7 @@ describe("bounded browser-session acquisition", () => {
       clock,
       scheduler,
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock),
       onEvent: (event) => events.push(event),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
@@ -593,10 +593,10 @@ describe("bounded browser-session acquisition", () => {
     );
   });
 
-  it("refuses to be built without a positive acquisition bound", () => {
+  it("refuses to be built without a positive acquisition bound", async () => {
     const harness = sessionFactory();
     const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
-    assert.throws(() => new WorkerSessionManager({
+    await assert.rejects(async () => new WorkerSessionManager({
       workerId: WORKER_ID,
       workflowId: WORKFLOW_ID,
       stores: taskStoreRegistry,
@@ -604,7 +604,7 @@ describe("bounded browser-session acquisition", () => {
       clock,
       scheduler: new ManualScheduler(clock),
       acquireDeadlineMs: 0,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock),
     }));
   });
 });

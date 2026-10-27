@@ -47,7 +47,7 @@ describe("canonical notification producers", () => {
       fail = false; await observer.observe(); await observer.observe();
       expect(observer.status()).toEqual({ state: "ready", pending: 0 }); expect(f.inbox.list("local-operator")[0].count).toBe(1);
       await observer.stop();
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
   it("crosses the third-failure threshold and publishes each captured native observation", async () => {
     const f = await fixture();
@@ -63,7 +63,7 @@ describe("canonical notification producers", () => {
       await createTrustNotifications({ database: f.db, clock: f.clock, ids: sequentialIdFactory("b"), reader: f.reader }).observer.observe();
       expect(f.inbox.list("local-operator")).toEqual(beforeRestart);
       expect(beforeRestart.find(row => row.trigger === "repeating")?.count).toBe(1);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
   it("counts distinct retained failure IDs and begins one repeating alert at three", async () => {
     const f = await fixture();
@@ -78,7 +78,7 @@ describe("canonical notification producers", () => {
       for (const row of readNotificationSources(f.db, f.reader).observations) await f.inbox.publish(row.event, row.source);
       expect(f.inbox.list("local-operator").find(row => row.trigger === "repeating")?.count).toBe(2);
       expect(JSON.stringify(rows)).not.toContain(failureRecordOf({ seed: 1, code: "SUBJECT_MISMATCH" }).summary);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
   it("publishes only verified canonical receipts and refuses mismatched evidence", async () => {
     const f = await fixture();
@@ -87,7 +87,7 @@ describe("canonical notification producers", () => {
       const { run } = seedPersonLookupExitRun(f.db);
       f.db.authority.evidenceReceipts.insert(receiptOf(run, 1));
       expect(readNotificationSources(f.db, f.reader).observations.map(row => row.event.kind)).toEqual(["verified-done"]);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
   it("reads retained native failures and receipts across reopen without replay", async () => {
     const f = await fixture();
@@ -108,7 +108,7 @@ describe("canonical notification producers", () => {
       expect(after).toEqual(before);
       for (const row of after.observations) await f.inbox.publish(row.event, row.source);
       expect(f.inbox.list("local-operator")).toEqual(rows);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
   it.each(["dry-run", "warnings", "missing", "mismatch", "corrupt"])("does not invent verified completion from %s canonical evidence", async kind => {
     const f = await fixture();
@@ -136,7 +136,7 @@ describe("canonical notification producers", () => {
         else expect(readNotificationSources(f.db, f.reader).observations).toEqual([]);
         expect(f.inbox.list("local-operator")).toEqual([]);
       }
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 });
 
@@ -169,7 +169,7 @@ it("reports a real successful run's missing completion receipt through observer 
       expect(readNotificationSources(f.db, f.reader).diagnostics).toEqual([]);
       expect(f.db.getMeta()).toEqual(settled);
     } finally { await observer.stop(); }
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 it("does not report a missing completion receipt for queued or dry-run success", async () => {
@@ -182,5 +182,5 @@ it("does not report a missing completion receipt for queued or dry-run success",
     const before = f.db.getMeta();
     expect(readNotificationSources(f.db, f.reader)).toEqual({ observations: [], diagnostics: [] });
     expect(f.db.getMeta()).toEqual(before);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });

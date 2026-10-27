@@ -17,17 +17,17 @@ const OTHER_CREDENTIAL = FingerprintSchema.parse("cd".repeat(32));
 const TTL_MS = 80_000;
 const T0 = "2026-08-21T10:00:00.000Z";
 
-const closers: (() => void)[] = [];
-function openDatabase(): AuthorityDatabase {
+const closers: (() => void | Promise<void>)[] = [];
+async function openDatabase(): Promise<AuthorityDatabase> {
   const clock = manualClock(new Date(T0));
-  const opened = openBoundDatabaseFixture("unit-test", clock);
-  closers.push(() => opened.close());
+  const opened = await openBoundDatabaseFixture("unit-test", clock);
+  closers.push(async () => await opened.close());
   for (const poolIndex of [1, 2]) testWorkerPorts(opened.database, clock, { path: opened.path, descriptor: personLookupDescriptor, poolIndex });
   assert.deepEqual(opened.database.authority.workerSlots.list().map(slot => slot.workerId), ["person-lookup-worker-1", "person-lookup-worker-2"]);
   return opened.database;
 }
-afterEach(() => {
-  for (const close of closers.splice(0)) close();
+afterEach(async () => {
+  for (const close of closers.splice(0)) await close();
 });
 
 function at(offsetMs: number): string {
@@ -35,8 +35,8 @@ function at(offsetMs: number): string {
 }
 
 describe("duo_ceremony_leases — acquire / release / takeover", () => {
-  it("acquires a free credential at generation 1 and mints the one token the helpers accept", () => {
-    const database = openDatabase();
+  it("acquires a free credential at generation 1 and mints the one token the helpers accept", async () => {
+    const database = await openDatabase();
     const outcome = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
@@ -61,8 +61,8 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     database.close();
   });
 
-  it("refuses a second acquirer while the lease is live, naming the holder", () => {
-    const database = openDatabase();
+  it("refuses a second acquirer while the lease is live, naming the holder", async () => {
+    const database = await openDatabase();
     database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
@@ -88,8 +88,8 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     database.close();
   });
 
-  it("releases under the held generation, retires the token, and lets the next acquirer in at generation 2", () => {
-    const database = openDatabase();
+  it("releases under the held generation, retires the token, and lets the next acquirer in at generation 2", async () => {
+    const database = await openDatabase();
     const first = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
@@ -118,8 +118,8 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     database.close();
   });
 
-  it("takes over an EXPIRED lease at the next generation and records whom it took it from", () => {
-    const database = openDatabase();
+  it("takes over an EXPIRED lease at the next generation and records whom it took it from", async () => {
+    const database = await openDatabase();
     const first = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
@@ -148,8 +148,8 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     database.close();
   });
 
-  it("refuses a forged token, a malformed request, and a non-positive TTL", () => {
-    const database = openDatabase();
+  it("refuses a forged token, a malformed request, and a non-positive TTL", async () => {
+    const database = await openDatabase();
     assert.throws(
       () => database.authority.duoCeremonyLeases.release({
         token: { credentialKey: CREDENTIAL, generation: 1, holder: { workerId: "person-lookup-worker-1", system: "ucpath" }, expiresAt: at(1) },

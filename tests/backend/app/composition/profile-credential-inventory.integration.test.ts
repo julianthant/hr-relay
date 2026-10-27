@@ -27,7 +27,8 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-function fixture(f = createBoundProfileFixture()) {
+async function fixture(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
+  f ??= await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const credentials = boundProfileCredentials(f.admission);
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials, clock, hostFacts: { primaryDisplay: null } });
@@ -42,7 +43,7 @@ function fixture(f = createBoundProfileFixture()) {
     activity: { hasUnquiescedWork: () => false } });
   return { ...f, clock, context, capturedSecrets, inventory,
     erase() {
-      const active = session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+      const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
       assert.equal(active.state, "active");
       if (active.state !== "active") throw new Error("synthetic profile sign-in refused");
       const blocked = session.logOut(active.token, { at: clock.now().toISOString() });
@@ -56,14 +57,14 @@ function fixture(f = createBoundProfileFixture()) {
         erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
       return { admission, credentials: store, operationId: operation.operationId };
     },
-    async cleanup() { await context.account.close(); context.database.close(); session.close(); f.close(); },
+    async cleanup() { await context.account.close(); context.database.close(); session.close(); await f.close(); },
   };
 }
 
-const failedUpgradeFixtures = new Set<Readonly<{ profile: ReturnType<typeof createBoundProfileFixture>; owners: readonly unknown[]; primary: unknown }>>();
+const failedUpgradeFixtures = new Set<Readonly<{ profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; owners: readonly unknown[]; primary: unknown }>>();
 
 async function upgradedFixture(version: 6 | 7 | 8) {
-  const f = createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const databases: DatabaseSync[] = [];
   try {
     const raw = new DatabaseSync(f.path);
@@ -97,12 +98,12 @@ async function upgradedFixture(version: 6 | 7 | 8) {
     try { inspected.close(); }
     catch (error) { throw retainAuthoritySourceClosure(inspectionFailure === undefined ? [error] : [inspectionFailure.error, error], { database: inspected, admission: f.admission }); }
     if (inspectionFailure !== undefined) throw inspectionFailure.error;
-    f.finish();
-    return fixture(f);
+    await f.finish();
+    return await fixture(f);
   } catch (error) { failedUpgradeFixtures.add({ profile: f, owners: databases, primary: error }); throw error; }
 }
 
-function retainedBackup(f: ReturnType<typeof fixture>) {
+function retainedBackup(f: Awaited<ReturnType<typeof fixture>>) {
   const directory = join(f.stateRoot, "backups", "authority");
   const names = readdirSync(directory).filter(name => name.endsWith(".manifest.json")); assert.equal(names.length, 1);
   const name = names[0]; assert.ok(name);
@@ -111,7 +112,7 @@ function retainedBackup(f: ReturnType<typeof fixture>) {
 }
 
 type ForwardUpgrade = Exclude<AuthorityUpgradeRecord, { phase: "baseline" }>;
-function changeUpgradeProof(f: ReturnType<typeof fixture>, transform: (record: ForwardUpgrade) => readonly AuthorityUpgradeRecord[]) {
+function changeUpgradeProof(f: Awaited<ReturnType<typeof fixture>>, transform: (record: ForwardUpgrade) => readonly AuthorityUpgradeRecord[]) {
   const record = f.context.database.readProfileResourceCustody().upgrades.find(value => value.phase === "settled");
   assert.ok(record && record.phase === "settled");
   const records = transform(record).map(value => AuthorityUpgradeRecordSchema.parse(value));
@@ -204,7 +205,7 @@ it("retains named refusal for an unbound6 upgrade backup rather than deriving an
 });
 
 for (const backup of ["none", "clean", "captured-copy", "key-copy", "incomplete-capture"] as const) it(`assesses genuine canonical inventory after exact erasure with ${backup} backup`, async () => {
-  const f = fixture();
+  const f = await fixture();
   let settlement: ReturnType<typeof f.erase> | undefined;
   try {
     if (backup === "captured-copy" || backup === "key-copy") {
@@ -228,7 +229,7 @@ for (const backup of ["none", "clean", "captured-copy", "key-copy", "incomplete-
 });
 
 for (const mutation of ["forged-source-version", "missing-source-table", "extra-source-table"] as const) it(`rejects ${mutation} before accepting a backup into credential inventory`, async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const report = await new AuthorityBackupService(f.admission, f.context.database,
       { directory: join(f.stateRoot, "backups", "authority") }, f.clock).request({ trigger: "operator", requiredGeneration: f.context.database.getMeta().authorityGeneration });
@@ -258,7 +259,7 @@ for (const mutation of ["forged-source-version", "missing-source-table", "extra-
 });
 
 for (const problem of ["extra-file", "contained-symlink", "unreferenced-backup"] as const) it(`refuses canonical inventory with ${problem}`, async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     await f.inventory.prepare();
     if (problem === "extra-file") writeFileSync(join(f.stateRoot, "unowned.json"), "{}", { mode: 0o600 });
@@ -284,7 +285,7 @@ for (const encoding of ["utf8", "utf16le", "utf16be"] as const) it(`detects ${en
 });
 
 for (const content of ["clean", "escaped-value", "escaped-key-material", "malformed"] as const) it(`inspects decoded canonical boot JSONL with ${content} content`, async () => {
-  const f = fixture();
+  const f = await fixture();
   let settlement: ReturnType<typeof f.erase> | undefined;
   try {
     const error = new Error("synthetic boot failure"); error.stack = undefined;
@@ -311,7 +312,7 @@ for (const content of ["clean", "escaped-value", "escaped-key-material", "malfor
 });
 
 for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material", "malformed"] as const) it(`inspects canonical retained browser JSON with ${content} content`, async () => {
-  const f = fixture();
+  const f = await fixture();
   let settlement: ReturnType<typeof f.erase> | undefined;
   let worker: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
   try {
@@ -349,7 +350,7 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
 });
 
 for (const encoding of ["raw", "base64", "utf16le", "utf16be"] as const) it(`detects private stable key ${encoding} across the copy chunk boundary`, async () => {
-  const f = fixture(), path = join(f.stateRoot, "synthetic-copy.bin");
+  const f = await fixture(), path = join(f.stateRoot, "synthetic-copy.bin");
   try {
     const key = JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")) as { key: string };
     const bytes = encoding === "raw" ? Buffer.from(key.key, "base64") : Buffer.from(key.key, encoding === "base64" ? "utf8" : "utf16le");

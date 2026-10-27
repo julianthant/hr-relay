@@ -14,8 +14,8 @@ import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
 const FIRST = "11111111-1111-4111-8111-111111111111";
 
 describe("Explorer registered graph and service acceptance", () => {
-  it("matches each runtime dependency, condition and dry-run boundary and resolves all printed sources", () => {
-    const f = explorerAuthorityFixture();
+  it("matches each runtime dependency, condition and dry-run boundary and resolves all printed sources", async () => {
+    const f = await explorerAuthorityFixture();
     try {
       const query = explorerQueryDeps(f.clock, FingerprintSchema.parse("b".repeat(64)));
       const wire = f.read();
@@ -64,6 +64,6 @@ describe("Explorer registered graph and service acceptance", () => {
       assert.deepEqual(f.database.authority.explorerOverrides.readAll(), []);
       assert.equal(f.database.authority.commands.get(FIRST), undefined);
       assert.equal(f.database.authority.commandAudits.findByCommand(FIRST), undefined);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });

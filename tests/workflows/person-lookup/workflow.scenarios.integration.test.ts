@@ -86,7 +86,7 @@ function personDetail(person: z.output<typeof UcpathCandidateSchema>): PersonOrg
       jobCode: "004921", jobCodeDescription: person.jobTitle, expectedJobEndDate: "", fte: "0.50", emplClass: "Student" })]] };
 }
 
-function makeCase(testCase: Case) {
+async function makeCase(testCase: Case) {
   const input = PersonLookupInput.parse(testCase.input ?? { emplId: candidate.emplId });
   const records = testCase.records ?? [record];
   const sessions = sessionFactoryHarness({
@@ -151,7 +151,7 @@ function makeCase(testCase: Case) {
       },
     }),
   });
-  const harness = world.executorHarness({ sessions });
+  const harness = await world.executorHarness({ sessions });
   const { database, clock } = harness.authority;
   const plan = planStart({ authority: database, clock, ids: sequentialIdFactory("f"), planTtlMs: 600000 }, {
     descriptor: personLookupDescriptor, submissions: [input], dryRun: false, priority: "bulk", shape: "single", plannedBy: "local-operator",
@@ -164,7 +164,7 @@ function makeCase(testCase: Case) {
     resolvedInstance: plan.resolvedInstance, shape: plan.shape, priority: plan.priority, dryRun: false, attempt: 1, runNumber: 1, appVersion: "0.1.0", now: clock.now().toISOString() });
   return { harness, queued, input, plan };
 }
-function stepStatuses(harness: ReturnType<typeof world.executorHarness>) {
+function stepStatuses(harness: Awaited<ReturnType<typeof world.executorHarness>>) {
   const tasks = harness.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "task");
   return personLookupDescriptor.timeline.map((step) => {
     const outcomes = tasks.filter((event) => event.t === "span.ended" && event.kind === "task" && step.nodes.some((node) => event.spanPath.includes(`/${node.id}#`))).map((event) => event.t === "span.ended" ? event.outcome : "");
@@ -173,7 +173,7 @@ function stepStatuses(harness: ReturnType<typeof world.executorHarness>) {
 }
 describe("approved Person Lookup scenarios", () => {
   for (const testCase of cases) it(testCase.id, async () => {
-    const { harness, queued, input } = makeCase(testCase);
+    const { harness, queued, input } = await makeCase(testCase);
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
     const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
@@ -280,7 +280,7 @@ describe("approved Person Lookup scenarios", () => {
 
   });
   it("preserves CRM person identity with conflicting forms and requested dates", async () => {
-    const { harness, queued } = makeCase({ id: "multi-form", state: "crm-only", candidates: [], input: { name: candidate.name, includeCrmDates: true },
+    const { harness, queued } = await makeCase({ id: "multi-form", state: "crm-only", candidates: [], input: { name: candidate.name, includeCrmDates: true },
       records: [record, { ...record, recordId: "ONB-2", name: "Different, Person", firstDayOfService: "07/02/2026" }] });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
@@ -293,7 +293,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(terminal.dependencies.find(row => row.nodeId === "crm-selected-record")?.state, "not-run");
   });
   for (const failed of [false, true]) it(`persists actual ${failed ? "failure" : "success"} lease screenshot artifacts`, async () => {
-    const { harness, queued } = makeCase({ id: "capture", state: failed ? "failed" : "active", ucpathFailure: failed });
+    const { harness, queued } = await makeCase({ id: "capture", state: failed ? "failed" : "active", ucpathFailure: failed });
     const { database, clock, profile } = harness.authority;
     const writer = createContentAddressedArtifactWriter({ admission: profile.admission });
     await writer.ready;
@@ -307,7 +307,7 @@ describe("approved Person Lookup scenarios", () => {
     } };
     const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: personLookupDescriptor.id, stores: harness.deps.stores,
       factory, clock, scheduler: harness.scheduler, acquireDeadlineMs: 60000,
-      duoCeremony: (await import("../../support/helpers/duo-ceremony-fixtures.js")).fixtureDuoCeremonyGates(clock), browserScreenshotCapture: createRunBrowserScreenshotCapture({ service }) });
+      duoCeremony: await (await import("../../support/helpers/duo-ceremony-fixtures.js")).fixtureDuoCeremonyGates(clock), browserScreenshotCapture: createRunBrowserScreenshotCapture({ service }) });
     sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint), "headless", { runId: queued.envelope.runId, descriptorFingerprint: personLookupDescriptor.contractFingerprint, captureBrowserScreenshots: !failed });
     const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: !failed } }, clock.now().toISOString());
     assert.equal((await executeClaimedRun({ ...harness.deps, sessions, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 }) }, { ...claimed, signal: world.SIGNAL })).state, failed ? "failed" : "done");
@@ -337,7 +337,7 @@ describe("approved Person Lookup scenarios", () => {
   });
   it("F3", async () => {
     for (const system of ["ucpath", "crm", "duo"] as const) {
-    const { harness, queued } = makeCase({ id: "F3", state: "failed" });
+    const { harness, queued } = await makeCase({ id: "F3", state: "failed" });
     const factory = { ...harness.sessions.factory, async open(input: Parameters<typeof harness.sessions.factory.open>[0]) {
       const resource = await harness.sessions.factory.open(input);
       if (input.system !== (system === "crm" ? "crm" : "ucpath")) return resource;
@@ -346,7 +346,7 @@ describe("approved Person Lookup scenarios", () => {
     const events: unknown[] = [];
     const sessions = new (await import("../../../src/backend/runtime/workers/worker-sessions.js")).WorkerSessionManager({
       workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: WorkflowIdSchema.parse("person-lookup"), stores: harness.deps.stores, factory, clock: harness.authority.clock, scheduler: harness.scheduler,
-      acquireDeadlineMs: 60000, duoCeremony: (await import("../../support/helpers/duo-ceremony-fixtures.js")).fixtureDuoCeremonyGates(harness.authority.clock), onEvent: (event) => { events.push(event); },
+      acquireDeadlineMs: 60000, duoCeremony: await (await import("../../support/helpers/duo-ceremony-fixtures.js")).fixtureDuoCeremonyGates(harness.authority.clock), onEvent: (event) => { events.push(event); },
     });
     sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint));
     const { database, clock } = harness.authority;
@@ -361,7 +361,7 @@ describe("approved Person Lookup scenarios", () => {
     }
   });
   it("F4", async () => {
-    const { harness, queued } = makeCase({ id: "F4", state: "cancelled" });
+    const { harness, queued } = await makeCase({ id: "F4", state: "cancelled" });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
     assert.equal(testRunService(database, clock).transition({
@@ -373,7 +373,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(harness.sessions.opens(), 0);
     assert.equal(database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId).length, 0);
     assert.deepEqual(stepStatuses(harness), ["not-started", "not-started", "not-started", "not-started"]);
-    const running = makeCase({ id: "F4-midrun", state: "cancelled", onCrmSearch: () => {
+    const running = await makeCase({ id: "F4-midrun", state: "cancelled", onCrmSearch: () => {
       const run = running.harness.authority.database.authority.runs.get(running.queued.envelope.runId); assert.ok(run);
       assert.equal(testRunService(running.harness.authority.database, running.harness.authority.clock).transition({ commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", runId: run.envelope.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() } }).state, "applied");
     } });
@@ -388,7 +388,7 @@ describe("approved Person Lookup scenarios", () => {
 
   });
   it("F5", async () => {
-    const { harness, queued, input, plan } = makeCase({ id: "F5", state: "active" });
+    const { harness, queued, input, plan } = await makeCase({ id: "F5", state: "active" });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
     assert.equal((await executeClaimedRun(harness.deps, { ...claimed, signal: world.SIGNAL })).state, "done");

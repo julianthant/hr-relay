@@ -24,7 +24,7 @@ describe("pool-capable worker runtime executor seam", () => {
     {
       name: "different desired count",
       desiredWorkers: 2,
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "plan-worker-count",
         state: "acknowledged",
         desiredWorkers: 1,
@@ -35,7 +35,7 @@ describe("pool-capable worker runtime executor seam", () => {
     {
       name: "missing desired member",
       desiredWorkers: 2,
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "plan-worker-count",
         state: "acknowledged",
         desiredWorkers: 2,
@@ -46,7 +46,7 @@ describe("pool-capable worker runtime executor seam", () => {
     {
       name: "out-of-order member",
       desiredWorkers: 2,
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "plan-worker-count",
         state: "acknowledged",
         desiredWorkers: 2,
@@ -60,7 +60,7 @@ describe("pool-capable worker runtime executor seam", () => {
     {
       name: "stop on a desired member",
       desiredWorkers: 2,
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "plan-worker-count",
         state: "acknowledged",
         desiredWorkers: 2,
@@ -74,7 +74,7 @@ describe("pool-capable worker runtime executor seam", () => {
     {
       name: "running excess member without stop coverage",
       desiredWorkers: 1,
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "plan-worker-count",
         state: "acknowledged",
         desiredWorkers: 1,
@@ -86,7 +86,7 @@ describe("pool-capable worker runtime executor seam", () => {
       message: /must select running excess member person-lookup-worker-2 for bounded graceful stop/,
     },
   ])("refuses a plan acknowledgement with $name", async ({ desiredWorkers, acknowledgement, message }) => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement(native) }, native.authority.database.authority.workerSlots);
     const plan = workerBrowserCommand({
       ...envelope,
@@ -109,7 +109,7 @@ describe("pool-capable worker runtime executor seam", () => {
         target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
         payload: { workerId: "person-lookup-worker-1" },
       },
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "spawn-worker",
         state: "acknowledged",
         ownership: "supervised",
@@ -126,7 +126,7 @@ describe("pool-capable worker runtime executor seam", () => {
         type: "stop-worker",
         target: { workerId: "person-lookup-worker-1", expectedVersion: 1 },
       },
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "stop-worker",
         state: "acknowledged",
         ownership: "supervised",
@@ -144,7 +144,7 @@ describe("pool-capable worker runtime executor seam", () => {
         type: "pause-worker",
         target: { workerId: "person-lookup-worker-1", expectedVersion: 1 },
       },
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "pause-worker",
         state: "acknowledged",
         ownership: "supervised",
@@ -161,7 +161,7 @@ describe("pool-capable worker runtime executor seam", () => {
         type: "resume-worker",
         target: { workerId: "person-lookup-worker-1", expectedVersion: 1 },
       },
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "resume-worker",
         state: "acknowledged",
         ownership: "supervised",
@@ -178,7 +178,7 @@ describe("pool-capable worker runtime executor seam", () => {
         type: "refresh-browser",
         target: { workerId: "person-lookup-worker-1", browserSessionId: ITEM_ID, expectedVersion: 1 },
       },
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "refresh-browser",
         state: "acknowledged",
         ownership: "supervised",
@@ -196,7 +196,7 @@ describe("pool-capable worker runtime executor seam", () => {
         type: "reopen-browser",
         target: { workerId: "person-lookup-worker-1", browserSessionId: ITEM_ID, expectedVersion: 1 },
       },
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "reopen-browser",
         state: "acknowledged",
         ownership: "supervised",
@@ -207,7 +207,7 @@ describe("pool-capable worker runtime executor seam", () => {
       message: /requested member person-lookup-worker-1 at index 1.*acknowledged person-lookup-worker-2 at index 2/,
     },
   ])("refuses mismatched $type acknowledgement facts", async ({ type, command: request, acknowledgement, message }) => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const command = workerBrowserCommand(request);
     const context = { command, now: requestedAt, ...(command.type === "plan-worker-count" ? { roster: admitAdapterPlan(native, command) } : {}) };
     const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement(native) }, native.authority.database.authority.workerSlots);

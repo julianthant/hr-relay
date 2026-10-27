@@ -58,8 +58,8 @@ describe_m0("Queue consumes the served day boundary", () => {
     assert_m0.deepEqual(batch.history.map((row) => row.runId), [previous.runId]);
   });
 
-  it_m0("serves canonical priority/enqueue/id order and keeps explicit display sorts as pure presentation", () => {
-    const f = summaryFixture_m0();
+  it_m0("serves canonical priority/enqueue/id order and keeps explicit display sorts as pure presentation", async () => {
+    const f = await summaryFixture_m0();
     try {
       const now = "2026-09-09T12:00:00.000Z";
       const bulkId = id_m0(9801);
@@ -85,7 +85,7 @@ describe_m0("Queue consumes the served day boundary", () => {
 
       assert_m0.deepEqual(sortQueueBand_m0(prioritySorted, "newest", now).map((s) => s.runId), [interactiveId, bulkId]);
     } finally {
-      f.dispose();
+      await f.dispose();
     }
   });
 });

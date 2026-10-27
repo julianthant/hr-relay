@@ -1,3 +1,5 @@
+import { deriveProfileNames } from "../../../../src/models/profiles/profile.js";
+import { finishProfileOnboarding, readyProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
 import * as fixtureAdmissions from '../../../support/helpers/synthetic-database-admission.js';
 import fs from "node:fs";
 import { spawn } from "node:child_process";
@@ -14,10 +16,11 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { z } from "zod";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
-import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
+import { createSyntheticProfileSession as createProfileSession } from "../../../support/helpers/admission-fixture.js";
 import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -26,7 +29,7 @@ import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } fro
 import { composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
+
 
 function fixture() {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "profile-admission-")));
@@ -37,17 +40,17 @@ function fixture() {
     initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
     activity: { hasUnquiescedWork: () => busy }, backupPaths: () => [], loginDataPaths: () => [] });
   const registry = createProfileRegistry(machine);
-  const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "fixture-password", createdAt: "2026-09-06T12:00:00.000Z" };
-  return { workspace, machine, session, registry, fields, busy() { busy = true; }, cleanup() { machine.release(); rmSync(workspace, { recursive: true, force: true }); } };
+  const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "fixture-password", createdAt: "2026-09-06T12:00:00.000Z" };
+  return { workspace, machine, session, registry, fields, busy() { busy = true; }, async cleanup() { await session.close(); machine.release(); rmSync(workspace, { recursive: true, force: true }); } };
 }
 
-it("boots a genuine machine without a dummy database, then creates a bound canonical profile through registered intent", () => {
+it("boots a genuine machine without a dummy database, then creates a bound canonical profile through registered intent", async () => {
   const f = fixture();
   try {
     assert.equal(existsSync(join(f.machine.stateRoot, "state.db")), false);
     assert.equal(f.registry.read().activeProfileId, null);
     assert.throws(() => AuthorityDatabase.open(f.machine, { path: join(f.machine.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
-    const active = f.session.signUp(f.fields);
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields));
     assert.ok(active.state === "active");
     const claim = f.registry.storageClaim(active.profileId);
     assert.throws(() => f.machine.admitProfile({ ...claim }), /profile-storage-claim-unissued/u);
@@ -65,13 +68,13 @@ it("boots a genuine machine without a dummy database, then creates a bound canon
       assert.throws(() => child.assertLive(), /released admission/u);
       f.machine.assertLive();
     } finally { child.release(); }
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
-it("does not mint a new child from a ready claim after logout starts while retaining existing drain custody", () => {
+it("does not mint a new child from a ready claim after logout starts while retaining existing drain custody", async () => {
   const f = fixture();
   try {
-    const active = f.session.signUp(f.fields); assert.ok(active.state === "active");
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
     const claim = f.registry.storageClaim(active.profileId), child = f.machine.admitProfile(claim);
     f.busy();
     assert.equal(f.session.logOut(active.token, { at: "2026-09-06T12:01:00.000Z" }).state, "cancelling");
@@ -82,24 +85,24 @@ it("does not mint a new child from a ready claim after logout starts while retai
     assert.throws(() => AuthorityDatabase.open(child, { path: join(child.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-storage-claim-generation-changed/u);
     const refused = f.session.readFile(active.token, "absent");
     assert.ok("state" in refused && refused.state === "refused");
-    assert.equal(f.session.signUp({ ...f.fields, email: "sam@example.edu" }).state, "refused");
+    assert.equal((await finishProfileOnboarding(f.session, f.session.signUp({ ...f.fields, email: "sam@ucsd.edu" }))).state, "refused");
     child.release();
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
-it("rejects restored registry bytes against installation control continuity", () => {
+it("rejects restored registry bytes against installation control continuity", async () => {
   const f = fixture();
   try {
     const path = join(f.machine.stateRoot, "machine", "profiles.json");
     const initial = readFileSync(path);
-    assert.equal(f.session.signUp(f.fields).state, "active");
+    assert.equal((await finishProfileOnboarding(f.session, f.session.signUp(f.fields))).state, "active");
     writeFileSync(path, initial, { mode: 0o600 });
     assert.throws(() => f.machine.readProfileRegistry(), /profile-registry-continuity-mismatch/u);
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
 
-it("rejects fabricated pending operations and modified persisted setup fields before profile roots", () => {
+it("rejects fabricated pending operations and modified persisted setup fields before profile roots", async () => {
   const f = fixture();
   try {
     const operation = f.machine.beginProfileSignUp({ emailKey: "a".repeat(64), firstName: "Alex", lastName: "Rivera",
@@ -123,13 +126,13 @@ it("rejects fabricated pending operations and modified persisted setup fields be
     writeFileSync(fakePath, JSON.stringify(fake), { mode: 0o600 });
     assert.throws(() => registry.storageClaim(fake.profileId), /profile-registry-continuity-mismatch/u);
     assert.equal(existsSync(join(f.machine.stateRoot, "profiles", fake.profileId)), false);
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
-it("rejects foreign canonical binding and hardlink or symlink database substitution before writable opening", () => {
+it("rejects foreign canonical binding and hardlink or symlink database substitution before writable opening", async () => {
   const f = fixture();
   try {
-    const active = f.session.signUp(f.fields); assert.ok(active.state === "active");
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
     const claim = f.registry.storageClaim(active.profileId), child = f.machine.admitProfile(claim);
     const path = join(child.stateRoot, "state.db"), held = `${path}.held`;
     const raw = new DatabaseSync(path);
@@ -145,13 +148,13 @@ it("rejects foreign canonical binding and hardlink or symlink database substitut
     rmSync(path); linkSync(held, path);
     assert.throws(() => f.machine.admitProfile(claim), /profile-database-identity-invalid/u);
     child.release();
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
-it("reissues only exact pending logout settlement after restart and rejects forged, changed or completed custody", () => {
+it("reissues only exact pending logout settlement after restart and rejects forged, changed or completed custody", async () => {
   const f = fixture();
   try {
-    const active = f.session.signUp(f.fields); assert.ok(active.state === "active");
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
     f.busy();
     const result = f.session.logOut(active.token, { at: "2026-09-06T12:01:00.000Z" });
     assert.ok(result.state === "cancelling" && result.operationId !== undefined);
@@ -184,61 +187,71 @@ it("reissues only exact pending logout settlement after restart and rejects forg
       assert.throws(() => f.registry.settlementClaim(operationId), /profile-settlement-operation-unavailable/u);
       assert.throws(() => child.assertLive(), /profile-settlement-operation-unavailable/u);
     } finally { child.release(); }
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
-it("publishes ready only from an exact actual credential witness and rechecks postcapture canonical binding and database identity", () => {
+it("publishes ready only from an exact actual credential witness and rechecks postcapture canonical binding and database identity", async () => {
   const f = fixture();
+  let setup: RuntimeAdmission | undefined;
   try {
-    let operation = f.machine.beginProfileSignUp({ emailKey: "a".repeat(64), firstName: "Alex", lastName: "Rivera",
-      createdAt: IsoInstantSchema.parse(f.fields.createdAt), commandFingerprint: "d".repeat(64) });
-    const setup = f.machine.admitProfile(f.registry.storageClaim(operation.profileId));
-    AuthorityDatabase.initializeProfile(setup);
-    const store = createCredentialStore({ admission: setup, stateRoot: setup.stateRoot, erasureJournalAdmission: f.machine,
-      initializationInventory: (current, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine, admission: setup, clock: systemClock, hostFacts: { primaryDisplay: null } })(current, writer, copies),
-      erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${operation.profileId}.json`) });
-    store.migrateHistory({ operation });
-    operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${operation.operationId}.json`), "utf8")));
-    const request = ProtectedSettingsApplyInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
-      commandFingerprint: operation.commandFingerprint, expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-      updatedAt: operation.createdAt, entries: { ucpathPassword: { set: "disposable-committed-password" } } });
-    assert.equal(store.apply(request).state, "applied");
-    operation = { ...operation, expectedRevision: 1, phase: "publishing" };
-    f.machine.publishProfileOperation(operation);
-    const witness = captureCommittedCredentialReplay(store, request);
-    assert.throws(() => captureCommittedCredentialReplay({ ...store }, request), /profile-signup-credential-store-unissued/u);
-    assert.throws(() => f.machine.publishProfileRegistration(operation, { ...witness }), /profile-signup-receipt-mismatch/u);
-    assert.throws(() => f.machine.publishProfileRegistration({ ...operation, writeId: randomUUID() }, witness), /profile-signup-intent-mismatch/u);
+    const draft = f.session.signUp(f.fields); assert.ok(draft.state === "onboarding");
+    assert.equal(f.registry.read().profiles.length, 0);
+    assert.equal(createProfileVerifiers(f.machine.stateRoot).identify(f.fields.email), "unknown");
+    const ready = await readyProfileOnboarding(f.session, draft);
+    assert.ok(ready.state === "onboarding" && ready.step === "ready");
+    assert.equal(f.registry.read().profiles.length, 0);
+    assert.equal(createProfileVerifiers(f.machine.stateRoot).identify(f.fields.email), "unknown");
+    setup = f.machine.admitProfile(f.registry.storageClaim(draft.profileId));
     const path = join(setup.stateRoot, "state.db");
-    const original = `${path}.held`;
     const raw = new DatabaseSync(path);
     try {
       raw.exec("DROP TRIGGER database_states_binding_immutable");
       raw.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(randomUUID());
     } finally { raw.close(); }
-    assert.throws(() => f.machine.publishProfileRegistration(operation, witness), /profile-database-binding-mismatch/u);
+    await assert.rejects(f.session.completeOnboarding(draft.token, draft.operationId), /profile-database-binding-mismatch/u);
     assert.equal(f.registry.read().profiles.length, 0);
     const restore = new DatabaseSync(path);
-    try { restore.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(operation.profileId);
+    try { restore.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(draft.profileId);
       restore.exec("CREATE TRIGGER database_states_binding_immutable BEFORE UPDATE OF installation_id,profile_id ON database_states BEGIN SELECT RAISE(ABORT,'profile-database-binding-immutable'); END;"); }
     finally { restore.close(); }
-    renameSync(path, original);
-    writeFileSync(path, readFileSync(original), { mode: 0o600 });
-    assert.throws(() => f.machine.publishProfileRegistration(operation, witness), /profile-signup-database-changed/u);
-    rmSync(path); renameSync(original, path);
-    f.machine.publishProfileRegistration(operation, witness);
-    assert.equal(f.registry.read().profiles[0]?.profileId, operation.profileId);
+
+    assert.equal(createProfileVerifiers(f.machine.stateRoot).identify(f.fields.email), "unknown");
+    const original = path + ".held";
+    const store = createCredentialStore({ admission: setup, stateRoot: setup.stateRoot, erasureJournalAdmission: f.machine,
+      erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${draft.profileId}.json`) });
+    const publish = RuntimeAdmission.prototype.publishProfileRegistration;
+    const changed = vi.spyOn(RuntimeAdmission.prototype, "publishProfileRegistration").mockImplementation(function(this: RuntimeAdmission, operation, witness, verifier) {
+      if (this === f.machine) {
+        const request = ProtectedSettingsApplyInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
+          commandFingerprint: operation.commandFingerprint, expectedRevision: operation.expectedRevision,
+          protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: operation.createdAt,
+          entries: { ucpathUserId: { set: f.fields.email }, ucpathPassword: { set: f.fields.password },
+            timekeeperName: { set: deriveProfileNames(f.fields.firstName, f.fields.lastName).timekeeperName } } });
+        assert.throws(() => captureCommittedCredentialReplay({ ...store }, request), /profile-signup-credential-store-unissued/u);
+        assert.throws(() => publish.call(this, operation, { ...witness }, verifier), /profile-signup-receipt-mismatch/u);
+        assert.throws(() => publish.call(this, { ...operation, writeId: randomUUID() }, witness, verifier), /profile-signup-intent-mismatch/u);
+        renameSync(path, original);
+        writeFileSync(path, readFileSync(original), { mode: 0o600 });
+      }
+      return publish.call(this, operation, witness, verifier);
+    });
+    try {
+      await assert.rejects(f.session.completeOnboarding(draft.token, draft.operationId), /profile-signup-database-changed/u);
+      assert.equal(f.registry.read().profiles.length, 0);
+      assert.equal(createProfileVerifiers(f.machine.stateRoot).identify(f.fields.email), "unknown");
+    } finally { changed.mockRestore(); if (existsSync(original)) { rmSync(path); renameSync(original, path); } }
+    const active = await f.session.completeOnboarding(draft.token, draft.operationId);
+    assert.equal(f.registry.read().profiles[0]?.profileId, active.profileId);
     const current = f.registry.read();
     const row = current.profiles[0]; assert.ok(row);
     assert.throws(() => f.machine.publishProfileRegistry(current, { ...current, profiles: [...current.profiles, { ...row, profileId: randomUUID() }] }), /profile-registry-registration-required/u);
-    setup.release();
-  } finally { f.cleanup(); }
+  } finally { setup?.release(); await f.cleanup(); }
 });
 
-it("refuses a concurrent healthy observation change and performs healthy registry reads without durable mutex writes", () => {
+it("refuses a concurrent healthy observation change and performs healthy registry reads without durable mutex writes", async () => {
   const f = fixture();
   try {
-    const active = f.session.signUp(f.fields); assert.ok(active.state === "active");
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
     const current = f.registry.read();
     const realOpen = fs.openSync;
     const realWrite = fs.writeFileSync;
@@ -277,17 +290,18 @@ it("refuses a concurrent healthy observation change and performs healthy registr
     syncBuiltinESMExports();
     f.machine.publishProfileRegistry(before, { ...before, sessionGeneration: before.sessionGeneration + 1 });
     assert.ok(writes > priorWrites);
-  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); f.cleanup(); }
+  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); await f.cleanup(); }
 });
 
 
 it.each(["acquire", "release"] as const)("observes healthy profile evidence across a real peer lease %s mutex without writing a mutex", async operation => {
-  const f = createBoundProfileFixture({ sharedMachine: true }), ready = join(f.workspace, "peer-ready"), finish = join(f.workspace, "peer-finish"), done = join(f.workspace, "peer-done");
+  const f = await createBoundProfileFixture({ sharedMachine: true }), ready = join(f.workspace, "peer-ready"), finish = join(f.workspace, "peer-finish"), done = join(f.workspace, "peer-done");
   const profilesPath = join(f.machine.stateRoot, "machine", "profiles.json");
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
     import fs from "node:fs";
     import { syncBuiltinESMExports } from "node:module";
-    import { acquireEntrypointAdmission } from "./src/backend/storage/admission/bootstrap-admission.ts";
+    import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { acquireEntrypointAdmission } from "./src/backend/storage/admission/bootstrap-admission.ts";
     const [root, operation, ready, finish, done] = process.argv.slice(1);
     const pause = () => {
       fs.writeFileSync(ready, "ready");
@@ -346,12 +360,12 @@ it.each(["acquire", "release"] as const)("observes healthy profile evidence acro
     assert.deepEqual(await exit, [0, null], output);
   } finally {
     vi.restoreAllMocks(); syncBuiltinESMExports(); writeFileSync(finish, "finish");
-    try { assert.deepEqual(await exit, [0, null], output); } finally { f.close(); }
+    try { assert.deepEqual(await exit, [0, null], output); } finally { await f.close(); }
   }
 });
 
 it.each(["empty", "malformed", "unknown", "dead", "unsafe"] as const)("refuses %s admission mutex custody during healthy profile observation", async kind => {
-  const f = createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
+  const f = await createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
   const sleeper = spawn(process.execPath, ["-e", "process.stdin.resume()"], { stdio: ["pipe", "ignore", "ignore"] });
   const exit = once(sleeper, "exit");
   try {
@@ -375,14 +389,14 @@ it.each(["empty", "malformed", "unknown", "dead", "unsafe"] as const)("refuses %
         : "runtime-control: profile-registry-mutex-custody-unavailable"));
   } finally {
     if (sleeper.exitCode === null && sleeper.signalCode === null) { sleeper.kill("SIGKILL"); await exit; }
-    rmSync(mutex, { recursive: true, force: true }); f.close();
+    rmSync(mutex, { recursive: true, force: true }); await f.close();
   }
 });
 
 
 
-it.each(["owner-replacement", "extra-entry", "directory-mode"] as const)("refuses %s after a genuine mutex owner observation", kind => {
-  const f = createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
+it.each(["owner-replacement", "extra-entry", "directory-mode"] as const)("refuses %s after a genuine mutex owner observation", async kind => {
+  const f = await createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
   const ownerPath = join(mutex, "owner.json");
   try {
     const registry = f.machine.readProfileRegistry();
@@ -413,15 +427,15 @@ it.each(["owner-replacement", "extra-entry", "directory-mode"] as const)("refuse
       : error.message === "runtime-control: profile-registry-observation-changed"));
     assert.equal(changed, true);
   } finally {
-    vi.restoreAllMocks(); syncBuiltinESMExports(); rmSync(mutex, { recursive: true, force: true }); f.close();
+    vi.restoreAllMocks(); syncBuiltinESMExports(); rmSync(mutex, { recursive: true, force: true }); await f.close();
   }
 });
 
 
-it("refuses actual pending profile operation publication crossing a healthy observation", () => {
+it("refuses actual pending profile operation publication crossing a healthy observation", async () => {
   const f = fixture();
   try {
-    const active = f.session.signUp(f.fields); assert.equal(active.state, "active");
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.equal(active.state, "active");
     const profilesPath = join(f.machine.stateRoot, "machine", "profiles.json");
     const verifiers = createProfileVerifiers(f.machine.stateRoot);
     const emailKey = verifiers.emailKeyFor("second@example.edu");
@@ -438,12 +452,12 @@ it("refuses actual pending profile operation publication crossing a healthy obse
     syncBuiltinESMExports();
     assert.throws(() => f.machine.readProfileRegistry(), /profile-registry-observation-changed/u);
     assert.equal(changed, true);
-  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); f.cleanup(); }
+  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); await f.cleanup(); }
 });
 
 
-it.each(["owner-file", "prepared-directory", "control-directory", "closed-with-cleanup-failure"] as const)("preserves mutex preparation failure at %s", stage => {
-  const f = createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
+it.each(["owner-file", "prepared-directory", "control-directory", "closed-with-cleanup-failure"] as const)("preserves mutex preparation failure at %s", async stage => {
+  const f = await createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
   const realOpen = fs.openSync, realClose = fs.closeSync, realRename = fs.renameSync;
   const realUnlink = fs.unlinkSync, realRmdir = fs.rmdirSync, realSync = fs.fsyncSync;
   const primary = new Error("fixture-mutex-preparation-primary"), cleanup = new Error("fixture-mutex-preparation-cleanup");
@@ -535,7 +549,7 @@ it.each(["owner-file", "prepared-directory", "control-directory", "closed-with-c
     }
     if (descriptor === undefined || descriptorClosed) {
       if (prepared !== undefined) { try { fs.rmSync(prepared, { recursive: true }); } catch (error) { failures.push(error); } }
-      try { f.close(); } catch (error) { failures.push(error); }
+      try { await f.close(); } catch (error) { failures.push(error); }
     }
   }
   if (descriptor !== undefined && !descriptorClosed) {
@@ -549,8 +563,8 @@ it.each(["owner-file", "prepared-directory", "control-directory", "closed-with-c
   if (failures.length > 1) throw new AggregateError(failures, "fixture-mutex-preparation-cleanup", { cause: failures[0] });
 });
 
-for (const unproved of [false, true]) it(`only tolerates a vanished observation mutex when descriptor closure is ${unproved ? 'unproved' : 'proved'}`, () => {
-  const f = createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
+for (const unproved of [false, true]) it(`only tolerates a vanished observation mutex when descriptor closure is ${unproved ? 'unproved' : 'proved'}`, async () => {
+  const f = await createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
   const ownerPath = join(mutex, "owner.json");
   const observed = observeProcessIdentity(process.pid);
   assert.ok(observed.state === 'alive');
@@ -608,11 +622,11 @@ for (const unproved of [false, true]) it(`only tolerates a vanished observation 
       assert.throws(() => fs.fstatSync(fd), error => error instanceof Error && Reflect.get(error, 'code') === 'EBADF');
     }
     proved = true;
-  } finally { opened.mockRestore(); closed.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+  } finally { opened.mockRestore(); closed.mockRestore(); syncBuiltinESMExports(); if (proved) await f.close(); }
 });
 
 
-it('retains genuine bound-profile setup custody after a native source close failure', () => {
+it('retains genuine bound-profile setup custody after a native source close failure', async () => {
   const actualOpen = fs.openSync, actualClose = fs.closeSync;
   const actualRegister = fixtureAdmissions.registerBoundProfile;
   const owned: { workspace?: string; source?: string; descriptor?: number;
@@ -654,7 +668,7 @@ it('retains genuine bound-profile setup custody after a native source close fail
     restores.push(() => closed.mockRestore());
     syncBuiltinESMExports();
     let observed: unknown;
-    try { createBoundProfileFixture(); } catch (error) { observed = error; }
+    try { await createBoundProfileFixture(); } catch (error) { observed = error; }
     assert.ok(observed instanceof AuthoritySourceClosureUnprovedError);
     assert.equal(observed, owned.sourceFailure);
     assert.deepEqual(observed.errors, [primary]); assert.equal(observed.cause, primary);

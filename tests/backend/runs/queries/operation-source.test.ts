@@ -13,8 +13,8 @@ function rawState(path:string) {
 }
 
 describe("truthful immutable final evidence",()=>{
-  it("keeps failed owner action-source reads truthful without inventing successful result lineage",()=>{
-    const f=resolutionFixture();try{
+  it("keeps failed owner action-source reads truthful without inventing successful result lineage",async ()=>{
+    const f=await resolutionFixture();try{
       const deps=resolutionReadDeps(f);assert.ok(deps.runReader);
       const run=f.db.authority.runs.get(f.record.runId);assert.ok(run);assert.ok(f.db.authority.runResults.get(f.record.runId));
       const canonical={reader:deps.runReader,database:f.db,descriptors:{resolve:()=>personLookupDescriptor}};
@@ -26,6 +26,6 @@ describe("truthful immutable final evidence",()=>{
         {state:"unavailable",reason:"exact-occurrence-not-retained"});
       assert.throws(()=>resolveOperationSource({...deps,canonical,stateRoot:f.root},run.envelope.runId,{identity:{...identity,runId:id(999)}}),/operation-source-run-unavailable/u);
       assert.equal(rawState(f.path),before);
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
 });

@@ -65,7 +65,7 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
 });
 
 it.each([1, 2, 3, 4, 5, 6, 7])("upgrades supported stopped native schema%s under genuine pending setup without reading independent credentials", async version => {
-  const f = storageRecoveryFixture(version);
+  const f = await storageRecoveryFixture(version);
   try {
     credentialTrap(f.root);
     writeFileSync(f.input.environmentFile, "malformed-disposable-environment", { mode: 0o600 });
@@ -89,16 +89,16 @@ it.each([1, 2, 3, 4, 5, 6, 7])("upgrades supported stopped native schema%s under
       assert.equal(meta?.profile_id, f.admission.profileBinding.profileId);
       assert.equal(raw.prepare("SELECT COUNT(*) AS count FROM database_upgrades").get()?.count, 1);
     } finally { raw.close(); }
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
 it("rejects unsupported stopped native version at canonical inspection without touching trapped credentials or source bytes", async () => {
-  const f = storageRecoveryFixture(CURRENT_AUTHORITY_SCHEMA_VERSION + 1);
+  const f = await storageRecoveryFixture(CURRENT_AUTHORITY_SCHEMA_VERSION + 1);
   try {
     credentialTrap(f.root);
     const before = readFileSync(f.path);
     await assert.rejects(f.run(), error => error instanceof AuthoritySchemaVersionError && error.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION + 1);
     assert.deepEqual(readFileSync(f.path), before);
     assert.equal(lstatSync(join(f.root, "credentials", "protected.json")).isDirectory(), true);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });

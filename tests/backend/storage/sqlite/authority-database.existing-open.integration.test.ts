@@ -27,7 +27,7 @@ vi.mock("node:os", async importOriginal => {
 });
 afterEach(() => { boundary.beforeOpen = undefined; boundary.temporaryRoot = undefined; });
 
-function open(fixture: ReturnType<typeof createBoundProfileFixture>) {
+function open(fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
   return AuthorityDatabase.open(fixture.admission, { path: fixture.path, busyTimeoutMs: 250, migrationOwner: "existing-open-test" },
     undefined, undefined, undefined, undefined, boundProfileCredentials(fixture.admission));
 }
@@ -54,23 +54,23 @@ function assertNoCreation(path: string, before: ReturnType<typeof companions>) {
   }
 }
 
-it("creates a genuine pending profile only through initializeProfile and refuses a second initialization", () => {
-  const f = createBoundProfileFixture({ pending: true });
+it("creates a genuine pending profile only through initializeProfile and refuses a second initialization", async () => {
+  const f = await createBoundProfileFixture({ pending: true });
   try {
     assertAbsent(f.path);
     assert.throws(() => AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "existing-open-test" }), /profile-bound-authority-required/u);
     AuthorityDatabase.initializeProfile(f.admission);
     assert.equal(existsSync(f.path), true);
     assert.throws(() => AuthorityDatabase.initializeProfile(f.admission), /profile-database-initialization-already-exists/u);
-    f.finish();
+    await f.finish();
     const database = open(f);
     try { assert.equal(database.getMeta().profileId, f.admission.profileBinding.profileId); }
     finally { database.close(); }
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("refuses a removed main database without creating main, WAL or SHM from an already issued ordinary claim", () => {
-  const f = createBoundProfileFixture();
+it("refuses a removed main database without creating main, WAL or SHM from an already issued ordinary claim", async () => {
+  const f = await createBoundProfileFixture();
   try {
     const retainedCompanions = companions(f.path);
     unlinkSync(f.path);
@@ -78,11 +78,11 @@ it("refuses a removed main database without creating main, WAL or SHM from an al
     assert.throws(() => open(f), /profile-database-binding-required/u);
     assertNoCreation(f.path, retainedCompanions);
     assert.deepEqual(readdirSync(f.stateRoot).sort(), before);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("uses the native existing-only open when the main disappears after preliminary filesystem checks", () => {
-  const f = createBoundProfileFixture();
+it("uses the native existing-only open when the main disappears after preliminary filesystem checks", async () => {
+  const f = await createBoundProfileFixture();
   try {
     const retainedCompanions = companions(f.path);
     const before = readdirSync(f.stateRoot).filter(name => name !== "state.db").sort();
@@ -104,17 +104,17 @@ it("uses the native existing-only open when the main disappears after preliminar
     assert.equal(crossed, true);
     assertNoCreation(f.path, retainedCompanions);
     assert.deepEqual(readdirSync(f.stateRoot).sort(), before);
-  } finally { boundary.beforeOpen = undefined; f.close(); }
+  } finally { boundary.beforeOpen = undefined; await f.close(); }
 });
 
-it("keeps existing writable WAL and canonical binding at a URI-sensitive filesystem path", () => {
+it("keeps existing writable WAL and canonical binding at a URI-sensitive filesystem path", async () => {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), "authority-uri-")));
   const special = join(parent, "literal % ? #");
   mkdirSync(special, { mode: 0o700 });
   boundary.temporaryRoot = special;
-  let f: ReturnType<typeof createBoundProfileFixture> | undefined;
+  let f: Awaited<ReturnType<typeof createBoundProfileFixture>> | undefined;
   try {
-    f = createBoundProfileFixture();
+    f = await createBoundProfileFixture();
     boundary.temporaryRoot = undefined;
     assert.ok(f.path.startsWith(`${special}/`));
     const database = open(f);
@@ -134,5 +134,5 @@ it("keeps existing writable WAL and canonical binding at a URI-sensitive filesys
     const reopened = open(f);
     try { assert.deepEqual(reopened.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]); }
     finally { reopened.close(); }
-  } finally { boundary.temporaryRoot = undefined; f?.close(); rmSync(parent, { recursive: true, force: true }); }
+  } finally { boundary.temporaryRoot = undefined; await f?.close(); rmSync(parent, { recursive: true, force: true }); }
 });

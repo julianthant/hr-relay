@@ -10,7 +10,7 @@ import { join,resolve as resolvePath } from "node:path";
 import { runInNewContext } from "node:vm";
 import type { Worker } from "playwright";
 import { tsImport } from "tsx/esm/api";
-import { describe,it } from "vitest";
+import { beforeEach, describe,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import {
@@ -57,7 +57,7 @@ const { fakePage, verifierFor, fakeLauncher, recordingBindings, withTempRuntime,
 
 const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
 
-const OPEN_INPUT = {
+const OPEN_INPUT_BASE = {
   workerId: WORKER_ID,
   workflowId: WORKFLOW_ID,
   system: "ucpath",
@@ -66,8 +66,11 @@ const OPEN_INPUT = {
   acceptDownloads: false,
   exclusive: false,
   signal: new AbortController().signal,
-  duoCeremony: fixtureDuoCeremonyGate("ucpath", WORKER_ID, CLOCK),
 } as const;
+let OPEN_INPUT: typeof OPEN_INPUT_BASE & { readonly duoCeremony: Awaited<ReturnType<typeof fixtureDuoCeremonyGate>> };
+beforeEach(async () => {
+  OPEN_INPUT = { ...OPEN_INPUT_BASE, duoCeremony: await fixtureDuoCeremonyGate("ucpath", WORKER_ID, CLOCK) };
+});
 
 describe("worker browser session factory", () => {
   it("refuses a second launch of the stable profile after an uncertain launcher rejection", async () => {

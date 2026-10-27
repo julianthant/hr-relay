@@ -57,7 +57,7 @@ function authorityWithoutFinalizationCheckpoint(
 describe("supplied-EID executor authority", () => {
 
   it("previews without a gate or any intent, attempt, or outbox write", async () => {
-    const value = harness();
+    const value = await harness();
     const claimed = enqueueFromComparison(value, true, true);
     const outcome = await value.bound(() =>
       executeClaimedRun(executorDependencies(value), { ...claimed, signal }),
@@ -81,7 +81,7 @@ describe("supplied-EID executor authority", () => {
 describe("current Kuali finalization transaction is terminal evidence", () => {
 
   it("refuses terminal success when the sequencer's checkpoint is hidden from the executor", async () => {
-    const value = harness();
+    const value = await harness();
     const claimed = await parkApproveAndReclaim(value);
 
     const outcome = await value.bound(() =>
@@ -138,7 +138,7 @@ describe("current Kuali finalization transaction is terminal evidence", () => {
 
 
 it("refuses a deleted UCPath filing after the real gate before Kuali prepare, fence, or click", async () => {
-  const value = harness();
+  const value = await harness();
   const claimed = await parkApproveAndReclaim(value);
   const gate = value.database.authority.gateResults.listByRun(FINALIZATION_RUN_ID)[0]; assert.ok(gate);
   assert.ok("commandId" in gate, "the actual operator gate must retain its command identity");

@@ -55,8 +55,8 @@ afterEach(cleanupClaims);
 
 describe("run claim store", () => {
 
-  it("advances lifecycle without reassigning the run identity or losing checkpoints", () => {
-    const database = openDatabase();
+  it("advances lifecycle without reassigning the run identity or losing checkpoints", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const raw = new DatabaseSync(syntheticDatabasePath(database));
     try {
@@ -95,8 +95,8 @@ describe("run claim store", () => {
     assert.deepEqual(database.authority.runCheckpoints.get(WORKFLOW_ID, ITEM_ID, "searching", 1, claimed.claimGeneration), checkpoint);
   });
 
-  it("atomically refuses a claim after the dashboard active generation advances", () => {
-    const database = openDatabase();
+  it("atomically refuses a claim after the dashboard active generation advances", async () => {
+    const database = await openDatabase();
     const snapshot = {
       ...CONFIG_SNAPSHOT,
       configSnapshotId: RUN_ENVELOPE.configSnapshotId,
@@ -137,8 +137,8 @@ describe("run claim store", () => {
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
   });
 
-  it("enqueues idempotently and refuses a reused id with different content", () => {
-    const database = openDatabase();
+  it("enqueues idempotently and refuses a reused id with different content", async () => {
+    const database = await openDatabase();
     assert.equal(database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");
     assert.equal(database.authority.runs.enqueue(QUEUED_RUN).state, "existing");
     assert.throws(
@@ -147,8 +147,8 @@ describe("run claim store", () => {
     );
   });
 
-  it("refuses to enqueue a run that is not queued", () => {
-    const database = openDatabase();
+  it("refuses to enqueue a run that is not queued", async () => {
+    const database = await openDatabase();
     assert.throws(
       () => database.authority.runs.enqueue({
         ...QUEUED_RUN,
@@ -159,8 +159,8 @@ describe("run claim store", () => {
     );
   });
 
-  it("reports idle with no rows and deferred while every row is held back", () => {
-    const database = openDatabase();
+  it("reports idle with no rows and deferred while every row is held back", async () => {
+    const database = await openDatabase();
     assert.deepEqual(
       database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
       { state: "idle" },
@@ -179,8 +179,8 @@ describe("run claim store", () => {
     assert.equal(outcome.state, "claimed");
   });
 
-  it("claims interactive work ahead of bulk, then FIFO", () => {
-    const database = openDatabase();
+  it("claims interactive work ahead of bulk, then FIFO", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     database.authority.runs.enqueue(siblingRun({ createdAt: LATER, updatedAt: LATER }, {
       priority: "interactive",
@@ -194,8 +194,8 @@ describe("run claim store", () => {
     assert.equal(second.run.envelope.priority, "bulk");
   });
 
-  it("does not claim another workflow's rows", () => {
-    const database = openDatabase();
+  it("does not claim another workflow's rows", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const root = roots[databases.indexOf(database)];
     assert.ok(root);
@@ -208,8 +208,8 @@ describe("run claim store", () => {
     );
   });
 
-  it("advances the claim generation on every claim and never rewinds it", () => {
-    const database = openDatabase();
+  it("advances the claim generation on every claim and never rewinds it", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const first = claimOne(database);
     assert.equal(first.claimGeneration, 1);
@@ -225,8 +225,8 @@ describe("run claim store", () => {
     assert.equal(second.claimGeneration, 2);
   });
 
-  it("reports a lost claim rather than renewing one the row no longer holds", () => {
-    const database = openDatabase();
+  it("reports a lost claim rather than renewing one the row no longer holds", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const claimed = claimOne(database);
     const renewed = database.authority.runs.renewClaim({
@@ -247,8 +247,8 @@ describe("run claim store", () => {
     assert.equal(claimed.envelope.attempt, 1);
   });
 
-  it("refuses a second active claim for one worker", () => {
-    const database = openDatabase();
+  it("refuses a second active claim for one worker", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     database.authority.runs.enqueue(siblingRun({}));
     const first = claimOne(database);
@@ -266,8 +266,8 @@ describe("run claim store", () => {
     assert.equal(database.authority.runs.listByWorker(`${WORKFLOW_ID}-worker-2`).length, 1);
   });
 
-  it("frees the worker once its run parks or terminalizes", () => {
-    const database = openDatabase();
+  it("frees the worker once its run parks or terminalizes", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     database.authority.runs.enqueue(siblingRun({}));
     const first = claimOne(database);
@@ -284,8 +284,8 @@ describe("run claim store", () => {
     assert.equal(database.authority.runs.listByWorker(WORKER_ID).length, 1);
   });
 
-  it("requeues the immutable attempt and preserves its single-resume authority", () => {
-    const database = openDatabase();
+  it("requeues the immutable attempt and preserves its single-resume authority", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue({
       ...QUEUED_RUN,
       envelope: {
@@ -329,8 +329,8 @@ describe("run claim store", () => {
     });
   });
 
-  it("refuses a transition from a stale version or a lost claim", () => {
-    const database = openDatabase();
+  it("refuses a transition from a stale version or a lost claim", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const claimed = claimOne(database);
     const stale = database.authority.runs.transition({
@@ -350,8 +350,8 @@ describe("run claim store", () => {
     assert.equal(wrongWorker.state, "conflict");
   });
 
-  it("refuses an illegal transition outright rather than recording it", () => {
-    const database = openDatabase();
+  it("refuses an illegal transition outright rather than recording it", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const claimed = claimOne(database);
     assert.throws(
@@ -367,8 +367,8 @@ describe("run claim store", () => {
   });
 
 
-  it("lists a run parked at a gate for exactly as long as it is parked", () => {
-    const database = openDatabase();
+  it("lists a run parked at a gate for exactly as long as it is parked", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     assert.deepEqual(database.authority.runs.listParkedAtGate(), []);
 
@@ -420,8 +420,8 @@ describe("run claim store", () => {
     assert.deepEqual(database.authority.runs.listParkedAtGate(), []);
   });
 
-  it("renames through the version gate, and refuses a stale one", () => {
-    const database = openDatabase();
+  it("renames through the version gate, and refuses a stale one", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const renamed = database.authority.runs.updatePresentation({
       runId: RUN_ID,
@@ -448,8 +448,8 @@ describe("run claim store", () => {
     );
   });
 
-  it("lists every run of one logical item", () => {
-    const database = openDatabase();
+  it("lists every run of one logical item", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
 
     database.authority.runs.enqueue(siblingRun({}, { itemId: ITEM_ID, retryOf: RUN_ID, attempt: 2 }));
@@ -459,8 +459,8 @@ describe("run claim store", () => {
 });
 
 describe("worker leases", () => {
-  it("refuses a second live process for one worker id and restarts a stopped one", () => {
-    const database = openDatabase();
+  it("refuses a second live process for one worker id and restarts a stopped one", async () => {
+    const database = await openDatabase();
     const started = database.authority.workerLeases.start(WORKER_START_REQUEST);
     assert.equal(started.state, "started");
     if (started.state !== "started") throw new Error("start should succeed");
@@ -485,8 +485,8 @@ describe("worker leases", () => {
     assert.equal(restarted.lease.leaseGeneration, 2);
   });
 
-  it("refuses a lifecycle report from a superseded lease generation", () => {
-    const database = openDatabase();
+  it("refuses a lifecycle report from a superseded lease generation", async () => {
+    const database = await openDatabase();
     database.authority.workerLeases.start(WORKER_START_REQUEST);
     const outcome = database.authority.workerLeases.reportLifecycle({
       workerId: WORKER_ID,
@@ -497,8 +497,8 @@ describe("worker leases", () => {
     assert.equal(outcome.state, "conflict");
   });
 
-  it("records an operator directive without pretending the worker obeyed it", () => {
-    const database = openDatabase();
+  it("records an operator directive without pretending the worker obeyed it", async () => {
+    const database = await openDatabase();
     const started = database.authority.workerLeases.start(WORKER_START_REQUEST);
     if (started.state !== "started") throw new Error("start should succeed");
     const busy = database.authority.workerLeases.reportLifecycle({
@@ -530,8 +530,8 @@ describe("worker leases", () => {
     );
   });
 
-  it("expires a lease whose heartbeat went stale", () => {
-    const database = openDatabase();
+  it("expires a lease whose heartbeat went stale", async () => {
+    const database = await openDatabase();
     database.authority.workerLeases.start(WORKER_START_REQUEST);
     database.authority.workerLeases.reportLifecycle({
       workerId: WORKER_ID,

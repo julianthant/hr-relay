@@ -74,7 +74,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
 
   it("refuses persisted protected write-id reuse after a dashboard restart", async () => {
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const profile = createProfileFixture(clock);
+    const profile = await createProfileFixture(clock);
     const repoRoot = profile.workspace;
     const writeId = "77777777-7777-4777-8777-777777777777";
     let runtime = await composeDashboardRuntime({
@@ -142,7 +142,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("creates the artifact root as an owner-only directory", async () => {
-    const profile = createProfileFixture(manualClock(new Date()));
+    const profile = await createProfileFixture(manualClock(new Date()));
     const repoRoot = profile.workspace;
     const runtime = await composeDashboardRuntime({
       ...profile.dashboardInput,
@@ -159,7 +159,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("activates a saved revision immediately and retains it through restart", async () => {
-    const profile = createProfileFixture(manualClock(new Date()));
+    const profile = await createProfileFixture(manualClock(new Date()));
     const repoRoot = profile.workspace;
     const commandId = "72727272-7272-4272-8272-727272727272";
     const patch = settingsSetOperations({ display: { screenWidth: 1980, screenHeight: 1080 } });
@@ -229,7 +229,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
   }, 20_000);
 
   it("serves bootstrap, day, and SSE through a real ephemeral listener and releases it at teardown", async () => {
-    const profile = createProfileFixture(manualClock(new Date()));
+    const profile = await createProfileFixture(manualClock(new Date()));
     const repoRoot = profile.workspace;
 
     reportRealPortPhase("startup", "begin");
@@ -323,7 +323,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     }
   }, 20_000);
   it("built-bundle mode refuses to compose without dist/dashboard/index.html, and serves the bundle beside the API when it exists", async () => {
-    const profile = createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
+    const profile = await createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
     const repoRoot = profile.workspace;
     cpSync(join(process.cwd(), "src"), join(repoRoot, "src"), { recursive: true });
     mkdirSync(join(repoRoot, "config"), { recursive: true });
@@ -400,7 +400,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
   });
 
   it("vite-dev mode (the default) serves no bundle bytes: an unrouted path stays a JSON 404", async () => {
-    const profile = createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
+    const profile = await createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
     const repoRoot = profile.workspace;
     const runtime = await composeDashboardRuntime({
       ...profile.dashboardInput,

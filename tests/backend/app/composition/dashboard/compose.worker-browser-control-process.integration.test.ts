@@ -39,7 +39,7 @@ async function waitFor(test: () => boolean, message: string, output: () => strin
 
 it("real ingress, two real workers and Chromium: dry-run claims, exact controls, replay, replacement and proven cleanup", async () => {
   const diagnosticStartedAt = systemClock.monotonicMs();
-  const fixture = createBoundProfileFixture();
+  const fixture = await createBoundProfileFixture();
   const root = fixture.workspace;
   fixture.admission.release(); fixture.machine.release();
   let machine: ReturnType<typeof acquireEntrypointAdmission> | undefined;
@@ -107,7 +107,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     machine = bootMachine;
     profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock,
       processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot) });
-    const active = profile.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
+    const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
     assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("browser-control-profile-sign-in-refused");
     token = active.token;
@@ -333,7 +333,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
       phase = 'fixture-close';
       const closingAt = systemClock.monotonicMs();
       elapsedBeforeFixtureClose = Math.max(0, Math.round(closingAt - diagnosticStartedAt));
-      fixture.close();
+      await fixture.close();
       fixtureCloseElapsed = Math.max(0, Math.round(systemClock.monotonicMs() - closingAt));
       phase = 'cleanup-finished';
     }

@@ -16,7 +16,7 @@ import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtu
 
 const world = createWriteSequencerTestWorld();
 afterEach(world.cleanup);
-function resetRequest(h: ReturnType<typeof world.harness>) {
+function resetRequest(h: Awaited<ReturnType<typeof world.harness>>) {
   const slot = h.database.authority.workerSlots.list()[0];
   if (slot === undefined) throw new Error("missing fixture member");
   const lease = h.database.authority.workerLeases.get(slot.workerId);
@@ -26,13 +26,13 @@ function resetRequest(h: ReturnType<typeof world.harness>) {
       membershipRevision: slot.membershipRevision, expectedVersion: lease.version,
       controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } } };
 }
-function admit(h: ReturnType<typeof world.harness>, request: unknown = resetRequest(h)) {
+function admit(h: Awaited<ReturnType<typeof world.harness>>, request: unknown = resetRequest(h)) {
   return h.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, request, randomUUID(), h.clock.now().toISOString()));
 }
 
 describe("exact native worker reset reservation", () => {
-  it("retains genuine claim lifetime through active transitions and refuses rewriting or dropping it", () => {
-    const h = world.harness();
+  it("retains genuine claim lifetime through active transitions and refuses rewriting or dropping it", async () => {
+    const h = await world.harness();
     const { run, claim } = world.claimRunning(h.database, h.clock);
     if (run.lifecycle.state !== "running") throw new Error("missing active fixture");
     expect(run.lifecycle.workerLifetime).toEqual({ membershipRevision: 1, leaseGeneration: 1 });
@@ -46,8 +46,8 @@ describe("exact native worker reset reservation", () => {
     expect(admit(h).reset?.work.kind).toBe("current");
   });
 
-  it("keeps the lifetime supplied at claim on the admitted reset", () => {
-    const h = world.harness();
+  it("keeps the lifetime supplied at claim on the admitted reset", async () => {
+    const h = await world.harness();
     const request = resetRequest(h);
     h.database.authority.runs.enqueue(writeFixtureQueuedRun());
     const claimMember1 = h.database.authority.workerSlots.get(request.target.workerId);
@@ -63,8 +63,8 @@ describe("exact native worker reset reservation", () => {
   });
 
   for (const operation of ["fenceAttempt", "refenceRetryable"] as const) {
-    it(`reset admission wins before ${operation} without changing write authority`, () => {
-      const h = world.harness();
+    it(`reset admission wins before ${operation} without changing write authority`, async () => {
+      const h = await world.harness();
       const { run, claim } = world.claimRunning(h.database, h.clock);
       const original = world.attemptingIntentFixture(run.envelope.runId);
       let fence = original;
@@ -93,8 +93,8 @@ describe("exact native worker reset reservation", () => {
     });
   }
 
-  it("admits after the write fence without cancelling or altering the actual write owner", () => {
-    const h = world.harness();
+  it("admits after the write fence without cancelling or altering the actual write owner", async () => {
+    const h = await world.harness();
     const { run, claim } = world.claimRunning(h.database, h.clock);
     const fence = world.attemptingIntentFixture(run.envelope.runId);
     expect(h.database.authority.writeIntents.fenceAttempt({ ...fence, claim }).state).toBe("fenced");
@@ -105,8 +105,8 @@ describe("exact native worker reset reservation", () => {
       intent: h.database.authority.writeIntents.listByRun(run.envelope.runId), attempts: h.database.authority.writeAttempts.listByIntent(fence.intent.writeIntentId) })).toBe(before);
   });
 
-  it("binds the run observed inside admission after a newer claim wins, and excludes the next direct/canonical claim", () => {
-    const h = world.harness();
+  it("binds the run observed inside admission after a newer claim wins, and excludes the next direct/canonical claim", async () => {
+    const h = await world.harness();
     const request = resetRequest(h);
     const { run, claim } = world.claimRunning(h.database, h.clock);
     const reset = admit(h, request);
@@ -121,8 +121,8 @@ describe("exact native worker reset reservation", () => {
         settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint } })).toMatchObject({ state: "refused", refusal: { reason: "none-eligible" } });
   });
 
-  it("rejects stale membership and lease ABA before reserving, and retains the admitted reset across expiry", () => {
-    const h = world.harness();
+  it("rejects stale membership and lease ABA before reserving, and retains the admitted reset across expiry", async () => {
+    const h = await world.harness();
     const request = resetRequest(h), generation = h.database.getMeta().authorityGeneration;
     expect(() => admit(h, { ...request, target: { ...request.target, membershipRevision: 2 } })).toThrow("worker-reset-target-conflict");
     expect(() => admit(h, { ...request, target: { ...request.target, controlBasis: { ...request.target.controlBasis, leaseGeneration: 2 } } })).toThrow("worker-reset-target-conflict");
@@ -135,9 +135,9 @@ describe("exact native worker reset reservation", () => {
     expect(() => h.database.authority.workerControls.audit(record.commandId, h.clock.now().toISOString())).toThrow("worker-reset-settlement-unavailable");
     expect(h.database.authority.workerControls.pending(record.scope)).toEqual([record]);
   });
-  it("refuses an unproved queued cascade and a foreign owned child before reservation", () => {
+  it("refuses an unproved queued cascade and a foreign owned child before reservation", async () => {
     for (const childState of ["queued", "foreign"] as const) {
-      const h = world.harness();
+      const h = await world.harness();
       const owned = world.claimRunning(h.database, h.clock);
       const { run } = owned;
       let foreign: { run: ReturnType<typeof world.claimRunning>["run"]; claim: { workerId: string; claimGeneration: number } } | undefined;
@@ -180,8 +180,8 @@ describe("exact native worker reset reservation", () => {
     }
   });
 
-  it("preserves historical unbound Stop bytes but refuses pending replay, claims and birth", () => {
-    const h = world.harness();
+  it("preserves historical unbound Stop bytes but refuses pending replay, claims and birth", async () => {
+    const h = await world.harness();
     const strict = resetRequest(h);
     const { membershipRevision: _membership, ...target } = strict.target;
     const request = { ...strict, target };
@@ -203,7 +203,7 @@ describe("exact native worker reset reservation", () => {
   });
 
   it("retains the real fenced sequencer callback through reset then preserves its UNKNOWN parked result", async () => {
-    const h = world.harness();
+    const h = await world.harness();
     const { run, claim } = world.claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     let release: () => void = () => undefined;
@@ -231,9 +231,9 @@ describe("exact native worker reset reservation", () => {
     expect(h.database.authority.workerControls.pending(record.scope)).toHaveLength(1);
   });
 
-  it("admits after heartbeat row-version advance while exact control/member basis stays current, without inventing an absent version", () => {
+  it("admits after heartbeat row-version advance while exact control/member basis stays current, without inventing an absent version", async () => {
     for (const carriesVersion of [true, false]) {
-      const h = world.harness(), request = resetRequest(h);
+      const h = await world.harness(), request = resetRequest(h);
       const lease = h.database.authority.workerLeases.get(request.target.workerId);
       if (lease === undefined) throw new Error("missing lifetime");
       h.clock.advanceWall(1000);
@@ -248,8 +248,8 @@ describe("exact native worker reset reservation", () => {
     }
   });
 
-  it("checks explicit claim membership/lifetime before taking queued work and rejects retired-member birth", () => {
-    const h = world.harness(), request = resetRequest(h);
+  it("checks explicit claim membership/lifetime before taking queued work and rejects retired-member birth", async () => {
+    const h = await world.harness(), request = resetRequest(h);
     h.database.authority.runs.enqueue(writeFixtureQueuedRun());
     const workflow = h.database.authority.workerSlots.list()[0]?.workflow;
     const input = { workflow, workerId: request.target.workerId, now: h.clock.now().toISOString() };
@@ -269,8 +269,8 @@ describe("exact native worker reset reservation", () => {
       browserSystems: ["ucpath"], processId: process.pid, requestedBy: "local-operator", now: h.clock.now().toISOString() })).toThrow("worker-lease-membership-unavailable");
   });
 
-  it("cannot replay an earlier canonical claim through the pending reset barrier", () => {
-    const h = world.harness();
+  it("cannot replay an earlier canonical claim through the pending reset barrier", async () => {
+    const h = await world.harness();
     h.database.authority.runs.enqueue(writeFixtureQueuedRun());
     const lifecycle = new RunRecordService({ database: h.database, clock: h.clock, ids: sequentialIdFactory("e"), publishQueued: () => undefined });
     const request = resetRequest(h), runtime = h.database.authority.runtimeConfig.get();

@@ -16,7 +16,7 @@ import { createBoundProfileFixture } from "../../../../support/helpers/admission
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 
 for (const startupFailure of [false, true]) it(`drains a pending HTTP completion before account closure during ${startupFailure ? "startup unwind" : "shutdown"}`, async () => {
-  const profile = createBoundProfileFixture(), repoRoot = profile.workspace;
+  const profile = await createBoundProfileFixture(), repoRoot = profile.workspace;
   const clock = manualClock(new Date("2026-10-12T12:00:00.000Z"));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), file), join(repoRoot, file));
   let accountClosed = false, httpClosed = false, requestAborted = false, networkReads = 0;
@@ -32,7 +32,7 @@ for (const startupFailure of [false, true]) it(`drains a pending HTTP completion
   });
   const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null },
     processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot) });
-  const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active");
   const primary = new Error("synthetic post-listen failure");
   try {
@@ -76,11 +76,11 @@ for (const startupFailure of [false, true]) it(`drains a pending HTTP completion
     assert.equal(cancelled.code, "CHATGPT_AUTH_CANCELLED");
     assert.equal(networkReads, 0);
     assert.equal(factory.mock.calls[0]?.[0].stateRoot, profile.stateRoot);
-  } finally { factory.mockRestore(); await runtime.close(); profile.close(); }
+  } finally { factory.mockRestore(); await runtime.close(); await profile.close(); }
 });
 
 it("retains actual account, database and process custody when cleanup refuses after the pending HTTP wait drains", async () => {
-  const profile = createBoundProfileFixture(), repoRoot = profile.workspace;
+  const profile = await createBoundProfileFixture(), repoRoot = profile.workspace;
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), file), join(repoRoot, file));
   const primary = new Error("synthetic account cleanup refusal"), errors: unknown[] = [];
@@ -100,7 +100,7 @@ it("retains actual account, database and process custody when cleanup refuses af
   });
   const lockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
   const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: lockRoot });
-  const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("fixture-profile-sign-in-refused");
   const context = runtime.selectedContext(active.token);
@@ -149,7 +149,7 @@ it("retains actual account, database and process custody when cleanup refuses af
     try {
       assert.ok(actualAccount); await actualAccount.close();
       assert.ok(callbackUrl); await assert.rejects(fetch(callbackUrl));
-      context.database.close(); context.admission.release(); assert.ok(role); role.release(); profile.close();
+      context.database.close(); context.admission.release(); assert.ok(role); role.release(); await profile.close();
     } catch (error) { errors.push(error); }
   }
   if (errors.length > 0) throw new AggregateError(errors, "account cleanup custody proof failed", { cause: errors[0] });

@@ -12,8 +12,8 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { absentProbeEvidence,writeFixtureDescriptor,writeFixtureParallelDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-function harness(parallel = false) { const h = sourceBoundHarness(parallel ? writeFixtureParallelDescriptor : writeFixtureDescriptor); return h; }
-async function completed(h: ReturnType<typeof harness>) {
+async function harness(parallel = false) { const h = await sourceBoundHarness(parallel ? writeFixtureParallelDescriptor : writeFixtureDescriptor); return h; }
+async function completed(h: Awaited<ReturnType<typeof harness>>) {
   const run = h.start(h.proposal());
   h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
   const outcome = await h.execute(run);
@@ -26,7 +26,7 @@ const retainedCorruptionOwners = new Set<object>();
 describe("source-bound repeat through planner, kernel, service and interpreter", () => {
 
   it.each(["target","missing-audit","audit-owner"])("refuses malformed or ambiguous terminal history owner %s before deletion",async fault=>{
-    const h = harness();
+    const h = await harness();
     const held: { h: typeof h; database?: AuthorityDatabase; raw?: DatabaseSync; primary?: { error: unknown } } = { h };
     retainedCorruptionOwners.add(held);
     try {
@@ -60,7 +60,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
       assert.deepEqual(database.authority.runs.get(source.envelope.runId),source);assert.equal(database.getMeta().authorityGeneration,generation);
       assert.equal(database.authority.lifecycleJournal.getCommand(commandId),undefined);
       database.close();
-      h.dispose();
+      await h.dispose();
       retainedCorruptionOwners.delete(held);
     } catch (error) {
       held.primary = { error };

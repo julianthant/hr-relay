@@ -22,7 +22,7 @@ afterEach(() => {
 describe("apply-settings authority", () => {
   it.each(SettingsApplyRejectionCodeSchema.options)(
     "preserves the closed %s rejection code and rolls back the command journal",
-    (code) => {
+    async (code) => {
       const settings: SettingsApplicationExecutor = {
         validateRequest: () => undefined,
         commitPrivate: () => undefined,
@@ -31,7 +31,7 @@ describe("apply-settings authority", () => {
         },
         applyOrdinary: () => ({ state: "rejected", code, message: `${code} { document: settings.json }` }),
       };
-      const harness = createHarness(undefined, settings);
+      const harness = await createHarness(undefined, settings);
       const patch = { "browser.headless": { set: false } } as const;
       const command = {
         commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
@@ -52,10 +52,10 @@ describe("apply-settings authority", () => {
     },
   );
 
-  it("maps candidate validation failure to a value-free rejection without changing SQLite", () => {
-    const credentialProfile = createBoundProfileFixture();
+  it("maps candidate validation failure to a value-free rejection without changing SQLite", async () => {
+    const credentialProfile = await createBoundProfileFixture();
     const credentials = createCredentialStore({ stateRoot: credentialProfile.stateRoot });
-    const harness = createHarness(undefined, createSettingsApplicationExecutor(() => {
+    const harness = await createHarness(undefined, createSettingsApplicationExecutor(() => {
       throw new Error("private candidate diagnostic must not cross the authority boundary");
     }, credentials));
     const patch = { "browser.headless": { set: false } } as const;
@@ -87,12 +87,12 @@ describe("apply-settings authority", () => {
       settingsFingerprint: derivePersistedSettingsFingerprint({}),
       settings: {},
     });
-    credentialProfile.close();
+    await credentialProfile.close();
   });
 
-  it("recovers an ambiguous SQLite COMMIT through exact command replay", () => {
+  it("recovers an ambiguous SQLite COMMIT through exact command replay", async () => {
     let reported = false;
-    const harness = createHarness(undefined, {}, (database, work) => {
+    const harness = await createHarness(undefined, {}, (database, work) => {
       const result = database.withAuthorityTransaction(work);
       if (!reported) {
         reported = true;
@@ -126,8 +126,8 @@ describe("apply-settings authority", () => {
     assert.deepEqual(readSettings(harness.database.authority), committed);
   });
 
-  it("applies one strict multi-leaf patch at the expected settings revision", () => {
-    const harness = createHarness();
+  it("applies one strict multi-leaf patch at the expected settings revision", async () => {
+    const harness = await createHarness();
     const patch = {
       "browser.headless": { set: false },
       "display.screenWidth": { set: 1920 },
@@ -201,7 +201,7 @@ describe("apply-settings authority", () => {
     assert.deepEqual(readSettings(harness.database.authority).settings, persistedSettings);
   });
 
-  it("refuses an executor outcome that does not advance exactly one revision", () => {
+  it("refuses an executor outcome that does not advance exactly one revision", async () => {
     const settings: SettingsApplicationExecutor = {
       validateRequest: () => undefined,
       commitPrivate: () => undefined,
@@ -215,7 +215,7 @@ describe("apply-settings authority", () => {
         settings: {},
       }),
     };
-    const harness = createHarness(undefined, settings);
+    const harness = await createHarness(undefined, settings);
     const patch = { "timeouts.taskMs": { set: 240_000 } } as const;
     const command = {
       commandId: nextCommandId(),
@@ -248,9 +248,9 @@ describe("apply-settings authority", () => {
     });
   });
 
-  it("rolls ordinary settings and journal effects back when command audit insertion fails", () => {
+  it("rolls ordinary settings and journal effects back when command audit insertion fails", async () => {
     let failAudit = false;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       commandAudits: {
         ...repositories.commandAudits,
@@ -284,9 +284,9 @@ describe("apply-settings authority", () => {
     assert.deepEqual(readSettings(harness.database.authority).settings, {});
   });
 
-  it("rolls ordinary settings, command, and audit back when current-result advance fails", () => {
+  it("rolls ordinary settings, command, and audit back when current-result advance fails", async () => {
     let failCurrent = false;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       settingsCurrent: {
         ...repositories.settingsCurrent,

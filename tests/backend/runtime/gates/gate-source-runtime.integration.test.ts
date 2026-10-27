@@ -109,7 +109,7 @@ describe("worker-loop source gate composition", () => {
         scheduler: new ManualScheduler(clock),
         taskDeadlineMs: 60_000,
         sessionAcquireMs: 15_000,
-        duoCeremony: fixtureDuoCeremonyGates(clock),
+        duoCeremony: await fixtureDuoCeremonyGates(clock),
         heartbeatIntervalMs: 60_000,
         idleRepollMs: 60_000,
         log: recordingLogger().log,

@@ -9,8 +9,8 @@ import { failureStatus } from "../../../../src/backend/transports/http/routes/fa
 
 const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
-it("projects a declaration's typed scalar text without changing raw values, missing fields or redaction", () => {
-  const w = world(); queuedEventOf(w, { seed: 85, descriptor: personLookupModule.descriptor });
+it("projects a declaration's typed scalar text without changing raw values, missing fields or redaction", async () => {
+  const w = await world(); queuedEventOf(w, { seed: 85, descriptor: personLookupModule.descriptor });
   const run = w.authority.records.get(uuidOf(85)); assert.ok(run); const at = w.clock.now().toISOString();
   const raw = { boolean: true, string: "true", number: 1, absent: null, unchanged: "active", protected: false };
   w.writer.emit({ t: "data.observed", ts: at, observedAt: at, workflow: "person-lookup", runId: run.envelope.runId, attempt: 1, traceId: run.envelope.traceId,

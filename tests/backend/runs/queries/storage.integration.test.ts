@@ -38,7 +38,7 @@ const writeCredentials = createCredentialDoctorWriter(COMMAND_ID, WRITE_ID);
 
 
 
-async function unchanged(f: ReturnType<typeof fixture>) {
+async function unchanged(f: Awaited<ReturnType<typeof fixture>>) {
   const meta = f.database.getMeta();
   const before = snapshot(f.machineRoot), controlBefore = snapshot(join(f.workspace, ".tracker", "control"));
   const report = await doctorAuthorityStorage(f.admission,f.options, undefined, f.credentialStore);
@@ -54,7 +54,7 @@ afterEach(_afterEachFixture0);
   it.each(["corrupt", "permissions"])(
     "keeps %s credential state unavailable and untouched with a closed diagnostic",
     async (fault) => {
-      const f = fixture();
+      const f = await fixture();
       writeCredentials(f, { timekeeperName: { set: "Protected Doctor Canary" } });
       if (fault === "corrupt") writeFileSync(f.credentialPath, "Protected Doctor Canary");
       if (fault === "permissions") chmodSync(f.credentialPath, 0o644);
@@ -74,7 +74,7 @@ describe("read-only upgrade phase reporting", () => {
 afterEach(_afterEachFixture0);
 
   it("projects baseline and each upgrade phase through doctor, browser wire and preflight without private journal payload", async () => {
-    const f = fixture();
+    const f = await fixture();
     const baseline = await doctorAuthorityStorage(f.admission,f.options, undefined, f.credentialStore);
     assert.equal(baseline.authorityUpgrades.state, "available");
     if (baseline.authorityUpgrades.state !== "available") throw new Error("baseline missing");
@@ -138,9 +138,9 @@ function options(root: string) {
 
 describe("read-only storage recovery truth", () => {
   it("reports interruption separately from healthy integrity and preserves all recovery bytes", async () => {
-    const f = storageRecoveryFixture();
+    const f = await storageRecoveryFixture();
     try {
-      f.finish();
+      await f.finish();
       await doctorAuthorityStorage(f.admission, options(f.root), f.clock, boundProfileCredentials(f.admission));
       assert.equal(existsSync(`${f.path}-wal`) ? readFileSync(`${f.path}-wal`).length : 0, 0);
       writeFileSync(join(f.root, ".restore-00000000-0000-4000-8000-000000000001.sqlite.tmp"), "retained current stage", { mode: 0o600 });
@@ -152,7 +152,7 @@ describe("read-only storage recovery truth", () => {
         serviceState: () => ({state: "never-run", reason: "Explicit backups only"}) });
       assert.deepEqual(wire.recovery, report.recovery);
       assert.deepEqual(snapshot(f.root), before);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
 });

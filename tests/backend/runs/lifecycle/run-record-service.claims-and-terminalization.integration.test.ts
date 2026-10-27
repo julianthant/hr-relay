@@ -20,8 +20,8 @@ afterEach(executorWorld.cleanup);
 
 describe("canonical run-record service", () => {
 
-  it("#1 reserves distinct monotonically increasing item and workflow ordinals", () => {
-    const { service, request, database, published } = fixture();
+  it("#1 reserves distinct monotonically increasing item and workflow ordinals", async () => {
+    const { service, request, database, published } = await fixture();
     const before = database.getMeta().authorityGeneration;
     const runs = Array.from({ length: 5 }, (_, index) => created(service, {
       ...request, commandId: `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
@@ -33,8 +33,8 @@ describe("canonical run-record service", () => {
     assert.equal(published.length, 5);
   });
 
-  it("#3 refuses a missing parent and retry source without reserving ordinals", () => {
-    const { service, request, database } = fixture();
+  it("#3 refuses a missing parent and retry source without reserving ordinals", async () => {
+    const { service, request, database } = await fixture();
     const before = database.getMeta().authorityGeneration;
     assert.deepEqual(service.create({ ...request, parent: { runId: UUID_5, tracePrefix: "pl-170000-5555", edgeId: "member" } }),
       { state: "refused", refusal: { reason: "parent-missing" } });
@@ -44,8 +44,8 @@ describe("canonical run-record service", () => {
     assert.equal(created(service, request).envelope.attempt, 1);
   });
 
-  it("refuses an absent runtime token and preserves queued authority", () => {
-    const { service, request, database } = fixture();
+  it("refuses an absent runtime token and preserves queued authority", async () => {
+    const { service, request, database } = await fixture();
     const run = created(service, request);
     const before = database.getMeta().authorityGeneration;
     assert.deepEqual(service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID }),
@@ -54,8 +54,8 @@ describe("canonical run-record service", () => {
     assert.equal(database.getMeta().authorityGeneration, before);
   });
 
-  it("#4 grants a queued row once and refuses a busy worker", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("#4 grants a queued row once and refuses a busy worker", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const run = created(service, request);
     const first = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, runtimeConfig });
     assert.equal(first.state, "applied");
@@ -69,7 +69,7 @@ describe("canonical run-record service", () => {
 
   it("#4 claims the first eligible row after dependency filtering and total ordering", async () => {
     const { root: compiled, modules } = childPolicyModules("cascade");
-    const h = executorWorld.executorHarness({ descriptor: compiled.descriptor, stores: plan1Stores });
+    const h = await executorWorld.executorHarness({ descriptor: compiled.descriptor, stores: plan1Stores });
     const { database, clock, path } = h.authority;
     const execution = canonicalChildExecution(h.deps, database, path,
       id => modules.find(module => module.descriptor.id === id)?.descriptor);
@@ -145,8 +145,8 @@ describe("canonical run-record service", () => {
     assert.equal(database.authority.dependencies.readiness(blocked.envelope.runId, "join").state, "ready");
   });
 
-  it("#25 preserves spent attempt and run number after deleting the highest row", () => {
-    const { service, request, database, runtimeConfig } = fixture();
+  it("#25 preserves spent attempt and run number after deleting the highest row", async () => {
+    const { service, request, database, runtimeConfig } = await fixture();
     const source = created(service, {
       ...request,
       descriptorVersion: personLookupDescriptor.version,
@@ -190,8 +190,8 @@ describe("canonical run-record service", () => {
     assert.equal(service.read(highest.envelope.runId).state, "deleted");
   });
 
-  it("persists a cancellation request without changing the claimed lifecycle or fence", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("persists a cancellation request without changing the claimed lifecycle or fence", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const run = created(service, request);
     const claim = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, runtimeConfig });
     if (claim.state !== "applied") throw new Error("claim refused");
@@ -209,8 +209,8 @@ describe("canonical run-record service", () => {
     assert.equal(renewed.run.lifecycle.state, "claimed");
   });
 
-  it("#5 a generation advance refuses the next claim without invalidating the held claim", () => {
-    const { service, request, runtimeConfig, database, clock } = fixture();
+  it("#5 a generation advance refuses the next claim without invalidating the held claim", async () => {
+    const { service, request, runtimeConfig, database, clock } = await fixture();
     const run = created(service, request);
     const queued = created(service, {
       ...request,
@@ -235,8 +235,8 @@ describe("canonical run-record service", () => {
     assert.equal(renewed.state, "applied");
   });
 
-  it("#6/#7 requeues only an expired claim, preserves its attempt/fence, and rejects the zombie", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("#6/#7 requeues only an expired claim, preserves its attempt/fence, and rejects the zombie", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const run = created(service, request);
     const claim = service.claimNext({
       commandId: "83000000-0000-4000-8000-000000000001",
@@ -286,8 +286,8 @@ describe("canonical run-record service", () => {
     ), { state: "refused", refusal: { reason: "lost" } });
   });
 
-  it("re-enqueues a resolved gate at its durable continuation node", () => {
-    const { service, request, runtimeConfig } = fixture();
+  it("re-enqueues a resolved gate at its durable continuation node", async () => {
+    const { service, request, runtimeConfig } = await fixture();
     const running = runningRun(service, request, runtimeConfig);
     const parked = service.workerTransition({
       commandId: "83000000-0000-4000-8000-000000000007",
@@ -315,8 +315,8 @@ describe("canonical run-record service", () => {
     assert.equal(resumed.run.envelope.startAt, "crm-dates");
   });
 
-  it("refuses queued metadata that gate resolution cannot preserve", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("refuses queued metadata that gate resolution cannot preserve", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const running = runningRun(service, request, runtimeConfig);
     const parked = service.workerTransition({
       commandId: "83000000-0000-4000-8000-000000000015",
@@ -355,8 +355,8 @@ describe("canonical run-record service", () => {
     });
   });
 
-  it("refuses to re-enqueue a parked write without a resolution continuation", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("refuses to re-enqueue a parked write without a resolution continuation", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const running = runningRun(service, request, runtimeConfig);
     const intent = parkedWriteIntent(database, running, {
       writeIntentId: "83000000-0000-4000-8000-000000000097", code: "operator-required", message: "check whether the external write landed",
@@ -400,8 +400,8 @@ describe("canonical run-record service", () => {
     });
   });
 
-  it("#9/#10 terminalize is atomic and command replay is exact or divergent", () => {
-    const interrupted = fixture({
+  it("#9/#10 terminalize is atomic and command replay is exact or divergent", async () => {
+    const interrupted = await fixture({
       afterFailureStorageStep: (step) => {
         if (step === "failure") throw new Error("injected terminal settlement failure");
       },
@@ -426,7 +426,7 @@ describe("canonical run-record service", () => {
       run: interruptedRun,
     });
 
-    const normal = fixture();
+    const normal = await fixture();
     const running = runningRun(normal.service, normal.request, normal.runtimeConfig);
     const request = failureTerminalRequest(running, "84000000-0000-4000-8000-000000000002");
     const applied = normal.service.terminalize(request, personLookupDescriptor);
@@ -470,8 +470,8 @@ describe("canonical run-record service", () => {
     assert.equal(replayAfterDelete.appliedVersion, applied.run.version);
   });
 
-  it("refuses failure terminalization while a direct tree member is non-terminal", () => {
-    const { service, request, runtimeConfig } = fixture();
+  it("refuses failure terminalization while a direct tree member is non-terminal", async () => {
+    const { service, request, runtimeConfig } = await fixture();
     const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
     const member = created(service, {
       ...request,
@@ -493,8 +493,8 @@ describe("canonical run-record service", () => {
     ), { state: "refused", refusal: { reason: "tree-non-terminal", runId: member.envelope.runId } });
   });
 
-  it("refuses failure terminalization while a nested tree member is non-terminal", () => {
-    const { service, request, runtimeConfig } = fixture();
+  it("refuses failure terminalization while a nested tree member is non-terminal", async () => {
+    const { service, request, runtimeConfig } = await fixture();
     const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
     const member = created(service, {
       ...request,
@@ -536,8 +536,8 @@ describe("canonical run-record service", () => {
     ), { state: "refused", refusal: { reason: "tree-non-terminal", runId: grandchild.envelope.runId } });
   });
 
-  it("refuses a distinct terminal lifecycle self-edge", () => {
-    const { service, request } = fixture();
+  it("refuses a distinct terminal lifecycle self-edge", async () => {
+    const { service, request } = await fixture();
     const run = created(service, request);
     const lifecycle = { state: "terminal" as const, outcome: "cancelled" as const, endedAt: NOW };
     const settled = service.transition({
@@ -565,8 +565,8 @@ describe("canonical run-record service", () => {
     });
   });
 
-  it("refuses a display-name self-edge on a terminal run", () => {
-    const { service, request } = fixture();
+  it("refuses a display-name self-edge on a terminal run", async () => {
+    const { service, request } = await fixture();
     const run = created(service, request);
     const settled = service.transition({
       commandId: "84000000-0000-4000-8000-000000000015",
@@ -593,8 +593,8 @@ describe("canonical run-record service", () => {
     });
   });
 
-  it("#10 journals only request commitments and returns the current version on exact replay", () => {
-    const { service, request, database } = fixture();
+  it("#10 journals only request commitments and returns the current version on exact replay", async () => {
+    const { service, request, database } = await fixture();
     const protectedRequest={...request,input:{...request.input,parsed:{...request.input.parsed,protectedBindings:[{kind:"test-data-local" as const,inputPath:"emplId" as const,name:"personLookupCanaryEid" as const,sourceId:UUID_6}]}}};
     const run = created(service, protectedRequest);
     const first = service.transition({

@@ -23,14 +23,14 @@ const _descriptor = separationsKualiFinalizationDescriptor;
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
-afterEach(() => {
-  for (const database of databases.splice(0)) closePersonLookupReceiptDatabase(database);
+afterEach(async () => {
+  for (const database of databases.splice(0)) await closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 
-function seededStore(): Readonly<{ store: EvidenceReceiptStore; runId: string }> {
-  const database = openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-binding-", "receipt-binding-test");
+async function seededStore(): Promise<Readonly<{ store: EvidenceReceiptStore; runId: string }>> {
+  const database = await openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-binding-", "receipt-binding-test");
   const seeded = seedPersonLookupExitRun(database);
   const { authority } = database;
   const runId = String(seeded.run.envelope.runId);
@@ -64,8 +64,8 @@ function storedVariant(
 }
 
 describe("receipt derivation binding — the stored receipt survives a moved closure", () => {
-  it("re-derives an already-stored receipt as `existing` after the closure moved", () => {
-    const { store, runId } = seededStore();
+  it("re-derives an already-stored receipt as `existing` after the closure moved", async () => {
+    const { store, runId } = await seededStore();
     const first = ensureRunEvidenceReceipt(store, personLookupDescriptor, runId);
     assert.equal(first.state, "derived");
     assert.equal(first.receipt.descriptorFingerprint, MOVED_CLOSURE);
@@ -76,8 +76,8 @@ describe("receipt derivation binding — the stored receipt survives a moved clo
     assert.equal(canonicalJsonStringify(second.receipt), canonicalJsonStringify(first.receipt));
   });
 
-  it("refuses a stored receipt whose declared redaction moved, naming the declaration", () => {
-    const { store, runId } = seededStore();
+  it("refuses a stored receipt whose declared redaction moved, naming the declaration", async () => {
+    const { store, runId } = await seededStore();
     const derived = ensureRunEvidenceReceipt(store, personLookupDescriptor, runId).receipt;
 
     // Probe moved classifications against the original stored declaration, not a recomputed receipt.
@@ -120,9 +120,9 @@ describe("receipt derivation binding — the stored receipt survives a moved clo
     );
   });
 
-  it("refuses a stored receipt bound to the BUILD's closure instead of the run's", () => {
+  it("refuses a stored receipt bound to the BUILD's closure instead of the run's", async () => {
 
-    const { store, runId } = seededStore();
+    const { store, runId } = await seededStore();
     const derived = ensureRunEvidenceReceipt(store, personLookupDescriptor, runId).receipt;
     const preFix = storedVariant(derived, (draft) => {
       draft.descriptorFingerprint = personLookupDescriptor.contractFingerprint;

@@ -23,7 +23,7 @@ describe("Explorer SQLite command authority", () => {
     const admission = acquireEntrypointAdmission(workspace, "exclusive");
     const clock = manualClock(new Date("2026-09-13T10:00:00Z"));
     const path = join(admission.stateRoot, "state.db");
-    const f = explorerAuthorityFixture({ root: admission.stateRoot, path,
+    const f = await explorerAuthorityFixture({ root: admission.stateRoot, path,
       open: () => AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "explorer-proof" }, clock),
       dispose: () => { admission.release(); rmSync(workspace, { recursive: true, force: true }); } });
     try {
@@ -65,6 +65,6 @@ describe("Explorer SQLite command authority", () => {
       assert.equal(f.database.authority.commands.get(SECOND), undefined);
       assert.equal(f.kernel.execute(command).state, "already-applied");
       assert.equal(f.read().workflows.find(row => row.id === "person-lookup")?.label, "People search");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });

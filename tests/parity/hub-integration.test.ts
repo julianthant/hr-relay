@@ -16,7 +16,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
   test(`HUB integration matrix ${engine} ${width} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `${name}.a11y.yml` }] }, async ({ playwright }, info) => {
     ensureParityBundle(); mkdirSync(evidence, { recursive: true });
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
-    const h = harness();
+    const h = await harness();
     const browser = await playwright[engine].launch(), page = await browser.newPage({ viewport: { width, height: width === 1440 ? 900 : width === 1920 ? 1080 : 1440 } });
     const errors: string[] = [], writes: string[] = [], metrics: object[] = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -178,7 +178,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
   test(`HUB R2 ${finding} survives mounted chat transitions ${engine} ${width} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `${name}.a11y.yml` }] }, async ({ playwright }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
-    const h = harness();
+    const h = await harness();
     const browser = await playwright[engine].launch(), page = await browser.newPage({ viewport: { width, height: width === 1440 ? 900 : width === 1920 ? 1080 : 1440 } });
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));

@@ -8,15 +8,15 @@ import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures
 import { makeWorld,runRecordOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
-function historyFixture(){const world=makeWorld();world.database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);return world;}
+async function historyFixture(){const world=await makeWorld();world.database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);return world;}
 
 describe("same-item attempt history", () => {
-  it("keeps attempt one selected while returning a later retry from the same item", () => {
-    const world = historyFixture();
-    cleanups.push(() => world.dispose());
+  it("keeps attempt one selected while returning a later retry from the same item", async () => {
+    const world = await historyFixture();
+    cleanups.push(async () => await world.dispose());
     const itemId = uuidOf(9890);
     const firstBase = runRecordOf({ seed: 890, attempt: 1, enqueuedAt: "2026-08-03T06:30:00.000Z" });
     const first = RunRecordSchema.parse({ ...firstBase, envelope: { ...firstBase.envelope, itemId } });
@@ -47,9 +47,9 @@ describe("same-item attempt history", () => {
     ]);
   });
 
-  it("keeps deleted history associated, orders attempts, and refuses a cursor after authority changes", () => {
-    const world = historyFixture();
-    cleanups.push(() => world.dispose());
+  it("keeps deleted history associated, orders attempts, and refuses a cursor after authority changes", async () => {
+    const world = await historyFixture();
+    cleanups.push(async () => await world.dispose());
     const database = world.database;
     const reader = sqliteRunReader(database, world.clock);
     const itemId = uuidOf(9900);
@@ -111,10 +111,10 @@ describe("same-item attempt history", () => {
     ]);
   });
 
-  it("pages all 500 supported peers and refuses a 501st rather than returning a partial history", () => {
-    const pageAll = (count: number) => {
-      const world = historyFixture();
-      cleanups.push(() => world.dispose());
+  it("pages all 500 supported peers and refuses a 501st rather than returning a partial history", async () => {
+    const pageAll = async (count: number) => {
+      const world = await historyFixture();
+      cleanups.push(async () => await world.dispose());
       const itemId = uuidOf(9400);
       for (let attempt = 1; attempt <= count; attempt += 1) {
         const base = runRecordOf({ seed: attempt, attempt });
@@ -140,10 +140,10 @@ describe("same-item attempt history", () => {
       assert.equal(new Set(seen).size, 500);
       assert.deepEqual(seen, Array.from({ length: 500 }, (_, index) => uuidOf(index + 1)));
     };
-    pageAll(500);
+    await pageAll(500);
 
-    const world = historyFixture();
-    cleanups.push(() => world.dispose());
+    const world = await historyFixture();
+    cleanups.push(async () => await world.dispose());
     const itemId = uuidOf(9401);
     for (let attempt = 1; attempt <= 501; attempt += 1) {
       const base = runRecordOf({ seed: attempt, attempt });
@@ -163,9 +163,9 @@ describe("same-item attempt history", () => {
     });
   });
 
-  it("rejects a run duplicated across live and deleted candidate sources", () => {
-    const world = historyFixture();
-    cleanups.push(() => world.dispose());
+  it("rejects a run duplicated across live and deleted candidate sources", async () => {
+    const world = await historyFixture();
+    cleanups.push(async () => await world.dispose());
     const itemId = uuidOf(9500);
     const base = runRecordOf({ seed: 501, attempt: 1 });
     const run = RunRecordSchema.parse({ ...base, envelope: { ...base.envelope, itemId } });
@@ -186,8 +186,8 @@ describe("same-item attempt history", () => {
   });
 });
 
-it("refuses malformed supplied cursors before reading authority or a run", () => {
-  const world = historyFixture(); cleanups.push(() => world.dispose());
+it("refuses malformed supplied cursors before reading authority or a run", async () => {
+  const world = await historyFixture(); cleanups.push(async () => await world.dispose());
   const actualReader = sqliteRunReader(world.database, world.clock);
   const read = vi.fn(actualReader.read); const reader = { ...actualReader, read };
   const snapshot = vi.spyOn(world.database, "withAuthorityReadSnapshot");

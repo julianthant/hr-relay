@@ -27,7 +27,7 @@ describe("pool-capable worker runtime executor seam", () => {
 
 
   it("acknowledges an uncapped roster with four exact members", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const plan = workerBrowserCommand({ ...envelope, family: "worker-browser", type: "plan-worker-count",
       target: { workflowId: WORKFLOW_ID, expectedVersion: 0 }, payload: { desiredWorkers: 4 } });
@@ -46,7 +46,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("plans three deterministic members only after the supervisor acknowledges their lifecycle facts", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const plan = workerBrowserCommand({
       ...envelope, family: "worker-browser", type: "plan-worker-count",
@@ -114,7 +114,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("selects actual excess members for bounded stop but refuses count reduction without retirement proof", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const initial = workerBrowserCommand({ ...envelope, commandId: randomUUID(), family: "worker-browser",
       type: "plan-worker-count", target: { workflowId: WORKFLOW_ID, expectedVersion: 0 }, payload: { desiredWorkers: 3 } });
@@ -173,7 +173,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("spawns only the explicit pool member acknowledged as started", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const member = native.members[1];
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
@@ -211,7 +211,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("requests a bounded graceful stop for the explicit member", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const member = native.members[1];
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
@@ -251,7 +251,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("acknowledges pause only at the explicit member's requested stage", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const member = native.members[0];
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
@@ -288,7 +288,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("acknowledges resume only at the explicit member's requested stage", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const member = native.members[2];
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
@@ -325,7 +325,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("acknowledges refresh only after the explicit member session is refreshed", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const member = native.members[1];
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
@@ -364,7 +364,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("acknowledges reopen only after the explicit member session is reopened", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const member = native.members[2];
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
@@ -403,7 +403,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("acknowledges a stop with the timestamped observed graceful stage, policy carried separately", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
       execute: (request) => {
@@ -438,7 +438,7 @@ describe("pool-capable worker runtime executor seam", () => {
   it.each([
     {
       seam: "stop",
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "stop-worker",
         state: "acknowledged",
         member: native.members[1],
@@ -454,7 +454,7 @@ describe("pool-capable worker runtime executor seam", () => {
     },
     {
       seam: "plan",
-      acknowledgement: (native: ReturnType<typeof admittedAdapterRoster>) => ({
+      acknowledgement: (native: Awaited<ReturnType<typeof admittedAdapterRoster>>) => ({
         command: "plan-worker-count",
         state: "acknowledged",
         desiredWorkers: 1,
@@ -479,7 +479,7 @@ describe("pool-capable worker runtime executor seam", () => {
       },
     },
   ])("refuses a $seam observation timestamped after the command's now", async ({ seam, acknowledgement, request }) => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     // An observation is a record of something that HAPPENED; one postdating
     // the command's own clock is a claim about the future dressed as a fact.
     const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement(native) }, native.authority.database.authority.workerSlots);
@@ -495,7 +495,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("refuses an initial stop acknowledgement claiming future escalation stages", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "stop-worker",
@@ -523,7 +523,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("refuses a stop observation that short-circuits past the graceful stage", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "stop-worker",
@@ -548,7 +548,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("refuses an illegal escalation transition in a reconciliation fact", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "plan-worker-count",
@@ -594,7 +594,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("refuses observed escalation stages with regressing timestamps", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "plan-worker-count",
@@ -639,7 +639,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("refuses an initiating plan fact claiming escalation stages beyond the graceful request", async () => {
-    const native = admittedAdapterRoster();
+    const native = await admittedAdapterRoster();
 
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({

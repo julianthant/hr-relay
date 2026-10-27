@@ -35,8 +35,8 @@ import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-function readyBoundEight(work: "idle" | "queued" = "idle") {
-  const profile = createBoundProfileFixture();
+async function readyBoundEight(work: "idle" | "queued" = "idle") {
+  const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
   const database = AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
@@ -112,7 +112,7 @@ function rawEight(path: string) {
 }
 
 it("upgrades a genuinely READY bound profile with unchanged historical rows, credentials and replay", async () => {
-  const f = readyBoundEight();
+  const f = await readyBoundEight();
   try {
     const before = rawEight(f.path), protectedBefore = digest(join(f.stateRoot, "credentials", "protected.json"));
     const machineBefore = storageTree(join(f.machine.stateRoot, "machine"));
@@ -151,11 +151,11 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
     const currentBefore = storageTree(f.stateRoot);
     assert.equal((await upgradeReadyProfileStorage(f.machine, f.machine.issueRegisteredProfileClaim(f.binding.profileId), { plan: false, hostFacts }, systemClock)).state, "already-upgraded");
     assert.deepEqual(storageTree(f.stateRoot), currentBefore);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 it("confines the issued READY purpose and its verified backup copy to their exact doors", async () => {
-  const f = readyBoundEight(), restore = f.acquireRestore();
+  const f = await readyBoundEight(), restore = f.acquireRestore();
   let owner: RuntimeAdmission | undefined;
   try {
     const issued = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
@@ -186,11 +186,11 @@ it("confines the issued READY purpose and its verified backup copy to their exac
       issued.release();
       assert.throws(() => copy.assertLive(), { message: "runtime-admission: missing or released admission" });
     } finally { copy.release(); }
-  } finally { owner?.release(); restore.release(); f.close(); }
+  } finally { owner?.release(); restore.release(); await f.close(); }
 });
 
 it("refuses cloned claims, copied or foreign restore handles, and released restore custody without source effects", async () => {
-  const f = readyBoundEight(), foreign = readyBoundEight(), restore = f.acquireRestore(), other = foreign.acquireRestore();
+  const f = await readyBoundEight(), foreign = await readyBoundEight(), restore = f.acquireRestore(), other = foreign.acquireRestore();
   try {
     const before = storageTree(f.stateRoot);
     await assert.rejects(f.machine.forStoppedProfileUpgrade({ ...f.claim }, restore, systemClock, hostFacts), { message: "profile-storage-claim-unissued" });
@@ -200,22 +200,22 @@ it("refuses cloned claims, copied or foreign restore handles, and released resto
     restore.release();
     await assert.rejects(f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts), { message: "restore-admission-handle-released" });
     assert.deepEqual(storageTree(f.stateRoot), before);
-  } finally { restore.release(); other.release(); foreign.close(); f.close(); }
+  } finally { restore.release(); other.release(); await foreign.close(); await f.close(); }
 });
 
 it("refuses a genuine live server role and leaves every profile byte unchanged", async () => {
-  const f = readyBoundEight();
+  const f = await readyBoundEight();
   const server = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "server", pid: process.pid }, systemClock);
   try {
     const before = storageTree(f.stateRoot);
     await assert.rejects(upgradeReadyProfileStorage(f.machine, f.claim, { plan: false, hostFacts }, systemClock),
       { message: "runtime-active: stop server, workers and geocode before storage upgrade" });
     assert.deepEqual(storageTree(f.stateRoot), before);
-  } finally { server.release(); f.close(); }
+  } finally { server.release(); await f.close(); }
 });
 
 it("refuses a genuine canonical queued run despite stopped global process roles", async () => {
-  const f = readyBoundEight("queued");
+  const f = await readyBoundEight("queued");
   try {
     const rows = rawEight(f.path), before = storageTree(f.stateRoot);
     assert.ok((rows.runs?.length ?? 0) > 0);
@@ -223,22 +223,22 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
       { message: "credential-maintenance-custody-unproved" });
     assert.deepEqual(storageTree(f.stateRoot), before);
     assert.deepEqual(rawEight(f.path), rows);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 it("revokes the exact READY purpose on same-byte main-file substitution", async () => {
-  const f = readyBoundEight(), restore = f.acquireRestore();
+  const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   try {
     const before = readFileSync(f.path), replacement = join(f.stateRoot, "replacement.sqlite");
     copyFileSync(f.path, replacement); renameSync(replacement, f.path);
     assert.throws(() => owner.assertLive(), { message: "profile-stopped-upgrade-source-changed" });
     assert.deepEqual(readFileSync(f.path), before);
-  } finally { owner.release(); restore.release(); f.close(); }
+  } finally { owner.release(); restore.release(); await f.close(); }
 });
 
 it("requires a real verified own backup before changing the ready source schema", async () => {
-  const f = readyBoundEight(), restore = f.acquireRestore();
+  const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   try {
     const inspection = AuthorityDatabase.inspectStoppedUpgrade(owner, f.path, f.processLockRoot, systemClock);
@@ -262,11 +262,11 @@ it("requires a real verified own backup before changing the ready source schema"
         { message: "profile-maintenance-backup-digest-mismatch" });
       assert.deepEqual(rawEight(f.path), sourceBefore);
     } finally { writeFileSync(verified.backupPath, original); }
-  } finally { owner.release(); restore.release(); f.close(); }
+  } finally { owner.release(); restore.release(); await f.close(); }
 });
 
 it("refuses changed source content inside the real migration transaction and cannot revive its purpose", async () => {
-  const f = readyBoundEight(), restore = f.acquireRestore();
+  const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   try {
     const inspection = AuthorityDatabase.inspectStoppedUpgrade(owner, f.path, f.processLockRoot, systemClock);
@@ -286,11 +286,11 @@ it("refuses changed source content inside the real migration transaction and can
     try { assert.equal(restored.prepare("UPDATE database_states SET updated_at=? WHERE id=1").run(original).changes, 1); }
     finally { restored.close(); }
     assert.throws(() => owner.assertLive(), { message: "profile-stopped-upgrade-source-changed" });
-  } finally { owner.release(); restore.release(); f.close(); }
+  } finally { owner.release(); restore.release(); await f.close(); }
 });
 
 it("revokes READY custody on a same-byte key replacement even after exact original custody returns", async () => {
-  const f = readyBoundEight(), restore = f.acquireRestore();
+  const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   const key = join(f.machine.stateRoot, "machine", "credential-keys", `${f.binding.profileId}.json`);
   const saved = join(f.workspace, "owned-key-preimage");
@@ -305,23 +305,23 @@ it("revokes READY custody on a same-byte key replacement even after exact origin
     assert.throws(() => owner.assertLive(), { message: "profile-stopped-upgrade-source-changed" });
   } finally {
     if (moved) renameSync(saved, key);
-    owner.release(); restore.release(); f.close();
+    owner.release(); restore.release(); await f.close();
   }
 });
 
 it("revokes READY custody when the real registry advances its session generation", async () => {
-  const f = readyBoundEight(), restore = f.acquireRestore();
+  const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   try {
     const before = storageTree(f.stateRoot), registry = f.machine.readProfileRegistry();
     f.machine.publishProfileRegistry(registry, { ...registry, activeProfileId: null, sessionGeneration: registry.sessionGeneration + 1 });
     assert.throws(() => owner.assertLive(), { message: "profile-storage-claim-generation-changed" });
     assert.deepEqual(storageTree(f.stateRoot), before);
-  } finally { owner.release(); restore.release(); f.close(); }
+  } finally { owner.release(); restore.release(); await f.close(); }
 });
 
 it("refuses loss of the authenticated never-erased head instead of treating it as a default", async () => {
-  const f = readyBoundEight(), restore = f.acquireRestore();
+  const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   const journal = join(f.machine.stateRoot, "machine", "erasures", `${f.binding.profileId}.json`);
   const existed = existsSync(dirname(journal));
@@ -336,12 +336,12 @@ it("refuses loss of the authenticated never-erased head instead of treating it a
   } finally {
     if (planted) unlinkSync(journal);
     if (!existed) { assert.deepEqual(readdirSync(dirname(journal)), []); rmdirSync(dirname(journal)); }
-    owner.release(); restore.release(); f.close();
+    owner.release(); restore.release(); await f.close();
   }
 });
 
 it("revokes READY custody on an actual new machine operation with no native effects", async () => {
-  const f = readyBoundEight(), restore = f.acquireRestore();
+  const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   try {
     const before = storageTree(f.stateRoot);
@@ -350,11 +350,11 @@ it("revokes READY custody on an actual new machine operation with no native effe
       emailKey, commandFingerprint: "a".repeat(64) });
     assert.throws(() => owner.assertLive(), { message: "profile-storage-claim-unavailable" });
     assert.deepEqual(storageTree(f.stateRoot), before);
-  } finally { owner.release(); restore.release(); f.close(); }
+  } finally { owner.release(); restore.release(); await f.close(); }
 });
 
 it("cannot recreate a ready source removed after real stopped inspection and before native writable open", async () => {
-  const f = readyBoundEight(), restore = f.acquireRestore();
+  const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   const saved = join(f.workspace, "owned-source-preimage");
   const inspect = AuthorityDatabase.inspectStoppedUpgrade.bind(AuthorityDatabase);
@@ -378,12 +378,12 @@ it("cannot recreate a ready source removed after real stopped inspection and bef
   } finally {
     spy.mockRestore();
     if (crossed) renameSync(saved, f.path);
-    owner.release(); restore.release(); f.close();
+    owner.release(); restore.release(); await f.close();
   }
 });
 
 it("refuses an unowned copy before issuing any READY migration or backup authority", async () => {
-  const f = readyBoundEight();
+  const f = await readyBoundEight();
   try {
     writeFileSync(join(f.stateRoot, "owned-unclassified-copy"), "{}", { mode: 0o600, flag: "wx" });
     const before = storageTree(f.stateRoot);
@@ -391,11 +391,11 @@ it("refuses an unowned copy before issuing any READY migration or backup authori
       { message: "profile-inventory-unowned-entry" });
     assert.deepEqual(storageTree(f.stateRoot), before);
     assert.equal(existsSync(join(f.stateRoot, "backups")), false);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 it("revokes READY custody on exact artifact-root ancestry substitution", async () => {
-  const f = readyBoundEight(), restore = f.acquireRestore();
+  const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(f.claim, restore, systemClock, hostFacts);
   const artifacts = join(f.stateRoot, "artifacts"), saved = join(f.workspace, "owned-artifacts-preimage");
   let moved = false;
@@ -409,6 +409,6 @@ it("revokes READY custody on exact artifact-root ancestry substitution", async (
     assert.throws(() => owner.assertLive(), { message: "profile-stopped-upgrade-source-changed" });
   } finally {
     if (moved) { assert.deepEqual(readdirSync(artifacts), []); rmdirSync(artifacts); renameSync(saved, artifacts); }
-    owner.release(); restore.release(); f.close();
+    owner.release(); restore.release(); await f.close();
   }
 });

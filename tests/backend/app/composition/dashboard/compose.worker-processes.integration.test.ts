@@ -61,7 +61,7 @@ function assertUnacknowledged(database: AuthorityDatabase, commandId: string): v
 
 describe("real processes: two children supervised concurrently through the composed kernel door", () => {
   interface FixtureOwner {
-    readonly profile: ReturnType<typeof createBoundProfileFixture>;
+    readonly profile: Awaited<ReturnType<typeof createBoundProfileFixture>>;
     database?: AuthorityDatabase;
     control?: ReturnType<typeof composeWorkerProcessControl>;
     readonly records: RealChildRecord[];
@@ -118,7 +118,7 @@ describe("real processes: two children supervised concurrently through the compo
           assert.deepEqual(harness.control.supervisor.close(), []);
         }
         harness.database?.close();
-        harness.profile.close();
+        await harness.profile.close();
         for (const root of harness.extraRoots) rmSync(root, { recursive: true, force: true });
       } catch (error) {
         harness.unproved = error;
@@ -130,8 +130,8 @@ describe("real processes: two children supervised concurrently through the compo
     if (failures.length > 0) throw new AggregateError(failures, 'worker-process-fixture-cleanup-failed', { cause: failures[0] });
   }, 30_000);
 
-  function openRealHarness(launchCommandOverride?: string): RealHarness {
-    const profile = createBoundProfileFixture({ sharedMachine: true });
+  async function openRealHarness(launchCommandOverride?: string): Promise<RealHarness> {
+    const profile = await createBoundProfileFixture({ sharedMachine: true });
     const owner: FixtureOwner = { profile, records: [], childClosures: [], extraRoots: [], supervisorClosed: false };
     harnesses.push(owner);
     try {
@@ -187,7 +187,7 @@ describe("real processes: two children supervised concurrently through the compo
     "spawns worker 1 and worker 2 as real children, proves both births via durable leases, and internally drains both — exact identities, no cross-talk",
     async () => {
       reportW5Phase("two-child-door", "startup", "begin");
-      const harness = openRealHarness();
+      const harness = await openRealHarness();
       try {
         const childOutput = (): string => harness.records.map((record) =>
           `${record.member.workerId}: ${record.output.join("")}`).join("\n");
@@ -353,7 +353,7 @@ describe("real processes: two children supervised concurrently through the compo
     "a REAL spawn ENOENT rejects typed with retained admission and no fabricated pid",
     async () => {
       const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-enoent-"));
-      const harness = openRealHarness(join(root, "no-such-node-binary"));
+      const harness = await openRealHarness(join(root, "no-such-node-binary"));
       harness.extraRoots.push(root);
       try {
         assert.equal((await harness.kernel.executeWorkerPool({ ...envelope(systemClock), type: "plan-worker-count",

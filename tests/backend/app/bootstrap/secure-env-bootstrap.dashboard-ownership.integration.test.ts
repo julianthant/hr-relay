@@ -4,7 +4,7 @@ import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/boots
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
 for (const accepted of [false, true]) it(`honors the dashboard admission-ownership acknowledgement: ${accepted}`, async () => {
-  const profile = createBoundProfileFixture({ sharedMachine: true });
+  const profile = await createBoundProfileFixture({ sharedMachine: true });
   const argv = [...process.argv];
   try {
     await runSecureEnvironmentBootstrap(["cli", "dashboard"], {
@@ -14,5 +14,5 @@ for (const accepted of [false, true]) it(`honors the dashboard admission-ownersh
     });
     if (accepted) profile.machine.assertLive();
     else assert.throws(() => profile.machine.assertLive(), { message: "runtime-admission: missing or released admission" });
-  } finally { process.argv.splice(0, process.argv.length, ...argv); profile.close(); }
+  } finally { process.argv.splice(0, process.argv.length, ...argv); await profile.close(); }
 });

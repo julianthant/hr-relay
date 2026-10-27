@@ -93,8 +93,8 @@ function gateOf(w: DashboardWorld): ReturnType<typeof buildRunDetail>["gate"] {
 }
 
 describe("a settled gate's panel names the verdict, the approver and the instant", () => {
-  it("serves approved/by-whom/when from the durable gate result, not from the span key", () => {
-    const w = world();
+  it("serves approved/by-whom/when from the durable gate result, not from the span key", async () => {
+    const w = await world();
     settledGatedRun(w);
     putGateResult(w);
 
@@ -109,8 +109,8 @@ describe("a settled gate's panel names the verdict, the approver and the instant
     assert.notEqual(String(gate.gateId), GATE);
   });
 
-  it("serves a REJECTION as a rejection — a receipt that could only describe approvals is not a record", () => {
-    const w = world();
+  it("serves a REJECTION as a rejection — a receipt that could only describe approvals is not a record", async () => {
+    const w = await world();
     settledGatedRun(w);
     putGateResult(w, { decision: "rejected", resolvedBy: "local-operator" });
 
@@ -121,8 +121,8 @@ describe("a settled gate's panel names the verdict, the approver and the instant
     assert.equal(gate.resolvedBy, "local-operator");
   });
 
-  it("names the divergence when the span stream saw a resolution authority has no row for", () => {
-    const w = world();
+  it("names the divergence when the span stream saw a resolution authority has no row for", async () => {
+    const w = await world();
     settledGatedRun(w);
 
     const gate = gateOf(w);
@@ -133,8 +133,8 @@ describe("a settled gate's panel names the verdict, the approver and the instant
     assert.match(gate.reason, /authority holds no gate result row/);
   });
 
-  it("states an UNDECLARED gate rather than guessing what its answer meant", () => {
-    const w = world();
+  it("states an UNDECLARED gate rather than guessing what its answer meant", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, workflow: WORKFLOW, lifecycle: TERMINAL_DONE, version: 5 });
     emitGateResolved(w, "some-other-gate");
     runEndedEventOf(w, 1, "done", { workflow: WORKFLOW });
@@ -146,8 +146,8 @@ describe("a settled gate's panel names the verdict, the approver and the instant
     assert.match(gate.reason, /has no declared decision in src\/domain\/trust\/gate-decisions\.ts/);
   });
 
-  it("refuses an arm value no declaration lists, naming what was stored and what is declared", () => {
-    const w = world();
+  it("refuses an arm value no declaration lists, naming what was stored and what is declared", async () => {
+    const w = await world();
     settledGatedRun(w);
     putGateResult(w, { decision: "deferred" });
 
@@ -158,8 +158,8 @@ describe("a settled gate's panel names the verdict, the approver and the instant
     assert.match(gate.reason, /declared: approved, rejected/);
   });
 
-  it("keeps saying nothing for a run that never had a gate", () => {
-    const w = world();
+  it("keeps saying nothing for a run that never had a gate", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, workflow: WORKFLOW, lifecycle: TERMINAL_DONE, version: 5 });
     runEndedEventOf(w, 1, "done", { workflow: WORKFLOW });
 
@@ -169,8 +169,8 @@ describe("a settled gate's panel names the verdict, the approver and the instant
 });
 
 describe("a rehearsal's terminal is never verified-done", () => {
-  it("serves partial + rehearsal for a dry-run preview terminal", () => {
-    const w = world();
+  it("serves partial + rehearsal for a dry-run preview terminal", async () => {
+    const w = await world();
     settledGatedRun(w, { dryRun: true });
     putGateResult(w);
 
@@ -184,8 +184,8 @@ describe("a rehearsal's terminal is never verified-done", () => {
     assert.equal(outcome.rehearsal, true);
   });
 
-  it("leaves the REAL verified path untouched", () => {
-    const w = world();
+  it("leaves the REAL verified path untouched", async () => {
+    const w = await world();
     settledGatedRun(w);
     putGateResult(w);
 
@@ -197,8 +197,8 @@ describe("a rehearsal's terminal is never verified-done", () => {
     assert.equal(outcome.rehearsal, undefined);
   });
 
-  it("does not label a dry run's FAILURE or cancellation a rehearsal outcome", () => {
-    const w = world();
+  it("does not label a dry run's FAILURE or cancellation a rehearsal outcome", async () => {
+    const w = await world();
     queuedEventOf(w, {
       seed: 1,
       workflow: WORKFLOW,
@@ -217,8 +217,8 @@ describe("a rehearsal's terminal is never verified-done", () => {
     assert.equal(outcome.rehearsal, undefined);
   });
 
-  it("says `dry run` on the panel's outcome bar, and says it FIRST", () => {
-    const w = world();
+  it("says `dry run` on the panel's outcome bar, and says it FIRST", async () => {
+    const w = await world();
     settledGatedRun(w, { dryRun: true });
     putGateResult(w);
     const { outcome } = buildRunDetail(depsOf(w), RUN_ID);
@@ -231,8 +231,8 @@ describe("a rehearsal's terminal is never verified-done", () => {
     assert.ok(!text.includes("verified-done"), text);
   });
 
-  it("leaves the real run's outcome bar exactly as it was", () => {
-    const w = world();
+  it("leaves the real run's outcome bar exactly as it was", async () => {
+    const w = await world();
     settledGatedRun(w);
     putGateResult(w);
     const { outcome } = buildRunDetail(depsOf(w), RUN_ID);

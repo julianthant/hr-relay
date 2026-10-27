@@ -10,8 +10,8 @@ const {SIGNAL, resolutionHarness, commandFor, parkedAttemptingWrite, cleanup } =
 afterEach(cleanup);
 
 describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", () => {
-  it("refuses to resolve a committed intent — there is no reopen of committed history", () => {
-    const { h, executor } = resolutionHarness();
+  it("refuses to resolve a committed intent — there is no reopen of committed history", async () => {
+    const { h, executor } = await resolutionHarness();
     const { run, writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
     return h.recovery.recover({ descriptor: writeFixtureDescriptor, writeIntentId, signal: SIGNAL })

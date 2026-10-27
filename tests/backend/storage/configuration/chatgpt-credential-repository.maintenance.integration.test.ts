@@ -18,7 +18,7 @@ import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgr
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 
 it("signed-out credential cleanup remains valid for custody and relocation", async () => {
-  const profile = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const profile = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const service = createChatGptAccountService({ admission: profile.admission, stateRoot: profile.stateRoot, clock });
   const directories = [join(profile.stateRoot, "credentials"), join(profile.machine.stateRoot, "machine", "credential-keys"),
     join(profile.machine.stateRoot, "machine", "erasures")];
@@ -38,11 +38,11 @@ it("signed-out credential cleanup remains valid for custody and relocation", asy
     verifyRelocationLiveReferences({ admission: profile.admission, source: { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot },
       credentials: boundProfileCredentials(profile.admission) });
     assert.throws(() => profile.admission.assertStorageRelocationSupported(), { code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED" });
-  } finally { await service.close(); profile.close(); }
+  } finally { await service.close(); await profile.close(); }
 });
 
 it("SQLite backup, stopped upgrade and restore leave the current token authority untouched", async () => {
-  const profile = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const profile = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const stateRoot = profile.stateRoot, processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
   const backupDirectory = join(stateRoot, "backups", "authority");
   try {
@@ -97,12 +97,12 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     assert.equal(current?.revision, 2);
     assert.equal(current?.session?.refreshToken, "synthetic-current-refresh");
     assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
-  } finally { profile.close(); }
+  } finally { await profile.close(); }
 });
 
 
-for (const owner of ["missing", "foreign"] as const) it(`refuses ${owner} protected inventory owner before changing current profile bytes`, () => {
-  const profile = createBoundProfileFixture(), foreign = createBoundProfileFixture();
+for (const owner of ["missing", "foreign"] as const) it(`refuses ${owner} protected inventory owner before changing current profile bytes`, async () => {
+  const profile = await createBoundProfileFixture(), foreign = await createBoundProfileFixture();
   const paths = [profile.path, join(profile.stateRoot, "credentials"),
     join(profile.machine.stateRoot, "machine", "credential-keys"), join(profile.machine.stateRoot, "machine", "erasures")];
   const before = paths.map(path => path === profile.path ? { kind: "file" as const, path, bytes: readFileSync(path) }
@@ -124,7 +124,7 @@ for (const owner of ["missing", "foreign"] as const) it(`refuses ${owner} protec
     }
     profile.admission.assertLive(); foreign.admission.assertLive();
   } catch (error) { failures.push(error); }
-  try { profile.close(); } catch (error) { failures.push(error); }
-  try { foreign.close(); } catch (error) { failures.push(error); }
+  try { await profile.close(); } catch (error) { failures.push(error); }
+  try { await foreign.close(); } catch (error) { failures.push(error); }
   if (failures.length > 0) throw new AggregateError(failures, "inventory fixture failed", { cause: failures[0] });
 });

@@ -13,7 +13,7 @@ afterEach(cleanup);
 
 describe("worker terminal service boundary", () => {
   it("honours an admitted cancellation before the next non-fenced operation", async () => {
-    const h = executorHarness();
+    const h = await executorHarness();
     const { database, clock } = h.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     assert.equal(testRunService(database, clock).transition({
@@ -33,7 +33,7 @@ describe("worker terminal service boundary", () => {
 
   for (const failure of ["refusal", "outer-rollback"] as const) {
     it(`never publishes run end after terminal ${failure}`, async () => {
-      const h = executorHarness();
+      const h = await executorHarness();
       const { database, clock } = h.authority;
       const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
       const lifecycle = h.deps.lifecycle;

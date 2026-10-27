@@ -10,7 +10,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it.each(FOREIGN_ORIGIN_CASES)(
     "refuses Explorer validation with %s before its authority is consulted",
     async (_label, headers) => {
-      const h = harness();
+      const h = await harness();
       const request = new Request("http://localhost/api/v1/explorer/validate", {
         method: "POST",
         headers: { ...headers, "content-type": "application/json" },
@@ -29,7 +29,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   );
   it("keeps Explorer validation on the JSON door: text/plain refuses, same-origin JSON reaches the seam", async () => {
     const seen: unknown[] = [];
-    const h = harness({
+    const h = await harness({
       explorerEdits: {
         validate: (input) => {
           seen.push(input);

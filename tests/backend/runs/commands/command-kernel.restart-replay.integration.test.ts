@@ -128,8 +128,8 @@ function recoveredRun(harness: Harness, type: "retry" | "restart", target: { run
 }
 
 describe("command-kernel recovery choices", () => {
-  it("restart mints the item's next attempt with recovery: restart-from-start and carries input, dryRun and omissions unchanged", () => {
-    const harness = createHarness();
+  it("restart mints the item's next attempt with recovery: restart-from-start and carries input, dryRun and omissions unchanged", async () => {
+    const harness = await createHarness();
 
     const target = startTerminalRun(harness, { dryRun: false, omit: true });
     const original = harness.database.authority.runs.get(target.runId);
@@ -145,8 +145,8 @@ describe("command-kernel recovery choices", () => {
     assert.equal(Object.hasOwn(restarted.envelope, "startAt"), false, "a restart owns no explicit start node");
   });
 
-  it("retry (Resume from checkpoints) mints the same next attempt WITHOUT a recovery marker", () => {
-    const harness = createHarness();
+  it("retry (Resume from checkpoints) mints the same next attempt WITHOUT a recovery marker", async () => {
+    const harness = await createHarness();
     const target = startTerminalRun(harness, { dryRun: false, omit: false });
     const resumed = recoveredRun(harness, "retry", target);
     assert.equal(Object.hasOwn(resumed.envelope, "recovery"), false);
@@ -154,8 +154,8 @@ describe("command-kernel recovery choices", () => {
     assert.equal(resumed.envelope.attempt, 2);
   });
 
-  it("refuses restart for a non-terminal run exactly as it refuses retry", () => {
-    const harness = createHarness();
+  it("refuses restart for a non-terminal run exactly as it refuses retry", async () => {
+    const harness = await createHarness();
     const target = startTerminalRun(harness, { dryRun: false, omit: false });
     const restarted = recoveredRun(harness, "restart", target);
     // The restart is queued, not terminal: a second recovery command on it is refused by name.

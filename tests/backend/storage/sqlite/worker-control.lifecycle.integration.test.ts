@@ -36,29 +36,29 @@ import { boundFixtureProcessLock } from "../../../support/helpers/synthetic-data
 
 const world = createWorkerDirectiveTestWorld();
 afterEach(world.cleanup);
-function fixture(count = 1) {
-  const h = world.loopHarness();
+async function fixture(count = 1) {
+  const h = await world.loopHarness();
   for (let index = 2; index <= count; index += 1) testWorkerPorts(h.authority.database, h.authority.clock, { path: h.authority.path, descriptor: personLookupDescriptor, poolIndex: index });
   const database = h.authority.database;
   for (const lease of database.authority.workerLeases.listLive()) database.authority.workerLeases.reportLifecycle({ workerId: lease.workerId, leaseGeneration: lease.leaseGeneration,
     lifecycle: { state: "idle", startedAt: lease.lifecycle.startedAt, heartbeatAt: h.authority.clock.now().toISOString() }, now: h.authority.clock.now().toISOString() });
   return { ...h, database };
 }
-function request(h: ReturnType<typeof fixture>, workerId: string, type: "remove-worker" | "retry-worker") {
+function request(h: Awaited<ReturnType<typeof fixture>>, workerId: string, type: "remove-worker" | "retry-worker") {
   const slot = h.database.authority.workerSlots.get(workerId), lease = h.database.authority.workerLeases.get(workerId);
   if (slot === undefined || lease === undefined) throw new Error("missing authority");
   return { commandId: randomUUID(), family: "worker-browser", type, source: "dashboard", requestedBy: "local-operator", requestedAt: h.authority.clock.now().toISOString(),
     target: { workerId, workflowId: slot.workflow, membershipRevision: slot.membershipRevision, expectedVersion: h.database.authority.workerPools.get(slot.workflow)?.version,
       controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } } };
 }
-function admit(h: ReturnType<typeof fixture>, workerId: string, type: "remove-worker" | "retry-worker", mode: "initialize" | "browserless" = "initialize") {
+function admit(h: Awaited<ReturnType<typeof fixture>>, workerId: string, type: "remove-worker" | "retry-worker", mode: "initialize" | "browserless" = "initialize") {
   const command = request(h, workerId, type);
   const record = h.database.withAuthorityTransaction(repositories => admitWorkerLifecycle(repositories, command, randomUUID(), command.requestedAt,
     { descriptor: personLookupDescriptor, mode }));
   h.database.authority.workerControls.transition(record.commandId, "admitted", { state: "executing", startedAt: record.admittedAt });
   return record;
 }
-async function close(h: ReturnType<typeof fixture>, record: ReturnType<typeof admit>) {
+async function close(h: Awaited<ReturnType<typeof fixture>>, record: ReturnType<typeof admit>) {
   if (record.lifecycle === undefined) throw new Error("missing binding");
   const manager = new WorkerSessionManager({ workerId: record.lifecycle.member.workerId, workflowId: record.lifecycle.member.workflowId,
     stores: h.deps.stores, factory: h.deps.sessionFactory, clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs,
@@ -66,13 +66,13 @@ async function close(h: ReturnType<typeof fixture>, record: ReturnType<typeof ad
   const proof = await manager.closeForRetirement(record.lifecycle);
   h.database.observeWorkerRetirementClosure(record.commandId, proof, record.admittedAt);
 }
-function stopped(h: ReturnType<typeof fixture>, workerId: string, reason: "crashed" | "operator" = "crashed") {
+function stopped(h: Awaited<ReturnType<typeof fixture>>, workerId: string, reason: "crashed" | "operator" = "crashed") {
   const lease = h.database.authority.workerLeases.get(workerId);
   if (lease === undefined) throw new Error("missing lease");
   h.database.authority.workerLeases.reportLifecycle({ workerId, leaseGeneration: lease.leaseGeneration,
     lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt, stoppedAt: h.authority.clock.now().toISOString(), reason }, now: h.authority.clock.now().toISOString() });
 }
-async function owned(h: ReturnType<typeof fixture>, workerId: string, executeInProcess = false) {
+async function owned(h: Awaited<ReturnType<typeof fixture>>, workerId: string, executeInProcess = false) {
   const slot = h.database.authority.workerSlots.get(workerId);
   if (slot === undefined) throw new Error("missing slot");
   const member = workerPoolMember(slot), children: FakeWorkerChild[] = [];
@@ -128,7 +128,7 @@ async function owned(h: ReturnType<typeof fixture>, workerId: string, executeInP
     lifecycle: { state: "idle", startedAt: lease.lifecycle.startedAt, heartbeatAt: h.authority.clock.now().toISOString() }, now: h.authority.clock.now().toISOString() });
   return { supervisor, children, removeWorker, retryWorker, gates, faults };
 }
-async function retryStarting(h: ReturnType<typeof fixture>, mode: "initialize" | "browserless" = "initialize", executeInProcess = false) {
+async function retryStarting(h: Awaited<ReturnType<typeof fixture>>, mode: "initialize" | "browserless" = "initialize", executeInProcess = false) {
   const owner = await owned(h, h.deps.workerId, executeInProcess);
   stopped(h, h.deps.workerId); owner.children.at(-1)?.emitExit(1, null);
   const record = admit(h, h.deps.workerId, "retry-worker", mode);
@@ -142,8 +142,8 @@ async function retryStarting(h: ReturnType<typeof fixture>, mode: "initialize" |
 const forgedEffect = Object.freeze({ kind: "worker-supervisor-effect" as const });
 
 describe("exact lifecycle reservation", () => {
-  it("refuses a caller-forged closure on an otherwise exact new Remove admission atomically", () => {
-    const h = fixture(), command = request(h, h.deps.workerId, "remove-worker");
+  it("refuses a caller-forged closure on an otherwise exact new Remove admission atomically", async () => {
+    const h = await fixture(), command = request(h, h.deps.workerId, "remove-worker");
     const generation = h.database.getMeta().authorityGeneration;
     const before = h.database.authority.workerLeases.get(h.deps.workerId);
     expect(() => h.database.withAuthorityTransaction(repositories => admitWorkerLifecycle({ ...repositories,
@@ -158,7 +158,7 @@ describe("exact lifecycle reservation", () => {
 
   for (const selected of [0, 1, 2]) {
     it(`retires selected member ${selected} without renaming survivors or reusing ordinal`, async () => {
-      const h = fixture(3), before = h.database.authority.workerSlots.list();
+      const h = await fixture(3), before = h.database.authority.workerSlots.list();
       const member = before[selected]; if (member === undefined) throw new Error("missing selection");
       const owner = await owned(h, member.workerId);
       const record = admit(h, member.workerId, "remove-worker");
@@ -185,15 +185,15 @@ describe("exact lifecycle reservation", () => {
     });
   }
   it("retires the last member to zero only after closure and stopped lifetime", async () => {
-    const h = fixture(), owner = await owned(h, h.deps.workerId), record = admit(h, h.deps.workerId, "remove-worker");
+    const h = await fixture(), owner = await owned(h, h.deps.workerId), record = admit(h, h.deps.workerId, "remove-worker");
     if (record.lifecycle === undefined) throw new Error("missing binding");
     const proof = await owner.removeWorker(record.lifecycle, WorkerStopDirectiveContextSchema.parse({ commandId: record.commandId, requestedAt: record.admittedAt, requestedBy: "local-operator" }));
     h.database.settleWorkerRemoval(record.commandId, proof, record.admittedAt, randomUUID());
     expect(h.database.authority.workerPools.get(h.deps.workflowId)?.desiredWorkers).toBe(0);
     expect(h.database.authority.workerSlots.list().filter(slot => slot.retiredAt === null)).toEqual([]);
   });
-  it("blocks a prior canonical claim replay, new claims, birth and primitive membership during Remove", () => {
-    const h = fixture(), database = h.database;
+  it("blocks a prior canonical claim replay, new claims, birth and primitive membership during Remove", async () => {
+    const h = await fixture(), database = h.database;
     database.authority.runs.enqueue(personLookupQueuedRun());
     const lifecycle = new RunRecordService({ database, clock: h.authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => undefined });
     const command = { commandId: randomUUID(), workerId: h.deps.workerId, workflow: h.deps.workflowId, workerLifetime: testWorkerLifetime(database, h.deps.workflowId, 1).workerLifetime, runtimeConfig: selectRunRuntime(database.authority) };
@@ -213,7 +213,7 @@ describe("exact lifecycle reservation", () => {
     expect(database.getMeta().authorityGeneration).toBe(generation);
   });
   it("records Retry next-generation starting without pool change or work and rejects omitted descriptor readiness", async () => {
-    const h = fixture(), beforePool = h.database.authority.workerPools.get(h.deps.workflowId);
+    const h = await fixture(), beforePool = h.database.authority.workerPools.get(h.deps.workflowId);
     const owner = await owned(h, h.deps.workerId);
     stopped(h, h.deps.workerId); owner.children.at(-1)?.emitExit(1, null);
     const record = admit(h, h.deps.workerId, "retry-worker");
@@ -230,7 +230,7 @@ describe("exact lifecycle reservation", () => {
     expect(h.database.authority.workerLeases.get(h.deps.workerId)?.lifecycle.state).toBe("starting");
   });
   it("releases initialization binding before warm browser control and a genuine next run", async () => {
-    const h = fixture(), f = await retryStarting(h, "initialize", true);
+    const h = await fixture(), f = await retryStarting(h, "initialize", true);
     if (f.binding.operation.kind !== "retry") throw new Error("missing retry");
     const configFingerprint = f.binding.operation.configFingerprint;
     h.database.authority.runs.enqueue(personLookupQueuedRun());
@@ -253,7 +253,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("Stop aborts actual Retry authentication and durably releases readiness before the next real claim", async () => {
-    const h = fixture(), f = await retryStarting(h, "initialize", true);
+    const h = await fixture(), f = await retryStarting(h, "initialize", true);
     if (f.binding.operation.kind !== "retry") throw new Error("missing retry");
     const configFingerprint = f.binding.operation.configFingerprint;
     let entered!: () => void;
@@ -317,7 +317,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("accepts heartbeat advancement and settles owned Remove independently of client replay", async () => {
-    const h = fixture(), owner = await owned(h, h.deps.workerId);
+    const h = await fixture(), owner = await owned(h, h.deps.workerId);
     const pool = createWorkerPoolRuntimeExecutor(owner.supervisor, h.database.authority.workerSlots, { database: h.database, clock: h.authority.clock });
     const kernel = kernelOver(h.database, h.authority.clock, pool);
     let release!: () => void;
@@ -344,7 +344,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("refuses unowned or wrong-phase lifecycle requests before command or control mutation", async () => {
-    const h = fixture();
+    const h = await fixture();
     const unowned = createDashboardWorkerProcessSupervisor({
       birth: { pollMs: 50, timeoutMs: 1000 }, launch: { command: "/node", environment: {}, prefixArgs: [], cwd: "/test" }, clock: h.authority.clock, scheduler: h.scheduler,
       spawn: () => { throw new Error("must not spawn"); }, leases: { observe: () => undefined },
@@ -361,8 +361,8 @@ describe("exact lifecycle reservation", () => {
     }
   });
 
-  it("allows unrelated claimed writes and preserves safely parked UNKNOWN in the same workflow", () => {
-    const h = fixture(), database = h.database;
+  it("allows unrelated claimed writes and preserves safely parked UNKNOWN in the same workflow", async () => {
+    const h = await fixture(), database = h.database;
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, h.authority.path, 2);
     fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     const slot = database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
@@ -389,7 +389,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("retains uncertain closure failure and never redispatches the original Remove", async () => {
-    const h = fixture(), owner = await owned(h, h.deps.workerId);
+    const h = await fixture(), owner = await owned(h, h.deps.workerId);
     const pool = createWorkerPoolRuntimeExecutor(owner.supervisor, h.database.authority.workerSlots, { database: h.database, clock: h.authority.clock });
     const kernel = kernelOver(h.database, h.authority.clock, pool);
     let closes = 0;
@@ -409,7 +409,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("retains Remove after closure expiry without stopping the still-owned child", async () => {
-    const h = fixture(), owner = await owned(h, h.deps.workerId);
+    const h = await fixture(), owner = await owned(h, h.deps.workerId);
     owner.gates.close = createWorkerBrowserChannel({ database: h.database, clock: h.authority.clock, scheduler: h.scheduler }).closeForRemoval;
     const pool = createWorkerPoolRuntimeExecutor(owner.supervisor, h.database.authority.workerSlots, { database: h.database, clock: h.authority.clock });
     const kernel = kernelOver(h.database, h.authority.clock, pool), command = request(h, h.deps.workerId, "remove-worker");
@@ -426,8 +426,8 @@ describe("exact lifecycle reservation", () => {
     expect(owner.faults.map(error => error.message)).toEqual(["worker-removal-closure-unproved"]);
   });
 
-  it("refuses lifecycle release while actual Duo custody is held", () => {
-    const h = fixture(), key = "ab".repeat(32), now = h.authority.clock.now().toISOString();
+  it("refuses lifecycle release while actual Duo custody is held", async () => {
+    const h = await fixture(), key = "ab".repeat(32), now = h.authority.clock.now().toISOString();
     const acquired = h.database.authority.duoCeremonyLeases.acquire({ credentialKey: key, workerId: h.deps.workerId, system: "ucpath", ttlMs: 60000, now });
     expect(acquired.state).toBe("acquired"); if (acquired.state !== "acquired") throw new Error("lease held elsewhere");
     expect(() => h.database.assertWorkerLifecycleRelease(h.deps.workerId)).toThrow("release-unproved");
@@ -437,7 +437,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("initializes the shared browserless replacement mode without authentication or work", async () => {
-    const h = fixture(), f = await retryStarting(h, "browserless");
+    const h = await fixture(), f = await retryStarting(h, "browserless");
     if (f.binding.operation.kind !== "retry") throw new Error("missing retry binding");
     const sessions = new WorkerSessionManager({ workerId: h.deps.workerId, workflowId: h.deps.workflowId, stores: h.deps.stores, factory: h.deps.sessionFactory,
       clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony });
@@ -450,7 +450,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("retains exit-before-tombstone reservation across database reopen without reconstructing effect proof", async () => {
-    const h = fixture(), owner = await owned(h, h.deps.workerId), record = admit(h, h.deps.workerId, "remove-worker");
+    const h = await fixture(), owner = await owned(h, h.deps.workerId), record = admit(h, h.deps.workerId, "remove-worker");
     if (record.lifecycle === undefined) throw new Error("missing binding");
     const originalPool = h.database.authority.workerPools.get(h.deps.workflowId);
     const proof = await owner.removeWorker(record.lifecycle, WorkerStopDirectiveContextSchema.parse({ commandId: record.commandId, requestedAt: record.admittedAt, requestedBy: "local-operator" }));
@@ -472,7 +472,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("rejects a stale owned lifetime before Remove closure and a consumed proof after success", async () => {
-    const h = fixture(), owner = await owned(h, h.deps.workerId), record = admit(h, h.deps.workerId, "remove-worker");
+    const h = await fixture(), owner = await owned(h, h.deps.workerId), record = admit(h, h.deps.workerId, "remove-worker");
     if (record.lifecycle === undefined) throw new Error("missing binding");
     const directive = WorkerStopDirectiveContextSchema.parse({ commandId: record.commandId, requestedAt: record.admittedAt, requestedBy: "local-operator" });
     const stale = WorkerLifecycleBindingSchema.parse({ ...record.lifecycle, lifetime: { ...record.lifecycle.lifetime, processId: record.lifecycle.lifetime.processId + 1 } });
@@ -486,7 +486,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("retains Retry starting confirmation after authentication fails without releasing claims or inventing a run", async () => {
-    const h = fixture(), f = await retryStarting(h);
+    const h = await fixture(), f = await retryStarting(h);
     if (f.binding.operation.kind !== "retry") throw new Error("missing retry binding");
     const sessions = new WorkerSessionManager({ workerId: h.deps.workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
       factory: { open: async input => {
@@ -510,7 +510,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("blocks prior canonical claim replay during Retry initialization without reviving its settled run", async () => {
-    const h = fixture(), owner = await owned(h, h.deps.workerId), database = h.database;
+    const h = await fixture(), owner = await owned(h, h.deps.workerId), database = h.database;
     const lifecycle = new RunRecordService({ database, clock: h.authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => undefined });
     database.authority.runs.enqueue(personLookupQueuedRun());
     const command = { commandId: randomUUID(), workerId: h.deps.workerId, workflow: h.deps.workflowId, workerLifetime: testWorkerLifetime(database, h.deps.workflowId, 1).workerLifetime, runtimeConfig: selectRunRuntime(database.authority) };
@@ -532,7 +532,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("refuses old lease-generation ABA before any lifecycle reservation", async () => {
-    const h = fixture(), command = request(h, h.deps.workerId, "remove-worker"), owner = await owned(h, h.deps.workerId);
+    const h = await fixture(), command = request(h, h.deps.workerId, "remove-worker"), owner = await owned(h, h.deps.workerId);
     const pool = createWorkerPoolRuntimeExecutor(owner.supervisor, h.database.authority.workerSlots, { database: h.database, clock: h.authority.clock });
     const kernel = kernelOver(h.database, h.authority.clock, pool), generation = h.database.getMeta().authorityGeneration;
     expect(await kernel.executeWorkerPool(command)).toMatchObject({ state: "rejected" });
@@ -543,7 +543,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("retains actual warm-browser close ownership beyond Remove expiry without tombstoning", async () => {
-    const h = fixture(), owner = await owned(h, h.deps.workerId);
+    const h = await fixture(), owner = await owned(h, h.deps.workerId);
     const slot = h.database.authority.workerSlots.get(h.deps.workerId), lease = h.database.authority.workerLeases.get(h.deps.workerId), active = h.database.authority.runtimeConfig.get();
     if (slot === undefined || lease === undefined || active === undefined) throw new Error("missing owner authority");
     let closing!: () => void, release!: () => void;
@@ -583,7 +583,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("does not birth Retry outside a drain snapshot after held preflight resumes", async () => {
-    const h = fixture(), owner = await owned(h, h.deps.workerId);
+    const h = await fixture(), owner = await owned(h, h.deps.workerId);
     stopped(h, h.deps.workerId); owner.children[0]?.emitExit(1, null);
     let entered!: () => void, release!: () => void;
     const preparing = new Promise<void>(resolve => { entered = resolve; });
@@ -602,7 +602,7 @@ describe("exact lifecycle reservation", () => {
   });
 
   it("lets an existing drain own shutdown when Remove closure resumes", async () => {
-    const h = fixture(), owner = await owned(h, h.deps.workerId);
+    const h = await fixture(), owner = await owned(h, h.deps.workerId);
     let entered!: () => void, release!: () => void;
     const closing = new Promise<void>(resolve => { entered = resolve; });
     owner.gates.beforeClose = async () => { entered(); await new Promise<void>(resolve => { release = resolve; }); };
@@ -621,7 +621,7 @@ describe("exact lifecycle reservation", () => {
 
   for (const stage of ["birth", "initialization"] as const) {
     it(`refuses changed current settings before Retry ${stage} without run or readiness success`, async () => {
-      const h = fixture(), owner = await owned(h, h.deps.workerId);
+      const h = await fixture(), owner = await owned(h, h.deps.workerId);
       stopped(h, h.deps.workerId); owner.children[0]?.emitExit(1, null);
       const record = admit(h, h.deps.workerId, "retry-worker"), binding = record.lifecycle;
       if (binding?.operation.kind !== "retry") throw new Error("missing retry binding");
@@ -656,7 +656,7 @@ describe("exact lifecycle reservation", () => {
   }
 
   it("rechecks settings activated during actual authentication before durable Retry ready", async () => {
-    const h = fixture(), f = await retryStarting(h);
+    const h = await fixture(), f = await retryStarting(h);
     if (f.binding.operation.kind !== "retry") throw new Error("missing retry binding");
     let entered!: () => void, release!: () => void;
     const authenticating = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });

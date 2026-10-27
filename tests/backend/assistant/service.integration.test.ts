@@ -68,7 +68,7 @@ it("explains with byte-verified citations and prepares a bound dry proposal thro
   assert.equal(f.payloads.some(payload => payload.includes(selected.employeeId)), false, "captured private selection is not automatically model input");
 });
 it("projects actual synthetic workbook credential cells before the inference/read loop", async () => {
-  const f = fixture(), account = chatGptFixture();
+  const f = fixture(), account = await chatGptFixture();
   const canaries = ["CANARY_WORKBOOK_PASSWORD", "CANARY_TRACKER_NOTE", "902-48-1357"];
   const workbook = new ExcelJS.Workbook(), sheet = workbook.addWorksheet("Synthetic");
   sheet.addRow(["subjectRef", "displayName", "employeeId", "password", "trackerNote", "ssn"]);
@@ -331,7 +331,7 @@ it("keeps JSON-shaped terminal text as an answer rather than treating it as a co
   assert.equal(f.resolved(), 0); assert.equal(f.planned(), 0);
 });
 it("refuses completion after a genuine account signout inside an awaited synthetic handler", async () => {
-  const f = fixture(), account = chatGptFixture(); let invoked = 0;
+  const f = fixture(), account = await chatGptFixture(); let invoked = 0;
   try {
     await account.connected(); account.setSse(completedAssistantStream(answer));
     const service = createAssistantService({ ...f.options, account: account.service, modelPolicy: () => ({ policy: { ...f.options.modelPolicy().policy, model: "gpt-6.1-sol" }, isCurrent: f.options.modelPolicy().isCurrent }),
@@ -346,7 +346,7 @@ it("refuses completion after a genuine account signout inside an awaited synthet
 });
 
 for (const boundary of ["catalog", "handler"] as const) it(`refuses genuine selected-profile epoch loss across the ${boundary} await`, async () => {
-  const profile = createBoundProfileFixture(), account = chatGptFixture(profile.admission), f = fixture();
+  const profile = await createBoundProfileFixture(), account = await chatGptFixture(profile.admission), f = fixture();
   const actualFetch = globalThis.fetch;
   const transport = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
@@ -388,7 +388,7 @@ for (const boundary of ["catalog", "handler"] as const) it(`refuses genuine sele
   } finally {
     release();
     try { if (selectedContext !== undefined) { await selectedContext.account.close(); selectedContext.database.close(); } }
-    finally { transport.mockRestore(); await account.cleanup(); profile.close(); }
+    finally { transport.mockRestore(); await account.cleanup(); await profile.close(); }
   }
 });
 

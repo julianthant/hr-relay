@@ -28,11 +28,11 @@ import { AuthorityDatabase, createCredentialStore } from "../../../support/helpe
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
 
-function fixture(prerequisites = false) {
+async function fixture(prerequisites = false) {
   const driver = createWriteFixtureWorld(), graph = prerequisites ? childPrerequisiteModules(driver) : undefined;
   const selectedRoot = prerequisites ? childPrerequisiteRoot : root;
   const stores = graph?.stores ?? buildWriteFixtureRegistry(driver);
-  const h = world.executorHarness({ descriptor: selectedRoot.descriptor, stores, sessions: writeFixtureSessions(driver) });
+  const h = await world.executorHarness({ descriptor: selectedRoot.descriptor, stores, sessions: writeFixtureSessions(driver) });
   const { database, clock, stateRoot, path } = h.authority;
   const patch = { "actor.label": { set: "Synthetic operator" } } as const;
   assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
@@ -52,7 +52,7 @@ function fixture(prerequisites = false) {
 }
 
 it("retains an UNKNOWN child write as parked without retry, parent settlement or redispatch", async () => {
-  const f = fixture();
+  const f = await fixture();
   f.driver.probeResults.push(absentProbeEvidence(f.clock.now().toISOString()));
   f.driver.commitThrows = new Error("synthetic commit failed after the actual write fence");
   assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "yielded-delegation");
@@ -122,7 +122,7 @@ it("retains an UNKNOWN child write as parked without retry, parent settlement or
 
 for (const unrelatedReset of [false, true]) {
 it(`authenticates task and transaction prerequisites through child resume with unrelated reset ${String(unrelatedReset)}`, async () => {
-  const f = fixture(true);
+  const f = await fixture(true);
   let control: ReturnType<typeof admitWorkerReset> | undefined;
   if (unrelatedReset) {
     const home = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.run.envelope.workflow,

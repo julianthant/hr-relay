@@ -20,7 +20,7 @@ function terminalRun(database: AuthorityDatabase) {
 describe("a dry run previews its transaction node and ends there", () => {
 
   it("refuses to build a preview result for a run the operator did not ask to preview", async () => {
-    const h = harness();
+    const h = await harness();
     await h.run({ dryRun: false });
 
     // The run committed for real, so its terminal record is the derived result.

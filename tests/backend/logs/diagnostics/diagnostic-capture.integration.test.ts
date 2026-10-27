@@ -13,7 +13,7 @@ import { trustWorld } from "../../../support/helpers/backend/trust-authority-fix
 
 describe("ordinary diagnostic authority", () => {
   it("keeps active and pinned captures and marks expired settled captures explicitly unavailable", async () => {
-    const w = trustWorld();
+    const w = await trustWorld();
     try {
       const active = w.create(810), settled = w.create(811); w.cancel(settled, 812);
       let id = 0;
@@ -30,7 +30,7 @@ describe("ordinary diagnostic authority", () => {
       assert.equal(w.database.authority.diagnosticBundles.get(activeBundle.bundleId)?.availability, undefined);
       assert.equal(w.database.authority.diagnosticBundles.get(pinned.bundleId)?.availability, undefined);
       assert.deepEqual(w.database.readManagedArtifactReferences(), []);
-    } finally { w.dispose(); }
+    } finally { await w.dispose(); }
   });
 });
 }

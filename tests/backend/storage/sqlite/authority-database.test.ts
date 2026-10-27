@@ -22,7 +22,7 @@ const retainedFixtureOwners: unknown[] = [];
 {
 
 it("uses the existing stopped upgrade maintenance door without changing authority or plan bytes", async () => {
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   const root = profile.workspace;
   const clock = manualClock(new Date("2026-01-01T12:00:00.000Z"));
   const admission = profile.admission;
@@ -86,7 +86,7 @@ diagnostic stages: 0 reclaimed, 1 retained; retained evidence remains budget-acc
     retainedFixtureOwners.push({ profile, primary: primary.error });
     throw primary.error;
   }
-  try { profile.close(); }
+  try { await profile.close(); }
   catch (cleanup) {
     throw retainAuthoritySourceClosure(primary === undefined ? [cleanup] : [primary.error, cleanup], { admission, directory: { profile } });
   }
@@ -101,8 +101,8 @@ const _afterEachFixture0 = () => {
   vi.restoreAllMocks();
   for (const fixture of fixtures.splice(0)) fixture.cleanup();
 };
-function fixture() {
-  const profile = createBoundProfileFixture();
+async function fixture() {
+  const profile = await createBoundProfileFixture();
   const credentials = boundProfileCredentials(profile.admission);
   const owner = { profile, closureFailed: false };
   const databases = new Set<AuthorityDatabase>();
@@ -125,10 +125,10 @@ function fixture() {
       throw error;
     }
   };
-  const result = { path: profile.path, open, close, cleanup() {
+  const result = { path: profile.path, open, close, async cleanup() {
     if (owner.closureFailed) return;
     for (const database of databases) close(database);
-    try { profile.close(); }
+    try { await profile.close(); }
     catch (error) {
       owner.closureFailed = true;
       const retained = retainAuthoritySourceClosure([error], { admission: profile.admission, directory: { profile } });
@@ -142,8 +142,8 @@ function fixture() {
 describe("native authority admission",()=>{
 afterEach(_afterEachFixture0);
 
-  it.each([0,1,48,99])("refuses version %i without rewriting its header or retained rows",version=>{
-    const f=fixture();f.close(f.open());
+  it.each([0,1,48,99])("refuses version %i without rewriting its header or retained rows",async version=>{
+    const f=await fixture();f.close(f.open());
     const db=new DatabaseSync(f.path);
     let baseline: ReturnType<ReturnType<DatabaseSync["prepare"]>["all"]>;
     let primary: { error: unknown } | undefined;
@@ -171,26 +171,26 @@ const _afterEachFixture0 = () => { vi.restoreAllMocks(); for (const root of root
 describe("first installation worker custody", () => {
 afterEach(_afterEachFixture0);
 
-  function initialFixture() {
-    return createFirstInstallCustodyFixture(roots, HASH_A);
+  async function initialFixture() {
+    return await createFirstInstallCustodyFixture(roots, HASH_A);
   }
-  it("retains blocking first-install custody on an AuthorityDatabase opening callback failure", () => {
-    const f = initialFixture();
+  it("retains blocking first-install custody on an AuthorityDatabase opening callback failure", async () => {
+    const f = await initialFixture();
     vi.spyOn(AuthorityDatabase, "open").mockImplementation(() => {
       expect(f.snapshot().processLocks.workers.state).toBe("active"); throw new Error("initial-open-fault");
     });
     expect(f.acquire).toThrow("initial-open-fault");
-    expect(f.snapshot().processLocks.workers.state).toBe("active"); f.custody().release(); f.close();
+    expect(f.snapshot().processLocks.workers.state).toBe("active"); f.custody().release(); await f.close();
   });
-  it("retains blocking custody through a first-install close fault", () => {
-    const f = initialFixture();
+  it("retains blocking custody through a first-install close fault", async () => {
+    const f = await initialFixture();
     const originalClose = Object.getOwnPropertyDescriptor(AuthorityDatabase.prototype, "close")?.value as (this: AuthorityDatabase) => void;
     vi.spyOn(AuthorityDatabase.prototype, "close").mockImplementation(function (this: AuthorityDatabase) {
       expect(f.snapshot().processLocks.workers.state).toBe("active");
       originalClose.call(this); throw new Error("initial-close-unproved");
     });
     expect(f.acquire).toThrow("initial-close-unproved");
-    expect(f.snapshot().processLocks.workers.state).toBe("active"); f.custody().release(); f.close();
+    expect(f.snapshot().processLocks.workers.state).toBe("active"); f.custody().release(); await f.close();
   });
 });
 }

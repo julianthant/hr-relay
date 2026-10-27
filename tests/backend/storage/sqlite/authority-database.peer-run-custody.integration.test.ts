@@ -6,8 +6,8 @@ import { fixtureUuid } from "../../../support/fixtures/ledger-projection-fixture
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { HISTORY_NOW,historyClock,historyWorld } from "../../../support/helpers/storage/transaction-history-fixture.js";
 
-function peers(){
-  const world=historyWorld({terminalize:true}),fixture=world.commit(90);
+async function peers(){
+  const world=await historyWorld({terminalize:true}),fixture=world.commit(90);
   const source=world.database.authority.runs.get(fixture.commit.transaction.runId);assert.ok(source);
   const retry=RunRecordSchema.parse({envelope:{...source.envelope,runId:fixtureUuid("native-peer-retry"),attempt:2,retryOf:source.envelope.runId,enqueuedAt:HISTORY_NOW},
     input:source.input,lifecycle:{state:"queued"},claimGeneration:0,version:1,createdAt:HISTORY_NOW,updatedAt:HISTORY_NOW});
@@ -20,8 +20,8 @@ function peers(){
 }
 
 describe("current peer run custody",()=>{
-  it.each([true,false])("retains permanent confirmed evidence after both same-item run deletions, source first=%s",sourceFirst=>{
-    const f=peers();
+  it.each([true,false])("retains permanent confirmed evidence after both same-item run deletions, source first=%s",async sourceFirst=>{
+    const f=await peers();
     try{
       const intent=f.world.database.authority.writeIntents.get(f.fixture.commit.writeIntentId);
       const attempts=f.world.database.authority.writeAttempts.listByIntent(f.fixture.commit.writeIntentId);
@@ -43,11 +43,11 @@ describe("current peer run custody",()=>{
       assert.deepEqual(f.world.database.authority.writeAttempts.listByIntent(f.fixture.commit.writeIntentId),attempts);
       assert.equal(f.world.database.authority.deletedRuns.get(f.source.envelope.runId)?.attempt,1);
       assert.equal(f.world.database.authority.deletedRuns.get(f.retry.envelope.runId)?.attempt,2);
-    }finally{f.world.dispose();}
+    }finally{await f.world.dispose();}
   });
 
-  it("refuses a corrupt current peer before deleting a retry or writing a tombstone",()=>{
-    const f=peers();
+  it("refuses a corrupt current peer before deleting a retry or writing a tombstone",async ()=>{
+    const f=await peers();
     try{
       const retry=f.world.database.authority.runs.get(f.retry.envelope.runId);assert.ok(retry);
       const generation=f.world.database.getMeta().authorityGeneration;
@@ -68,6 +68,6 @@ describe("current peer run custody",()=>{
         assert.equal(checked.prepare("SELECT count(*) AS n FROM commands WHERE id=?").get(fixtureUuid("corrupt-peer-delete"))?.n,0);
         assert.equal(checked.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()?.authority_generation,generation);
       }finally{checked.close();}
-    }finally{f.world.dispose();}
+    }finally{await f.world.dispose();}
   });
 });

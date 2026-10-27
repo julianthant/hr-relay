@@ -15,8 +15,8 @@ it("measures enqueue-to-end duration and keeps unknown warnings explicit", () =>
   assert.throws(()=>deriveCanonicalPerson(run,RunResultRecordSchema.parse({...TERMINAL_SEPARATIONS_RESULT,attempt:2})),/summary-result-identity-mismatch/);
 });
 
-it("keeps heartbeat-only derivation identity stable and notices presentation changes",()=>{
-  const f=foundationFixture();try {
+it("keeps heartbeat-only derivation identity stable and notices presentation changes",async ()=>{
+  const f=await foundationFixture();try {
     const source={run:f.run,result:null,receipt:null,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[]};
     const before=deriveRunSummary(source,1);
     assert.equal(before.durationMs,null);
@@ -24,17 +24,17 @@ it("keeps heartbeat-only derivation identity stable and notices presentation cha
     const renewed=RunRecordSchema.parse({...f.run,version:f.run.version+1,updatedAt:"2026-09-09T12:00:01.000Z",lifecycle:{...f.run.lifecycle,heartbeatAt:"2026-09-09T12:00:01.000Z"}});
     assert.equal(deriveRunSummary({...source,run:renewed},2).sourceDigest,before.sourceDigest);
     assert.notEqual(deriveRunSummary({...source,run:{...renewed,displayName:"Changed"}},2).sourceDigest,before.sourceDigest);
-  }finally{f.dispose();}
+  }finally{await f.dispose();}
 });
 
-it("uses the local enqueue day across a UTC boundary without changing the instant",()=>{
-  const f=foundationFixture(),prior=process.env.TZ;
+it("uses the local enqueue day across a UTC boundary without changing the instant",async ()=>{
+  const f=await foundationFixture(),prior=process.env.TZ;
   try{
     const run=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,enqueuedAt:"2026-09-09T00:30:00.000Z"}});
     const source={run,result:null,receipt:null,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[]};
     process.env.TZ="UTC";assert.equal(deriveRunSummary(source,1).localDay,"2026-09-09");
     process.env.TZ="America/Los_Angeles";assert.equal(deriveRunSummary(source,1).localDay,"2026-09-08");
-  }finally{if(prior===undefined)delete process.env.TZ;else process.env.TZ=prior;f.dispose();}
+  }finally{if(prior===undefined)delete process.env.TZ;else process.env.TZ=prior;await f.dispose();}
 });
 
 import { cleanReceiptOf,receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";

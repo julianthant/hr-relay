@@ -19,16 +19,16 @@ import { createBoundProfileFixture, boundProfileCredentials } from "../../../sup
 const CLOCK = manualClock(new Date(NOW));
 // Use a different fact EID; repeating the submitted title would make the wire-leak assertion vacuous.
 const READING_FACTS = { eid: "20111222", effectiveDate: "01/02/2026" };
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const databases: AuthorityDatabase[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of databases.splice(0)) database.close();
-  for (const profile of profiles.splice(0)) profile.close();
+  for (const profile of profiles.splice(0)) await profile.close();
 });
 
-function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start", initialize = true) {
-  const profile = createBoundProfileFixture(); profiles.push(profile);
+async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start", initialize = true) {
+  const profile = await createBoundProfileFixture(); profiles.push(profile);
   const database = AuthorityDatabase.open(profile.admission,
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
     undefined, undefined, undefined, boundProfileCredentials(profile.admission));
@@ -80,8 +80,8 @@ function refusal(run: () => unknown): StartStepOmissionRefusedError {
 }
 
 describe("start plan recovery", () => {
-  it.each([undefined, "restart-from-start"] as const)("retains trusted recovery=%s without exposing public ingress", recovery => {
-    const harness = harnessFor(omissionAssertingDescriptor, recovery);
+  it.each([undefined, "restart-from-start"] as const)("retains trusted recovery=%s without exposing public ingress", async recovery => {
+    const harness = await harnessFor(omissionAssertingDescriptor, recovery);
     const input = request(omissionAssertingDescriptor, {});
     const wire = harness.service.plan(input);
     assert.equal(harness.database.authority.startPlans.get(wire.startPlanId)?.recovery, recovery);
@@ -91,8 +91,8 @@ describe("start plan recovery", () => {
 });
 
 describe("start plan step omissions", () => {
-  it("carries the reconciled omissions onto the served wire and the durable plan record", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("carries the reconciled omissions onto the served wire and the durable plan record", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const wire = harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
       stepOmissions: [{ step: "reading", facts: READING_FACTS }],
@@ -110,8 +110,8 @@ describe("start plan step omissions", () => {
     assert.equal(stored?.planned.length, 1);
   });
 
-  it("omits the field entirely when every omittable step is selected to run", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("omits the field entirely when every omittable step is selected to run", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const wire = harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["reading", "folding", "auditing"],
     }));
@@ -119,8 +119,8 @@ describe("start plan step omissions", () => {
     assert.equal(harness.database.authority.startPlans.get(wire.startPlanId)?.stepOmissions, undefined);
   });
 
-  it("refuses invalid facts before a plan row, a run identity or a transaction exists", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("refuses invalid facts before a plan row, a run identity or a transaction exists", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
       stepOmissions: [{ step: "reading", facts: { eid: "20111222", effectiveDate: "2026-01-02" } }],
@@ -140,8 +140,8 @@ describe("start plan step omissions", () => {
     assert.ok(harness.database.authority.startPlans.get(wire.startPlanId) !== undefined);
   });
 
-  it("refuses omissions submitted with no explicit step selection", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("refuses omissions submitted with no explicit step selection", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       stepOmissions: [{ step: "reading", facts: READING_FACTS }],
     })));
@@ -149,8 +149,8 @@ describe("start plan step omissions", () => {
     assert.equal(harness.transactions(), 0);
   });
 
-  it("refuses typed facts for a plan that carries more than one subject", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("refuses typed facts for a plan that carries more than one subject", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       submissions: [{ eid: "10873698" }, { eid: "10101010" }],
       selectedStepKeys: ["folding", "auditing"],
@@ -160,8 +160,8 @@ describe("start plan step omissions", () => {
     assert.equal(harness.transactions(), 0);
   });
 
-  it("refuses an omitted step whose facts never arrived", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("refuses an omitted step whose facts never arrived", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
     })));
@@ -169,8 +169,8 @@ describe("start plan step omissions", () => {
     assert.equal(harness.transactions(), 0);
   });
 
-  it("refuses a selection that keeps a step the omission leaves unable to read", () => {
-    const harness = harnessFor(omissionCascadingDescriptor);
+  it("refuses a selection that keeps a step the omission leaves unable to read", async () => {
+    const harness = await harnessFor(omissionCascadingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionCascadingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
       stepOmissions: [{ step: "reading", facts: READING_FACTS }],
@@ -195,8 +195,8 @@ describe("start plan step omissions", () => {
 });
 
 
-it("plan service selects the active snapshot inside its write boundary after boot", () => {
- const h = harnessFor(omissionAssertingDescriptor);
+it("plan service selects the active snapshot inside its write boundary after boot", async () => {
+ const h = await harnessFor(omissionAssertingDescriptor);
  const nextId = "83000000-0000-4000-8000-000000000097";
  const config = { ...CONFIG_SNAPSHOT.config, timeouts: { ...CONFIG_SNAPSHOT.config.timeouts, taskMs: 90_000 } };
  const fingerprint = sha256Hex(canonicalJsonStringify(config));
@@ -214,15 +214,15 @@ it("plan service selects the active snapshot inside its write boundary after boo
 
 
 describe("start plans have no worker choice", () => {
-  it("omits workers from the stored plan and response", () => {
-    const h = harnessFor(omissionAssertingDescriptor);
+  it("omits workers from the stored plan and response", async () => {
+    const h = await harnessFor(omissionAssertingDescriptor);
     const wire = h.service.plan(request(h.descriptor, {}));
     assert.equal(Object.hasOwn(wire, "workers"), false);
     assert.equal(Object.hasOwn(h.database.authority.startPlans.get(wire.startPlanId) ?? {}, "workers"), false);
     assert.equal(h.database.authority.workerSlots.list().length, 0);
   });
-  it.each(["auto", 1, 8, 0, 9, 1.5, "1", null])("rejects removed workers %s before writing a plan", workers => {
-    const h = harnessFor(omissionAssertingDescriptor);
+  it.each(["auto", 1, 8, 0, 9, 1.5, "1", null])("rejects removed workers %s before writing a plan", async workers => {
+    const h = await harnessFor(omissionAssertingDescriptor);
     assert.throws(() => h.service.plan(request(h.descriptor, { workers })));
     assert.equal(h.transactions(), 0);
     assert.deepEqual(h.ids.minted(), []);
@@ -230,8 +230,8 @@ describe("start plans have no worker choice", () => {
 });
 
 
-it("refuses a genuinely never-initialized Settings snapshot before any plan or lifecycle identity is persisted", () => {
-  const h = harnessFor(omissionAssertingDescriptor, undefined, false);
+it("refuses a genuinely never-initialized Settings snapshot before any plan or lifecycle identity is persisted", async () => {
+  const h = await harnessFor(omissionAssertingDescriptor, undefined, false);
   const generation = h.database.getMeta().authorityGeneration;
   assert.throws(() => h.service.plan(request(h.descriptor, {})), /run-settings-snapshot-mismatch/u);
   assert.equal(h.transactions(), 1);
@@ -239,8 +239,8 @@ it("refuses a genuinely never-initialized Settings snapshot before any plan or l
   assert.deepEqual(h.database.authority.runs.listByWorkflow(String(h.descriptor.id)), []);
 });
 
-it("rolls a canonical plan back with its enclosing transaction and retains the exact prior Settings identity", () => {
-  const h = harnessFor(omissionAssertingDescriptor);
+it("rolls a canonical plan back with its enclosing transaction and retains the exact prior Settings identity", async () => {
+  const h = await harnessFor(omissionAssertingDescriptor);
   const generation = h.database.getMeta().authorityGeneration;
   const active = h.database.authority.runtimeConfig.get();
   let proposed: ReturnType<typeof h.service.plan> | undefined;

@@ -11,9 +11,9 @@ afterEach(cleanup);
 
 describe("THE run/queue projection", () => {
 
-  it("keeps a re-run node's chip on the CURRENT run attempt when the span path repeats", () => {
+  it("keeps a re-run node's chip on the CURRENT run attempt when the span path repeats", async () => {
 
-    const w = world();
+    const w = await world();
     queuedEventOf(w, { seed: 1, attempt: 2 });
     claimEventOf(w, 1);
     const base = {
@@ -42,9 +42,9 @@ describe("THE run/queue projection", () => {
     assert.deepEqual(crossVerify.map((event) => event.state), ["cancelled", "done"]);
   });
 
-  it("folds another SQLite connection's task spans — the run enqueued after boot gets its timeline", () => {
+  it("folds another SQLite connection's task spans — the run enqueued after boot gets its timeline", async () => {
 
-    const w = world();
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const base = {
@@ -66,8 +66,8 @@ describe("THE run/queue projection", () => {
 });
 
 describe("settled run presentation retains skip reasons and measured timing", () => {
-  it("renders a conditionally-skipped node as SKIPPED with its closed reason, never as cancelled", () => {
-    const w = world();
+  it("renders a conditionally-skipped node as SKIPPED with its closed reason, never as cancelled", async () => {
+    const w = await world();
     seedExitRunShape(w);
 
     const detail = buildRunDetail(
@@ -87,8 +87,8 @@ describe("settled run presentation retains skip reasons and measured timing", ()
     }
   });
 
-  it("keeps a skipped span whose reason was never recorded explicitly reasonless", () => {
-    const w = world();
+  it("keeps a skipped span whose reason was never recorded explicitly reasonless", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     // A missing skip reason remains absent; do not infer a familiar reason.

@@ -100,8 +100,8 @@ it("limits first-adoption verification to read-only inspection", () => {
   expect(existsSync(path)).toBe(false);
 });
 
-it("initializes only one canonical pending profile before real ready publication and issued runtime custody", () => {
-  const profile = createBoundProfileFixture({ pending: true });
+it("initializes only one canonical pending profile before real ready publication and issued runtime custody", async () => {
+  const profile = await createBoundProfileFixture({ pending: true });
   try {
     const machineRoot = profile.machine.stateRoot, path = profile.path;
     expect(existsSync(join(machineRoot, "state.db"))).toBe(false);
@@ -123,7 +123,7 @@ it("initializes only one canonical pending profile before real ready publication
       });
     } finally { raw.close(); }
     const setup = profile.admission;
-    profile.finish();
+    await profile.finish();
     expect(() => setup.assertLive()).toThrow(/released admission/u);
     expect(() => AuthorityDatabase.initializeProfile(profile.admission)).toThrow(/profile-initialization-authority-required/u);
     expect(profile.machine.readProfileRegistry().profiles[0]?.lifecycle).toBe("ready");
@@ -131,7 +131,7 @@ it("initializes only one canonical pending profile before real ready publication
     expect(existsSync(join(machineRoot, "state.db"))).toBe(false);
     const database = AuthorityDatabase.open(profile.admission, { path, busyTimeoutMs: 250, migrationOwner: "test" });
     try { expect(database.getMeta().schemaVersion).toBe(CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { database.close(); }
-  } finally { profile.close(); }
+  } finally { await profile.close(); }
 });
 
 it("keeps an adopting journal after an empty fresh initializer", () => {

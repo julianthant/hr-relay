@@ -93,7 +93,7 @@ import { personLookupDescriptor } from "../../support/helpers/registered-workflo
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
 const roots: string[] = [];
-const profiles = new Map<string, ReturnType<typeof createBoundProfileFixture>>();
+const profiles = new Map<string, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
 const initialGenerations = new Map<string, number>();
 const databases: AuthorityDatabase[] = [];
 const bootStores: AuthorityBootStore[] = [];
@@ -294,8 +294,8 @@ function seedTerminalAuthority(database: AuthorityDatabase) {
   return { failure, failureAuthorization, result: built.record, successAuthorization };
 }
 
-function testRoot(): string {
-  const profile = createBoundProfileFixture();
+async function testRoot(): Promise<string> {
+  const profile = await createBoundProfileFixture();
   profiles.set(profile.stateRoot, profile);
   roots.push(profile.workspace);
   admissions.set(profile.stateRoot, profile.admission);
@@ -530,7 +530,7 @@ async function createBackup(database: AuthorityDatabase, directory: string) {
   return { report, manifestPath: paths.at(-1) ?? "" };
 }
 
-afterEach(() => {
+afterEach(async () => {
   timelineFixturePaths.clear();
   timelineFixtureOwners.clear();
   for (const store of bootStores.splice(0)) store.close();
@@ -540,14 +540,14 @@ afterEach(() => {
     database.close();
   }
   admissions.clear();
-  for (const profile of profiles.values()) profile.close();
+  for (const profile of profiles.values()) await profile.close();
   profiles.clear(); initialGenerations.clear(); roots.splice(0);
 });
 
 describe("verified native online backups", () => {
 
   it("backs up through the private native handle and self-observes the completed copy", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -572,7 +572,7 @@ describe("verified native online backups", () => {
   });
 
   it("coalesces concurrent requests and performs one generation follow-up", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -602,7 +602,7 @@ describe("verified native online backups", () => {
   });
 
   it("fails loud and removes its unique temporary target when native backup fails", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -624,7 +624,7 @@ describe("verified native online backups", () => {
   });
 
   it("rejects tampered backup bytes and a tampered manifest", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -635,7 +635,7 @@ describe("verified native online backups", () => {
     appendFileSync(backupPath, "tamper");
     await assert.rejects(verifyBackupManifestAtPath(admissionFor(manifestPath), manifestPath), /byte size does not match/);
 
-    const secondRoot = testRoot();
+    const secondRoot = await testRoot();
     const secondPath = join(secondRoot, "state.db");
     const secondDirectory = backupDirectory(secondRoot);
     const secondDatabase = openDatabase(secondPath);
@@ -649,7 +649,7 @@ describe("verified native online backups", () => {
   });
 
   it("rejects a native backup whose JSON-valid command record fails its strict schema", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -665,8 +665,8 @@ describe("verified native online backups", () => {
 });
 
 describe("fail-closed degraded boot and read-only doctor", () => {
-  it("returns span resolutions with the authority identity from their read snapshot", () => {
-    const root = testRoot();
+  it("returns span resolutions with the authority identity from their read snapshot", async () => {
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -689,8 +689,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
   });
 
-  it("uses native run and tombstone queries without retired archive SQL", () => {
-    const root = testRoot();
+  it("uses native run and tombstone queries without retired archive SQL", async () => {
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     const secondRun = RunRecordSchema.parse({
@@ -732,8 +732,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.deepEqual(snapshot.resolutions.map(({ state }) => state), ["live", "live"]);
   });
 
-  it("resolves a span root whose run carries a tombstone as deleted", () => {
-    const root = testRoot();
+  it("resolves a span root whose run carries a tombstone as deleted", async () => {
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -767,8 +767,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }]);
   });
 
-  it("refuses a tombstone whose stored record fails its strict schema", () => {
-    const root = testRoot();
+  it("refuses a tombstone whose stored record fails its strict schema", async () => {
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -804,8 +804,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }]);
   });
 
-  it("refuses a source commit during read-only snapshot inspection", () => {
-    const root = testRoot();
+  it("refuses a source commit during read-only snapshot inspection", async () => {
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     const baseline = AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath);
@@ -843,7 +843,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("refuses a missing span corpus when exact authority proves runs already exist", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -864,7 +864,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("accepts a missing span corpus only for the exact never-produced authority baseline", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     openDatabase(authorityPath);
 
@@ -887,7 +887,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("refuses a symlinked state-root parent before native evidence inspection", async () => {
-    const root = testRoot(); const admission = admissionFor(root);
+    const root = await testRoot(); const admission = admissionFor(root);
     const authorityPath = join(root, "state.db"); openDatabase(authorityPath).close();
     const parent = dirname(root); const retained = parent + "-retained";
     renameSync(parent, retained); symlinkSync(retained, parent);
@@ -904,7 +904,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("refuses an intermediate state-root component replaced by a symlink while the doctor awaits", async () => {
-    const root = testRoot(); const admission = admissionFor(root);
+    const root = await testRoot(); const admission = admissionFor(root);
     const authorityPath = join(root, "state.db"); const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN); emitQueuedSpan(root);
     await createBackup(database, backupDirectory(root)); database.close();
@@ -919,7 +919,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("refuses a doctor report assembled across different authority snapshots", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -943,7 +943,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("performs one broad authority inspection and one span snapshot per doctor run", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     openDatabase(authorityPath);
     const broadProbe = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
@@ -977,7 +977,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("refuses a transient A-to-B-to-A authority swap during span resolution", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const originalPath = join(root, "backups", "authority-a.sqlite");
     const replacementPath = join(root, "replacement-authority.sqlite");
@@ -1032,7 +1032,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("refuses when an initially degraded authority changes during external verification", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const healthyPath = join(root, "healthy-authority.sqlite");
     const directory = backupDirectory(root);
@@ -1060,7 +1060,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("preserves a failed final identity read as named transition evidence", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     openDatabase(authorityPath);
     const identityProbe = vi.spyOn(AuthorityDatabase, "inspectAuthorityReadIdentityReadOnly")
@@ -1096,7 +1096,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("preserves both failed identity reads when degraded evidence changes", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     openDatabase(authorityPath);
     const broadProbe = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly")
@@ -1146,7 +1146,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("names a span-known run missing from exact live and archived authority", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     openDatabase(authorityPath);
     emitQueuedSpan(root);
@@ -1171,7 +1171,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies priority drift in the exact live task tuple", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1199,7 +1199,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies a full queued-root tuple that disagrees with its exact live authority", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1236,7 +1236,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies a queued root whose span path is not its frozen trace root", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1281,7 +1281,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies task identity that does not remain beneath its exact queued root", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1320,7 +1320,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies duplicate run.queued roots instead of collapsing them to one live run id", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1350,7 +1350,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies queued roots whose item attempts appear out of authority order", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     const laterRunId = "99999999-0009-4000-8000-999900000099";
@@ -1392,7 +1392,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("accepts a native requeue retaining the immutable run attempt", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1422,7 +1422,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("names malformed exact task authority instead of selecting another row", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1455,7 +1455,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(problem.summary, "runs authority failed its strict native row validation");
   });
 
-  it("rejects NULL/nonterminal partial completion, failure and result settlements read-only", () => {
+  it("rejects NULL/nonterminal partial completion, failure and result settlements read-only", async () => {
     const terminalValue = { schemaHash: HASH_A, value: { complete: true } };
     const partialResult = {
       runId: QUEUED_RUN.envelope.runId,
@@ -1547,7 +1547,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     ] as const;
 
     for (const fixture of cases) {
-      const path = join(testRoot(), "state.db");
+      const path = join(await testRoot(), "state.db");
       const database = openDatabase(path);
       database.authority.runs.enqueue(QUEUED_RUN);
       database.close();
@@ -1564,7 +1564,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }
   });
 
-  it("degrades read-only for every schema-valid authorization/consequence mismatch in both arms", () => {
+  it("degrades read-only for every schema-valid authorization/consequence mismatch in both arms", async () => {
     const commonCases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [
       ["version", (run) => ({ ...run, version: run.version + 1 })],
       ["claim-generation", (run) => ({ ...run, claimGeneration: run.claimGeneration + 1 })],
@@ -1599,7 +1599,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     ] as const;
 
     for (const arm of arms) {
-      const path = join(testRoot(), "state.db");
+      const path = join(await testRoot(), "state.db");
       const database = openDatabase(path);
       seedTerminalAuthority(database);
       const originalRun = database.authority.runs.get(arm.runId);
@@ -1636,9 +1636,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }
   });
 
-  it("protects every completion field and detects offline consequence corruption", () => {
+  it("protects every completion field and detects offline consequence corruption", async () => {
     for (const arm of [{ runId: UUID_1, kind: "failed" }, { runId: UUID_2, kind: "done" }]) {
-      const path = join(testRoot(), "state.db");
+      const path = join(await testRoot(), "state.db");
       const database = openDatabase(path); const seeded = seedTerminalAuthority(database); database.close();
       const raw = new DatabaseSync(path);
       const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger'").all();
@@ -1664,33 +1664,33 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       const report = openBootStore(path).report();
       assert.equal(report.state, "degraded-read-only");
     }
-    const path = join(testRoot(), "state.db"); const database = openDatabase(path); database.close();
+    const path = join(await testRoot(), "state.db"); const database = openDatabase(path); database.close();
     const raw = new DatabaseSync(path);
     try { for (const table of ["run_terminal_authorizations", "run_terminal_outbox"]) assert.throws(() => raw.prepare(`SELECT * FROM ${table}`), /no such table/); }
     finally { raw.close(); }
   });
 
   it("opens corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files degraded", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const paths: Array<readonly [string, string]> = [];
 
-    const corruptPath = join(testRoot(), "state.db");
+    const corruptPath = join(await testRoot(), "state.db");
     writeFileSync(corruptPath, "not a sqlite database");
     paths.push([corruptPath, "authority-not-sqlite"]);
 
-    const truncatedPath = join(testRoot(), "state.db");
+    const truncatedPath = join(await testRoot(), "state.db");
     openDatabase(truncatedPath).close();
     truncateSync(truncatedPath, 128);
     paths.push([truncatedPath, "authority-corrupt"]);
 
-    const newerPath = join(testRoot(), "state.db");
+    const newerPath = join(await testRoot(), "state.db");
     openDatabase(newerPath).close();
     const newer = new DatabaseSync(newerPath);
     newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
     newer.close();
     paths.push([newerPath, "authority-schema-mismatch"]);
 
-    const foreignKeyPath = join(testRoot(), "state.db");
+    const foreignKeyPath = join(await testRoot(), "state.db");
     openDatabase(foreignKeyPath).close();
     const badForeignKey = new DatabaseSync(foreignKeyPath, { enableForeignKeyConstraints: false });
     badForeignKey.prepare(`
@@ -1700,7 +1700,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     badForeignKey.close();
     paths.push([foreignKeyPath, "authority-foreign-key"]);
 
-    const invariantPath = join(testRoot(), "state.db");
+    const invariantPath = join(await testRoot(), "state.db");
     const invariantDatabase = openDatabase(invariantPath);
     invariantDatabase.authority.commands.insert(COMMAND_FIXTURES[0]);
     invariantDatabase.close();
@@ -1709,7 +1709,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     badInvariant.close();
     paths.push([invariantPath, "authority-record-invalid"]);
 
-    const recordSchemaPath = join(testRoot(), "state.db");
+    const recordSchemaPath = join(await testRoot(), "state.db");
     const recordSchemaDatabase = openDatabase(recordSchemaPath);
     fenceWriteFixture(recordSchemaDatabase, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, recordSchemaPath);
     releaseSeededWriteOwners(recordSchemaDatabase, CLOCK.now().toISOString());
@@ -1755,7 +1755,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("reports counts, backup freshness/gap, candidates, and a newer bad manifest without mutation", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -1806,7 +1806,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("reports a verified restore candidate even when the live authority becomes corrupt", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -1830,7 +1830,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 
 describe("offline exact-backup restore", () => {
   it("consumes the exact issued proof when the wall clock advances before exclusive verification", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -1845,7 +1845,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("preserves nonempty failure, result and immutable same-row completion authority", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -1875,7 +1875,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("preserves the suspect DB and restores authority without resurrecting retired projections", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1911,7 +1911,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("refuses restore without the explicit stopped-system proof before preserving or swapping", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1930,7 +1930,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("refuses when a worker starts after the stopped proof was issued", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1958,7 +1958,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("refuses a never-run proof after the first singleton starts and releases", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1985,7 +1985,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("holds exclusive admission through verification and authority replacement", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2010,7 +2010,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("does not fall back when the exact newest manifest is bad", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2029,7 +2029,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("keeps live and suspect recoverable when projection rebuild fails", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2052,7 +2052,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("leaves live authority untouched on an injected atomic-swap failure", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2079,7 +2079,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("restores a companion when its displacement rename throws after moving it", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2115,7 +2115,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("reports authority replaced when atomic swap throws after replacing it", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2151,7 +2151,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("reports cleanup-only failure after authority replacement and names the staged path", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2186,7 +2186,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("preserves primary failure before staged cleanup failure", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2231,7 +2231,7 @@ describe("offline exact-backup restore", () => {
     operation,
     expectedLiveCompanion,
   }) => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2294,7 +2294,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("refuses when verified backup bytes mutate during the staged copy", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2324,7 +2324,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("classifies post-swap directory fsync failure as authority replaced", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2351,7 +2351,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("classifies post-swap report validation failure as authority replaced", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2376,7 +2376,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("classifies exclusive-admission release failure after swap as authority replaced", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2404,7 +2404,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("rejects stale, replayed, generation-mismatched, and currently-active process-lock proofs", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2471,7 +2471,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("rejects a checksum-valid restore copy whose authority record is schema-invalid", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2514,7 +2514,7 @@ function replacedFailure(message: RegExp): (error: unknown) => boolean {
 
 describe("authority.health preflight and static recovery boundary", () => {
   it("fails authority.health when a span-known run has no exact authority", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2536,7 +2536,7 @@ describe("authority.health preflight and static recovery boundary", () => {
   });
 
   it("projects doctor health through the registered authority.health runner", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);

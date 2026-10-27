@@ -9,8 +9,8 @@ const {world, runRecordOf, queuedEventOf, CLAIM, seedExitRunShape, cleanup } = c
 afterEach(cleanup);
 
 describe("settled run presentation retains skip reasons and measured timing", () => {
-  it("serves the terminal instant on a settled row and an explicit absence while in flight", () => {
-    const w = world();
+  it("serves the terminal instant on a settled row and an explicit absence while in flight", async () => {
+    const w = await world();
     seedExitRunShape(w);
     queuedEventOf(w, { seed: 2 });
     w.authority.put(runRecordOf({
@@ -26,8 +26,8 @@ describe("settled run presentation retains skip reasons and measured timing", ()
     assert.equal(running.endedAt.state, "absent");
   });
 
-  it("ignores a stale run end and leaves a nonterminal run undated", () => {
-    const w = world();
+  it("ignores a stale run end and leaves a nonterminal run undated", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     // The span contradicts canonical queued authority; neither status nor duration may follow it.

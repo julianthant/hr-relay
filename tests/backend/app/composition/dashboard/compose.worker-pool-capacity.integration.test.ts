@@ -61,7 +61,7 @@ describe("the composed worker process control through the kernel pool door", () 
   afterEach(cleanup);
 
   it.each(["all-or-none", "best-effort"] as const)("holds %s bulk child identities until an in-flight worker effect is journaled", async (mode) => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     const active = harness.database.authority.runtimeConfig.get(); assert.ok(active);
     harness.database.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId } });
     await admitPoolSlot(harness);
@@ -128,7 +128,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("refuses async pool starts after settings make this runtime stale", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     applySettingsRequiringRestart(harness);
 
     await assert.rejects(
@@ -148,7 +148,7 @@ describe("the composed worker process control through the kernel pool door", () 
     let applyDuringEffect = (): void => {
       throw new Error("settings crossing hook was not initialized");
     };
-    const harness = openControlHarness({
+    const harness = await openControlHarness({
       interceptPool: (pool) => ({
         ...pool,
         planPoolWorkerCount: async (context) => {
@@ -177,7 +177,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("spawns the exact worker CLI argv and acknowledges only after the durable lease proves birth", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     const member = await admitPoolSlot(harness);
     const commandId = nextCommandId();
     const pending = harness.kernel.executeWorkerPool({
@@ -221,7 +221,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("rejects a spawn whose child never proves birth: SIGKILL, retained admission, no acknowledgement", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     await admitPoolSlot(harness);
     const commandId = nextCommandId();
     const pending = harness.kernel.executeWorkerPool({
@@ -244,7 +244,7 @@ describe("the composed worker process control through the kernel pool door", () 
 
 
   it("refuses an externally started worker Stop before reservation or shutdown effects", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     assert.equal(admitExternalSlot(harness), WORKER_1);
     // An operator started this worker by hand: the lease is live under a pid
     // this supervisor never spawned.
@@ -279,7 +279,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("replays an already-applied spawn without re-running the process effect", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     const { commandId } = await spawnPoolWorker(harness);
     assert.equal(harness.children.length, 1);
 
@@ -295,7 +295,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("refuses the synchronous execute path for worker-browser, and other families at the pool door", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     const result = harness.kernel.execute({
       ...envelope(harness), type: "plan-worker-count",
       target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { desiredWorkers: 1 },
@@ -325,7 +325,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
   afterEach(cleanup);
 
   it("declares one cold worker, waits for birth, and replays without recreating a later crash", async () => {
-    const h = openControlHarness(); const commands = launchCommands(h); const { request } = dashboardLaunch(h);
+    const h = await openControlHarness(); const commands = launchCommands(h); const { request } = dashboardLaunch(h);
     assert.equal(h.children.length, 0);
     const pending = commands.submit(request);
     await proveLaunchBirth(h);
@@ -350,7 +350,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
   });
 
   it("serializes concurrent launches so two queued runs share one cold worker", async () => {
-    const h = openControlHarness(); const commands = launchCommands(h);
+    const h = await openControlHarness(); const commands = launchCommands(h);
     const first = dashboardLaunch(h).request; const second = dashboardLaunch(h, "10203373").request;
     const pending = Promise.all([commands.submit(first), commands.submit(second)]);
     await proveLaunchBirth(h);
@@ -359,7 +359,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
   });
 
   it.each(["starting", "idle", "busy"] as const)("reuses an external %s run-directed worker without adoption or scaling", async state => {
-    const h = openControlHarness(); occupyMember(h, 1, "run"); const { request } = dashboardLaunch(h);
+    const h = await openControlHarness(); occupyMember(h, 1, "run"); const { request } = dashboardLaunch(h);
     if (state !== "starting") h.database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
       lifecycle: { state, startedAt: NOW, heartbeatAt: NOW, ...(state === "busy" ? { runId: RUN_ID } : {}) }, now: NOW });
     const poolBefore = h.database.authority.workerPools.get(WORKFLOW);
@@ -381,7 +381,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
 
 
   it.each(["pause", "stop"] as const)("keeps a larger declaration without spawning beside a %s-directed member", async directive => {
-    const h = openControlHarness(); const { request } = dashboardLaunch(h);
+    const h = await openControlHarness(); const { request } = dashboardLaunch(h);
     await admitPoolSlot(h, 3);
     occupyMember(h, 1, directive); const before = h.database.authority.workerLeases.get(WORKER_1);
     assert.equal((await launchCommands(h).submit(request)).state, "applied");
@@ -391,7 +391,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
   });
 
   it.each(["declared", "undeclared"] as const)("counts an owned %s paused member without resuming it", async declaration => {
-    const h = openControlHarness(); const { request } = dashboardLaunch(h);
+    const h = await openControlHarness(); const { request } = dashboardLaunch(h);
     await spawnPoolWorker(h);
     if (declaration === "declared") h.database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
     h.database.authority.workerLeases.control({ workerId: WORKER_1, expectedVersion: 1, control: { directive: "pause", requestedAt: NOW, requestedBy: "local-operator" }, now: NOW });
@@ -403,7 +403,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
 
   it.each(["stop-directed", "stopping"] as const)("counts an owned %s member before Plan effects", async phase => {
     let planCalls = 0;
-    const h = openControlHarness({ interceptPool: pool => ({ ...pool,
+    const h = await openControlHarness({ interceptPool: pool => ({ ...pool,
       planPoolWorkerCount: async context => { planCalls++; return pool.planPoolWorkerCount(context); },
     }) });
     const { request } = dashboardLaunch(h);
@@ -425,7 +425,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
   });
 
   it("keeps an overtarget roster without resuming paused or stopping members", async () => {
-    const h = openControlHarness(); const { request } = dashboardLaunch(h);
+    const h = await openControlHarness(); const { request } = dashboardLaunch(h);
     await admitPoolSlot(h, 3);
     for (let index = 1; index <= 3; index++) occupyMember(h, index, index === 2 ? "stop" : "pause");
     const before = JSON.stringify(h.database.authority.workerLeases.listLive());
@@ -435,7 +435,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
   });
 
   it("does not create capacity for a refused start or an applied zero-run plan", async () => {
-    const h = openControlHarness(); const commands = launchCommands(h); const { request } = dashboardLaunch(h);
+    const h = await openControlHarness(); const commands = launchCommands(h); const { request } = dashboardLaunch(h);
     const bad = { ...request, payload: { ...request.payload, inputFingerprint: "f".repeat(64) } };
     assert.equal((await commands.submit(bad)).state, "rejected");
     const plan = h.database.authority.startPlans.get(request.target.startPlanId); assert.ok(plan);
@@ -450,7 +450,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
 
   it.each(["refused", "uncertain"] as const)("retains a %s spawn and never repeats it on exact replay", async outcome => {
     let calls = 0;
-    const h = openControlHarness({ interceptPool: pool => ({ ...pool, spawnPoolWorker: async () => {
+    const h = await openControlHarness({ interceptPool: pool => ({ ...pool, spawnPoolWorker: async () => {
       calls++;
       if (outcome === "refused") throw new WorkerControlRefusal("injected-spawn-refusal");
       throw new Error("injected-spawn-uncertainty");
@@ -465,14 +465,14 @@ describe("dashboard launch creates bounded worker capacity", () => {
   });
 
   it("reports replay without startup admission as unknown when no usable worker remains", async () => {
-    const h = openControlHarness(); const { request } = dashboardLaunch(h);
+    const h = await openControlHarness(); const { request } = dashboardLaunch(h);
     assert.equal(h.kernel.execute(request).state, "applied");
     await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup status unknown/);
     assert.equal(h.children.length, 0); assert.equal(h.database.authority.workerControls.list().length, 0);
   });
 
   it("recovers the selected member from a settled Plan when Spawn was never admitted", async () => {
-    const h = openControlHarness(); const { request } = dashboardLaunch(h);
+    const h = await openControlHarness(); const { request } = dashboardLaunch(h);
     await spawnPoolWorker(h);
     h.database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
     h.database.authority.workerLeases.control({ workerId: WORKER_1, expectedVersion: 1,
@@ -489,7 +489,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
   });
 
   it("does not execute a retained admitted Spawn after a dashboard restart", async () => {
-    const h = openControlHarness(); const { request } = dashboardLaunch(h);
+    const h = await openControlHarness(); const { request } = dashboardLaunch(h);
     assert.equal(h.kernel.execute(request).state, "applied");
     h.database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
     const child = { ...envelope(h, runCapacityCommandId(request.commandId, "spawn-worker", 1)), type: "spawn-worker",
@@ -507,7 +507,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
 async function signInPoolApplication(runtime: Awaited<ReturnType<typeof composeDashboardApplication>>): Promise<string> {
   const origin = `http://127.0.0.1:${runtime.port}`;
   const response = await fetch(`${origin}/api/v1/profile/sign-in`, { method: "POST",
-    headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ email: "fixture@example.edu", password: "disposable-fixture-password" }) });
+    headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
   const body: unknown = await response.json();
   const projected = PublicProfileStateSchema.safeParse(body);
   assert.equal(response.status, 200, projected.success
@@ -527,9 +527,9 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
   afterEach(cleanup);
 
   it("does not reserve recovery or launch a stopped standing worker at dashboard boot", async () => {
-    const profile = createBoundProfileFixture({ sharedMachine: true }), repoRoot = profile.workspace;
+    const profile = await createBoundProfileFixture({ sharedMachine: true }), repoRoot = profile.workspace;
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), name), join(repoRoot, name));
-    cleanups.push(() => profile.close());
+    cleanups.push(async () => await profile.close());
     const clock = manualClock(new Date(NOW));
     const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "pool-shutdown-fixture" },
       clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
@@ -642,7 +642,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
   });
 
 const retainedCapacityCustody: {
-  profile: ReturnType<typeof createBoundProfileFixture>;
+  profile: Awaited<ReturnType<typeof createBoundProfileFixture>>;
   runtime?: Awaited<ReturnType<typeof composeDashboardApplication>>;
   selectedAdmission?: RuntimeAdmission;
   children: FakeWorkerChild[];
@@ -654,7 +654,7 @@ const retainedCapacityCustody: {
 }[] = [];
 
   it.each(["manual-worker", "dashboard-start"] as const)("retains backend custody when adversarial %s work cannot drain", async mode => {
-    const profile = createBoundProfileFixture(), repoRoot = profile.workspace;
+    const profile = await createBoundProfileFixture(), repoRoot = profile.workspace;
     const children: FakeWorkerChild[] = [];
     const retained: (typeof retainedCapacityCustody)[number] = { profile, children, databases: [] };
     retainedCapacityCustody.push(retained);
@@ -860,7 +860,7 @@ describe("every control retains a crash after effect admission", () => {
 
   it.each(["plan-worker-count", "spawn-worker", "pause-worker", "resume-worker", "stop-worker", "refresh-browser", "reopen-browser"] as const)("%s never repeats an uncertain effect or accepts a divergent replay", async type => {
     let fault = false; let calls = 0;
-    const harness = openControlHarness({ interceptPool: (pool, { database, clock }) => {
+    const harness = await openControlHarness({ interceptPool: (pool, { database, clock }) => {
       const wrap = (operation: (context: WorkerRuntimeContext) => Promise<unknown>) => async (context: WorkerRuntimeContext) => {
         if (!fault || context.command.type !== type) return operation(context);
         calls += 1;

@@ -9,8 +9,8 @@ import { historyClock, historyWorld } from "../../../support/helpers/storage/tra
 
 {
 
-const cleanup: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const dispose of cleanup.splice(0)) dispose(); };
+const cleanup: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const dispose of cleanup.splice(0)) await dispose(); };
 const range = { from: "2026-07-01", to: "2026-09-09" };
 describe("explicit transaction export", () => {
 afterEach(_afterEachFixture0);
@@ -22,8 +22,8 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(parseTransactionExportArgs(["--from", range.from, "--to", range.to, "--output", "report.json", "--system", "ucpath"]),
       { kind: "export", request: { ...range, output: "report.json", system: "ucpath" } });
   });
-  it("pins one database snapshot and produces deterministic private-file public presentation", () => {
-    const w = historyWorld(); cleanup.push(() => w.dispose()); w.commit(301);
+  it("pins one database snapshot and produces deterministic private-file public presentation", async () => {
+    const w = await historyWorld(); cleanup.push(async () => await w.dispose()); w.commit(301);
     const snapshot = w.history.query(range); w.commit(302);
     const pinned = { ...w.history, query: () => snapshot };
     const first = exportTransactions(pinned, { ...range, output: `${w.root}/first.json` });
@@ -35,8 +35,8 @@ afterEach(_afterEachFixture0);
     assert.equal(text.includes('"bindingProof"'), false); assert.equal(text.includes('"idempotencyKey"'), false);
     assert.equal(exportTransactions(w.history, { ...range, system: "kuali", output: `${w.root}/filtered.json` }).transactions, 0);
   });
-  it("refuses existing output and symlinks without changing either owner", () => {
-    const w = historyWorld(); cleanup.push(() => w.dispose()); w.commit(303);
+  it("refuses existing output and symlinks without changing either owner", async () => {
+    const w = await historyWorld(); cleanup.push(async () => await w.dispose()); w.commit(303);
     const output = `${w.root}/owned.json`; writeFileSync(output, "other-owner");
     assert.throws(() => exportTransactions(w.history, { ...range, output }), /EEXIST/u);
     assert.equal(readFileSync(output, "utf8"), "other-owner");
@@ -52,8 +52,8 @@ afterEach(_afterEachFixture0);
 const range = { from: "2026-07-01", to: "2026-09-09" };
 
 for (const stop of ["before-delete", "after-delete"] as const) {
-  it(`keeps exact transactions through ${stop} rollback, restart, deletion and replay`, () => {
-    const w = historyWorld({ terminalize: true });
+  it(`keeps exact transactions through ${stop} rollback, restart, deletion and replay`, async () => {
+    const w = await historyWorld({ terminalize: true });
     try {
       const fixture = w.commit(801);
       w.commit(802, { instance: "test" });
@@ -94,7 +94,7 @@ for (const stop of ["before-delete", "after-delete"] as const) {
       assert.deepEqual(w.history.query(range), after);
       const replay = exportTransactions(w.history, { ...range, output: join(w.root, "replay.json") });
       assert.deepEqual(readFileSync(replay.output), bytes);
-    } finally { w.dispose(); }
+    } finally { await w.dispose(); }
   });
 }
 }

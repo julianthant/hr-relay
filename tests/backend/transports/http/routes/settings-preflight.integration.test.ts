@@ -6,7 +6,7 @@ import { PreflightRerunCommandResultSchema, requiredPreflightChecks } from "../.
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("reruns the one strict preflight authority through its command route", async () => {
-    const h = harness();
+    const h = await harness();
     const command = {
       commandId: "00000000-0000-4000-8000-000000000010",
       requestedAt: h.clock.now().toISOString(),
@@ -44,7 +44,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses preflight reruns outside the loopback Host and Origin boundary", async () => {
-    const h = harness();
+    const h = await harness();
     const command = {
       commandId: "00000000-0000-4000-8000-000000000012",
       requestedAt: h.clock.now().toISOString(),
@@ -78,7 +78,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("keeps preflight body transport and decoding refusals distinguishable", async () => {
-    const h = harness();
+    const h = await harness();
     const wrongType = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
       headers: { "content-type": "text/plain", host: "127.0.0.1:3938" },
@@ -105,7 +105,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("distinguishes malformed lengths, missing bodies, and failed body streams", async () => {
-    const h = harness();
+    const h = await harness();
     for (const contentLength of ["01", "9007199254740992"]) {
       const response = await h.app.request("/api/v1/preflight/rerun", {
         method: "POST",
@@ -147,7 +147,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses a preflight rerun body beyond its strict byte limit", async () => {
-    const h = harness();
+    const h = await harness();
     const response = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
       headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
@@ -159,7 +159,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("rate-bounds preflight rerun starts within one monotonic window", async () => {
-    const h = harness();
+    const h = await harness();
     const request = (index: number) => h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
       headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
@@ -184,7 +184,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     let markStarted = (): void => undefined;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const started = new Promise<void>((resolve) => { markStarted = resolve; });
-    const h = harness({ preflightBeforeRun: async () => {
+    const h = await harness({ preflightBeforeRun: async () => {
       markStarted();
       await gate;
     } });
@@ -216,7 +216,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const deadlines = new Set<() => void>();
     const began = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    const h = harness({
+    const h = await harness({
       preflightScheduler: {
         schedule(_at, onDeadline) {
           deadlines.add(onDeadline);
@@ -252,7 +252,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("reruns preflight through the closed read-only command and returns the exact report", async () => {
-    const h = harness();
+    const h = await harness();
     const response = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
       headers: { "content-type": "application/json", host: "127.0.0.1:3938" },

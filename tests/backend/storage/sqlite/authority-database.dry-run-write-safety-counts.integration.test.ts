@@ -21,11 +21,11 @@ const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(NATIVE_ATOMIC_WRITE_COMMIT
 const retainedCountFixtureOwners = new Set<object>();
 
 describe("dry-run write-safety evidence query", () => {
-  it("counts only rows joined from the named run's intents", () => {
-    const held: { profile?: ReturnType<typeof createBoundProfileFixture>; database?: AuthorityDatabase; primary?: { error: unknown } } = {};
+  it("counts only rows joined from the named run's intents", async () => {
+    const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; primary?: { error: unknown } } = {};
     retainedCountFixtureOwners.add(held);
     try {
-    const profile = createBoundProfileFixture(); held.profile = profile;
+    const profile = await createBoundProfileFixture(); held.profile = profile;
     const clock = manualClock(new Date(NOW));
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "dry-run-count-test" },
@@ -64,7 +64,7 @@ describe("dry-run write-safety evidence query", () => {
     assert.deepEqual(database.authority.writeIntents.listByRun(WRITE_INTENT_ATTEMPTING.runId), confirmedSnapshot);
     const after = database.authority.runs.get(current.envelope.runId); assert.ok(after);
     assert.equal(runClaim(after), undefined);
-    database.close(); profile.close(); retainedCountFixtureOwners.delete(held);
+    database.close(); await profile.close(); retainedCountFixtureOwners.delete(held);
     } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
   });
 });

@@ -17,7 +17,7 @@ import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-execu
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("refuses a foreign-origin settings command before any authority effect", async () => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b79";
     const patch = { "browser.headless": { set: false } } as const;
     const command = {
@@ -56,7 +56,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ["foreign Origin", { ...OPERATOR_JSON_HEADERS, origin: "https://hostile.example" }, 403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
     ["text/plain", { ...OPERATOR_JSON_HEADERS, "content-type": "text/plain" }, 415, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED"],
   ] as const)("refuses %s without consuming either command body or changing authority", async (_label, headers, status, code) => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b74";
     const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b73";
     const patch = { "browser.headless": { set: false } } as const;
@@ -110,7 +110,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       extra: true,
     } }, { targets: [] }],
   ] as const)("refuses %s through strict command ingress with zero effects", async (_label, singleChange, bulkChange) => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b72";
     const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b71";
     const patch = { "browser.headless": { set: false } } as const;
@@ -150,7 +150,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("returns not-editable for a protected key submitted through ordinary settings before authority access", async () => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -194,7 +194,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ["deployment-owned ordinary", { "paths.stateRoot": { set: "/tmp/foreign-root" } }, "paths.stateRoot", "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b6b"],
   ] as const)("returns not-editable for %s before authority access", async (_label, patch, key, commandId) => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -233,7 +233,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     { label: "partial display clear", seed: { "display.screenWidth": { set: 1600 }, "display.screenHeight": { set: 900 } }, patch: { "display.screenHeight": { clear: true } }, missing: ["display.screenHeight"] },
     { label: "partial annual dates clear", seed: { "annualDates.FY2027.jobEndDate": { set: "06/30/2027" }, "annualDates.FY2027.kronosDefaultEndDate": { set: "06/30/2027" }, "annualDates.FY2027.kronosDefaultStartDate": { set: "07/01/2026" } }, patch: { "annualDates.FY2027.jobEndDate": { clear: true } }, missing: ["annualDates.FY2027.jobEndDate"] },
   ])("returns cross-field-invalid for $label without durable effects", async ({ seed, patch, missing }) => {
-    const h = harness();
+    const h = await harness();
     const send = (commandId: string, expectedRevision: number, changes: unknown) => h.app.request("/api/v1/commands", {
       method: "POST", headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ commandId, family: "settings", type: "apply-settings", target: { expectedRevision },
@@ -251,7 +251,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("accepts a current-year job-end date without Kronos fields", async () => {
-    const h = harness();
+    const h = await harness();
     const path = `annualDates.FY${String(h.clock.fiscalYear())}.jobEndDate`;
     const patch = { [path]: { set: "06/30/2027" } };
     const response = await h.app.request("/api/v1/commands", {
@@ -268,7 +268,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("refuses invalid or unauthorized requests before protected retry identity and journal reads", async () => {
     let reads = 0;
     const forbiddenRead = () => { reads += 1; throw new Error("forbidden request-only authority read"); };
-    const h = harness({ protectedCommandAcceptedAt: forbiddenRead, commandJournal: () => ({ get: forbiddenRead }) });
+    const h = await harness({ protectedCommandAcceptedAt: forbiddenRead, commandJournal: () => ({ get: forbiddenRead }) });
     const commandId = "00000000-0000-4000-8000-000000000907";
     const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: 1 },
       payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000908", entries: { ucpathPassword: { set: "synthetic-validation-only" } } } };
@@ -286,7 +286,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it.each(["set", "clear"] as const)("settles an uncertain credential %s audit through HTTP after the server clock advances", async (operation) => {
-    const h = harness();
+    const h = await harness();
     const current = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable"))).protectedSettings;
     assert.equal(current.state, "available");
     if (current.state !== "available") throw new Error("protected-settings-unavailable");
@@ -334,7 +334,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("returns invalid-value for an ordinary settings leaf before authority access", async () => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -375,7 +375,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("returns invalid-value for a protected settings leaf before authority access", async () => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -464,7 +464,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ],
   ] as const)("preserves %s at mixed-failure ingress", async (_label, commandId, request, code, message) => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -493,7 +493,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("returns not-editable for an unknown protected settings key before authority access", async () => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -532,7 +532,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it.each([[null], [[]], ["command"], [1]])("refuses a non-object command body (%j) without authority effects", async (body) => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b70";
     const before = settingsAuthoritySnapshot(h, commandId);
     const beforeFault = faultAuthoritySnapshot(h);
@@ -551,7 +551,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("stamps accepted command provenance from the server-owned operator session", async () => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b78";
     const patch = { "browser.headless": { set: false } } as const;
     const acceptedAt = h.clock.now().toISOString();
@@ -607,7 +607,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("replays the first server-accepted canonical command after the clock advances", async () => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b77";
     const acceptedAt = h.clock.now().toISOString();
     const patch = { "browser.headless": { set: false } } as const;

@@ -141,8 +141,8 @@ describe("the executor runs no entry of an omitted step and never asks for value
     return run;
   }
 
-  function harness() {
-    const authority = openAuthorityHarness();
+  async function harness() {
+    const authority = await openAuthorityHarness();
     testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: descriptor, poolIndex: 1 });
     disposers.push(authority.dispose);
     const sessions = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver(), crm: () => healthyCrmDriver() });
@@ -152,7 +152,7 @@ describe("the executor runs no entry of an omitted step and never asks for value
       descriptor,
       stores: taskStoreRegistry,
       authority: authority.database,
-      sessions: sessionManagerFor(sessions, authority.clock),
+      sessions: await sessionManagerFor(sessions, authority.clock),
       emitter: emitter.emitter,
       clock: authority.clock,
       ids: sequentialIdFactory("e"),
@@ -163,7 +163,7 @@ describe("the executor runs no entry of an omitted step and never asks for value
     return { authority, sessions, emitter, deps };
   }
 
-  function claim(harnessed: ReturnType<typeof harness>) {
+  function claim(harnessed: Awaited<ReturnType<typeof harness>>) {
     const { workerId, workerLifetime } = testWorkerLifetime(harnessed.authority.database, descriptor.id, 1);
     const claimed = harnessed.authority.database.authority.runs.claimNext({
       workerLifetime, workflow: descriptor.id,
@@ -175,7 +175,7 @@ describe("the executor runs no entry of an omitted step and never asks for value
   }
 
   it("omits the gate with its step: no gate.opened span, no gate_results row, no park, the read is asserted with operator provenance", async () => {
-    const h = harness();
+    const h = await harness();
     h.authority.database.authority.runs.enqueue(queuedRun([{ step: "deciding", facts: { verifiedByHand: true } }]));
     const claimed = claim(h);
     const outcome = await executeClaimedRun(h.deps, claimed);
@@ -199,7 +199,7 @@ describe("the executor runs no entry of an omitted step and never asks for value
   });
 
   it("runs every entry, parks at the gate and records a real decision only when the step is NOT omitted", async () => {
-    const h = harness();
+    const h = await harness();
     h.authority.database.authority.runs.enqueue(queuedRun());
     const claimed = claim(h);
     const outcome = await executeClaimedRun(h.deps, claimed);
@@ -212,7 +212,7 @@ describe("the executor runs no entry of an omitted step and never asks for value
       () => resolveStartStepOmissions(descriptor, ["reads"], [{ step: "deciding", facts: {} }]),
       (error: unknown) => error instanceof StartStepOmissionRefusedError && /facts are invalid at: verifiedByHand/u.test(error.message),
     );
-    const h = harness();
+    const h = await harness();
     h.authority.database.authority.runs.enqueue(queuedRun([{ step: "deciding", facts: { verifiedByHand: "yes" } }]));
     const claimed = claim(h);
     const outcome = await executeClaimedRun(h.deps, claimed);

@@ -64,8 +64,8 @@ const {CLAIM, openDatabase, startRunning, resultRequest, cleanup } = createRunIn
 describe("atomic success terminal authority", () => {
 afterEach(cleanup);
 
-  it("rejects the former schema-valid complete/empty-dependencies fabrication bypass", () => {
-    const database = openDatabase();
+  it("rejects the former schema-valid complete/empty-dependencies fabrication bypass", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const resultValue = { schemaHash: HASH_A, value: { complete: true } };
     const fabricated = {
@@ -106,8 +106,8 @@ afterEach(cleanup);
     assert.equal(cancelled.state, "applied");
   });
 
-  it("rejects run/outbox identity, stale claim/version, generic done, and non-running success", () => {
-    const database = openDatabase();
+  it("rejects run/outbox identity, stale claim/version, generic done, and non-running success", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const { result, authorization, factoryAuthorization } = resultRequest(database, running);
     assert.throws(() => database.terminalizeSuccess({
@@ -197,7 +197,7 @@ describe("a dry run previews its transaction node and ends there", () => {
 afterEach(cleanup);
 
   it("settles a previewed run with a preview record and NOTHING durable from the write half", async () => {
-    const h = harness();
+    const h = await harness();
     await h.run();
 
     const record = terminalRun(h.database);
@@ -265,7 +265,7 @@ afterEach(cleanup);
   });
 
   it("previews an already-present subject as an OUTCOME, staging nothing and writing nothing", async () => {
-    const h = harness();
+    const h = await harness();
     await h.run({ probe: { state: "present", proof: { transactionId: "T900001" } } });
 
     const record = terminalRun(h.database);
@@ -304,7 +304,7 @@ afterEach(cleanup);
   });
 
   it("refuses the preview when the probe cannot answer, rather than staging anyway", async () => {
-    const h = harness();
+    const h = await harness();
     await h.run({
       probe: { state: "unknown", reason: "the grid never rendered", observedAt: WRITE_FIXTURE_NOW },
     });

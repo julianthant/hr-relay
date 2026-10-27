@@ -46,10 +46,10 @@ function queuedRun(options: Readonly<{ runId?: string; attempt?: number }> = {})
   return run;
 }
 
-function depsFor(
+async function depsFor(
   authority: AuthorityHarness,
   sessions: ReturnType<typeof sessionFactoryHarness>,
-): Readonly<{ deps: RunExecutorDependencies; emitter: ReturnType<typeof recordingTimelineEmitter> }> {
+): Promise<Readonly<{ deps: RunExecutorDependencies; emitter: ReturnType<typeof recordingTimelineEmitter> }>> {
   const emitter = recordingTimelineEmitter(authority.database, authority.clock);
   return {
     emitter,
@@ -58,7 +58,7 @@ function depsFor(
       descriptor,
       stores: taskStoreRegistry,
       authority: authority.database,
-      sessions: sessionManagerFor(sessions, authority.clock),
+      sessions: await sessionManagerFor(sessions, authority.clock),
       emitter: emitter.emitter,
       clock: authority.clock,
       ids: sequentialIdFactory("e"),
@@ -71,7 +71,7 @@ function depsFor(
 
 describe("parallel leaves retry independently", () => {
   it("replays the successful leaf's checkpoint and re-executes only the failed leaf on the next attempt", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const { workerId, workerLifetime } = testAdmittedWorker(database, clock, {
@@ -104,7 +104,7 @@ describe("parallel leaves retry independently", () => {
     });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") return;
-    const first = depsFor(authority, failingCrm);
+    const first = await depsFor(authority, failingCrm);
     const failed = await executeClaimedRun(first.deps, {
       run: claimed.run,
       claim: { workerId: workerId, claimGeneration: claimed.run.claimGeneration },
@@ -144,7 +144,7 @@ describe("parallel leaves retry independently", () => {
       },
       crm: () => healthyCrmDriver(),
     });
-    const second = depsFor(authority, healthy);
+    const second = await depsFor(authority, healthy);
     const outcome = await executeClaimedRun(second.deps, {
       run: reclaimed.run,
       claim: { workerId: workerId, claimGeneration: reclaimed.run.claimGeneration },

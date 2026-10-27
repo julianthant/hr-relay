@@ -129,7 +129,7 @@ describe("edit data field policy", () => {
 
 describe("Rerun source and provenance boundary", () => {
   it("checks source revision, descriptor closure, node and field provenance before storing a plan", async () => {
-    const h = sourceBoundHarness();
+    const h = await sourceBoundHarness();
     try {
       const initial = h.start(h.proposal());
       h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
@@ -153,6 +153,6 @@ describe("Rerun source and provenance boundary", () => {
       assert.throws(() => buildRerunPlan(h.database.authority, changedDescriptor, RerunSourceSchema.parse(request.rerunSource), []),
         /workflow runtime nodes require the exact object returned by defineWorkflowDescriptor/u);
       assert.deepEqual(h.fresh(source), source);
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
 });

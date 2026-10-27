@@ -245,8 +245,8 @@ function seedRun(w: DashboardWorld): void {
 describe("the served categorical steps", () => {
 afterEach(cleanup);
 
-  it("serves ONE step per category, not one per node", () => {
-    const w = world();
+  it("serves ONE step per category, not one per node", async () => {
+    const w = await world();
     seedRun(w);
     ranFor(w, "document", 6_000);
     ranFor(w, "plan", 2_000);
@@ -269,8 +269,8 @@ afterEach(cleanup);
     }
   });
 
-  it("sums the measured member durations into the category's own number", () => {
-    const w = world();
+  it("sums the measured member durations into the category's own number", async () => {
+    const w = await world();
     seedRun(w);
     ranFor(w, "document", 6_000);
     ranFor(w, "plan", 2_000);
@@ -284,9 +284,9 @@ afterEach(cleanup);
     ]);
   });
 
-  it("folds a re-execution into ×N rather than drawing a second segment", () => {
+  it("folds a re-execution into ×N rather than drawing a second segment", async () => {
 
-    const w = world();
+    const w = await world();
     seedRun(w);
     ranFor(w, "timecard", 5_000, "done", 1);
     ranFor(w, "timecard", 9_000, "done", 2);
@@ -299,15 +299,15 @@ afterEach(cleanup);
     assert.equal(kronos?.durationSec, 14);
   });
 
-  it("carries no ×N marker when every member ran exactly once", () => {
-    const w = world();
+  it("carries no ×N marker when every member ran exactly once", async () => {
+    const w = await world();
     seedRun(w);
     ranFor(w, "timecard", 5_000);
     assert.equal(detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Kronos timecard")?.executions, undefined);
   });
 
-  it("renders an open gate as its CATEGORY's state — a wait is a state of a step", () => {
-    const w = world();
+  it("renders an open gate as its CATEGORY's state — a wait is a state of a step", async () => {
+    const w = await world();
     seedRun(w);
     ranFor(w, "comparison", 3_000);
     w.writer.emit({
@@ -327,8 +327,8 @@ afterEach(cleanup);
     assert.equal(identity?.members.at(-1)?.durationSec, undefined);
   });
 
-  it("lets a FAILURE anywhere in a category be the category's fact", () => {
-    const w = world();
+  it("lets a FAILURE anywhere in a category be the category's fact", async () => {
+    const w = await world();
     seedRun(w);
     ranFor(w, "document", 1_000, "done");
     ranFor(w, "plan", 1_000, "failed");
@@ -340,8 +340,8 @@ afterEach(cleanup);
     assert.deepEqual(extraction?.members.map((member) => member.state), ["done", "failed"]);
   });
 
-  it("reports a category nothing has reached as pending, with no invented duration", () => {
-    const w = world();
+  it("reports a category nothing has reached as pending, with no invented duration", async () => {
+    const w = await world();
     seedRun(w);
     ranFor(w, "document", 1_000);
     ranFor(w, "plan", 1_000);
@@ -351,9 +351,9 @@ afterEach(cleanup);
     assert.equal(kronos?.durationSec, undefined);
   });
 
-  it("serves NO steps when no registered descriptor can say what the graph's shape is", () => {
+  it("serves NO steps when no registered descriptor can say what the graph's shape is", async () => {
 
-    const w = world();
+    const w = await world();
     seedRun(w);
     ranFor(w, "document", 1_000);
 
@@ -401,8 +401,8 @@ function terminal(w: DashboardWorld, outcome: "done" | "failed"): void {
 describe("a replayed node is not a node that never ran", () => {
 afterEach(cleanup);
 
-  it("renders a no-span node with an earlier run's checkpoint as REPLAYED", () => {
-    const w = world();
+  it("renders a no-span node with an earlier run's checkpoint as REPLAYED", async () => {
+    const w = await world();
     seedRun(w);
     ranFor(w, "comparison", 3_000);
     checkpointOf(w, { nodeId: "timecard", runSeed: 2, attempt: 8, claimGeneration: 2 });
@@ -419,8 +419,8 @@ afterEach(cleanup);
     }]);
   });
 
-  it("leaves a node with NEITHER span nor checkpoint exactly as it was", () => {
-    const w = world();
+  it("leaves a node with NEITHER span nor checkpoint exactly as it was", async () => {
+    const w = await world();
     seedRun(w);
     ranFor(w, "comparison", 3_000);
     terminal(w, "done");
@@ -430,8 +430,8 @@ afterEach(cleanup);
     assert.equal(kronos?.members.at(0)?.replayedFrom, undefined);
   });
 
-  it("leaves a node that EXECUTED exactly as it was, checkpoint or not", () => {
-    const w = world();
+  it("leaves a node that EXECUTED exactly as it was, checkpoint or not", async () => {
+    const w = await world();
     seedRun(w);
     ranFor(w, "timecard", 5_000);
     checkpointOf(w, { nodeId: "timecard", runSeed: 2 });
@@ -443,10 +443,10 @@ afterEach(cleanup);
     assert.equal(kronos?.members.at(0)?.replayedFrom, undefined);
   });
 
-  it("REFUSES the claim on a run that stopped elsewhere — a failed run never reached the node", () => {
+  it("REFUSES the claim on a run that stopped elsewhere — a failed run never reached the node", async () => {
     // The load-bearing refusal. Only a terminal `done` run visited every node,
     // so only there does "no span" rule out "the run stopped before this".
-    const w = world();
+    const w = await world();
     seedRun(w);
     ranFor(w, "comparison", 3_000, "failed");
     checkpointOf(w, { nodeId: "timecard", runSeed: 2 });
@@ -456,8 +456,8 @@ afterEach(cleanup);
     assert.equal(kronos?.state, "pending");
   });
 
-  it("REFUSES the claim on a checkpoint THIS run wrote — that is an execution, not a replay", () => {
-    const w = world();
+  it("REFUSES the claim on a checkpoint THIS run wrote — that is an execution, not a replay", async () => {
+    const w = await world();
     seedRun(w);
     ranFor(w, "comparison", 3_000);
     checkpointOf(w, { nodeId: "timecard", runSeed: 1 });
@@ -469,10 +469,10 @@ afterEach(cleanup);
     );
   });
 
-  it("folds a category whose members MIXED replay and execution as done", () => {
+  it("folds a category whose members MIXED replay and execution as done", async () => {
     // A category where something executed is a category that ran; the member
     // list keeps the whole picture either way.
-    const w = world();
+    const w = await world();
     seedRun(w);
     ranFor(w, "plan", 2_000);
     checkpointOf(w, { nodeId: "document", runSeed: 2 });
@@ -485,10 +485,10 @@ afterEach(cleanup);
     assert.equal(extraction?.durationSec, 2);
   });
 
-  it("keeps a settled GATE reading `done`, because its own durable record says so", () => {
+  it("keeps a settled GATE reading `done`, because its own durable record says so", async () => {
     // A gate never replays across runs (`replay-gate` reads this run's own
     // `gate_results` row), so the gate arm is untouched by this decision.
-    const w = world();
+    const w = await world();
     seedRun(w);
     ranFor(w, "comparison", 3_000);
     w.writer.emit({
@@ -547,8 +547,8 @@ function executeOnce(w: DashboardWorld, pid: number, ms: number): void {
 }
 
 /** The poisoned run, terminal exactly as the real one is. */
-function poisonedWorld(): DashboardWorld {
-  const w = world();
+async function poisonedWorld(): Promise<DashboardWorld> {
+  const w = await world();
   queuedEventOf(w, { seed: SEED });
   claimEventOf(w, SEED);
   executeOnce(w, 4242, 4_000);
@@ -565,15 +565,15 @@ function poisonedWorld(): DashboardWorld {
 describe("two executions sharing one span identity in a checkpoint without claim generation", () => {
 afterEach(cleanup);
 
-  it("parses a timeline with repeated execution identities", () => {
+  it("parses a timeline with repeated execution identities", async () => {
 
-    const w = poisonedWorld();
+    const w = await poisonedWorld();
     const detail = buildRunDetail(deps(w), uuidOf(SEED));
     assert.equal(detail.runId, uuidOf(SEED));
   });
 
-  it("renders TWO executions, because that is what the stream records", () => {
-    const w = poisonedWorld();
+  it("renders TWO executions, because that is what the stream records", async () => {
+    const w = await poisonedWorld();
     const { events } = buildRunDetail(deps(w), uuidOf(SEED)).timeline;
     assert.equal(events.length, 2);
     assert.deepEqual(events.map((event) => event.label), [NODE, NODE]);
@@ -588,21 +588,21 @@ afterEach(cleanup);
     );
   });
 
-  it("gives the two executions DISTINCT note ids", () => {
-    const w = poisonedWorld();
+  it("gives the two executions DISTINCT note ids", async () => {
+    const w = await poisonedWorld();
     const ids = buildRunDetail(deps(w), uuidOf(SEED)).timeline.events.map((event) => event.noteId);
     assert.equal(new Set(ids).size, 2);
   });
 
-  it("leaves the FIRST execution's id byte-identical — the ordinal is read forward", () => {
+  it("leaves the FIRST execution's id byte-identical — the ordinal is read forward", async () => {
     // Ordinal 1 adds no suffix, preserving existing timeline identities.
-    const single = world();
+    const single = await world();
     queuedEventOf(single, { seed: SEED });
     claimEventOf(single, SEED);
     executeOnce(single, 4242, 4_000);
     const before = buildRunDetail(deps(single), uuidOf(SEED)).timeline.events;
 
-    const w = poisonedWorld();
+    const w = await poisonedWorld();
     const after = buildRunDetail(deps(w), uuidOf(SEED)).timeline.events;
     assert.equal(after[0]?.noteId, before[0]?.noteId);
     assert.notEqual(after[1]?.noteId, before[0]?.noteId);
@@ -642,8 +642,8 @@ function spanBase(seed: number, node: string) {
 describe("a timeline event's own measured duration", () => {
 afterEach(cleanup);
 
-  it("measures the SPAN, not the gap to the next event", () => {
-    const w = world();
+  it("measures the SPAN, not the gap to the next event", async () => {
+    const w = await world();
     seedRun(w);
     const ts = (): string => w.clock.now().toISOString();
 
@@ -665,8 +665,8 @@ afterEach(cleanup);
     assert.equal(events.some((event) => event.durationMs?.state === "present" && event.durationMs.ms === 302_000), false);
   });
 
-  it("reports a step still in flight as absent, naming the missing end", () => {
-    const w = world();
+  it("reports a step still in flight as absent, naming the missing end", async () => {
+    const w = await world();
     seedRun(w);
     w.writer.emit({ ...spanBase(1, "ucpath-person"), t: "span.started", ts: w.clock.now().toISOString(), name: "ucpath-person" });
     w.clock.advanceWall(4_000);
@@ -678,8 +678,8 @@ afterEach(cleanup);
     assert.match(measured.state === "absent" ? measured.reason : "", /has not ended/);
   });
 
-  it("reports a span whose START never reached the fold as absent, not as zero", () => {
-    const w = world();
+  it("reports a span whose START never reached the fold as absent, not as zero", async () => {
+    const w = await world();
     seedRun(w);
     // A projection tail seeded mid-run sees the end and never the start. The
     // run's own queue instant is a plausible substitute and a wrong one.
@@ -691,8 +691,8 @@ afterEach(cleanup);
     assert.match(measured.state === "absent" ? measured.reason : "", /no span\.started was folded/);
   });
 
-  it("gives a zero-length step a real zero, which is not an absence", () => {
-    const w = world();
+  it("gives a zero-length step a real zero, which is not an absence", async () => {
+    const w = await world();
     seedRun(w);
     const ts = w.clock.now().toISOString();
     w.writer.emit({ ...spanBase(1, "cross-verify"), t: "span.started", ts, name: "cross-verify" });
@@ -704,8 +704,8 @@ afterEach(cleanup);
     assert.deepEqual(timelineEventDuration({ durationMs: event?.durationMs }), { state: "present", ms: 0 });
   });
 
-  it("serves the leaf on EVERY event the live query builds", () => {
-    const w = world();
+  it("serves the leaf on EVERY event the live query builds", async () => {
+    const w = await world();
     seedRun(w);
     const ts = (): string => w.clock.now().toISOString();
     w.writer.emit({ ...spanBase(1, "ucpath-person"), t: "span.started", ts: ts(), name: "ucpath-person" });
@@ -721,8 +721,8 @@ afterEach(cleanup);
     }
   });
 
-  it("refuses to put a gate's WAIT in the step column", () => {
-    const w = world();
+  it("refuses to put a gate's WAIT in the step column", async () => {
+    const w = await world();
     seedRun(w);
     w.writer.emit({
       t: "gate.opened",
@@ -748,8 +748,8 @@ afterEach(cleanup);
 describe("the day the timeline is read from", () => {
 afterEach(cleanup);
 
-  it("still renders a full day's wire beside the durations", () => {
-    const w = world();
+  it("still renders a full day's wire beside the durations", async () => {
+    const w = await world();
     seedRun(w);
     assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces.length, 1);
   });

@@ -47,7 +47,7 @@ function submission(readAt: string) {
       signatureDate: { state: "read", raw: "07/21/2026", confidence: 1 }, employeeSigned: { state: "read", raw: "yes", confidence: 1 }, officerSigned: { state: "read", raw: "yes", confidence: 1 },
     } } };
 }
-function adapterFor(f: ReturnType<typeof chatGptFixture>, body = bytes) {
+function adapterFor(f: Awaited<ReturnType<typeof chatGptFixture>>, body = bytes) {
   return createChatGptOcrAdapter({ assertCurrent: () => f.admission.assertProfileRuntime(), account: f.service, clock: f.clock, model: "gpt-6.1-sol", artifacts: { open: async () => Readable.from([body]) } });
 }
 function request() { return { capability: "ocr.extract" as const, payload: { schemaHash: OCR_EXTRACTION_REQUEST_HASH,
@@ -67,7 +67,7 @@ for (const [formType, pageKind, control] of [
 ] as const) it(control === "undeclared" ? "refuses a genuinely undeclared OCR observation before checkpoint completion"
   : control === "inconsistent" ? "refuses an OCR observation that contradicts its returned value before checkpoint completion"
   : `persists an admitted ${formType}/${pageKind} checkpoint after subscription transport`, async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected();
     const artifacts = createContentAddressedArtifactWriter({ admission: f.admission });
@@ -105,7 +105,7 @@ for (const [formType, pageKind, control] of [
     const stores = defineTaskStoreRegistry([defineServiceStore("ocr", { extract: task })], {
       scenarioIds: ExtractFormPage.scenarios, tasks: [{ id: ExtractFormPage.id, effect: ExtractFormPage.effect }],
     });
-    const harness = world.wiringHarness(descriptor, stores, { artifacts });
+    const harness = await world.wiringHarness(descriptor, stores, { artifacts });
     harness.authority.database.authority.runs.enqueue(world.queuedRunFor(descriptor));
     const claimed = world.claim(harness.authority, descriptor);
     const outcome = await executeClaimedRun({ ...harness.deps, providers: {
@@ -185,7 +185,7 @@ for (const [formType, pageKind, control] of [
 });
 
 for (const change of ["hash", "form", "page", "provider", "model", "date", "json", "bytes"] as const) it(`refuses ${change} mismatch without exposing source output`, async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     await f.connected(); const answer = submission(f.clock.now().toISOString());
     if (change === "hash") answer.sourceSha256 = "b".repeat(64);
@@ -201,7 +201,7 @@ for (const change of ["hash", "form", "page", "provider", "model", "date", "json
   } finally { await f.cleanup(); }
 });
 for (const state of ["disconnected", "disabled", "cancelled", "expired", "quota", "malformed", "incomplete", "refused"] as const) it(`fails closed for ${state}`, async () => {
-  const f = chatGptFixture();
+  const f = await chatGptFixture();
   try {
     if (state !== "disconnected") await f.connected(state !== "disabled");
     if (state === "expired") { f.clock.advanceWall(3_600_000); f.setTokenStatus(400); }
@@ -217,7 +217,7 @@ for (const state of ["disconnected", "disabled", "cancelled", "expired", "quota"
 });
 
 it("runs the actual extraction task through the subscription adapter and admits its complete result", async () => {
-  const f = chatGptFixture(); try {
+  const f = await chatGptFixture(); try {
     await f.connected(); f.setSse(completedOcrStream(JSON.stringify(submission(f.clock.now().toISOString()))));
     const config = ConfigSchema.parse({ paths: defaultRuntimePaths() }), id = randomUUID(), fingerprint = sha256Hex(canonicalJsonStringify(config));
     let deadline = 0;
@@ -266,7 +266,7 @@ function buildTwoPagePdf(): Buffer {
 
 for (const pageCount of [1, 2] as const)
   it(`requires a singleton PDF before subscription extraction: ${pageCount} pages`, async () => {
-    const f = chatGptFixture(); try {
+    const f = await chatGptFixture(); try {
       await f.connected();
       const documentBytes = pageCount === 1
         ? readFileSync(new URL("../../../support/fixtures/documents/synthetic-sample.pdf", import.meta.url)) : buildTwoPagePdf();
@@ -284,7 +284,7 @@ for (const pageCount of [1, 2] as const)
   });
 
 for (const boundary of ["artifact", "pdf"] as const) it(`refuses an actual account revision change during ${boundary} work before sending the page`, async () => {
-  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
   const peer = createChatGptAccountService({ admission: profile.admission, stateRoot: profile.stateRoot, clock: f.clock, fetch: f.transport });
   let restore: (() => void) | undefined, expected: Buffer | undefined;
   try {
@@ -310,11 +310,11 @@ for (const boundary of ["artifact", "pdf"] as const) it(`refuses an actual accou
     assert.equal(result.response.state, "unavailable"); assert.ok(expected);
     assert.equal(readFileSync(join(profile.stateRoot, "credentials", "chatgpt-account.json")).equals(expected), true);
     assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
-  } finally { restore?.(); await peer.close(); await f.cleanup(); profile.close(); }
+  } finally { restore?.(); await peer.close(); await f.cleanup(); await profile.close(); }
 });
 
 it("account closure waits for actual PDF destruction before releasing its page operation", async () => {
-  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
   const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
   const actual = pdfReader.pdf;
   let destroyed = false, closed = false;
@@ -337,5 +337,5 @@ it("account closure waits for actual PDF destruction before releasing its page o
     gate.resolve(); const result = await pending; await closing;
     assert.equal(result.response.state, "unavailable"); assert.equal(destroyed, true); assert.equal(closed, true);
     assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
-  } finally { gate.resolve(); spy.mockRestore(); await f.cleanup(); profile.close(); }
+  } finally { gate.resolve(); spy.mockRestore(); await f.cleanup(); await profile.close(); }
 });

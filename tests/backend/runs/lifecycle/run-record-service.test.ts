@@ -37,16 +37,16 @@ import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-loo
 
 {
 
-const cleanups:(()=>void)[]=[];
-const _afterEachFixture0 = ()=>{for(const cleanup of cleanups.splice(0))cleanup();};
-function fixture(fault?:string) {
+const cleanups:(()=>void | Promise<void>)[]=[];
+const _afterEachFixture0 = async ()=>{for(const cleanup of cleanups.splice(0))await cleanup();};
+async function fixture(fault?:string) {
   let activeFault=fault;
-  const profile=createBoundProfileFixture();
+  const profile=await createBoundProfileFixture();
   const path=profile.path;const admission=profile.admission;
   const open=()=>AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"native-test"},undefined,undefined,undefined,
     {afterDeleteStep:({step})=>{if(step===activeFault)throw new Error("deletion-fault");},
       afterDeletionFileRemoved:()=>{if(activeFault === "file")throw new Error("deletion-file-fault");}});
-  let db=open();cleanups.push(()=>{db.close();profile.close();});
+  let db=open();cleanups.push(async ()=>{db.close();await profile.close();});
   db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const terminalTemplate=RunRecordSchema.parse({...QUEUED_RUN,envelope:{...QUEUED_RUN.envelope,configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,
     configFingerprint:CONFIG_SNAPSHOT.fingerprint},lifecycle:{state:"terminal",outcome:"discarded",endedAt:NOW}});
@@ -76,8 +76,8 @@ function fixture(fault?:string) {
 describe("native lifecycle deletion command",()=>{
 afterEach(_afterEachFixture0);
 
-  it("reads bounded native same-item history across a tombstone and a later current attempt",()=>{
-    const f=fixture();expect(f.service.delete({commandId:UUID_5,runId:f.run.envelope.runId,expectedVersion:f.run.version}).state).toBe("deleted");
+  it("reads bounded native same-item history across a tombstone and a later current attempt",async ()=>{
+    const f=await fixture();expect(f.service.delete({commandId:UUID_5,runId:f.run.envelope.runId,expectedVersion:f.run.version}).state).toBe("deleted");
     const next=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,runId:UUID_3,attempt:2}});f.seed(next);
     const reader=f.restart();const query=createItemAttemptHistoryQuery({database:f.db,reader});
     const first=query.read(f.run.envelope.runId,{limit:1});
@@ -91,8 +91,8 @@ afterEach(_afterEachFixture0);
     expect(query.read(f.run.envelope.runId,{limit:1,cursor:first.page.nextCursor!})).toMatchObject({state:"stale",reason:"authority-changed"});
   });
 
-  it("admits the genuine complete command before its tombstone, settles once and replays after restart",()=>{
-    const f=fixture();const request={commandId:UUID_1,runId:f.run.envelope.runId,expectedVersion:f.run.version};
+  it("admits the genuine complete command before its tombstone, settles once and replays after restart",async ()=>{
+    const f=await fixture();const request={commandId:UUID_1,runId:f.run.envelope.runId,expectedVersion:f.run.version};
     const result=f.service.delete(request);expect(result.state).toBe("deleted");
     expect(f.service.read(f.run.envelope.runId).state).toBe("deleted");
     const generation=f.db.getMeta().authorityGeneration;
@@ -105,8 +105,8 @@ afterEach(_afterEachFixture0);
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     } finally{db.close();}
   });
-  it.each(["tombstone","runs","cascade-complete"])("rolls back command, audit and deletion after %s",step=>{
-    const f=fixture(step);const before=f.db.getMeta().authorityGeneration;
+  it.each(["tombstone","runs","cascade-complete"])("rolls back command, audit and deletion after %s",async step=>{
+    const f=await fixture(step);const before=f.db.getMeta().authorityGeneration;
     expect(()=>f.service.delete({commandId:UUID_1,runId:f.run.envelope.runId,expectedVersion:f.run.version})).toThrow("deletion-fault");
     expect(f.service.read(f.run.envelope.runId).state).toBe("present");
     expect(f.db.authority.lifecycleJournal.getCommand(UUID_1)).toBeUndefined();
@@ -114,7 +114,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.getMeta().authorityGeneration).toBe(before);
   });
   it("captures exact bytes before deletion and refuses changed bytes without changing its immutable receipt",async()=>{
-    const f=fixture();const artifact=await f.addDiagnostic();const original=readFileSync(artifact.file);
+    const f=await fixture();const artifact=await f.addDiagnostic();const original=readFileSync(artifact.file);
     const command={commandId:UUID_1,runId:f.run.envelope.runId,expectedVersion:f.run.version};
     expect(f.service.delete(command).state).toBe("deleted");const before=f.deletionRow();
     expect(before.cleanupState).toBe("pending");expect(before.files).toHaveLength(1);
@@ -132,7 +132,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.settleRunDeletionFiles({runId:command.runId,commandId:UUID_1})).toBe("complete");expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
   it("resumes the original committed manifest after an unlink fault and restart",async()=>{
-    const f=fixture("file");const artifact=await f.addDiagnostic();
+    const f=await fixture("file");const artifact=await f.addDiagnostic();
     const request={commandId:UUID_1,runId:f.run.envelope.runId,expectedVersion:f.run.version};
     expect(f.service.delete(request).state).toBe("deleted");const before=f.deletionRow();
     expect(()=>f.db.settleRunDeletionFiles({runId:request.runId,commandId:request.commandId})).toThrow("deletion-file-fault");
@@ -141,8 +141,8 @@ afterEach(_afterEachFixture0);
     expect(f.db.settleRunDeletionFiles({runId:request.runId,commandId:request.commandId})).toBe("complete");
     expect(f.deletionRow()).toEqual({...before,cleanupState:"complete"});
   });
-  it("preflights and deletes a complete terminal child tree without renumbering permanent authority",()=>{
-    const f=fixture();const child=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,runId:UUID_5,attempt:2,
+  it("preflights and deletes a complete terminal child tree without renumbering permanent authority",async ()=>{
+    const f=await fixture();const child=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,runId:UUID_5,attempt:2,
       parent:{runId:f.run.envelope.runId,tracePrefix:f.run.envelope.traceId,edgeId:"child-probe"}}});
     f.seed(child);
     const result=f.restart().delete({commandId:UUID_1,runId:f.run.envelope.runId,expectedVersion:f.run.version});
@@ -155,15 +155,15 @@ afterEach(_afterEachFixture0);
 
 {
 
-const cleanups:(()=>void)[]=[];
-const _afterEachFixture0 = ()=>{for(const cleanup of cleanups.splice(0))cleanup();};
-function fixture(faultStep?:string) {
+const cleanups:(()=>void | Promise<void>)[]=[];
+const _afterEachFixture0 = async ()=>{for(const cleanup of cleanups.splice(0))await cleanup();};
+async function fixture(faultStep?:string) {
   let activeFault=faultStep;
-  const profile=createBoundProfileFixture();
+  const profile=await createBoundProfileFixture();
   const path=profile.path;
   mkdirSync(join(profile.stateRoot,"locks"),{recursive:true,mode:0o700});
   const open=()=>AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"native-test"},undefined,{afterStorageStep:step=>{if(step === activeFault)throw new Error("resolution-storage-fault");}});
-  let db=open();cleanups.push(()=>{db.close();profile.close();});
+  let db=open();cleanups.push(async ()=>{db.close();await profile.close();});
   db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const run=RunRecordSchema.parse({...QUEUED_RUN,envelope:{...QUEUED_RUN.envelope,workflow:WRITE_INTENT_ATTEMPTING.workflowId,
     configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},version:5,claimGeneration:1,
@@ -225,7 +225,7 @@ function fixture(faultStep?:string) {
   const inspect=()=>{const raw=new DatabaseSync(path,{readOnly:true});try{return inspectNormalAuthority(raw);}finally{raw.close();}};
   return {path,get db(){return db;},run,parked,original,command,audit,settlement,resolution,apply,rawMutation,inspect,setFault:(step:string)=>{activeFault=step;},restart:()=>{db.close();db=open();}};
 }
-function positive(f:ReturnType<typeof fixture>) {
+function positive(f:Awaited<ReturnType<typeof fixture>>) {
   const resolution={...f.resolution,decision:"present" as const};
   const proof=LEDGER_PAYLOAD.proof;
   const command={...f.command,type:"resolve-write-present",payload:{occurrenceKeyDigest:f.parked.idempotencyKeyDigest,proof,evidenceNote:"offline exact receipt"}};
@@ -251,7 +251,7 @@ function positive(f:ReturnType<typeof fixture>) {
   });
   return {apply,command,audit,checkpoint,transaction,committedSpan,commit};
 }
-function kernel(f:ReturnType<typeof fixture>,fault?:"audit"|"mismatch",present=false) {
+function kernel(f:Awaited<ReturnType<typeof fixture>>,fault?:"audit"|"mismatch",present=false) {
   let preparations=0;
   const unused=():never=>{throw new Error("unused offline port");};
   const prepare=(repositories:typeof f.db.authority,context:WriteResolutionContext)=>{
@@ -285,16 +285,16 @@ function kernel(f:ReturnType<typeof fixture>,fault?:"audit"|"mismatch",present=f
 describe("native parked command audit ordering",()=>{
 afterEach(_afterEachFixture0);
 
-  it.each(["audit","mismatch"] as const)("rolls back the genuine audit and acknowledged effects after %s",fault=>{
-    const f=fixture();const k=kernel(f,fault);const generation=f.db.getMeta().authorityGeneration;
+  it.each(["audit","mismatch"] as const)("rolls back the genuine audit and acknowledged effects after %s",async fault=>{
+    const f=await fixture();const k=kernel(f,fault);const generation=f.db.getMeta().authorityGeneration;
     expect(()=>k.instance.execute(f.command)).toThrow(fault === "audit" ? "kernel-after-audit-fault" : "acknowledged-effects-mismatch");
     expect(f.db.authority.commands.get(UUID_5)).toBeUndefined();expect(f.db.authority.commandAudits.findByCommand(UUID_5)).toBeUndefined();
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
     expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
-  it("replays the immutable complete command outcome after restart without repeating settlement",()=>{
-    const f=fixture();let k=kernel(f);
+  it("replays the immutable complete command outcome after restart without repeating settlement",async ()=>{
+    const f=await fixture();let k=kernel(f);
     expect(k.instance.execute(f.command).state).toBe("applied");expect(k.preparations()).toBe(1);
     f.db.authority.runs.advanceRevision({runId:f.run.envelope.runId,expectedVersion:5,now:LATEST});f.restart();k=kernel(f);
     const generation=f.db.getMeta().authorityGeneration;
@@ -302,8 +302,8 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.runs.get(f.run.envelope.runId)?.version).toBe(6);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
-  it("refuses a forged original attempt before preparing or inserting any audit",()=>{
-    const f=fixture();const k=kernel(f);const request=CommandRequestSchema.parse({...f.command,target:{...f.command.target,writeAttemptId:UUID_8}});
+  it("refuses a forged original attempt before preparing or inserting any audit",async ()=>{
+    const f=await fixture();const k=kernel(f);const request=CommandRequestSchema.parse({...f.command,target:{...f.command.target,writeAttemptId:UUID_8}});
     expect(k.instance.execute(request).state).toBe("rejected");expect(k.preparations()).toBe(0);
     expect(f.db.authority.commands.get(UUID_5)).toBeUndefined();expect(f.db.authority.commandAudits.findByCommand(UUID_5)).toBeUndefined();
   });
@@ -311,8 +311,8 @@ afterEach(_afterEachFixture0);
 describe("native immutable parked positive settlement",()=>{
 afterEach(_afterEachFixture0);
 
-  it.each(["intent-state","transaction-checkpoint","timeline-event"])("rolls back genuine audit and all proof effects after %s",step=>{
-    const f=fixture(step);const p=positive(f);const generation=f.db.getMeta().authorityGeneration;
+  it.each(["intent-state","transaction-checkpoint","timeline-event"])("rolls back genuine audit and all proof effects after %s",async step=>{
+    const f=await fixture(step);const p=positive(f);const generation=f.db.getMeta().authorityGeneration;
     expect(()=>p.apply()).toThrow("resolution-storage-fault");
     expect(f.db.authority.commands.get(UUID_5)).toBeUndefined();expect(f.db.authority.commandAudits.get(UUID_6)).toBeUndefined();
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);
@@ -321,8 +321,8 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.timelineEvents.page({runId:f.run.envelope.runId,limit:100})).toHaveLength(0);
     expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
-  it("publishes exact proof and history while retaining the parked attempt after restart and later run advancement",()=>{
-    const f=fixture();const p=positive(f);expect(p.apply().attempt).toEqual(f.original);
+  it("publishes exact proof and history while retaining the parked attempt after restart and later run advancement",async ()=>{
+    const f=await fixture();const p=positive(f);expect(p.apply().attempt).toEqual(f.original);
     f.db.authority.runs.advanceRevision({runId:f.run.envelope.runId,expectedVersion:5,now:LATEST});f.restart();
     const events=f.db.authority.timelineEvents.page({runId:f.run.envelope.runId,limit:100}).filter(event=>event.payload.kind === "operation-confirmed");
     expect(events).toHaveLength(1);
@@ -336,24 +336,24 @@ afterEach(_afterEachFixture0);
 describe("native immutable parked absence settlement",()=>{
 afterEach(_afterEachFixture0);
 
-  it.each(["audit","intent","run"] as const)("rolls back the complete command and run after %s",fault=>{
-    const f=fixture();const generation=f.db.getMeta().authorityGeneration;
+  it.each(["audit","intent","run"] as const)("rolls back the complete command and run after %s",async fault=>{
+    const f=await fixture();const generation=f.db.getMeta().authorityGeneration;
     expect(()=>f.apply(fault)).toThrow("resolution-fault");
     expect(f.db.authority.commands.get(UUID_5)).toBeUndefined();expect(f.db.authority.commandAudits.get(UUID_6)).toBeUndefined();
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
     expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
-  it("requires the genuine final audit and admission CAS before settling",()=>{
-    const f=fixture();expect(()=>f.db.settleResolvedParkedAbsence({writeIntentId:f.parked.writeIntentId,generation:1,expectedIntentVersion:2,
+  it("requires the genuine final audit and admission CAS before settling",async ()=>{
+    const f=await fixture();expect(()=>f.db.settleResolvedParkedAbsence({writeIntentId:f.parked.writeIntentId,generation:1,expectedIntentVersion:2,
       settlement:f.settlement,resolution:f.resolution})).toThrow(/authority-missing/u);
     expect(()=>f.db.withAuthorityTransaction(repositories=>{repositories.commands.insert(f.command);repositories.commandAudits.insert(f.audit);
       f.db.settleResolvedParkedAbsence({writeIntentId:f.parked.writeIntentId,generation:1,expectedIntentVersion:2,settlement:f.settlement,
         resolution:{...f.resolution,expectedRunVersion:3}});})).toThrow(/run-cas-mismatch/u);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
   });
-  it("retains and authenticates the original resolution after later run advancement and a real fresh N+1 fence",()=>{
-    const f=fixture();const resumed=f.apply();
+  it("retains and authenticates the original resolution after later run advancement and a real fresh N+1 fence",async ()=>{
+    const f=await fixture();const resumed=f.apply();
     f.db.authority.runs.advanceRevision({runId:resumed.envelope.runId,expectedVersion:5,now:LATEST});
     const proof={...WRITE_INTENT_ATTEMPTING.bindingProof,proofId:UUID_7,observedAt:LATEST};const digest=deriveWriteBindingProofDigest(proof);
     const intent={...WRITE_INTENT_ATTEMPTING,currentAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,
@@ -375,16 +375,16 @@ afterEach(_afterEachFixture0);
 describe("native permanent confirmation publication",()=>{
 afterEach(_afterEachFixture0);
 
-  it.each(["audit","mismatch"] as const)("rolls back positive command publication and complete audited result after %s",fault=>{
-    const f=fixture();const command=positive(f).command;const k=kernel(f,fault,true);const generation=f.db.getMeta().authorityGeneration;
+  it.each(["audit","mismatch"] as const)("rolls back positive command publication and complete audited result after %s",async fault=>{
+    const f=await fixture();const command=positive(f).command;const k=kernel(f,fault,true);const generation=f.db.getMeta().authorityGeneration;
     expect(()=>k.instance.execute(command)).toThrow(fault === "audit" ? "kernel-after-audit-fault" : "acknowledged-effects-mismatch");
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);expect(f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toBeUndefined();
     expect(f.db.authority.commandAudits.findByCommand(command.commandId)).toBeUndefined();expect(f.db.authority.timelineEvents.page({limit:100})).toEqual([]);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);
     expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
-  it("replays the exact positive audited command after restart and run advancement without repeating publication or continuation",()=>{
-    const f=fixture();const command=positive(f).command;let k=kernel(f,undefined,true);
+  it("replays the exact positive audited command after restart and run advancement without repeating publication or continuation",async ()=>{
+    const f=await fixture();const command=positive(f).command;let k=kernel(f,undefined,true);
     const result=k.instance.execute(command);expect(result.state).toBe("applied");expect(k.preparations()).toBe(1);
     const publication=f.db.authority.writeIntents.getPublication(f.parked.writeIntentId);
     const audit=f.db.authority.commandAudits.findByCommand(command.commandId);
@@ -398,8 +398,8 @@ afterEach(_afterEachFixture0);
     expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
 
-  it("keeps genuine observed-present probe authority without inventing an attempt or confirmation publication",()=>{
-    const f=fixture();const source=f.parked;const idempotencyKey="offline-observed-record";
+  it("keeps genuine observed-present probe authority without inventing an attempt or confirmation publication",async ()=>{
+    const f=await fixture();const source=f.parked;const idempotencyKey="offline-observed-record";
     const observed=WriteIntentRecordSchema.parse({writeIntentId:UUID_8,workflowId:source.workflowId,itemId:source.itemId,taskId:source.taskId,
       system:source.system,idempotencyKey,idempotencyKeyDigest:deriveIdempotencyKeyDigest(source.system,idempotencyKey),generation:1,
       status:"observed-present",observedProof:LEDGER_PAYLOAD.proof,observedAt:LATER,version:1,createdAt:LATER,updatedAt:LATER});
@@ -409,8 +409,8 @@ afterEach(_afterEachFixture0);
     expect(f.inspect().invariants.state).toBe("valid");
   });
 
-  it.each(["missing","extra","timeline-time","checkpoint-output","checkpoint-run","checkpoint-workflow","checkpoint-item","checkpoint-attempt"])("refuses an altered whole publication on read and maintenance: %s",fault=>{
-    const f=fixture();const p=positive(f);p.apply();
+  it.each(["missing","extra","timeline-time","checkpoint-output","checkpoint-run","checkpoint-workflow","checkpoint-item","checkpoint-attempt"])("refuses an altered whole publication on read and maintenance: %s",async fault=>{
+    const f=await fixture();const p=positive(f);p.apply();
     f.rawMutation(raw=>{
       if(fault === "missing") {raw.prepare("UPDATE write_intents SET publication_json=NULL").run();return;}
       const row=raw.prepare("SELECT publication_json FROM write_intents").get()!;
@@ -432,8 +432,8 @@ afterEach(_afterEachFixture0);
     expect(()=>f.inspect()).toThrow();
     expect(()=>f.restart()).toThrow();
   });
-  it.each(["checkpoint","timeline","attempt","audit"])("refuses altered acknowledged authority: %s",fault=>{
-    const f=fixture();positive(f).apply();
+  it.each(["checkpoint","timeline","attempt","audit"])("refuses altered acknowledged authority: %s",async fault=>{
+    const f=await fixture();positive(f).apply();
     f.rawMutation(raw=>{
       const table=fault === "checkpoint" ? "run_checkpoints" : fault === "timeline" ? "timeline_events" : fault === "attempt" ? "write_attempts" : "command_audits";
       for(const row of raw.prepare("SELECT name FROM sqlite_schema WHERE type='trigger' AND tbl_name=?").all(table)) raw.exec(`DROP TRIGGER ${String(row.name)}`);
@@ -443,8 +443,8 @@ afterEach(_afterEachFixture0);
     });
     expect(()=>f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toThrow();
   });
-  it("retains exact immutable publication and proof after authenticated terminal deletion, with no hidden run",()=>{
-    const f=fixture();const p=positive(f);p.apply();
+  it("retains exact immutable publication and proof after authenticated terminal deletion, with no hidden run",async ()=>{
+    const f=await fixture();const p=positive(f);p.apply();
     const publication=f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)!;
     const service=new RunRecordService({database:f.db,clock:capturedInstantClock(LATEST),ids:sequentialIdFactory("c"),publishQueued:()=>{throw new Error("deletion cannot queue");}});
     const terminal=service.transition({commandId:UUID_8,runId:f.run.envelope.runId,expectedVersion:6,
@@ -465,8 +465,8 @@ afterEach(_afterEachFixture0);
     f.rawMutation(raw=>{raw.exec("DROP TRIGGER deleted_runs_identity");raw.prepare("UPDATE deleted_runs SET trace_id=?,receipt_json=json_set(receipt_json,'$.traceId',?)").run("term-000000-abcd","term-000000-abcd");});
     expect(()=>f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toThrow(/deletion-settlement-mismatch/u);
   });
-  it.each(["run","workflow","item","attempt","execution-generation","descriptor","contract"])("refuses ordinary confirmation checkpoint substitution before any mutation: %s",fault=>{
-    const f=fixture();f.apply();
+  it.each(["run","workflow","item","attempt","execution-generation","descriptor","contract"])("refuses ordinary confirmation checkpoint substitution before any mutation: %s",async fault=>{
+    const f=await fixture();f.apply();
     const proof={...WRITE_INTENT_ATTEMPTING.bindingProof,proofId:UUID_7,observedAt:LATER};const digest=deriveWriteBindingProofDigest(proof);
     const intent={...WRITE_INTENT_ATTEMPTING,currentAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,
       fencedAt:LATER,version:4,updatedAt:LATER};
@@ -487,8 +487,8 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.runCheckpoints.get(checkpoint.workflowId,checkpoint.itemId,checkpoint.nodeId,checkpoint.attempt,checkpoint.claimGeneration)).toBeUndefined();
     expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
-  it.each([undefined,"intent-state","attempt-state","transaction-checkpoint","timeline-event"])("binds ordinary N+1 confirmation and rolls back before acknowledgment after %s",fault=>{
-    const f=fixture();f.apply();
+  it.each([undefined,"intent-state","attempt-state","transaction-checkpoint","timeline-event"])("binds ordinary N+1 confirmation and rolls back before acknowledgment after %s",async fault=>{
+    const f=await fixture();f.apply();
     const proof={...WRITE_INTENT_ATTEMPTING.bindingProof,proofId:UUID_7,observedAt:LATER};const digest=deriveWriteBindingProofDigest(proof);
     const intent={...WRITE_INTENT_ATTEMPTING,currentAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,
       fencedAt:LATER,version:4,updatedAt:LATER};
@@ -530,12 +530,12 @@ afterEach(_afterEachFixture0);
 
 {
 
-function foundationFixture(){return baseFoundationFixture_m2({input:RunRecordSchema.shape.input.parse({...QUEUED_RUN.input,parsed:{
+async function foundationFixture(){return await baseFoundationFixture_m2({input:RunRecordSchema.shape.input.parse({...QUEUED_RUN.input,parsed:{
   schemaHash:deriveSchemaHash(PersonLookupCanonicalInput,"output"),value:{emplId:"10873698",keepNonHdh:false,includeCrmDates:false},
   protectedBindings:[{kind:"test-data-local",inputPath:"emplId",name:"personLookupCanaryEid",sourceId:id_m2(89)}],
 }})});}
 
-function cancellation(f: ReturnType<typeof foundationFixture>) {
+function cancellation(f: Awaited<ReturnType<typeof foundationFixture>>) {
   const service = new RunRecordService({ database: f.db, clock: f.clock, ids: sequentialIdFactory(), publishQueued: () => {} });
   assert.equal(service.transition({commandId:id_m2(180),runId:f.run.envelope.runId,expectedVersion:f.run.version,
     lifecycle:{state:"terminal",outcome:"cancelled",endedAt:NOW_m2}}).state,"applied");
@@ -548,12 +548,12 @@ function cancellation(f: ReturnType<typeof foundationFixture>) {
 function rawState(path:string) {
   const db=new DatabaseSync(path,{readOnly:true});try{return canonicalJsonStringify(["runs","run_failures","run_results","run_receipts","commands","command_audits","timeline_events"].map(table=>db.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()));}finally{db.close();}
 }
-function trust(db:AuthorityDatabase_m2,f:ReturnType<typeof foundationFixture>){return createReceiptService({database:db,
+function trust(db:AuthorityDatabase_m2,f:Awaited<ReturnType<typeof foundationFixture>>){return createReceiptService({database:db,
   runReader:sqliteRunReader(db,f.clock),descriptors:[personLookupDescriptor]});}
 
 describe("same-attempt native recovery",()=>{
-  it("releases the genuine primitive owner atomically without changing its immutable attempt",()=>{
-    const f=foundationFixture();try{
+  it("releases the genuine primitive owner atomically without changing its immutable attempt",async ()=>{
+    const f=await foundationFixture();try{
       assert.ok(f.run.lifecycle.state==="running");
       const claim={workerId:f.run.lifecycle.workerId,claimGeneration:f.run.claimGeneration};
       const request={runId:f.run.envelope.runId,expectedVersion:f.run.version,claim,cause:"recovery",now:NOW_m2};
@@ -571,11 +571,11 @@ describe("same-attempt native recovery",()=>{
       const claimedBytes=rawState(f.path);
       assert.deepEqual(f.db.authority.runs.requeue({...request,expectedVersion:next.run.version}),{state:"conflict",currentVersion:next.run.version,currentState:next.run.lifecycle.state,message:`run ${request.runId} is no longer claimed by ${claim.workerId} at generation ${String(claim.claimGeneration)}`});
       assert.equal(rawState(f.path),claimedBytes);
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
 
-  it("rolls release back, preserves immutable identity, reopens exact replay and fences the prior claim",()=>{
-    const f=foundationFixture();try{
+  it("rolls release back, preserves immutable identity, reopens exact replay and fences the prior claim",async ()=>{
+    const f=await foundationFixture();try{
       assert.ok(f.run.lifecycle.state==="running");
       const claim={workerId:f.run.lifecycle.workerId,claimGeneration:f.run.claimGeneration};
       const request={commandId:id_m2(190),runId:f.run.envelope.runId,expectedVersion:f.run.version,claim,cause:"recovery"};
@@ -598,19 +598,19 @@ describe("same-attempt native recovery",()=>{
         const fenced=reopened.authority.runs.requeue({runId:request.runId,expectedVersion:claimed.run.version,claim,cause:"recovery",now:NOW_m2});assert.deepEqual(fenced,{state:"conflict",currentVersion:claimed.run.version,currentState:claimed.run.lifecycle.state,message:`run ${request.runId} is no longer claimed by ${claim.workerId} at generation ${String(claim.claimGeneration)}`});
         assert.deepEqual(reopened.authority.runs.get(request.runId),claimed.run);
       }finally{reopened.close();}
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
 });
 
 describe("truthful immutable final evidence",()=>{
-  it("rolls failure, evidence and run back together after result creation",()=>{
-    const f=foundationFixture();try{const before=rawState(f.path);
+  it("rolls failure, evidence and run back together after result creation",async ()=>{
+    const f=await foundationFixture();try{const before=rawState(f.path);
       assert.throws(()=>f.db.withAuthorityTransaction(()=>{terminalizeFixtureFailure(f,f.run,failure_m2());assert.ok(f.db.authority.runResults.get(f.run.envelope.runId));throw new Error("after-terminal-result");}),/after-terminal-result/u);
       assert.equal(rawState(f.path),before);assert.equal(f.db.authority.runResults.get(f.run.envelope.runId),undefined);
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
-  it("owns genuine cancellation evidence with its command/audit, rollback and exact reopen replay",()=>{
-    const f=foundationFixture();try{const {service,request}=cancellation(f);const before=rawState(f.path);
+  it("owns genuine cancellation evidence with its command/audit, rollback and exact reopen replay",async ()=>{
+    const f=await foundationFixture();try{const {service,request}=cancellation(f);const before=rawState(f.path);
       assert.throws(()=>f.db.withAuthorityTransaction(()=>{assert.equal(service.terminalize(request,personLookupDescriptor).state,"applied");throw new Error("cancel-result-fault");}),/cancel-result-fault/u);assert.equal(rawState(f.path),before);
       assert.equal(service.terminalize(request,personLookupDescriptor).state,"applied");
       const result=f.db.authority.runResults.get(f.run.envelope.runId);assert.ok(result);
@@ -622,10 +622,10 @@ describe("truthful immutable final evidence",()=>{
       try{const replay=new RunRecordService({database:reopened,clock:f.clock,ids:sequentialIdFactory(),publishQueued:()=>{throw new Error("unexpected publication");}});
         assert.equal(replay.terminalize(request,personLookupDescriptor).state,"applied-already");assert.deepEqual(trust(reopened,f).ensureReceipt(result.runId),receipt);assert.equal(rawState(f.path),settled);
       }finally{reopened.close();}
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
-  it.each(["cancelled","discarded","superseded"] as const)("owns final unclaimed %s evidence without worker success authorization",outcome=>{
-    const f=foundationFixture();try{
+  it.each(["cancelled","discarded","superseded"] as const)("owns final unclaimed %s evidence without worker success authorization",async outcome=>{
+    const f=await foundationFixture();try{
       const queued={...QUEUED_RUN,input:f.run.input,envelope:{...QUEUED_RUN.envelope,
         configSnapshotId:f.run.envelope.configSnapshotId,configFingerprint:f.run.envelope.configFingerprint,
         descriptorVersion:f.run.envelope.descriptorVersion,contractFingerprint:f.run.envelope.contractFingerprint,runId:id_m2(220),itemId:id_m2(220)}};
@@ -638,19 +638,19 @@ describe("truthful immutable final evidence",()=>{
       assert.equal(f.db.authority.runs.get(result.runId)?.completion,undefined);
       const receipt=trust(f.db,f).ensureReceipt(result.runId);assert.deepEqual(receipt.output,[]);
       const before=rawState(f.path);assert.equal(service.transition(request).state,"applied-already");assert.equal(rawState(f.path),before);
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
-  it("settles admitted cancellation through recovery with the genuine requeue audit",()=>{
-    const f=foundationFixture();try{const {service,request}=cancellation(f);
+  it("settles admitted cancellation through recovery with the genuine requeue audit",async ()=>{
+    const f=await foundationFixture();try{const {service,request}=cancellation(f);
       const recovery={commandId:id_m2(182),runId:request.runId,expectedVersion:request.expectedVersion,claim:request.claim,cause:"recovery"};
       assert.equal(service.requeue(recovery).state,"applied");
       const result=f.db.authority.runResults.get(request.runId);assert.ok(result);assert.equal(terminalEvidenceResult(result)?.kind,"lifecycle-evidence");
       assert.deepEqual(trust(f.db,f).ensureReceipt(request.runId).output,[]);
       const before=rawState(f.path);assert.equal(service.requeue(recovery).state,"applied-already");assert.equal(rawState(f.path),before);
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
-  it("journals each actual cascade member and root with immutable cancellation evidence",()=>{
-    const f=foundationFixture();try{
+  it("journals each actual cascade member and root with immutable cancellation evidence",async ()=>{
+    const f=await foundationFixture();try{
       const parent=RunRecordSchema.parse({...QUEUED_RUN,input:f.run.input,envelope:{...QUEUED_RUN.envelope,
         configSnapshotId:f.run.envelope.configSnapshotId,configFingerprint:f.run.envelope.configFingerprint,
         descriptorVersion:f.run.envelope.descriptorVersion,contractFingerprint:f.run.envelope.contractFingerprint,runId:id_m2(230),itemId:id_m2(230),shape:"operation"}});
@@ -667,10 +667,10 @@ describe("truthful immutable final evidence",()=>{
         return evidence.commandId;});
       assert.notEqual(owners[0],owners[1]);
       const before=rawState(f.path);assert.equal(service.transition(request).state,"applied-already");assert.equal(rawState(f.path),before);
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
-  it("refuses a partial audited failed settlement without repairing or repeating it",()=>{
-    const f=foundationFixture();try{
+  it("refuses a partial audited failed settlement without repairing or repeating it",async ()=>{
+    const f=await foundationFixture();try{
       if(f.run.lifecycle.state!=="running")throw new Error("missing admitted claim");
       const service=new RunRecordService({database:f.db,clock:f.clock,ids:sequentialIdFactory(),publishQueued:()=>{}});
       const request={kind:"failure",commandId:id_m2(240),terminal:{failure:failure_m2(),authorization:{kind:"failed",runId:f.run.envelope.runId,
@@ -686,10 +686,10 @@ describe("truthful immutable final evidence",()=>{
       }finally{db.close();}
       const partial=rawState(f.path);assert.throws(()=>service.terminalize(request,personLookupDescriptor),/composite authority/u);assert.equal(rawState(f.path),partial);
       detachBoundFixtureWorkers(f.db);f.db.close();assert.throws(()=>AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"partial-terminal"},f.clock),/run-completion-consequences|final-runs-bind-result-owner/u);
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
-  it("keeps interrupted recovery without immutable final evidence or receipt",()=>{
-    const f=foundationFixture();try{
+  it("keeps interrupted recovery without immutable final evidence or receipt",async ()=>{
+    const f=await foundationFixture();try{
       if(f.run.lifecycle.state!=="running")throw new Error("missing held claim");
       assert.equal(f.db.authority.runs.transition({runId:f.run.envelope.runId,expectedVersion:f.run.version,
         claim:{workerId:f.run.lifecycle.workerId,claimGeneration:f.run.claimGeneration},
@@ -697,10 +697,10 @@ describe("truthful immutable final evidence",()=>{
       assert.equal(f.db.authority.runResults.get(f.run.envelope.runId),undefined);
       assert.throws(()=>trust(f.db,f).ensureReceipt(f.run.envelope.runId),/ended interrupted/u);
       assert.equal(f.db.authority.evidenceReceipts.findByRun(f.run.envelope.runId),undefined);
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
-  it("refuses corrupt result payload without exposing the stored private bytes",()=>{
-    const f=foundationFixture();try{terminalizeFixtureFailure(f,f.run,failure_m2());
+  it("refuses corrupt result payload without exposing the stored private bytes",async ()=>{
+    const f=await foundationFixture();try{terminalizeFixtureFailure(f,f.run,failure_m2());
       const db=new DatabaseSync(f.path);try{const triggers=db.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='run_results'").all();
         for(const row of triggers)db.exec(`DROP TRIGGER "${String(row.name).replaceAll('"','""')}"`);
         db.prepare("UPDATE run_results SET payload_json=? WHERE run_id=?").run(canonicalJsonStringify({privateNote:"SYNTHETIC_PRIVATE_RESULT_INVALID_PAYLOAD"}),f.run.envelope.runId);
@@ -709,10 +709,10 @@ describe("truthful immutable final evidence",()=>{
       assert.throws(()=>f.db.authority.runResults.get(f.run.envelope.runId),error=>error instanceof Error && error.message==="run-result-payload-invalid");
       detachBoundFixtureWorkers(f.db);f.db.close();assert.throws(()=>AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"private-result-refusal"},f.clock),error=>
         error instanceof Error && error.message.includes("run-result-payload-invalid") && !error.message.includes("SYNTHETIC_PRIVATE_RESULT"));
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
-  it.each(["failure-digest","failure-identity","cancel-command"] as const)("refuses altered %s proof on read and reopen",kind=>{
-    const f=foundationFixture();try{
+  it.each(["failure-digest","failure-identity","cancel-command"] as const)("refuses altered %s proof on read and reopen",async kind=>{
+    const f=await foundationFixture();try{
       if(kind==="cancel-command"){const {service,request}=cancellation(f);service.terminalize(request,personLookupDescriptor);}else terminalizeFixtureFailure(f,f.run,failure_m2());
       const result=f.db.authority.runResults.get(f.run.envelope.runId);assert.ok(result);const evidence=terminalEvidenceResult(result);assert.ok(evidence);
       const altered=kind==="cancel-command"?{...evidence,commandId:id_m2(999)}:kind==="failure-digest"?{...evidence,failureDigest:"f".repeat(64)}:{...evidence,authorization:{...("authorization" in evidence?evidence.authorization:{}),failureId:id_m2(999)}};
@@ -724,7 +724,7 @@ describe("truthful immutable final evidence",()=>{
       }finally{db.close();}
       assert.throws(()=>f.db.authority.runResults.get(result.runId),/terminal-(?:failure-result|evidence-command-audit)/u);
       detachBoundFixtureWorkers(f.db);f.db.close();assert.throws(()=>AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"terminal-refusal"},f.clock),/terminal-(?:failure-result|evidence-command-audit)/u);
-    }finally{f.dispose();}
+    }finally{await f.dispose();}
   });
 });
 }

@@ -35,7 +35,7 @@ describe("the seven-beat happy path", () => {
     assert.equal(registered.length, 3);
     for (const node of registered) {
       assert.equal(node.probePolicy, "always", node.id);
-      const h = harness(); const { run, claim } = claimRunning(h.database, h.clock);
+      const h = await harness(); const { run, claim } = claimRunning(h.database, h.clock);
       assert.equal(intentByKey(h.database), undefined);
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
       const context = contextFor(run, claim);
@@ -46,7 +46,7 @@ describe("the seven-beat happy path", () => {
   });
 
   it("streams the save-verify transaction as ordered probe, stage, fence, click, and read-back beats", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
@@ -100,7 +100,7 @@ describe("the seven-beat happy path", () => {
   });
 
   it("replays its own settled checkpoint byte-exact without re-clicking", async () => {
-    const h = harness();
+    const h = await harness();
     const first = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     await h.execute(contextFor(first.run, first.claim));
@@ -129,7 +129,7 @@ describe("beat ③ — zero fence and zero click on any binding failure", () => 
     ["driver without a semantic read", (world: WriteFixtureWorld) => { world.omitDriverRead = true; }, /exposes no semantic read/],
   ] as const) {
     it(`refuses on a ${name}`, async () => {
-      const h = harness();
+      const h = await harness();
       const { run, claim } = claimRunning(h.database, h.clock);
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
       mutate(h.world);
@@ -146,7 +146,7 @@ describe("beat ③ — zero fence and zero click on any binding failure", () => 
 describe("beat ④ — budget expiry and CAS races discard the staged page", () => {
 
   it("routes a lost fence race to the winner: attempting refuses, observed-present reuses", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     const foreign = attemptingIntentFixture(UUID_5);
@@ -157,7 +157,7 @@ describe("beat ④ — budget expiry and CAS races discard the staged page", () 
     assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")));
 
     // Observed-present winner: the same race resolves to already-present reuse.
-    const h2 = harness();
+    const h2 = await harness();
     const second = claimRunning(h2.database, h2.clock);
     h2.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h2.world.onPrepare = () => {
@@ -199,7 +199,7 @@ function deriveProofSchemaHash(): string {
 
 describe("beat ① — durable same-key dedupe", () => {
   it("refuses loudly while another run is mid-submit, before any probe or browser", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     assert.equal(fenceWriteFixture(h.database, attemptingIntentFixture(UUID_5)).state, "fenced");
     await assert.rejects(
@@ -210,7 +210,7 @@ describe("beat ① — durable same-key dedupe", () => {
   });
 
   it("withholds a legacy parked message from real-run failure material", async () => {
-    const h = harness();
+    const h = await harness();
     const legacyMessage = `legacy failure for ${WRITE_FIXTURE_KEY} and standalone suffix 2345`;
     parkLegacyAttemptingIntent(h.database, legacyMessage);
     const { run, claim } = claimRunning(h.database, h.clock);
@@ -231,7 +231,7 @@ describe("beat ① — durable same-key dedupe", () => {
   });
 
   it("reuses a committed permanent key for a later fresh item without a second fence or ledger row", async () => {
-    const h = harness();
+    const h = await harness();
     const first = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     await h.execute(contextFor(first.run, first.claim));
@@ -261,7 +261,7 @@ describe("beat ① — durable same-key dedupe", () => {
 
 describe("retryable re-fence (only a settled retryable key mints a new generation)", () => {
   it("fences generation 2 with a fresh binding proof and commits", async () => {
-    const h = harness();
+    const h = await harness();
     const now = h.clock.now().toISOString();
     const { run, claim } = claimRunning(h.database, h.clock);
     const settled = attemptingIntentFixture(run.envelope.runId);
@@ -296,7 +296,7 @@ describe("retryable re-fence (only a settled retryable key mints a new generatio
 describe("dry-run — structurally zero intent, zero fence, zero commit", () => {
 
   it("executeDryRun probes, stages, observes the subject, and creates nothing durable", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
 
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -327,7 +327,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
   });
 
   it("withholds a legacy parked message from preview failure material", async () => {
-    const h = harness();
+    const h = await harness();
     const legacyMessage = `legacy failure for ${WRITE_FIXTURE_KEY} and standalone suffix 2345`;
     parkLegacyAttemptingIntent(h.database, legacyMessage);
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
@@ -347,7 +347,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
   });
 
   it("refuses a malformed staged EID without echoing the observed value", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.subjectEid = "EID 10899999";

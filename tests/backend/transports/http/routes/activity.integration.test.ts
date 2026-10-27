@@ -11,7 +11,7 @@ import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves the Activity report over a NAMED range and refuses one the caller never named", async () => {
-    const h = harness();
+    const h = await harness();
     const planResponse = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,
@@ -74,7 +74,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("serves the Activity report as a CSV that carries its own caveats", async () => {
-    const h = harness();
+    const h = await harness();
     const activityReport = ActivityReportSelectionSchema.parse(
       await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
     );
@@ -117,7 +117,7 @@ import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness, json } from ".
 afterEach(disposeHttpRouteHarness);
 
 it("serves selected population reads and maps malformed, foreign and stale selections to catalog refusals", async () => {
-  const h = harness();
+  const h = await harness();
   const path = "/api/v1/reports/activity/population";
   const range = { from: DAY, to: DAY };
   const selected = ActivityPopulationSelectionSchema.parse(await (await h.app.request(`${path}?${new URLSearchParams(range)}`)).json());
@@ -125,7 +125,7 @@ it("serves selected population reads and maps malformed, foreign and stale selec
   const read = await h.app.request(`${path}/selected?${new URLSearchParams(query)}`);
   assert.equal(read.status, 200);
   assert.deepEqual(ActivityPopulationSelectedReadSchema.parse(await read.json()), { selection: selected, browse: null });
-  const foreign = harness();
+  const foreign = await harness();
   const cases = [
     [h.app, `${path}?from=${DAY}`, "ACTIVITY_POPULATION_RANGE_INVALID", 400],
     [h.app, `${path}?from=${DAY}&from=${DAY}&to=${DAY}`, "ACTIVITY_POPULATION_RANGE_INVALID", 400],
@@ -146,7 +146,7 @@ it("serves selected population reads and maps malformed, foreign and stale selec
 });
 
 it("logs the original population read failure privately and serves only catalog text", async () => {
-  const h = harness();
+  const h = await harness();
   const detail = "activity-query-unavailable-detail";
   const spy = vi.spyOn(h.database, "withAuthorityReadSnapshot").mockImplementation(() => { throw new Error(detail); });
   let response: Response;

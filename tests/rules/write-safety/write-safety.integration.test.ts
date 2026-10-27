@@ -39,8 +39,8 @@ const retainedWriteSafetyOwners = new Set<object>();
 const NOW = FOUNDATION_NOW;
 
 describe("D resolution command authority", () => {
-  it("annotation cannot settle a parked UNKNOWN write or admit its generic retry", () => {
-    const f = resolutionFixture();
+  it("annotation cannot settle a parked UNKNOWN write or admit its generic retry", async () => {
+    const f = await resolutionFixture();
     const held: { fixture: typeof f; primary?: { error: unknown } } = { fixture: f };
     retainedWriteSafetyOwners.add(held);
     let primary: { error: unknown } | undefined;
@@ -82,8 +82,8 @@ describe("D resolution command authority", () => {
 
 {
 const disposers: (() => void)[] = [];
-function harness(parallel = false) { const h = sourceBoundHarness(parallel ? writeFixtureParallelDescriptor : writeFixtureDescriptor); disposers.push(h.dispose); return h; }
-async function completed(h: ReturnType<typeof harness>) {
+async function harness(parallel = false) { const h = await sourceBoundHarness(parallel ? writeFixtureParallelDescriptor : writeFixtureDescriptor); disposers.push(h.dispose); return h; }
+async function completed(h: Awaited<ReturnType<typeof harness>>) {
   const run = h.start(h.proposal());
   h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
   const outcome = await h.execute(run);
@@ -96,7 +96,7 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
 
 
   it("serializes distinct confirmations against an unresolved sibling and keeps orphan intents fenced", async () => {
-    const h = harness(true); const source = await completed(h);
+    const h = await harness(true); const source = await completed(h);
     const warning = h.proposal(source); assert.ok(warning.rerun);
     const one = h.start(h.proposal(source, warning.rerun.warningDigest));
     const two = h.start(h.proposal(source, warning.rerun.warningDigest));
@@ -112,7 +112,7 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
     const unresolved = h.database.authority.writeIntents.listByRun(one.envelope.runId)[0];
     assert.equal(unresolved.status, "parked"); assert.ok(unresolved.occurrence);
     // Feed the real fenced record to a fresh adapter with no originating lifecycle row.
-    const orphan = harness();
+    const orphan = await harness();
     const heldOrphan: { fixture: typeof orphan; database?: AuthorityDatabase; primary?: { error: unknown } } = { fixture: orphan };
     retainedWriteSafetyOwners.add(heldOrphan);
     const orphanDisposeIndex = disposers.indexOf(orphan.dispose);
@@ -142,7 +142,7 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
     assert.throws(() => orphanDatabase.authority.writeIntents.fenceAttempt({ claim: { workerId: "synthetic-orphan-worker", claimGeneration: 1 }, intent: next,
       attempt: { ...attempt, writeIntentId: next.writeIntentId, outcome: { state: "attempting" } } }), /unresolved write occurrence/);
 
-    orphanDatabase.close(); orphan.dispose(); retainedWriteSafetyOwners.delete(heldOrphan);
+    orphanDatabase.close(); await orphan.dispose(); retainedWriteSafetyOwners.delete(heldOrphan);
     } catch (error) { heldOrphan.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: heldOrphan }); }
   });
 
@@ -154,19 +154,20 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
 {
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 const heldAtomicWriteOwners: { profiles: typeof profiles; databases: typeof openDatabases; primary?: { error: unknown } } = { profiles, databases: openDatabases };
 retainedWriteSafetyOwners.add(heldAtomicWriteOwners);
 const databasePaths = new WeakMap<AuthorityDatabase, string>();
 const CLOCK = manualClock(new Date(NOW));
 
-function databasePath(): string {
-  const profile = createBoundProfileFixture(); profiles.push(profile);
+async function databasePath(): Promise<string> {
+  const profile = await createBoundProfileFixture(); profiles.push(profile);
   return profile.path;
 }
 
-function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
+async function openDatabase(path: string | undefined = undefined, busyTimeoutMs = 250): Promise<AuthorityDatabase> {
+  path ??= await databasePath();
   const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
   openDatabases.push(database);
   databasePaths.set(database, path);
@@ -177,9 +178,9 @@ describe("authority generation accounting", () => {
 
 
 
-  it("rolls back a caught nested fence failure to its savepoint without leaking an intent", () => {
+  it("rolls back a caught nested fence failure to its savepoint without leaking an intent", async () => {
     try {
-    const database = openDatabase();
+    const database = await openDatabase();
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, databasePaths.get(database) ?? (() => { throw new Error("missing fixture path"); })());
     fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     const generationBefore = database.getMeta().authorityGeneration;
@@ -216,12 +217,12 @@ function intentByKey(database: AuthorityDatabase) {
 }
 
 describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", () => {
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
-  it.each([writeFixtureDescriptor,writeFixtureDescriptorAfterUnrelatedEdit])("confirmed-present parses the exact proof schema and resumes under closure $contractFingerprint", descriptor => {
-    const { h, kernel,makeKernel } = resolutionHarness(descriptor);
+  it.each([writeFixtureDescriptor,writeFixtureDescriptorAfterUnrelatedEdit])("confirmed-present parses the exact proof schema and resumes under closure $contractFingerprint", async descriptor => {
+    const { h, kernel,makeKernel } = await resolutionHarness(descriptor);
     const { run, writeIntentId } = parkedAttemptingWrite(h);
     // Park the intent the way recovery would have before the operator acts.
     h.database.withAuthorityTransaction((repositories) =>
@@ -281,8 +282,8 @@ afterEach(() => {
     assert.deepEqual(h.world.events,[],"operator attestation performs no external effects");
   });
 
-  it("confirmed-present with a wrong proof schema hash changes nothing", () => {
-    const { h, executor } = resolutionHarness();
+  it("confirmed-present with a wrong proof schema hash changes nothing", async () => {
+    const { h, executor } = await resolutionHarness();
     const { run, writeIntentId } = parkedAttemptingWrite(h);
     const parkedIntent = h.database.withAuthorityTransaction((repositories) =>
       repositories.writeIntents.parkAttempt({
@@ -306,8 +307,8 @@ afterEach(() => {
     assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
   });
 
-  it("confirmed-absent records the typed operator settlement and resumes for a fresh generation", () => {
-    const { h, kernel } = resolutionHarness();
+  it("confirmed-absent records the typed operator settlement and resumes for a fresh generation", async () => {
+    const { h, kernel } = await resolutionHarness();
     const { run, writeIntentId } = parkedAttemptingWrite(h);
     h.database.authority.writeIntents.parkAttempt({writeIntentId,generation:1,expectedVersion:1,code:"unknown",
       message:"operator absence requires parked authority",now:h.clock.now().toISOString(),
@@ -338,7 +339,7 @@ afterEach(cleanup);
 
 
   it("keeps a probe observation emitted when that task throws later", async () => {
-    const h = harness();
+    const h = await harness();
     try {
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -367,7 +368,7 @@ afterEach(cleanup);
   });
 
   it("preserves a probe task error first when its failed-span writer also throws", async () => {
-    const h = harness({ emitterThrowsOn: "failed-task-span" });
+    const h = await harness({ emitterThrowsOn: "failed-task-span" });
     try {
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -395,7 +396,7 @@ afterEach(cleanup);
   });
 
   it("fails an undeclared transaction observation by task and field before staging", async () => {
-    const h = harness();
+    const h = await harness();
     try {
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -436,7 +437,7 @@ afterEach(cleanup);
     [unknownProbeVerdict(WRITE_FIXTURE_NOW), /is indeterminate; refusing to fence or click/],
   ] as const) {
     it(`${verdict.state} means no fence and no click`, async () => {
-      const h = harness();
+      const h = await harness();
     try {
       const { run, claim } = claimRunning(h.database, h.clock);
       h.world.probeResults.push(verdict);
@@ -459,7 +460,7 @@ afterEach(cleanup);
   }
 
   it("a throwing pre-write probe preserves classified authority evidence without fencing", async () => {
-    const h = harness();
+    const h = await harness();
     try {
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(new Error("UCPath grid exposed 10101010 before it failed"));
@@ -482,7 +483,7 @@ afterEach(cleanup);
 
 
   it("identifies a refused preview by safe key digest without exposing the person identifier", async () => {
-    const h = harness();
+    const h = await harness();
     try {
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
     h.world.probeResults.push(unknownProbeVerdict(WRITE_FIXTURE_NOW));
@@ -509,7 +510,7 @@ describe("a driver lease without the claimed run's bound fingerprint refuses", (
 afterEach(cleanup);
 
   it("refuses the probe lease loudly: no browser, no fence, no click, nothing settled", async () => {
-    const h = harness();
+    const h = await harness();
     try {
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -533,7 +534,7 @@ afterEach(cleanup);
   });
 
   it("refuses executeDryRun's staging lease the same way — the preview arm is not an escape hatch", async () => {
-    const h = harness();
+    const h = await harness();
     try {
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
     await assert.rejects(

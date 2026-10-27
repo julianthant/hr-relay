@@ -13,8 +13,8 @@ const world = createRunRecordServiceTestWorld();
 afterEach(world.cleanup);
 
 describe("Sessions observes an actual dead worker lifetime", () => {
-  it("refuses missing native birth custody without settling the lease", () => {
-    const f = world.fixture();
+  it("refuses missing native birth custody without settling the lease", async () => {
+    const f = await world.fixture();
     const lease = f.database.authority.workerLeases.listLive()[0]; assert.ok(lease);
     assert.throws(() => f.database.settleDeadWorkerLifetime(lease.workerId, f.clock.now().toISOString()), /worker-birth-authority-unavailable/);
     const faults: Error[] = [];

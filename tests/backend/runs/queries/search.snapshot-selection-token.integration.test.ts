@@ -27,8 +27,8 @@ function searchService(
 }
 
 describe("cross-date search snapshot token", () => {
-  it("binds export selection to the exact process signer, authority source, query, and generation", () => {
-    const profile = createBoundProfileFixture();
+  it("binds export selection to the exact process signer, authority source, query, and generation", async () => {
+    const profile = await createBoundProfileFixture();
     const database = AuthorityDatabase.open({
       path: profile.path,
       busyTimeoutMs: 1_000,
@@ -65,7 +65,7 @@ describe("cross-date search snapshot token", () => {
       );
     } finally {
       database.close();
-      profile.close();
+      await profile.close();
     }
   });
 });

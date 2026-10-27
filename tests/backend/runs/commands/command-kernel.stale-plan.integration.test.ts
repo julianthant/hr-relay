@@ -8,8 +8,8 @@ import { singleAppliedRunId } from "../../../support/fixtures/operator-command-f
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-it("refuses stale reviewed plans atomically, freshly confirms current settings and preserves accepted replay", () => {
-  const f = settingsFixture();
+it("refuses stale reviewed plans atomically, freshly confirms current settings and preserves accepted replay", async () => {
+  const f = await settingsFixture();
   try {
     const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
     const kernel = createCommandKernel({ lifecycle: f.service, appVersion: "0.1.0", configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
@@ -44,5 +44,5 @@ it("refuses stale reviewed plans atomically, freshly confirms current settings a
     const replay = kernel.execute(accepted); assert.equal(replay.state, "already-applied");
     assert.equal(singleAppliedRunId(replay), runId); assert.deepEqual(f.database.authority.runs.get(runId), original);
     assert.equal(f.database.getMeta().authorityGeneration, beforeReplay); assert.equal(f.resolutions(), resolutions);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });

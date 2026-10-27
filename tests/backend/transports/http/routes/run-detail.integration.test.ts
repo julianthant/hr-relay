@@ -26,7 +26,7 @@ afterEach(cleanup);
 describe("complete operation display action binding", () => {
 
   it("serves explicit executor lifecycle and safely classified values through the exact bounded source route", async () => {
-    const harness = executorHarness({ sessions: actionBindingSessions({ lifecycle: true }), descriptor: actionBindingCompiled.descriptor });
+    const harness = await executorHarness({ sessions: actionBindingSessions({ lifecycle: true }), descriptor: actionBindingCompiled.descriptor });
     const { database, clock, stateRoot: _stateRoot } = harness.authority;
     const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const claimed = enqueueAndClaim(database, actionBindingQueuedRun(clock.now().toISOString(), { protectedValue: false }), clock.now().toISOString(), ACTION_BINDING_WORKFLOW_ID);
@@ -89,8 +89,8 @@ describe("complete operation display action binding", () => {
     assert.throws(() => resolveOperationSource(deps, UUID_5, request, abort.signal), /cancelled lookup/u);
   });
 
-  it("retains and reopens the exact frozen complete snapshot from authority storage", () => {
-    const harness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
+  it("retains and reopens the exact frozen complete snapshot from authority storage", async () => {
+    const harness = await executorHarness({ descriptor: actionBindingCompiled.descriptor });
     const { database, clock, path } = harness.authority;
     const queued = actionBindingQueuedRun(clock.now().toISOString());
     const snapshot = queued.envelope.operationDisplaySnapshot;
@@ -113,8 +113,8 @@ describe("complete operation display action binding", () => {
     }
   });
 
-  it("refuses a corrupt stored complete snapshot after close and reopen", () => {
-    const harness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
+  it("refuses a corrupt stored complete snapshot after close and reopen", async () => {
+    const harness = await executorHarness({ descriptor: actionBindingCompiled.descriptor });
     const { database, clock, path } = harness.authority;
     database.authority.runs.enqueue(actionBindingQueuedRun(clock.now().toISOString()));
     database.close();

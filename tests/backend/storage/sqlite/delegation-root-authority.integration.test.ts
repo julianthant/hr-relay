@@ -19,18 +19,18 @@ import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-const cleanup: (() => void)[] = [];
-afterEach(() => {
+const cleanup: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
   const failures: unknown[] = [];
   for (const close of cleanup.splice(0).reverse()) {
-    try { close(); } catch (error) { failures.push(error); }
+    try { await close(); } catch (error) { failures.push(error); }
   }
   if (failures.length) throw new AggregateError(failures, "delegation root fixture cleanup failed");
 });
 
-function fixture() {
-  const profile = createBoundProfileFixture();
-  cleanup.push(() => profile.close());
+async function fixture() {
+  const profile = await createBoundProfileFixture();
+  cleanup.push(async () => await profile.close());
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(profile.admission,
     { path: profile.path, busyTimeoutMs: 500, migrationOwner: "delegation-root-test" }, clock,
@@ -63,8 +63,8 @@ function fixture() {
 }
 
 describe("retained canonical start-plan authority for a delegation root", () => {
-  it("authenticates the real operator plan, creation journal and complete root options without mutation", () => {
-    const { database, run } = fixture();
+  it("authenticates the real operator plan, creation journal and complete root options without mutation", async () => {
+    const { database, run } = await fixture();
     const generation = database.getMeta().authorityGeneration;
     database.withAuthorityTransaction(repositories => {
       const proof = authenticateStartPlanRun(repositories, run);
@@ -78,8 +78,8 @@ describe("retained canonical start-plan authority for a delegation root", () => 
     assert.equal(database.getMeta().authorityGeneration, generation);
   });
 
-  it("refuses absent plan, command, audit and native creation custody", () => {
-    const { database, run } = fixture();
+  it("refuses absent plan, command, audit and native creation custody", async () => {
+    const { database, run } = await fixture();
     database.withAuthorityTransaction(repositories => {
       assert.throws(() => authenticateStartPlanRun({ ...repositories,
         startPlans: { ...repositories.startPlans, get: () => undefined } }, run), /delegation-root-plan-authority-unavailable/u);
@@ -92,8 +92,8 @@ describe("retained canonical start-plan authority for a delegation root", () => 
     });
   });
 
-  it("refuses modified input, complete options, creation result and request identity", () => {
-    const { database, run } = fixture();
+  it("refuses modified input, complete options, creation result and request identity", async () => {
+    const { database, run } = await fixture();
     database.withAuthorityTransaction(repositories => {
       const proof = authenticateStartPlanRun(repositories, run);
       assert.throws(() => authenticateStartPlanRun(repositories, RunRecordSchema.parse({ ...run,
@@ -110,8 +110,8 @@ describe("retained canonical start-plan authority for a delegation root", () => 
         getCommand: () => ({ ...proof.create, requestFingerprint: FingerprintSchema.parse("a".repeat(64)) }) } }, run), /delegation-root-create-authority-unavailable/u);
     });
   });
-  it("authenticates a real canonical priority bump and refuses invented or no-op-only authority", () => {
-    const { database, run, kernel } = fixture();
+  it("authenticates a real canonical priority bump and refuses invented or no-op-only authority", async () => {
+    const { database, run, kernel } = await fixture();
     const invented = RunRecordSchema.parse({ ...run, envelope: { ...run.envelope, priority: "interactive" } });
     database.withAuthorityTransaction(repositories => {
       assert.throws(() => authenticateStartPlanRun(repositories, invented), /delegation-priority-authority-unavailable/u);
@@ -139,8 +139,8 @@ describe("retained canonical start-plan authority for a delegation root", () => 
     });
   });
 
-  it("authenticates more than sixteen genuine retained canonical retry ancestors", () => {
-    const { database, run, kernel } = fixture();
+  it("authenticates more than sixteen genuine retained canonical retry ancestors", async () => {
+    const { database, run, kernel } = await fixture();
     let current = run;
     for (let index = 0; index < 20; index++) {
       const cancelled = kernel.execute({ commandId: randomUUID(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
@@ -169,8 +169,8 @@ describe("retained canonical start-plan authority for a delegation root", () => 
 
 
 describe("canonical synchronous run command custody", () => {
-  it("observes the exact scope in actual canonical dispatch and revokes before returning", () => {
-    const { database, run, kernel, lifecycle } = fixture();
+  it("observes the exact scope in actual canonical dispatch and revokes before returning", async () => {
+    const { database, run, kernel, lifecycle } = await fixture();
     const request = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: NOW,
       requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel",
       target: { runId: run.envelope.runId, expectedVersion: run.version } });
@@ -193,8 +193,8 @@ describe("canonical synchronous run command custody", () => {
     assert.equal(observed, 1);
   });
 
-  it("refuses pending rows without scope, changed requests, foreign repositories, reentry and stale scopes", () => {
-    const { database, run } = fixture(), other = fixture();
+  it("refuses pending rows without scope, changed requests, foreign repositories, reentry and stale scopes", async () => {
+    const { database, run } = await fixture(), other = await fixture();
     const request = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: NOW,
       requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel",
       target: { runId: run.envelope.runId, expectedVersion: run.version } });

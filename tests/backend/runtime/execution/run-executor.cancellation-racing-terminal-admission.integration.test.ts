@@ -13,7 +13,7 @@ afterEach(cleanup);
 
 describe("cancellation racing terminal admission", () => {
   it("settles cancellation after a success request loses its version at service admission", async () => {
-    const h = executorHarness();
+    const h = await executorHarness();
     const { database, clock } = h.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const lifecycle = h.deps.lifecycle;

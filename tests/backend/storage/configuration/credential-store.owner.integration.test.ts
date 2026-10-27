@@ -5,8 +5,8 @@ import { assertCredentialStoreOwner } from "../../../../src/backend/storage/conf
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-it("checks current credential ownership, root permissions and released authority in order", () => {
-  const profile = createBoundProfileFixture();
+it("checks current credential ownership, root permissions and released authority in order", async () => {
+  const profile = await createBoundProfileFixture();
   try {
     const owner = profile.admission;
     const store = boundProfileCredentials(owner);
@@ -24,5 +24,5 @@ it("checks current credential ownership, root permissions and released authority
     owner.release();
     assert.throws(() => assertCredentialStoreOwner(store, owner), /missing or released admission/u);
     assert.throws(() => assertCredentialStoreOwner({ ...store }, owner), /missing or released admission/u);
-  } finally { profile.close(); }
+  } finally { await profile.close(); }
 });

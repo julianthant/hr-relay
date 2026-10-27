@@ -12,8 +12,8 @@ import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 const { world, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
-it("presents only the selected day’s same-person attempts as one row with an ascending menu", () => {
-  const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+it("presents only the selected day’s same-person attempts as one row with an ascending menu", async () => {
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   for (let attempt = 1; attempt <= 7; attempt++) seedPersonLookupPresentation(w, {
     seed: 80 + attempt, attempt, itemId: uuidOf(5081),
     enqueuedAt: attempt <= 2 ? `2026-07-31T17:0${attempt}:00.000Z` : `2026-08-03T17:0${attempt}:00.000Z`,
@@ -34,8 +34,8 @@ it("presents only the selected day’s same-person attempts as one row with an a
   assert.deepEqual(groups[0].attempts.filter(row => row.attempt <= 2).map(row => row.startedAt.slice(0, 10)), []);
 });
 
-it("acquires scoped selected-day metadata through the production batch summary port without whole-history reads", () => {
-  const f = summaryFixture();
+it("acquires scoped selected-day metadata through the production batch summary port without whole-history reads", async () => {
+  const f = await summaryFixture();
   try {
     const item = uuidOf(5500);
     for (const [seed, attempt, day, itemId, workflow] of [
@@ -62,11 +62,11 @@ it("acquires scoped selected-day metadata through the production batch summary p
     assert.equal(f.projection.buildDashboardDayWire("2026-07-31").attemptHistory?.length, 4);
     f.summaries.itemAttempts = () => { throw new Error("synthetic-history-read-failed"); };
     assert.throws(() => f.projection.buildDashboardDayWire("2026-08-03"), /synthetic-history-read-failed/u);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
 it("keeps later-day metadata isolated after an earlier attempt changes without changing selected-day counts", async () => {
-  const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   const first = seedPersonLookupPresentation(w, { seed: 611, itemId: uuidOf(5600), enqueuedAt: "2026-07-31T17:00:00.000Z" });
   seedPersonLookupPresentation(w, { seed: 612, attempt: 2, itemId: uuidOf(5600), enqueuedAt: "2026-08-03T17:00:00.000Z" });
   const before = w.projection.buildDashboardDayWire("2026-08-03");

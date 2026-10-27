@@ -3,8 +3,8 @@ import { it } from "vitest";
 import { foundationFixture,id } from "../../../support/helpers/database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-it("keeps a complete prior generation across rollback and independent-reader snapshots",()=>{
-  const f=foundationFixture();let peer:AuthorityDatabase|undefined;
+it("keeps a complete prior generation across rollback and independent-reader snapshots",async ()=>{
+  const f=await foundationFixture();let peer:AuthorityDatabase|undefined;
   try{
     const before=f.db.readRunSummaries();
     peer=AuthorityDatabase.open({path:f.path,busyTimeoutMs:50,migrationOwner:"q-reader"},f.clock);
@@ -23,5 +23,5 @@ it("keeps a complete prior generation across rollback and independent-reader sna
     assert.equal(f.db.getMeta().authorityGeneration,generation);
     peer.close();peer=AuthorityDatabase.open({path:f.path,busyTimeoutMs:50,migrationOwner:"q-restart"},f.clock);
     assert.deepEqual(peer.readRunSummaries(),current);
-  }finally{peer?.close();f.dispose();}
+  }finally{peer?.close();await f.dispose();}
 });

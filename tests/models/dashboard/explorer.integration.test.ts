@@ -8,18 +8,18 @@ const FIRST = "11111111-1111-4111-8111-111111111111";
 const SECOND = "22222222-2222-4222-8222-222222222222";
 const SOURCE_FIELD = { nodeId: "crm-dates", fieldPath: "employmentDate", label: "Employment date" };
 
-function draft(f: ReturnType<typeof explorerAuthorityFixture>, changes: readonly unknown[] = [{ kind: "workflow-label", value: "People search" }]) {
+function draft(f: Awaited<ReturnType<typeof explorerAuthorityFixture>>, changes: readonly unknown[] = [{ kind: "workflow-label", value: "People search" }]) {
   return { draftVersion: 1, workflowId: f.descriptor.id, baseDescriptorVersion: f.descriptor.version,
     baseContractFingerprint: f.descriptor.contractFingerprint, baseOverrideRevision: 0, changes };
 }
 
-function untouched(f: ReturnType<typeof explorerAuthorityFixture>) {
+function untouched(f: Awaited<ReturnType<typeof explorerAuthorityFixture>>) {
   assert.deepEqual(f.database.authority.explorerOverrides.readAll(), []);
   assert.equal(f.database.authority.commands.get(FIRST), undefined);
   assert.equal(f.database.authority.commandAudits.findByCommand(FIRST), undefined);
 }
 
-function validControl(f: ReturnType<typeof explorerAuthorityFixture>) {
+function validControl(f: Awaited<ReturnType<typeof explorerAuthorityFixture>>) {
   assert.equal(f.service.validate(draft(f)).state, "ready-to-apply");
   assert.equal(f.kernel.execute(f.command(SECOND)).state, "applied");
   assert.equal(f.database.authority.explorerOverrides.read("person-lookup")?.revision, 1);
@@ -28,8 +28,8 @@ function validControl(f: ReturnType<typeof explorerAuthorityFixture>) {
 describe("Explorer registered graph and service acceptance", () => {
 
   it.each([[{ kind: "enqueue-policy", value: "allow-parallel" }], [{ kind: "edit-data-fields", fields: [SOURCE_FIELD] }]])(
-    "provides a complete source brief with held bases and required future checks: %j", change => {
-      const f = explorerAuthorityFixture();
+    "provides a complete source brief with held bases and required future checks: %j", async change => {
+      const f = await explorerAuthorityFixture();
       try {
         const requested = draft(f, [change]);
         const result = f.service.validate(requested);
@@ -52,7 +52,7 @@ describe("Explorer registered graph and service acceptance", () => {
         assert.equal(f.kernel.execute({ ...f.command(FIRST), payload: { changes: [change] } }).state, "rejected");
         untouched(f);
         validControl(f);
-      } finally { f.dispose(); }
+      } finally { await f.dispose(); }
     },
   );
 });

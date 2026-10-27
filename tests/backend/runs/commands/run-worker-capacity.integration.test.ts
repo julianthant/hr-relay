@@ -14,7 +14,7 @@ afterEach(cleanup);
 
 describe("automatic worker admission and retained capacity commands", () => {
   it("starts one worker for accepted items and retains its idle membership", async () => {
-    const h = openControlHarness();
+    const h = await openControlHarness();
     const { request } = dashboardLaunch(h, "10873690", { items: 2 });
     const pending = launchCommands(h).submit(request);
     const count = 1;
@@ -33,7 +33,7 @@ describe("automatic worker admission and retained capacity commands", () => {
   });
 
   it("creates no workers for a preview plan", async () => {
-    const h = openControlHarness(); const { request } = dashboardLaunch(h, "10873690");
+    const h = await openControlHarness(); const { request } = dashboardLaunch(h, "10873690");
     const plan = h.database.authority.startPlans.get(request.target.startPlanId); assert.ok(plan);
     const preview = { ...plan, startPlanId: nextCommandId(), shape: "preview" };
     h.database.authority.startPlans.create(preview);
@@ -44,7 +44,7 @@ describe("automatic worker admission and retained capacity commands", () => {
   });
 
   it("lets a worker added during the run claim an unclaimed item through the shared claim path", async () => {
-    const h = openControlHarness();
+    const h = await openControlHarness();
     const { request } = dashboardLaunch(h, "10873690", { items: 2 });
     const pending = launchCommands(h).submit(request); await proveLaunchBirth(h); await pending;
     const lifecycle = new RunRecordService({ database: h.database, clock: h.clock, ids: sequentialIdFactory("c"), publishQueued: () => {} });
@@ -68,7 +68,7 @@ describe("automatic worker admission and retained capacity commands", () => {
   });
 
   it("caps by the stored accepted items even when the result also lists superseded runs", async () => {
-    const h = openControlHarness(); const { request } = dashboardLaunch(h, "10873690");
+    const h = await openControlHarness(); const { request } = dashboardLaunch(h, "10873690");
     const result = h.kernel.execute(request); assert.ok(result.state === "applied");
     const capacity = createRunWorkerCapacity({ kernel: h.kernel, authority: h.database.authority, reconcileWorker: workerId => h.database.authority.workerLeases.get(workerId)?.lifecycle.state !== "stopped" });
     const command = CommandRequestSchema.parse(request); assert.ok(command.family === "start");
@@ -79,7 +79,7 @@ describe("automatic worker admission and retained capacity commands", () => {
   });
 
   it("reuses a failed standing member without expanding the pool", async () => {
-    const h = openControlHarness();
+    const h = await openControlHarness();
     await spawnPoolWorker(h);
     h.database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
       lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: NOW, reason: "crashed" }, now: NOW });
@@ -108,7 +108,7 @@ describe("automatic worker admission and retained capacity commands", () => {
 
   it.each(["refused", "uncertain"] as const)("retains a partial multi-spawn %s and never repeats either child", async outcome => {
     let calls = 0;
-    const h = openControlHarness({ interceptPool: pool => ({ ...pool, spawnPoolWorker: async context => {
+    const h = await openControlHarness({ interceptPool: pool => ({ ...pool, spawnPoolWorker: async context => {
       calls++;
       if (calls === 2) {
         if (outcome === "refused") throw new WorkerControlRefusal("injected-second-spawn-refusal");
@@ -139,7 +139,7 @@ describe("automatic worker admission and retained capacity commands", () => {
   });
 
   it("finishes only the unadmitted spawns from a settled retained Plan", async () => {
-    const h = openControlHarness();
+    const h = await openControlHarness();
     const { request } = dashboardLaunch(h, "10873690", { items: 2 });
     assert.equal(h.kernel.execute(request).state, "applied");
     const plan = { commandId: runCapacityCommandId(request.commandId, "plan-worker-count", 1),
@@ -160,7 +160,7 @@ describe("automatic worker admission and retained capacity commands", () => {
 
 describe("automatic Run capacity", () => {
   it("starts exactly one worker for a run with no standing worker", async () => {
-    const h = openControlHarness();
+    const h = await openControlHarness();
     const { request } = dashboardLaunch(h, "10873690", { items: 3 });
     const pending = launchCommands(h).submit(request);
     await proveLaunchBirth(h);
@@ -172,7 +172,7 @@ describe("automatic Run capacity", () => {
   });
 
   it("uses the live standing worker without adding another", async () => {
-    const h = openControlHarness();
+    const h = await openControlHarness();
     await spawnPoolWorker(h);
     const controls = h.database.authority.workerControls.list();
     const { request } = dashboardLaunch(h);
@@ -182,7 +182,7 @@ describe("automatic Run capacity", () => {
   });
 
   it("replaces a dead sole member once and retains its stopped reason before replacement", async () => {
-    const h = openControlHarness();
+    const h = await openControlHarness();
     await spawnPoolWorker(h);
     h.database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
       lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: NOW, reason: "crashed" }, now: NOW });

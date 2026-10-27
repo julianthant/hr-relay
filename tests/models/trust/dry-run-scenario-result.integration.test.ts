@@ -12,18 +12,19 @@ import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admis
 
 const NOW = "2026-08-25T12:00:00.000Z";
 const HASH = "a".repeat(64);
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const { STARTED_MET_RESULT, NOT_STARTED_BLOCKED_RESULT } = dryRunScenarioResultRecords(HASH, NOW);
 
 
 
-function databasePath(): string {
-  const profile = createBoundProfileFixture();
+async function databasePath(): Promise<string> {
+  const profile = await createBoundProfileFixture();
   profiles.push(profile);
   return profile.path;
 }
 
-function openDatabase(path = databasePath()): AuthorityDatabase {
+async function openDatabase(path?: string): Promise<AuthorityDatabase> {
+  path ??= await databasePath();
   const database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "dry-run-result-test" },
     manualClock(new Date(NOW)),
@@ -32,8 +33,8 @@ function openDatabase(path = databasePath()): AuthorityDatabase {
   return database;
 }
 
-afterEach(() => {
-  for (const profile of profiles.splice(0)) profile.close();
+afterEach(async () => {
+  for (const profile of profiles.splice(0)) await profile.close();
 });
 
 describe("durable dry-run scenario results", () => {
@@ -127,8 +128,8 @@ describe("durable dry-run scenario results", () => {
 
 describe("dry-run scenario result authority repository", () => {
 
-  it("inserts, reads, and lists durable results in recorded order", () => {
-    const database = openDatabase();
+  it("inserts, reads, and lists durable results in recorded order", async () => {
+    const database = await openDatabase();
     const later = {
       ...NOT_STARTED_BLOCKED_RESULT,
       resultId: "55555555-5555-4555-8555-555555555555",
@@ -151,9 +152,9 @@ describe("dry-run scenario result authority repository", () => {
     database.close();
   });
 
-  it("stores the parsed result as canonical payload_json", () => {
-    const path = databasePath();
-    const database = openDatabase(path);
+  it("stores the parsed result as canonical payload_json", async () => {
+    const path = await databasePath();
+    const database = await openDatabase(path);
     const parsed = DryRunScenarioResultSchema.parse(NOT_STARTED_BLOCKED_RESULT);
     database.authority.dryRunScenarioResults.insert(parsed);
     const raw = new DatabaseSync(path, { readOnly: true });
@@ -166,8 +167,8 @@ describe("dry-run scenario result authority repository", () => {
     database.close();
   });
 
-  it("inserts a started result bound to its dry-run execution identities", () => {
-    const database = openDatabase();
+  it("inserts a started result bound to its dry-run execution identities", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue({
       ...QUEUED_RUN,
       envelope: { ...QUEUED_RUN.envelope, dryRun: true },

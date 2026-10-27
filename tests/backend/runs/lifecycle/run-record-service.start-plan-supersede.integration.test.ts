@@ -9,19 +9,19 @@ import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER } 
 import { launchDescriptor,launchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const cleanup: (() => void)[] = [];
-afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); });
-type HeldSupersedeFixture = { h: ReturnType<typeof launchHarness>; reopened?: AuthorityDatabase; primary?: { error: unknown }; failure?: Error; disposeAttempted: boolean };
+const cleanup: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const dispose of cleanup.splice(0)) await dispose(); });
+type HeldSupersedeFixture = { h: Awaited<ReturnType<typeof launchHarness>>; reopened?: AuthorityDatabase; primary?: { error: unknown }; failure?: Error; disposeAttempted: boolean };
 const retainedSupersedeOwners = new Set<HeldSupersedeFixture>();
-function setup(enqueue: Parameters<typeof launchHarness>[0] = "supersede-active") {
-  const h = launchHarness(enqueue);
+async function setup(enqueue: Parameters<typeof launchHarness>[0] = "supersede-active") {
+  const h = await launchHarness(enqueue);
   const held: HeldSupersedeFixture = { h, disposeAttempted: false };
   retainedSupersedeOwners.add(held);
-  cleanup.push(() => {
+  cleanup.push(async () => {
     if (held.failure !== undefined) throw held.failure;
     if (held.disposeAttempted) return;
     held.disposeAttempted = true;
-    try { held.reopened?.close(); h.dispose(); retainedSupersedeOwners.delete(held); }
+    try { held.reopened?.close(); await h.dispose(); retainedSupersedeOwners.delete(held); }
     catch (error) {
       held.primary = { error };
       held.failure = retainAuthoritySourceClosure([error], { admission: held });
@@ -31,8 +31,8 @@ function setup(enqueue: Parameters<typeof launchHarness>[0] = "supersede-active"
   return { h, held };
 }
 describe("start-specific supersede review is atomic", () => {
-  it("names exact generations and replaces them only on final submission; replay is stable", () => {
-    const { h, held } = setup();
+  it("names exact generations and replaces them only on final submission; replay is stable", async () => {
+    const { h, held } = await setup();
     try {
       const source = h.start(h.proposal()); const plan = h.proposal();
     assert.deepEqual(plan.planned[0].supersedeTargets, [{ runId: source.envelope.runId, traceId: source.envelope.traceId,
@@ -48,8 +48,8 @@ describe("start-specific supersede review is atomic", () => {
     }
   });
   for (const change of ["added", "removed", "revised", "claimed"] as const) {
-    it(`refuses ${change} membership/generation before consumption or publication`, () => {
-      const { h, held } = setup();
+    it(`refuses ${change} membership/generation before consumption or publication`, async () => {
+      const { h, held } = await setup();
     try {
       const source = change === "added" ? undefined : h.start(h.proposal());
       const plan = h.proposal();
@@ -84,8 +84,8 @@ describe("start-specific supersede review is atomic", () => {
     }
   });
   }
-  it("late batch drift preserves all earlier active runs and refuses the entire vector", () => {
-    const { h, held } = setup();
+  it("late batch drift preserves all earlier active runs and refuses the entire vector", async () => {
+    const { h, held } = await setup();
     try {
       const first = h.start(h.proposal()); const second = h.start(h.proposal(undefined, undefined, true, "10812346"));
     const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }, { eid: "10812346" }], dryRun: true });
@@ -101,9 +101,9 @@ describe("start-specific supersede review is atomic", () => {
       throw held.failure;
     }
   });
-  it("reopens and replays an accepted plan without a supersede review basis", () => {
+  it("reopens and replays an accepted plan without a supersede review basis", async () => {
 
-    const { h, held } = setup("reject-active");
+    const { h, held } = await setup("reject-active");
     try {
     const plan = h.proposal(); assert.equal(plan.planned[0].supersedeTargets, undefined);
     const command = h.command(plan); const accepted = h.kernel.execute(command); assert.equal(accepted.state, "applied");

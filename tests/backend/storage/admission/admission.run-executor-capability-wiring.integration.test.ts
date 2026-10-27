@@ -81,7 +81,7 @@ describe("executor capability wiring, wired", () => {
       },
     }]);
     const artifacts = tempArtifactWriter();
-    const harness = wiringHarness(wiredDescriptor, registryFor(wiredTask));
+    const harness = await wiringHarness(wiredDescriptor, registryFor(wiredTask));
     const { database } = harness.authority;
     const admissionIds = admissionIdFactory();
     const deps: RunExecutorDependencies = {

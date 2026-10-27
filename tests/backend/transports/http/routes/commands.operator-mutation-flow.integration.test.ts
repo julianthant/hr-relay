@@ -29,7 +29,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         await new Promise<void>((resolve) => setImmediate(resolve));
       },
     };
-    const h = harness({ intake });
+    const h = await harness({ intake });
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b75";
     const acceptedAt = h.clock.now().toISOString();
     const patch = { "browser.headless": { set: false } } as const;
@@ -67,7 +67,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses malformed and unavailable requests with typed wire errors", async () => {
-    const h = harness();
+    const h = await harness();
 
     const badDay = await h.app.request("/api/v1/dashboard?day=today");
     assert.equal(badDay.status, 400);
@@ -163,7 +163,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses a command whose requested actor disagrees with BFF admission before authority changes", async () => {
-    const h = harness();
+    const h = await harness();
     const commandId = "00000000-0000-4000-8000-000000000095";
     const patch = {
       "display.screenWidth": { set: 1980 },
@@ -231,7 +231,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("executes a bulk cancel as N CAS-bound children and answers the per-run vector", async () => {
-    const h = harness();
+    const h = await harness();
 
     // Three real runs through the real plan -> start doors, one per subject.
     const startRun = async (eid: string, commandId: string): Promise<string> => {

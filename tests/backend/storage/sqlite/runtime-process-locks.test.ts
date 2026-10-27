@@ -213,11 +213,11 @@ afterEach(_afterEachFixture0);
 describe("first installation worker custody", () => {
 afterEach(_afterEachFixture0);
 
-  function initialFixture() {
-    return createFirstInstallCustodyFixture(roots, HASH_A);
+  async function initialFixture() {
+    return await createFirstInstallCustodyFixture(roots, HASH_A);
   }
-  it("holds the same genuine admission inside first-install open and subsequent composition open", () => {
-    const f = initialFixture(), originalOpen = AuthorityDatabase.open.bind(AuthorityDatabase);
+  it("holds the same genuine admission inside first-install open and subsequent composition open", async () => {
+    const f = await initialFixture(), originalOpen = AuthorityDatabase.open.bind(AuthorityDatabase);
     const openings: string[] = [];
     vi.spyOn(AuthorityDatabase, "open").mockImplementation((admission, options, clock) => {
       expect(f.snapshot().processLocks.workers.state).toBe("active");
@@ -236,7 +236,7 @@ afterEach(_afterEachFixture0);
       expect(bound.processLock.acquisitionId).not.toBe(f.custody().acquisitionId);
       bound.value.close(); bound.processLock.release();
       expect(f.snapshot().processLocks.workers.state).toBe("stopped");
-    } finally { admission.release(); f.close(); }
+    } finally { admission.release(); await f.close(); }
   });
 });
 }

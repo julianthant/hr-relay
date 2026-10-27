@@ -72,7 +72,7 @@ it("upgrades actual populated prior Settings rows without rewriting their exact 
   assert.ok(prior.tables.commands.length >= 2);
   assert.ok(prior.tables.command_audits.length >= 2);
   assert.ok(prior.tables.settings_snapshots.length >= 1);
-  const f = storageRecoveryFixture(7);
+  const f = await storageRecoveryFixture(7);
   try {
     const raw = new DatabaseSync(f.path);
     try {
@@ -104,7 +104,7 @@ it("upgrades actual populated prior Settings rows without rewriting their exact 
       assert.equal(inspection.prepare("SELECT COUNT(*) AS count FROM assistant_grants").get()?.count, 0);
     } finally { inspection.close(); }
     const beforeRuntime = storageTree(f.root);
-    assert.throws(() => f.finish(), error => error instanceof ProfileBrowserRootRefusalError && error.code === "PROFILE_BROWSER_ROOT_REFUSED");
+    await assert.rejects(async () => await f.finish(), error => error instanceof ProfileBrowserRootRefusalError && error.code === "PROFILE_BROWSER_ROOT_REFUSED");
     assert.deepEqual(storageTree(f.root), beforeRuntime);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });

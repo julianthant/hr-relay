@@ -433,8 +433,8 @@ describe("storage doctor span/authority reconciliation", () => {
     assert.throws(() => f.emit(rootEvent(currentRun(UUID_2, UUID_5, "pl-120001-0000"))), /timeline-event-owner-missing/u);
   });
 
-  it("never renders a span-only run as current canonical authority", () => {
-    const world = makeWorld();
+  it("never renders a span-only run as current canonical authority", async () => {
+    const world = await makeWorld();
     try {
       queuedEventOf(world, { seed: 91 });
       assert.equal(world.projection.buildDashboardDayWire(DAY).queueSurfaces.length, 1);
@@ -447,7 +447,7 @@ describe("storage doctor span/authority reconciliation", () => {
       assert.deepEqual(day.statusCounts, []);
       assert.deepEqual(day.monthCounts, []);
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 });

@@ -52,7 +52,7 @@ it("refuses a root replaced by a symlink before ready or put", async () => {
 {
 
 it("never deletes an unregistered shared winner during stopped cleanup and preserves its accounted witness", async () => {
-  const profile = createBoundProfileFixture(), admission = profile.admission;
+  const profile = await createBoundProfileFixture(), admission = profile.admission;
   try {
     const writer = createContentAddressedArtifactWriter({ admission });
     const bytes = Buffer.from("shared winner bytes");
@@ -66,6 +66,6 @@ it("never deletes an unregistered shared winner during stopped cleanup and prese
     assert.equal(reclaimDiagnosticStages(admission, ref => ref.id === winner.id), 1);
     assert.deepEqual(readdirSync(admission.artifactRoot).sort(), before.filter(name => !name.endsWith(".diagnostic.tmp")));
     assert.equal(existsSync(join(admission.artifactRoot, `${winner.sha256}.artifact`)), true);
-  } finally { profile.close(); }
+  } finally { await profile.close(); }
 });
 }

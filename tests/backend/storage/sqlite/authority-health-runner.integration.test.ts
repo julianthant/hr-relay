@@ -32,7 +32,7 @@ const writeCredentials = createCredentialDoctorWriter(COMMAND_ID, WRITE_ID);
 describe("credential presence doctor", () => {
 
   it("reports the same presence facts through authority.health and fails unreadable closed", async () => {
-    const f = fixture();
+    const f = await fixture();
     writeCredentials(f, { timekeeperName: { set: "Protected Doctor Canary" } });
     const runner = new AuthorityHealthPreflightRunner(f.admission,f.options, undefined, f.credentialStore);
     const context = {

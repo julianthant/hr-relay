@@ -9,8 +9,8 @@ const world = createRunRecordServiceTestWorld();
 afterEach(world.cleanup);
 
 describe("actual native worker lifetime birth", () => {
-  it("commits the original authenticated acquisition journal and lease reference together", () => {
-    const h = world.fixture();
+  it("commits the original authenticated acquisition journal and lease reference together", async () => {
+    const h = await world.fixture();
     const slot = h.database.authority.workerSlots.list()[0];
     if (slot === undefined) throw new Error("missing fixture member");
     const old = h.database.authority.workerLeases.get(slot.workerId);

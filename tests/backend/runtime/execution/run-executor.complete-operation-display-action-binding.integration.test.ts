@@ -28,7 +28,7 @@ describe("complete operation display action binding", () => {
     },
   ]) {
     it(`refuses ${refusal.name} even when no note sink is configured`, async () => {
-      const harness = executorHarness({ sessions: refusal.sessions, descriptor: actionBindingCompiled.descriptor });
+      const harness = await executorHarness({ sessions: refusal.sessions, descriptor: actionBindingCompiled.descriptor });
       const { database, clock } = harness.authority;
       const claimed = enqueueAndClaim(
         database,
@@ -48,7 +48,7 @@ describe("complete operation display action binding", () => {
 
   it("rejects a complete snapshot paired with a legacy descriptor before opening a driver", async () => {
     const { operationDisplay: _operationDisplay, ...legacyDescriptor } = actionBindingCompiled.descriptor;
-    const harness = executorHarness({ descriptor: legacyDescriptor });
+    const harness = await executorHarness({ descriptor: legacyDescriptor });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(
       database,

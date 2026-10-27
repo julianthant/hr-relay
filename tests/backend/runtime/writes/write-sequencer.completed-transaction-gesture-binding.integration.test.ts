@@ -12,7 +12,7 @@ afterEach(cleanup);
 describe("completed transaction gesture binding", () => {
 
   it("parks a fenced write when the completed commit gesture cannot bind", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     const drained: string[] = [];

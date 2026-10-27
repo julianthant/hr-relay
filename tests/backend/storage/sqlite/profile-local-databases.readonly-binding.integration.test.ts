@@ -18,7 +18,7 @@ import { createBoundProfileFixture } from "../../../support/helpers/admission-fi
 const actualSpawn = childProcesses.spawnSync;
 
 it("preserves the exact stopped-backup source witness after pending profile initialization", async () => {
-  const f = createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   copyFileSync("package.json", join(f.workspace, "package.json"));
   try {
     const input = (args: readonly string[]) => composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission);
@@ -38,11 +38,11 @@ it("preserves the exact stopped-backup source witness after pending profile init
     const backup = await input(["backup", "--json"]);
     assert.equal(backup.exitCode, 0, backup.output);
     assert.deepEqual(witness(), before);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("refuses a source sidecar change during the shared binding read", () => {
-  const f = createBoundProfileFixture(), createSnapshot = readonlySnapshots.createReadonlyAuthoritySnapshot;
+it("refuses a source sidecar change during the shared binding read", async () => {
+  const f = await createBoundProfileFixture(), createSnapshot = readonlySnapshots.createReadonlyAuthoritySnapshot;
   let changed = false;
   const observed: unknown[] = [];
   const snapshots = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
@@ -67,12 +67,12 @@ it("refuses a source sidecar change during the shared binding read", () => {
       return true;
     });
     assert.equal(changed, true);
-  } finally { snapshots.mockRestore(); f.close(); }
+  } finally { snapshots.mockRestore(); await f.close(); }
 });
 
 
 it("admits the same genuine profile across a real peer's committed WAL change", async () => {
-  const f = createBoundProfileFixture(), ready = join(f.workspace, "writer-ready"), commit = join(f.workspace, "commit"),
+  const f = await createBoundProfileFixture(), ready = join(f.workspace, "writer-ready"), commit = join(f.workspace, "commit"),
     committed = join(f.workspace, "committed"), finish = join(f.workspace, "finish");
   let crossed = false;
   const observer = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
@@ -131,12 +131,12 @@ it("admits the same genuine profile across a real peer's committed WAL change", 
   } finally {
     observer.mockRestore(); syncBuiltinESMExports(); writeFileSync(finish, "finish");
     try { assert.equal(await exited, 0, output); }
-    finally { f.close(); }
+    finally { await f.close(); }
   }
 });
 
-it("keeps a caller's actual SQLite writer lock held across live binding observation", () => {
-  const f = createBoundProfileFixture(), db = new DatabaseSync(f.path);
+it("keeps a caller's actual SQLite writer lock held across live binding observation", async () => {
+  const f = await createBoundProfileFixture(), db = new DatabaseSync(f.path);
   try {
     db.exec("BEGIN IMMEDIATE");
     assertLiveProfileDatabaseBinding(f.path, f.admission.profileBinding);
@@ -148,11 +148,11 @@ it("keeps a caller's actual SQLite writer lock held across live binding observat
       finally { db.close(); }
     `, f.path], { encoding: "utf8" });
     assert.equal(peer.status, 0, peer.stderr); assert.equal(peer.stdout, "busy");
-  } finally { db.exec("ROLLBACK"); db.close(); f.close(); }
+  } finally { db.exec("ROLLBACK"); db.close(); await f.close(); }
 });
 
-it("refuses foreign binding and a noncurrent schema at the live boundary", () => {
-  const f = createBoundProfileFixture(), foreign = createBoundProfileFixture();
+it("refuses foreign binding and a noncurrent schema at the live boundary", async () => {
+  const f = await createBoundProfileFixture(), foreign = await createBoundProfileFixture();
   try {
     assert.throws(() => assertLiveProfileDatabaseBinding(f.path, foreign.admission.profileBinding), /profile-database-binding-mismatch/u);
     const db = new DatabaseSync(f.path);
@@ -163,11 +163,11 @@ it("refuses foreign binding and a noncurrent schema at the live boundary", () =>
     try { application.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; PRAGMA application_id=0`); }
     finally { application.close(); }
     assert.throws(() => assertLiveProfileDatabaseBinding(f.path, f.admission.profileBinding), /profile-database-schema-mismatch/u);
-  } finally { foreign.close(); f.close(); }
+  } finally { await foreign.close(); await f.close(); }
 });
 
-it("refuses a replaced main inode even when its copied binding matches", () => {
-  const f = createBoundProfileFixture(), replacement = join(f.stateRoot, "replacement.db");
+it("refuses a replaced main inode even when its copied binding matches", async () => {
+  const f = await createBoundProfileFixture(), replacement = join(f.stateRoot, "replacement.db");
   copyFileSync(f.path, replacement);
   let replaced = false;
   const observer = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
@@ -180,11 +180,11 @@ it("refuses a replaced main inode even when its copied binding matches", () => {
   try {
     assert.throws(() => assertLiveProfileDatabaseBinding(f.path, f.admission.profileBinding), /profile-database-identity-changed/u);
     assert.equal(replaced, true);
-  } finally { observer.mockRestore(); syncBuiltinESMExports(); f.close(); }
+  } finally { observer.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
 
-it.each(["symlink", "hardlink", "public", "journal"] as const)("refuses unsafe live source companions: %s", kind => {
-  const f = createBoundProfileFixture(), companion = `${f.path}${kind === "journal" ? "-journal" : "-wal"}`;
+it.each(["symlink", "hardlink", "public", "journal"] as const)("refuses unsafe live source companions: %s", async kind => {
+  const f = await createBoundProfileFixture(), companion = `${f.path}${kind === "journal" ? "-journal" : "-wal"}`;
   try {
     rmSync(companion, { force: true });
     if (kind === "symlink") symlinkSync(f.path, companion);
@@ -193,21 +193,21 @@ it.each(["symlink", "hardlink", "public", "journal"] as const)("refuses unsafe l
     if (kind === "public") chmodSync(companion, 0o666);
     assert.throws(() => assertLiveProfileDatabaseBinding(f.path, f.admission.profileBinding),
       kind === "journal" ? /authority-readonly-source-journal-unsettled/u : /profile-database-identity-invalid/u);
-  } finally { rmSync(companion, { force: true }); f.close(); }
+  } finally { rmSync(companion, { force: true }); await f.close(); }
 });
 
-it("does not issue runtime children from released machines or unissued claims", () => {
-  const f = createBoundProfileFixture(), claim = f.machine.issueRegisteredProfileClaim(f.admission.profileBinding.profileId);
+it("does not issue runtime children from released machines or unissued claims", async () => {
+  const f = await createBoundProfileFixture(), claim = f.machine.issueRegisteredProfileClaim(f.admission.profileBinding.profileId);
   try {
     assert.throws(() => f.machine.admitProfile({ ...claim }), /profile-storage-claim-unissued/u);
     f.admission.release(); f.machine.release();
     assert.throws(() => f.machine.admitProfile(claim), /runtime-admission: missing or released admission/u);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 
-it("refuses a missing canonical live database without recreating it or sidecars", () => {
-  const f = createBoundProfileFixture(), binding = f.admission.profileBinding;
+it("refuses a missing canonical live database without recreating it or sidecars", async () => {
+  const f = await createBoundProfileFixture(), binding = f.admission.profileBinding;
   try {
     const companions = () => ["-wal", "-shm", "-journal"].map(suffix => existsSync(`${f.path}${suffix}`)
       ? createHash("sha256").update(readFileSync(`${f.path}${suffix}`)).digest("hex") : null);
@@ -216,12 +216,12 @@ it("refuses a missing canonical live database without recreating it or sidecars"
     assert.throws(() => assertLiveProfileDatabaseBinding(f.path, binding), /profile-database-binding-required/u);
     assert.equal(existsSync(f.path), false);
     assert.deepEqual(companions(), before);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 
-function committedWalFixture(change: "valid" | "schema" | "application" = "valid") {
-  const f = createBoundProfileFixture();
+async function committedWalFixture(change: "valid" | "schema" | "application" = "valid") {
+  const f = await createBoundProfileFixture();
   try {
     const database = new DatabaseSync(f.path);
     let baseline: number;
@@ -248,11 +248,11 @@ function committedWalFixture(change: "valid" | "schema" | "application" = "valid
     assert.ok(existsSync(`${f.path}-wal`)); assert.ok(existsSync(`${f.path}-shm`));
     assert.ok(readFileSync(f.path).equals(main), "writer checkpointed the main database");
     return { f, baseline, main, wal: readFileSync(`${f.path}-wal`) };
-  } catch (error) { f.close(); throw error; }
+  } catch (error) { await f.close(); throw error; }
 }
 
-it.each(["zero", "truncated", "magic", "version", "page-size", "checksum"] as const)("refuses private malformed WAL header: %s without changing authoritative bytes", mutation => {
-  const { f, main, wal } = committedWalFixture(), companion = `${f.path}-wal`;
+it.each(["zero", "truncated", "magic", "version", "page-size", "checksum"] as const)("refuses private malformed WAL header: %s without changing authoritative bytes", async mutation => {
+  const { f, main, wal } = await committedWalFixture(), companion = `${f.path}-wal`;
   try {
     const damaged = mutation === "zero" ? Buffer.alloc(32) : mutation === "truncated" ? wal.subarray(0, 31) : Buffer.from(wal);
     if (mutation === "magic") damaged.writeUInt32BE(0, 0);
@@ -268,11 +268,11 @@ it.each(["zero", "truncated", "magic", "version", "page-size", "checksum"] as co
     assert.throws(() => assertLiveProfileDatabaseBinding(f.path, f.admission.profileBinding), /profile-database-companion-malformed/u);
     assert.deepEqual(snapshot(), before);
     assert.ok(readFileSync(f.path).equals(main));
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it.each(["valid", "schema", "application"] as const)("rebuilds private uninitialized SHM and retains authoritative WAL-only state: %s", change => {
-  const { f, baseline, main, wal } = committedWalFixture(change);
+it.each(["valid", "schema", "application"] as const)("rebuilds private uninitialized SHM and retains authoritative WAL-only state: %s", async change => {
+  const { f, baseline, main, wal } = await committedWalFixture(change);
   try {
     writeFileSync(`${f.path}-shm`, Buffer.alloc(32_768));
     assert.equal(readFileSync(`${f.path}-shm`).every(byte => byte === 0), true);
@@ -289,11 +289,11 @@ it.each(["valid", "schema", "application"] as const)("rebuilds private uninitial
     assert.equal(readFileSync(`${f.path}-shm`).some(byte => byte !== 0), true, "SQLite did not rebuild its private coordination cache");
     assert.ok(readFileSync(f.path).equals(main), "live observer changed authoritative main bytes");
     assert.ok(readFileSync(`${f.path}-wal`).equals(wal), "live observer changed authoritative WAL bytes");
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
-it("accepts an empty WAL while preserving authoritative main bytes", () => {
-  const f = createBoundProfileFixture();
+it("accepts an empty WAL while preserving authoritative main bytes", async () => {
+  const f = await createBoundProfileFixture();
   try {
     const database = new DatabaseSync(f.path);
     try { database.prepare("SELECT authority_generation FROM database_states WHERE id=1").get(); }
@@ -303,12 +303,12 @@ it("accepts an empty WAL while preserving authoritative main bytes", () => {
     assertLiveProfileDatabaseBinding(f.path, f.admission.profileBinding);
     assert.ok(readFileSync(f.path).equals(main));
     assert.equal(readFileSync(`${f.path}-wal`).length, 0);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 
-it("takes and disposes a fresh strict snapshot for every ordinary binding read", () => {
-  const f = createBoundProfileFixture(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
+it("takes and disposes a fresh strict snapshot for every ordinary binding read", async () => {
+  const f = await createBoundProfileFixture(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
   const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
     const snapshot = capture(path); copies.push(snapshot.path); return snapshot;
   });
@@ -323,5 +323,5 @@ it("takes and disposes a fresh strict snapshot for every ordinary binding read",
       assert.equal(copies.every(path => !existsSync(path)), true);
     }
     assert.notEqual(copies[0], copies[1]);
-  } finally { observer.mockRestore(); f.close(); }
+  } finally { observer.mockRestore(); await f.close(); }
 });

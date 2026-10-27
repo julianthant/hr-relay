@@ -6,19 +6,19 @@ import { AuthorityDatabase, inspectAuthorityBackupReadOnly } from "../../../supp
 import { createWorkbookLibraryService, WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const clock = manualClock(new Date("2026-10-15T12:00:00.000Z"));
 const workbook = { name: "Dates.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Dates", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: new Date("2026-01-01T00:00:00.000Z") }] }] }] };
-function fixture() {
-  const profile = createBoundProfileFixture();
+async function fixture() {
+  const profile = await createBoundProfileFixture();
   profiles.push(profile);
   const open = () => AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "workbook-test" }, clock);
   return { path: profile.path, open };
 }
-afterEach(() => { for (const profile of profiles.splice(0)) profile.close(); });
+afterEach(async () => { for (const profile of profiles.splice(0)) await profile.close(); });
 
-it("accounts for workbook snapshots and history in one authority generation, persists dates, and refuses stale saves", () => {
-  const f = fixture();
+it("accounts for workbook snapshots and history in one authority generation, persists dates, and refuses stale saves", async () => {
+  const f = await fixture();
   let database = f.open();
   try {
     const service = () => createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
@@ -44,8 +44,8 @@ it("accounts for workbook snapshots and history in one authority generation, per
   } finally { database.close(); }
 });
 
-it.each(["head", "history-value", "history-gap"])("refuses corrupt workbook %s during authority admission", corruption => {
-  const f = fixture(), database = f.open();
+it.each(["head", "history-value", "history-gap"])("refuses corrupt workbook %s during authority admission", async corruption => {
+  const f = await fixture(), database = f.open();
   const service = createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
   const first = service.create(workbook);
   service.save(first.libraryId, 1, { ...first.workbook, name: "Second.xlsx" });

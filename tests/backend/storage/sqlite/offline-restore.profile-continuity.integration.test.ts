@@ -34,8 +34,8 @@ import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeRunti
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 
-function world(clock: Clock = systemClock) {
-  const fixture = createBoundProfileFixture();
+async function world(clock: Clock = systemClock) {
+  const fixture = await createBoundProfileFixture();
   const profileId = fixture.admission.profileBinding.profileId;
   const journalPath = join(fixture.machine.stateRoot, "machine", "erasures", profileId + ".json");
   const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
@@ -55,7 +55,7 @@ function world(clock: Clock = systemClock) {
   const session = () => currentSession;
   const signIn = () => {
     currentSession = newSession();
-    const result = currentSession.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
+    const result = currentSession.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
     assert.equal(result.state, "active");
     if (result.state !== "active") throw new Error("fixture-sign-in-refused");
     renew(); return result;
@@ -101,7 +101,7 @@ async function waitForFile(path: string) {
 
 describe("profile restore continuity", () => {
   it("restores matching canonical SQLite without rolling credentials/control back, invalidates old context and admits a fresh child", async () => {
-    const f = world();
+    const f = await world();
     try {
       const store = f.store(), protectedBefore = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
       const manifestPath = await f.backup();
@@ -117,11 +117,11 @@ describe("profile restore continuity", () => {
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-fresh-context" });
       assert.equal(database.getMeta().profileId, f.profileId); database.close();
       assert.ok(f.store().read().entries.ucpathPassword);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it("preserves genuine saved settings and safely parked UNKNOWN write identities through canonical restore", async () => {
-    const f = world();
+    const f = await world();
     try {
       const options = { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-settings-unknown" };
       let database = FixtureAuthorityDatabase.open(options, undefined, undefined, undefined, undefined, f.store());
@@ -158,11 +158,11 @@ describe("profile restore continuity", () => {
         assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "parked");
         assert.equal(database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId)?.lifecycle.state, "parked-write");
       } finally { database.close(); }
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it("refuses a foreign physical origin even with matching profile UUIDs before staging", async () => {
-    const f = world();
+    const f = await world();
     try {
       const manifestPath = await f.backup();
       const document = JSON.parse(readFileSync(manifestPath, "utf8")) as { sourceDatabaseIdentity: string };
@@ -172,11 +172,11 @@ describe("profile restore continuity", () => {
       await assert.rejects(f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() }), /different authority database/);
       assert.deepEqual(readFileSync(f.path), bytes);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it.each(["journal", "anchor", "both"] as const)("refuses %s rollback against independent current control", async kind => {
-    const f = world();
+    const f = await world();
     try {
       const active = f.signIn();
       assert.equal(f.session().logOut(active.token, { at: "2026-10-21T12:01:00.000Z" }).state, "wiped");
@@ -199,16 +199,16 @@ describe("profile restore continuity", () => {
       assert.throws(() => f.store().read());
       assert.throws(() => captureCredentialErasureHead(f.store()));
       assert.deepEqual(readFileSync(f.path), bytes);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
-  it("settles an interrupted erase through its exact original command before restoring availability", () => {
-    const f = world();
+  it("settles an interrupted erase through its exact original command before restoring availability", async () => {
+    const f = await world();
     try {
       const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot, ...f.credentialInventories,
         activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [],
         credentialHooks: { afterErasureJournal: () => { throw new Error("synthetic-interrupted-erasure"); } } });
-      const active = session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
+      const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
       assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("fixture-sign-in-refused");
       assert.throws(() => session.logOut(active.token, { at: "2026-10-21T12:01:00.000Z" }), /synthetic-interrupted-erasure/);
       const intentPath = join(f.workspace, ".tracker", "control", "profile-publication.json");
@@ -230,11 +230,11 @@ describe("profile restore continuity", () => {
       assert.equal(document.history.filter(entry => entry.receipt.commandId === operation.commandId).length, 1);
       assert.equal(document.history.at(-1)?.receipt.writeId, operation.writeId);
       assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).includes(Buffer.from("disposable-fixture-password")), false);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it.each(["missing-control", "foreign-control", "registry-and-profile", "missing-binding"] as const)("refuses %s before restore payload effects", async kind => {
-    const f = world();
+    const f = await world();
     try {
       const manifestPath = await f.backup();
       const databaseBytes = readFileSync(f.path);
@@ -262,11 +262,11 @@ describe("profile restore continuity", () => {
       assert.deepEqual(readFileSync(f.path), before);
       if (kind !== "missing-binding") assert.deepEqual(before, expectedBefore);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it("refuses whole-machine restore and relocation without an independent retained continuity witness", async () => {
-    const f = world();
+    const f = await world();
     try {
       const manifestPath = await f.backup(), before = readFileSync(f.path);
       assert.throws(() => new OfflineAuthorityRestoreService(f.machine,
@@ -275,11 +275,11 @@ describe("profile restore continuity", () => {
       assert.deepEqual(readFileSync(f.path), before);
       assert.ok(existsSync(manifestPath));
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it("preserves external tombstones through SQLite restore and strips restored old credential plaintext", async () => {
-    const f = world();
+    const f = await world();
     try {
       const manifestPath = await f.backup();
       const old = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
@@ -298,11 +298,11 @@ describe("profile restore continuity", () => {
       assert.equal(repaired.entries.ucpathPassword, undefined);
       assert.equal(repaired.entries.ucpathUserId, undefined);
       assert.deepEqual(readFileSync(f.journalPath), journal);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it("refuses erased evidence changed during staging and retains unchanged SQLite", async () => {
-    const f = world();
+    const f = await world();
     try {
       const manifestPath = await f.backup(), bytes = readFileSync(f.path);
       const service = f.restore(async () => {
@@ -311,11 +311,11 @@ describe("profile restore continuity", () => {
       });
       await assert.rejects(service.restore({ manifestPath, stoppedSystemProof: f.proof() }));
       assert.deepEqual(readFileSync(f.path), bytes);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
-  it("refuses copied/fabricated opaque heads and an ordinary arbitrary erase identity", () => {
-    const f = world();
+  it("refuses copied/fabricated opaque heads and an ordinary arbitrary erase identity", async () => {
+    const f = await world();
     try {
       const store = f.store(), head = captureCredentialErasureHead(store);
       assert.throws(() => verifyCredentialErasureHead({ ...head }, f.stateRoot, f.journalPath, f.current().profileBinding), /unissued/);
@@ -324,11 +324,11 @@ describe("profile restore continuity", () => {
         updatedAt: "2026-10-21T12:00:00.000Z", protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH })));
       assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), before);
       assert.equal(existsSync(f.journalPath), false);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it("reports the replaced outcome after a rename that throws and refuses ordinary reuse", async () => {
-    const f = world();
+    const f = await world();
     try {
       const manifestPath = await f.backup();
       await assert.rejects(f.restore(async () => {}, (source, target) => {
@@ -336,21 +336,21 @@ describe("profile restore continuity", () => {
         throw new Error("synthetic-replace-after-effect");
       }).restore({ manifestPath, stoppedSystemProof: f.proof() }), error => error instanceof OfflineRestoreFailure && error.authorityState === "replaced");
       assert.throws(() => f.current().assertProfileRuntime());
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
   it("refuses a genuinely stale stopped proof before staging", async () => {
-    const clock = manualClock(new Date("2026-10-21T12:00:00.000Z")), f = world(clock);
+    const clock = manualClock(new Date("2026-10-21T12:00:00.000Z")), f = await world(clock);
     try {
       const manifestPath = await f.backup(), stoppedSystemProof = f.proof(), bytes = readFileSync(f.path);
       clock.advanceWall(60_001);
       await assert.rejects(f.restore().restore({ manifestPath, stoppedSystemProof }), /stale/);
       assert.deepEqual(readFileSync(f.path), bytes);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it("refuses a live real worker after a stopped proof was issued", async () => {
-    const f = world();
+    const f = await world();
     let worker: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
     try {
       const manifestPath = await f.backup(), stoppedSystemProof = f.proof(), bytes = readFileSync(f.path);
@@ -358,11 +358,11 @@ describe("profile restore continuity", () => {
       await assert.rejects(f.restore().restore({ manifestPath, stoppedSystemProof }));
       assert.deepEqual(readFileSync(f.path), bytes);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
-    } finally { worker?.release(); f.close(); }
+    } finally { worker?.release(); await f.close(); }
   });
 
   it("retains suspect and exact restore intent when replacement outcome is unobservable", async () => {
-    const f = world();
+    const f = await world();
     try {
       const manifestPath = await f.backup();
       await assert.rejects(f.restore(async () => {}, (source, target) => {
@@ -373,11 +373,11 @@ describe("profile restore continuity", () => {
       assert.ok(intent.restore.operationId);
       assert.throws(() => f.current().assertProfileRuntime());
       assert.throws(() => f.machine.readProfileRegistry());
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it("retains strict unproved companion evidence when settlement fails after replacement", async () => {
-    const f = world();
+    const f = await world();
     try {
       const manifestPath = await f.backup();
       await assert.rejects(f.restore(async () => {}, (source, target) => {
@@ -387,11 +387,11 @@ describe("profile restore continuity", () => {
       assert.ok(existsSync(intent.restore.suspectPath));
       assert.equal(readFileSync(f.path + "-wal", "utf8"), "synthetic-unproved-companion");
       assert.throws(() => f.current().assertProfileRuntime());
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 
   it("recovers interrupted registry invalidation exactly once without rerunning replacement", async () => {
-    const f = world();
+    const f = await world();
     let restoreHandle: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
     let recovery: ReturnType<typeof acquireRecoveryRuntimeRestore> | undefined;
     let freshMachine: RuntimeAdmission | undefined;
@@ -440,12 +440,12 @@ describe("profile restore continuity", () => {
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-recovered-fresh" }); database.close(); fresh.release();
     } finally {
       vi.restoreAllMocks(); syncBuiltinESMExports();
-      restoreHandle?.release(); recovery?.admission.release(); freshMachine?.release(); f.close();
+      restoreHandle?.release(); recovery?.admission.release(); freshMachine?.release(); await f.close();
     }
   });
 
   it("reports replaced and retains real process admission when exclusive release is unproved", async () => {
-    const f = world();
+    const f = await world();
     let held: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
     let archiveCollision: string | undefined;
     try {
@@ -463,11 +463,11 @@ describe("profile restore continuity", () => {
       assert.ok(existsSync(join(f.processLockRoot, "restore-admission.lock.json")));
       assert.throws(() => acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "workers", workerId: "synthetic-after-restore", pid: process.pid }));
       assert.throws(() => f.current().assertProfileRuntime());
-    } finally { if (archiveCollision !== undefined) rmSync(archiveCollision, { recursive: true }); held?.release(); f.close(); }
+    } finally { if (archiveCollision !== undefined) rmSync(archiveCollision, { recursive: true }); held?.release(); await f.close(); }
   });
 
   it.each(["erase", "restore"] as const)("excludes a real concurrent %s owner through the same installation lease", async held => {
-    const f = world();
+    const f = await world();
     let owner: ReturnType<typeof childJob> | undefined, competitor: ReturnType<typeof childJob> | undefined;
     const ready = join(f.workspace, "child-ready"), release = join(f.workspace, "child-release");
     try {
@@ -517,7 +517,7 @@ describe("profile restore continuity", () => {
       writeFileSync(release, "release", { mode: 0o600 });
       for (const job of [owner, competitor]) if (job !== undefined && job.child.exitCode === null) { job.child.kill(); await job.done; }
       rmSync(ready, { force: true }); rmSync(release, { force: true });
-      f.close();
+      await f.close();
     }
   });
 

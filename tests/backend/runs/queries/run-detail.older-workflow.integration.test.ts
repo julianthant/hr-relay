@@ -17,8 +17,8 @@ import { personLookupModule } from "../../../support/helpers/registered-workflow
 const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
 
-function fixture() {
-  const w = world();
+async function fixture() {
+  const w = await world();
   queuedEventOf(w, { seed: 81, descriptor: personLookupModule.descriptor });
   const run = w.authority.getRun(uuidOf(81));
   assert.ok(run);
@@ -36,7 +36,7 @@ function fixture() {
 }
 
 it.each([0, 1])("loads older run detail and Logs with current names after a fingerprint change (version delta %s)", async versionDelta => {
-  const { w, run, descriptor, deps } = fixture();
+  const { w, run, descriptor, deps } = await fixture();
   descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
   descriptor.version += versionDelta;
   descriptor.timeline[0].label = "Current person search";
@@ -64,8 +64,8 @@ it.each([0, 1])("loads older run detail and Logs with current names after a fing
   assert.match(JSON.stringify(projected.steps[0].entries), /Quillan, Petra A\./u);
 });
 
-it.each([false, true])("refuses a recorded task absent from the current timeline (changed fingerprint %s)", changed => {
-  const { w, run, descriptor, deps } = fixture();
+it.each([false, true])("refuses a recorded task absent from the current timeline (changed fingerprint %s)", async changed => {
+  const { w, run, descriptor, deps } = await fixture();
   if (changed) descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
   else descriptor.version++;
   taskEventsOf(w, 81, "searching", "done");
@@ -73,8 +73,8 @@ it.each([false, true])("refuses a recorded task absent from the current timeline
   assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
 });
 
-it.each([false, true])("still refuses a current timeline category without a key (changed fingerprint %s)", changed => {
-  const { run, deps } = fixture();
+it.each([false, true])("still refuses a current timeline category without a key (changed fingerprint %s)", async changed => {
+  const { run, deps } = await fixture();
   const missingKey: RunDetailQueryDeps = { ...deps, descriptors: { resolve: () => ({
     version: run.envelope.descriptorVersion, contractFingerprint: changed ? HASH_B : run.envelope.contractFingerprint,
     timeline: [{ label: "Unkeyed search", nodes: [{ id: "searching", label: "Search" }] }],
@@ -82,8 +82,8 @@ it.each([false, true])("still refuses a current timeline category without a key 
   assert.throws(() => buildRunDetail(missingKey, run.envelope.runId), LogIdentityRefusedError);
 });
 
-it("refuses an unmapped checkpoint-only node when no task span exists", () => {
-  const { w, run, descriptor, deps } = fixture();
+it("refuses an unmapped checkpoint-only node when no task span exists", async () => {
+  const { w, run, descriptor, deps } = await fixture();
   descriptor.version++;
   const at = w.clock.now().toISOString();
   const checkpoint = RunCheckpointRecordSchema.parse({ workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
@@ -97,8 +97,8 @@ it("refuses an unmapped checkpoint-only node when no task span exists", () => {
   assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
 });
 
-it.each([false, true])("refuses an unmapped action-only node (declared operation %s)", declared => {
-  const { w, run, descriptor, deps } = fixture();
+it.each([false, true])("refuses an unmapped action-only node (declared operation %s)", async declared => {
+  const { w, run, descriptor, deps } = await fixture();
   descriptor.version++;
   const at = w.clock.now().toISOString();
   w.timeline.append(TimelineAppendSchema.parse({ schemaVersion: 1, eventId: uuidOf(901), workflow: run.envelope.workflow,
@@ -113,8 +113,8 @@ it.each([false, true])("refuses an unmapped action-only node (declared operation
   assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
 });
 
-it("refuses ambiguous recorded membership while preserving the explicit no-timeline mode", () => {
-  const { w, run, descriptor, deps } = fixture();
+it("refuses ambiguous recorded membership while preserving the explicit no-timeline mode", async () => {
+  const { w, run, descriptor, deps } = await fixture();
   taskEventsOf(w, 81, "searching", "done");
   descriptor.version++;
   descriptor.timeline.push({ ...descriptor.timeline[0], key: "duplicate" });
@@ -124,8 +124,8 @@ it("refuses ambiguous recorded membership while preserving the explicit no-timel
   assert.equal(detail.timeline.events[0].native?.nodeId, "searching");
 });
 
-it.each(["gate.opened", "gate.resolved", "data.observed", "transaction.fenced", "transaction.previewed"] as const)("validates the node named by native %s evidence", type => {
-  const { w, run, descriptor, deps } = fixture();
+it.each(["gate.opened", "gate.resolved", "data.observed", "transaction.fenced", "transaction.previewed"] as const)("validates the node named by native %s evidence", async type => {
+  const { w, run, descriptor, deps } = await fixture();
   const at = w.clock.now().toISOString();
   const common = { t: type, pid: 4242, ts: at, workflow: run.envelope.workflow, runId: run.envelope.runId,
     attempt: 1, traceId: run.envelope.traceId, spanPath: run.envelope.traceId };
@@ -141,8 +141,8 @@ it.each(["gate.opened", "gate.resolved", "data.observed", "transaction.fenced", 
   assert.throws(() => assertRunTimelineCompatible(run, descriptor.timeline, deps, undefined, [record]), LogIdentityRefusedError);
 });
 
-it.each([false, true])("validates folded gate identity without native gate records (resolved %s)", resolved => {
-  const { w, run, descriptor, deps } = fixture();
+it.each([false, true])("validates folded gate identity without native gate records (resolved %s)", async resolved => {
+  const { w, run, descriptor, deps } = await fixture();
   const base = { ts: w.clock.now().toISOString(), workflow: run.envelope.workflow, runId: run.envelope.runId,
     attempt: 1, traceId: run.envelope.traceId, spanPath: run.envelope.traceId, gate: "removed-node" };
   w.writer.emit({ ...base, t: "gate.opened" });
@@ -153,8 +153,8 @@ it.each([false, true])("validates folded gate identity without native gate recor
   assert.throws(() => assertRunTimelineCompatible(run, descriptor.timeline, deps, row, []), LogIdentityRefusedError);
 });
 
-it.each(["same-run", "foreign-run", "nested-child-result"] as const)("checks nested action lineage without importing child workflow nodes (%s)", source => {
-  const { w, run, descriptor, deps } = fixture();
+it.each(["same-run", "foreign-run", "nested-child-result"] as const)("checks nested action lineage without importing child workflow nodes (%s)", async source => {
+  const { w, run, descriptor, deps } = await fixture();
   const at = w.clock.now().toISOString();
   const identity = { runId: run.envelope.runId, definitionFingerprint: run.envelope.contractFingerprint,
     nodeId: "searching", taskId: "ucpath/search-person-org", attempt: 1, claimGeneration: 1, taskAttempt: 1,
@@ -177,8 +177,8 @@ it.each(["same-run", "foreign-run", "nested-child-result"] as const)("checks nes
   else assert.doesNotThrow(() => assertRunTimelineCompatible(run, descriptor.timeline, deps, undefined, [record]));
 });
 
-it.each(["nodeId", "gateId"] as const)("validates gate result %s independently of its other mapped identity", missing => {
-  const { w, run, descriptor, deps } = fixture();
+it.each(["nodeId", "gateId"] as const)("validates gate result %s independently of its other mapped identity", async missing => {
+  const { w, run, descriptor, deps } = await fixture();
   w.authority.putGateResult({ runId: run.envelope.runId, nodeId: missing === "nodeId" ? "removed-node" : "searching",
     gateId: missing === "gateId" ? "removed-node" : "searching", commandId: uuidOf(904), expectedVersion: 1,
     resolvedBy: "local-operator", resolvedAt: w.clock.now().toISOString(), checkpointFingerprint: HASH_B,
@@ -186,8 +186,8 @@ it.each(["nodeId", "gateId"] as const)("validates gate result %s independently o
   assert.throws(() => assertRunTimelineCompatible(run, descriptor.timeline, deps, undefined, []), LogIdentityRefusedError);
 });
 
-it("validates replayed checkpoint references without importing unrelated item attempts", () => {
-  const { w, run, descriptor, deps } = fixture();
+it("validates replayed checkpoint references without importing unrelated item attempts", async () => {
+  const { w, run, descriptor, deps } = await fixture();
   const at = w.clock.now().toISOString();
   const checkpoint = RunCheckpointRecordSchema.parse({ workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
     nodeId: "removed-node", attempt: 1, claimGeneration: 1, runId: uuidOf(905), output: { schemaHash: HASH_B, value: {} },
@@ -204,8 +204,8 @@ it("validates replayed checkpoint references without importing unrelated item at
   assert.throws(() => assertRunTimelineCompatible(run, descriptor.timeline, deps, undefined, [record]), LogIdentityRefusedError);
 });
 
-it("loads a current-version run with a recorded checkpoint node outside the live timeline", () => {
-  const { w, run, deps } = fixture();
+it("loads a current-version run with a recorded checkpoint node outside the live timeline", async () => {
+  const { w, run, deps } = await fixture();
   const checkpoint = RunCheckpointRecordSchema.parse({ workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
     nodeId: "outside-timeline", attempt: 1, claimGeneration: 1, runId: run.envelope.runId,
     output: { schemaHash: HASH_B, value: {} }, descriptorVersion: run.envelope.descriptorVersion,
@@ -217,8 +217,8 @@ it("loads a current-version run with a recorded checkpoint node outside the live
   assert.equal(detail.runId, run.envelope.runId);
 });
 
-it.each(["version", "fingerprint", "missing-version", "missing-fingerprint"] as const)("checks an older run's empty fold with one timeline read after %s drift", drift => {
-  const { w, run, descriptor, deps } = fixture();
+it.each(["version", "fingerprint", "missing-version", "missing-fingerprint"] as const)("checks an older run's empty fold with one timeline read after %s drift", async drift => {
+  const { w, run, descriptor, deps } = await fixture();
   if (drift === "version") descriptor.version++;
   else if (drift === "fingerprint") descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
   const { version, contractFingerprint, ...presentation } = descriptor;

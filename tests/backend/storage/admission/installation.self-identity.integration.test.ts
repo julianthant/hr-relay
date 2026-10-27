@@ -49,12 +49,12 @@ it("reuses only the executing birth witness while checking every own lease row a
 it("invalidates a genuine profile child when its witnessed parent is released", async () => {
   await world();
   const { createBoundProfileFixture } = await import("../../../support/helpers/admission-fixture.js");
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   try {
     profile.admission.assertProfileRuntime();
     profile.machine.release();
     assert.throws(() => profile.admission.assertLive(), /released/u);
-  } finally { profile.close(); }
+  } finally { await profile.close(); }
 });
 
 it("refuses an unavailable first self observation without inventing a birth witness", async () => {

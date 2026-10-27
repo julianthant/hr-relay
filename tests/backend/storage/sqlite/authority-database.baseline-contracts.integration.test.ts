@@ -22,8 +22,8 @@ function manifest(n = 1) {
     currentRejects: new Map(), rejectionHistory: [], corrections: [], exclusions: [] });
 }
 describe("native imported-artifact contracts", () => {
-  it("keeps nested writes and generation in the outer transaction and freezes submitted content", () => {
-    const f = foundationFixture();
+  it("keeps nested writes and generation in the outer transaction and freezes submitted content", async () => {
+    const f = await foundationFixture();
     const db = f.db;
     try {
       const generation = db.getMeta().authorityGeneration;
@@ -44,6 +44,6 @@ describe("native imported-artifact contracts", () => {
       assert.throws(() => db.authority.intakeManifests.insert({ ...manifest(), createdAt: "2026-09-10T12:00:00.000Z" }), /different content/u);
       assert.throws(() => db.authority.intakeSessions.update({ ...session(), version: 3 }), /submission-immutable/u);
       assert.equal(canonicalJsonStringify(db.authority.intakeManifests.get(id(11))), frozen);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });

@@ -46,13 +46,13 @@ interface Fixture {
   readonly sourceReads: number[];
 }
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 async function fixture(): Promise<Fixture> {
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   const root = profile.stateRoot;
   let database: AuthorityDatabase;
   try {
@@ -62,14 +62,14 @@ async function fixture(): Promise<Fixture> {
     );
   } catch (primary) {
     const failures: unknown[] = [primary];
-    try { profile.close(); }
+    try { await profile.close(); }
     catch (cleanup) { failures.push(cleanup); }
     if (failures.length > 1) throw new AggregateError(failures, 'diagnostic fixture acquisition failed', { cause: primary });
     throw primary;
   }
-  disposers.push(() => {
+  disposers.push(async () => {
     database.close();
-    profile.close();
+    await profile.close();
   });
   const artifacts = createContentAddressedArtifactWriter({ admission: profile.admission });
   const sourceReads: number[] = [];

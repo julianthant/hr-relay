@@ -28,8 +28,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     });
   }
 
-  it("returns a requeued run to the queue, preserves its attempt, and frees the worker holding it", () => {
-    const w = world();
+  it("returns a requeued run to the queue, preserves its attempt, and frees the worker holding it", async () => {
+    const w = await world();
     seedWorkerSpans(w);
     queuedEventOf(w, { seed: 1 });
     w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...CLAIM, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1 }));
@@ -63,8 +63,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.deepEqual(card.currentRun, { state: "absent", reason: "no current claimed run" });
   });
 
-  it("closes an open gate on resolution and records the key and digest that resolved it", () => {
-    const w = world();
+  it("closes an open gate on resolution and records the key and digest that resolved it", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, lifecycle: { state: "parked-gate", gateId: "approval", parkedAt: instantOffsetOf(0), resumeAt: "approval" } });
     w.writer.emit({
       t: "gate.opened", ts: w.clock.now().toISOString(), workflow: "person-lookup",
@@ -90,8 +90,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     ]);
   });
 
-  it("closes a task span an earlier process opened without inventing when it started", () => {
-    const w = world();
+  it("closes a task span an earlier process opened without inventing when it started", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     // A restart: the end arrives for a span whose start belonged to a process
@@ -111,8 +111,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.equal(span?.startedAt, undefined);
   });
 
-  it("frees the worker when the run it held ends, then marks the standing card failed when the worker stops", () => {
-    const w = world();
+  it("frees the worker when the run it held ends, then marks the standing card failed when the worker stops", async () => {
+    const w = await world();
     seedWorkerSpans(w);
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
@@ -151,8 +151,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.deepEqual(stopped.currentRun, { state: "absent", reason: "no current claimed run" });
   });
 
-  it("orders worker cards by id and draws only the workers AUTHORITY names", () => {
-    const w = world();
+  it("orders worker cards by id and draws only the workers AUTHORITY names", async () => {
+    const w = await world();
 
     seedWorkerSpans(w, "person-lookup-worker-2");
     seedWorkerSpans(w, "person-lookup-worker-1");
@@ -172,8 +172,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.deepEqual(cards[2].browsers, []);
   });
 
-  it("refuses a replayed run.queued rather than folding a second identity over the first", () => {
-    const w = world({ collectRebuilds: true });
+  it("refuses a replayed run.queued rather than folding a second identity over the first", async () => {
+    const w = await world({ collectRebuilds: true });
     const queued = queuedEventOf(w, { seed: 1 });
     // Identity attributes are write-once. A second `run.queued` for the same
     // run would silently reset the attempt, the members and the details.
@@ -188,8 +188,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces.length, 1);
   });
 
-  it("refuses a RUN span that ended as skipped — skipped is a task-span outcome", () => {
-    const w = world({ collectRebuilds: true });
+  it("refuses a RUN span that ended as skipped — skipped is a task-span outcome", async () => {
+    const w = await world({ collectRebuilds: true });
     queuedEventOf(w, { seed: 1 });
     // The wire union permits the shape (one outcome enum serves both span
     // kinds); the fold is what knows a run cannot be conditionally skipped.
@@ -201,8 +201,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.match(w.projection.health().lastError ?? "", /skipped is a task-span outcome/);
   });
 
-  it("orders the month calendar, the workflow badges and the inbox deterministically", () => {
-    const w = world();
+  it("orders the month calendar, the workflow badges and the inbox deterministically", async () => {
+    const w = await world();
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 1 });
     queuedEventOf(w, { seed: 2, workflow: "separations-kuali-finalization" });

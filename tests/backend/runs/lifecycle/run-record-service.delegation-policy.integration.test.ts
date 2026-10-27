@@ -37,14 +37,14 @@ function terminal(run: RunRecord, outcome: "cancelled" | "done"): void {
   assert.equal(run.lifecycle.outcome, outcome);
 }
 
-function fixture(policy: "cascade" | "independent", unawaited = false) {
+async function fixture(policy: "cascade" | "independent", unawaited = false) {
   const { root: compiled, modules } = unawaited ? childUnawaitedModules(policy) : childPolicyModules(policy);
   assert.equal(plan1Contract.effect, "read");
   for (const module of modules) {
     assert.ok(descriptorRuntimeNodes(module.descriptor).every(node => node.kind !== "transaction"));
     assert.deepEqual(workflowProjections(module.descriptor).systems, []);
   }
-  const h = world.executorHarness({ descriptor: compiled.descriptor, stores: plan1Stores });
+  const h = await world.executorHarness({ descriptor: compiled.descriptor, stores: plan1Stores });
   const { database, clock, path, stateRoot } = h.authority;
   const patch = { "actor.label": { set: "Synthetic operator" } } as const;
   assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
@@ -64,7 +64,7 @@ function fixture(policy: "cascade" | "independent", unawaited = false) {
 }
 
 it("authenticates a genuine delegated child at claim and execution boundaries and refuses absent root session or manifests", async () => {
-  const f = fixture("cascade");
+  const f = await fixture("cascade");
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
   const root = f.currentRoot(), child = f.child();
   assert.ok(root.sessionId);
@@ -98,7 +98,7 @@ it("authenticates a genuine delegated child at claim and execution boundaries an
   assert.equal(completed.outcome.state, "done");
 });
 
-async function executeAfterCompletedChild(f: ReturnType<typeof fixture>, after: () => void) {
+async function executeAfterCompletedChild(f: Awaited<ReturnType<typeof fixture>>, after: () => void) {
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "done");
   const owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1), runtime = f.database.authority.runtimeConfig.get();
@@ -113,7 +113,7 @@ async function executeAfterCompletedChild(f: ReturnType<typeof fixture>, after: 
   return executeClaimedParent(f, claimed.run, after);
 }
 
-async function executeClaimedParent(f: ReturnType<typeof fixture>, claimed: RunRecord, after: () => void) {
+async function executeClaimedParent(f: Awaited<ReturnType<typeof fixture>>, claimed: RunRecord, after: () => void) {
   const owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
   const descriptor = f.modules.find(module => module.descriptor.id === f.root.envelope.workflow)?.descriptor;
   assert.ok(descriptor);
@@ -138,7 +138,7 @@ async function executeClaimedParent(f: ReturnType<typeof fixture>, claimed: RunR
 }
 
 it("requests cancellation on both a claimed anchor and claimed member without settling either", async () => {
-  const f = fixture("cascade", true);
+  const f = await fixture("cascade", true);
   const parentOwner = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
     poolIndex: 1, browserSystems: [] });
   const childOwner = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
@@ -178,7 +178,7 @@ it("requests cancellation on both a claimed anchor and claimed member without se
 });
 
 it("freshly claims an independent queued child after its other physical parent's reset", async () => {
-  const f = fixture("independent", true);
+  const f = await fixture("independent", true);
   const parentOwner = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
     poolIndex: 1, browserSystems: [] });
   const childOwner = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
@@ -242,7 +242,7 @@ it("freshly claims an independent queued child after its other physical parent's
 
 for (const policy of ["cascade", "independent"] as const) {
   it(`fences the actual parent after child await on a physical reset with ${policy} policy`, async () => {
-    const f = fixture(policy);
+    const f = await fixture(policy);
     let retained: RunRecord | undefined;
     let reset: ReturnType<typeof admitWorkerReset> | undefined;
     let childResult: ReturnType<typeof f.database.authority.runResults.get>;
@@ -277,7 +277,7 @@ for (const policy of ["cascade", "independent"] as const) {
 }
 
 it("admits delegation and fresh child work on its actual home while another member reset is pending", async () => {
-  const f = fixture("cascade");
+  const f = await fixture("cascade");
   const home = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
     poolIndex: 1, browserSystems: [] });
   const unrelated = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.root.envelope.workflow,
@@ -308,7 +308,7 @@ it("admits delegation and fresh child work on its actual home while another memb
 });
 
 it("refuses the real child return after its registered profile session epoch advances", async () => {
-  const f = fixture("independent");
+  const f = await fixture("independent");
   const registry = createProfileRegistry(f.profile.machine);
   const initial = registry.read();
   let retained: RunRecord | undefined;
@@ -351,7 +351,7 @@ it("refuses the real child return after its registered profile session epoch adv
 
 for (const policy of ["cascade", "independent"] as const) {
   it(`authenticates actual operator cancellation with the authored ${policy} child policy`, async () => {
-    const f = fixture(policy);
+    const f = await fixture(policy);
     assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
     const originalChild = f.child(), source = f.cancel();
     assert.equal(originalChild.lifecycle.state, "queued");
@@ -382,7 +382,7 @@ for (const policy of ["cascade", "independent"] as const) {
 }
 
 it("refuses a retained pending cancellation source without the actual canonical dispatch scope", async () => {
-  const f = fixture("cascade");
+  const f = await fixture("cascade");
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
   const child = f.child(), request = f.cancel();
   f.database.withAuthorityTransaction(repositories => { repositories.commands.insert(request); });
@@ -400,7 +400,7 @@ it("refuses a retained pending cancellation source without the actual canonical 
 });
 
 it("refuses a real awaited child outcome after canonical cancellation revokes the original parent claim", async () => {
-  const f = fixture("cascade");
+  const f = await fixture("cascade");
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
   const completed = await f.execution.step(f.root, world.SIGNAL);
   assert.equal(completed.outcome.state, "done");
@@ -447,7 +447,7 @@ it("refuses a real awaited child outcome after canonical cancellation revokes th
 });
 
 it("fences an independent queued descendant with its actual physical home reset reservation", async () => {
-  const f = fixture("independent");
+  const f = await fixture("independent");
   const first = await f.execution.step(f.root, world.SIGNAL);
   assert.equal(first.outcome.state, "yielded-delegation");
   const owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);

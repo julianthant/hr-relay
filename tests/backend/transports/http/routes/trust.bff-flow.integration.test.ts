@@ -25,7 +25,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     async ({ profile, method, range, status }) => {
       let disposals = 0;
       const transferErrors: Error[] = [];
-      const h = harness({
+      const h = await harness({
         observeArtifactLeaseClosed: () => {
           disposals += 1;
         },
@@ -76,7 +76,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("cancels the actual generic verified-byte route lease when its socket disconnects", async () => {
     const leaseClosed = Promise.withResolvers<void>();
     const transferErrors: Error[] = [];
-    const h = harness({ observeArtifactLeaseClosed: leaseClosed.resolve });
+    const h = await harness({ observeArtifactLeaseClosed: leaseClosed.resolve });
     const bytes = Buffer.alloc(2 * 1024 * 1024, 0x5a);
     h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
     const bundle = await createDiagnosticCaptureService({
@@ -137,7 +137,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const routedSignal = Promise.withResolvers<AbortSignal>();
     const signalAborted = Promise.withResolvers<AbortSignal>();
     const transferErrors: Error[] = [];
-    const h = harness({
+    const h = await harness({
       diagnosticBundles: (real) => ({
         ...real,
         artifactReader: Object.freeze({
@@ -201,7 +201,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("serves an authorized diagnostic attachment as an exact no-store resource", async () => {
-    const h = harness();
+    const h = await harness();
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -219,7 +219,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     "verifies and disposes the selected %s lease before returning an exact HEAD response",
     async (profile) => {
       let disposals = 0;
-      const h = harness({ diagnosticBundles: (real) => ({
+      const h = await harness({ diagnosticBundles: (real) => ({
         ...real,
         artifactReader: observeArtifactLeaseDisposal(real.artifactReader, () => {
           disposals += 1;
@@ -248,7 +248,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     "verifies and disposes the selected %s lease before refusing Range",
     async (profile) => {
       let disposals = 0;
-      const h = harness({ diagnosticBundles: (real) => ({
+      const h = await harness({ diagnosticBundles: (real) => ({
         ...real,
         artifactReader: observeArtifactLeaseDisposal(real.artifactReader, () => {
           disposals += 1;
@@ -274,7 +274,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves an attachment only through the exact verified bundle that indexes it", async () => {
     const readerOperations: { operation: "verify" | "prepare"; ref: ArtifactRef }[] = [];
-    const h = harness({ diagnosticBundles: (real) => ({
+    const h = await harness({ diagnosticBundles: (real) => ({
       ...real,
       artifactReader: beforeArtifactReaderOperation(real.artifactReader, (operation, ref) => {
         readerOperations.push({ operation, ref });
@@ -327,7 +327,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("serves the stored screenshot bytes and its captured dimensions through one exact bundle", async () => {
-    const h = harness();
+    const h = await harness();
     await captureDiagnosticBundle(h);
     const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jG9sAAAAASUVORK5CYII=";
     const bundle = await createDiagnosticCaptureService({
@@ -358,7 +358,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("marks diagnostic metadata and refused resource responses no-store and nosniff", async () => {
-    const h = harness();
+    const h = await harness();
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -379,7 +379,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses an existing attachment owned only by another existing bundle", async () => {
-    const h = harness();
+    const h = await harness();
     const first = await captureDiagnosticBundle(h);
     const second = await createDiagnosticCaptureService({
       authority: h.database.authority,
@@ -413,7 +413,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("does not infer purge history from absent diagnostic authority", async () => {
-    const h = harness();
+    const h = await harness();
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -437,7 +437,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it.each(["bundle identity", "bundle digest", "index identity", "index digest", "index size", "index media type", "missing index", "duplicate index"] as const)(
     "refuses exact attachment readback for corrupt %s before opening bytes", async (mutation) => {
       let opened = false;
-      const h = harness({ diagnosticBundles: (real) => ({
+      const h = await harness({ diagnosticBundles: (real) => ({
         ...real,
         authority: {
           ...real.authority,
@@ -485,7 +485,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       `refuses %s during ${phase} without a partial byte response`, async (mutation) => {
         let reads = 0;
         const operations: ("verify" | "prepare")[] = [];
-        const h: Harness = harness({ diagnosticBundles: (real) => ({
+        const h: Harness = await harness({ diagnosticBundles: (real) => ({
           ...real,
           artifactReader: beforeArtifactReaderOperation(real.artifactReader, async (operation, ref) => {
             operations.push(operation);
@@ -516,7 +516,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   }
 
   it("refuses a verified attachment Range without returning partial bytes", async () => {
-    const h = harness();
+    const h = await harness();
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -533,7 +533,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       `refuses a stored attachment whose physical %s changes during ${phase}`, async (mutation) => {
         let reads = 0;
         const operations: ("verify" | "prepare")[] = [];
-        const h: Harness = harness({ diagnosticBundles: (real) => ({
+        const h: Harness = await harness({ diagnosticBundles: (real) => ({
           ...real,
           artifactReader: beforeArtifactReaderOperation(real.artifactReader, async (operation, ref) => {
             operations.push(operation);
@@ -565,7 +565,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ["bad attachment", "00000000-0000-4000-8000-000000000001", "..%2F..%2Flatest"],
   ])("rejects %s before diagnostic authority lookup", async (_case, bundleId, artifactId) => {
     let authorityRead = false;
-    const h = harness({ diagnosticBundles: (real) => ({ ...real, authority: { ...real.authority,
+    const h = await harness({ diagnosticBundles: (real) => ({ ...real, authority: { ...real.authority,
       get: (id) => { authorityRead = true; return real.authority.get(id); },
     } }) });
     const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundleId}/attachments/${artifactId}`);
@@ -576,7 +576,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses an uncomposed bundle attachment capability by kind", async () => {
-    const h = harness({ omitDiagnosticBundles: true });
+    const h = await harness({ omitDiagnosticBundles: true });
     const response = await h.app.request("/api/v1/diagnostic-bundles/00000000-0000-4000-8000-000000000001/attachments/00000000-0000-4000-8000-000000000002");
     assert.equal(response.status, 409);
     assert.equal((await json(response)).code, "SECTION_UNAVAILABLE");
@@ -587,7 +587,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     for (const [failOnRead, phase] of [[1, "E29"], [2, "fresh selected prepare"]] as const) {
       let reads = 0;
       const operations: ("verify" | "prepare")[] = [];
-      const h: Harness = harness({ diagnosticBundles: (real) => ({
+      const h: Harness = await harness({ diagnosticBundles: (real) => ({
         ...real,
         artifactReader: beforeArtifactReaderOperation(real.artifactReader, async (operation, ref) => {
           operations.push(operation);
@@ -619,7 +619,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("treats a stored object without diagnostic attachment authority as foreign", async () => {
-    const h = harness();
+    const h = await harness();
     const storedOnly = await h.artifacts.put(
       new TextEncoder().encode("storage is not authorization"),
       { mediaType: "text/plain" },
@@ -637,7 +637,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("reports diagnostic artifact readback unavailable when no authority is composed", async () => {
-    const h = harness({ omitDiagnosticBundles: true });
+    const h = await harness({ omitDiagnosticBundles: true });
 
     const response = await h.app.request("/artifacts/v1/00000000-0000-4000-8000-000000000099");
     const body = await json(response);
@@ -652,7 +652,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ["non-UUID", "not-an-artifact-id"],
     ["traversal-shaped", "..%2F..%2Flatest"],
   ] as const)("rejects a %s artifact id before authority lookup", async (_case, artifactId) => {
-    const h = harness({
+    const h = await harness({
       diagnosticBundles: (real) => ({
         ...real,
         authority: {

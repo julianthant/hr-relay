@@ -42,8 +42,8 @@ describe("run arms", () => {
     return singleAppliedRunId(result);
   }
 
-  it("retries a terminal run into a fresh linked run and refuses an active item", () => {
-    const harness = createHarness();
+  it("retries a terminal run into a fresh linked run and refuses an active item", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
 
     const active = harness.kernel.execute(runCommand("retry", runId, 1));
@@ -77,8 +77,8 @@ describe("run arms", () => {
     );
   });
 
-  it("cancel is CAS-scoped and cascades through authority dependency edges only", () => {
-    const harness = createHarness();
+  it("cancel is CAS-scoped and cascades through authority dependency edges only", async () => {
+    const harness = await createHarness();
     const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
     const parent = harness.database.authority.runs.get(parentId);
     assert.ok(parent !== undefined);
@@ -135,8 +135,8 @@ describe("run arms", () => {
     assert.equal(independent?.lifecycle.state, "queued");
   });
 
-  it("cancels nothing when a child has no dependency edge in authority", () => {
-    const harness = createHarness();
+  it("cancels nothing when a child has no dependency edge in authority", async () => {
+    const harness = await createHarness();
     const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
     const parent = harness.database.authority.runs.get(parentId);
     assert.ok(parent !== undefined);
@@ -152,8 +152,8 @@ describe("run arms", () => {
   });
 
 
-  it("bump elevates a queued run to interactive at the live version, and refuses a stale one", () => {
-    const harness = createHarness();
+  it("bump elevates a queued run to interactive at the live version, and refuses a stale one", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const version = () => harness.database.authority.runs.get(runId)?.version ?? 0;
 
@@ -185,8 +185,8 @@ describe("run arms", () => {
     if (busy.state === "rejected") assert.equal(busy.code, "invalid-state");
   });
 
-  it("rename is presentation-only and changes no lifecycle", () => {
-    const harness = createHarness();
+  it("rename is presentation-only and changes no lifecycle", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const version = () => {
       const run = harness.database.authority.runs.get(runId);
@@ -205,8 +205,8 @@ describe("run arms", () => {
   });
 
 
-  it("refuses a stale rename with the live version", () => {
-    const harness = createHarness();
+  it("refuses a stale rename with the live version", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800001");
     const live = harness.database.authority.runs.get(runId)?.version ?? 0;
     assert.ok(live > 0);
@@ -238,7 +238,7 @@ const SUBJECT_BINDING = { kind: "test-data-local" as const, inputPath: "emplId" 
   name: "personLookupCanaryEid" as const, sourceId: "44444444-4444-4444-8444-444444444444" };
 const SYNTHETIC_EID = "10873698";
 
-function recoverySource(harness: ReturnType<typeof protectedFixtures.createHarness>, protection: "subject" | "ordinary" | "timekeeper") {
+function recoverySource(harness: Awaited<ReturnType<typeof protectedFixtures.createHarness>>, protection: "subject" | "ordinary" | "timekeeper") {
   if (protection === "timekeeper") {
     const plan = planStart({ authority: harness.database, clock: harness.clock, ids: harness.plannerIds,
       planTtlMs: 600_000, protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic signer" }) },
@@ -266,8 +266,8 @@ function recoverySource(harness: ReturnType<typeof protectedFixtures.createHarne
 describe("protected subject recovery publication", () => {
   for (const type of ["retry", "restart"] as const) {
     for (const protection of ["subject", "ordinary", "timekeeper"] as const) {
-      it(`${type} retains safe queue display for ${protection} input`, () => {
-        const harness = protectedFixtures.createHarness({ publishQueued: (run, publication) => {
+      it(`${type} retains safe queue display for ${protection} input`, async () => {
+        const harness = await protectedFixtures.createHarness({ publishQueued: (run, publication) => {
           assert.ok(publication);
           createTimelineEmitter({ repository: harness.database.authority.timelineEvents, clock: harness.clock }).emit(
             runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -299,7 +299,7 @@ describe("protected subject recovery publication", () => {
           assert.equal(event.subtitle, undefined);
           assert.equal(JSON.stringify(rows).includes(SYNTHETIC_EID), false);
         }
-        const world = makeWorld({ reader: sqliteRunReader(harness.database, harness.clock),
+        const world = await makeWorld({ reader: sqliteRunReader(harness.database, harness.clock),
           timeline: harness.database.authority.timelineEvents,
           descriptors: { resolve: workflow => [personLookupDescriptor, separationsDescriptor].find(descriptor => descriptor.id === workflow) } });
         try {
@@ -313,11 +313,11 @@ describe("protected subject recovery publication", () => {
             for (const surface of day.queueSurfaces) assert.equal(surface.title, SYNTHETIC_EID);
             assert.equal(JSON.stringify(day.queueSurfaces.map(({ title: _title, ...surface }) => surface)).includes(SYNTHETIC_EID), false);
           }
-        } finally { world.dispose(); }
+        } finally { await world.dispose(); }
       });
     }
-    it(`${type} rolls back a corrupt unmasked producer and exposes the mapped refusal`, () => {
-      const harness = protectedFixtures.createHarness({ publishQueued: (run, publication) => {
+    it(`${type} rolls back a corrupt unmasked producer and exposes the mapped refusal`, async () => {
+      const harness = await protectedFixtures.createHarness({ publishQueued: (run, publication) => {
         assert.ok(publication);
         createTimelineEmitter({ repository: harness.database.authority.timelineEvents, clock: harness.clock }).emit(
           runQueuedSpanEvent({ run, ...publication, title: "synthetic-unmasked-subject-proof", actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -342,7 +342,7 @@ describe("protected subject recovery publication", () => {
       assert.deepEqual(harness.database.authority.runs.listByWorkflow(personLookupDescriptor.id), [terminal]);
       assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeTimeline);
       assert.equal(JSON.stringify(beforeTimeline).includes("synthetic-unmasked-subject-proof"), false);
-      const world = makeWorld({ reader: sqliteRunReader(harness.database, harness.clock),
+      const world = await makeWorld({ reader: sqliteRunReader(harness.database, harness.clock),
         timeline: harness.database.authority.timelineEvents,
         descriptors: { resolve: workflow => workflow === personLookupDescriptor.id ? personLookupDescriptor : undefined } });
       try {
@@ -353,7 +353,7 @@ describe("protected subject recovery publication", () => {
         assert.equal(rows[0].runId, terminal.envelope.runId);
         assert.equal(rows[0].title, SYNTHETIC_EID);
         assert.equal(JSON.stringify(rows).includes("synthetic-unmasked-subject-proof"), false);
-      } finally { world.dispose(); }
+      } finally { await world.dispose(); }
     });
   }
 });

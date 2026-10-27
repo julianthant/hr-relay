@@ -40,8 +40,8 @@ const { cleanups, composeDashboardRuntime: composeFixtureDashboardRuntime, copyR
     }, () => releaseAdmissionFixtures());
 
 
-const readyProfiles = new Map<string, { fixture: ReturnType<typeof createBoundProfileFixture>; selected: ReturnType<typeof selectedProfile> }>();
-function selectedProfile(fixture: ReturnType<typeof createBoundProfileFixture>) {
+const readyProfiles = new Map<string, { fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>; selected: ReturnType<typeof selectedProfile> }>();
+function selectedProfile(fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
   const machine = acquireEntrypointAdmission(fixture.workspace, "shared");
   const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
   const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
@@ -49,7 +49,7 @@ function selectedProfile(fixture: ReturnType<typeof createBoundProfileFixture>) 
   const storage: { admission?: RuntimeAdmission } = {};
   const cleanup = async () => { await runtime.close(); storage.admission?.release(); machine.release(); };
   cleanups.push(cleanup);
-  const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("startup fixture sign-in refused");
   const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
@@ -58,9 +58,9 @@ function selectedProfile(fixture: ReturnType<typeof createBoundProfileFixture>) 
     erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${active.profileId}.json`) });
   return { machine, runtime, token: active.token, admission, credentials, cleanup };
 }
-function readyRoot() {
-  const fixture = createBoundProfileFixture({ sharedMachine: true });
-  cleanups.push(() => { readyProfiles.delete(fixture.workspace); fixture.close(); });
+async function readyRoot() {
+  const fixture = await createBoundProfileFixture({ sharedMachine: true });
+  cleanups.push(async () => { readyProfiles.delete(fixture.workspace); await fixture.close(); });
   copyRuntimePackageFixture(fixture.workspace);
   readyProfiles.set(fixture.workspace, { fixture, selected: selectedProfile(fixture) });
   return fixture.workspace;
@@ -122,7 +122,7 @@ afterEach(cleanup);
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
   it("unwinds an initial preflight refresh rejection and keeps authority admission recoverable", async () => {
-    const repoRoot = readyRoot();
+    const repoRoot = await readyRoot();
     copyRuntimePackageFixture(repoRoot);
     mkdirSync(profileStateRoot(repoRoot), { recursive: true });
     const path = join(profileStateRoot(repoRoot), "state.db");
@@ -149,7 +149,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("preserves an HTTP bind rejection while unwinding the constructed dashboard", async () => {
-    const repoRoot = readyRoot();
+    const repoRoot = await readyRoot();
     copyRuntimePackageFixture(repoRoot);
     const primary = new Error("injected HTTP listen failure");
 
@@ -172,7 +172,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("refuses a missing saved settings singleton when active revision proves one existed", async () => {
-    const repoRoot = readyRoot();
+    const repoRoot = await readyRoot();
     copyRuntimePackageFixture(repoRoot);
     const stateRoot = profileStateRoot(repoRoot);
     mkdirSync(stateRoot, { recursive: true });
@@ -225,7 +225,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("refuses an established selected profile with no authority database and releases its exact server claim", async () => {
-    const repoRoot = readyRoot();
+    const repoRoot = await readyRoot();
     copyRuntimePackageFixture(repoRoot);
     const stateRoot = profileStateRoot(repoRoot);
     mkdirSync(stateRoot, { recursive: true });
@@ -258,7 +258,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("refuses missing native authority beside its surviving canonical protected credentials without repairing either half", async () => {
-    const repoRoot = readyRoot(), stateRoot = profileStateRoot(repoRoot);
+    const repoRoot = await readyRoot(), stateRoot = profileStateRoot(repoRoot);
     assert.equal(existsSync(join(stateRoot, "credentials", "protected.json")), true);
     rmSync(join(stateRoot, "state.db"));
     const before = storageTree(stateRoot);
@@ -272,7 +272,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("refuses the missing database beside an unowned legacy settings directory without repairing either half", async () => {
-    const repoRoot = readyRoot(), stateRoot = profileStateRoot(repoRoot);
+    const repoRoot = await readyRoot(), stateRoot = profileStateRoot(repoRoot);
     const selected = readyProfiles.get(repoRoot)?.selected; assert.ok(selected);
     rmSync(join(stateRoot, "state.db"));
     const legacyPath = join(stateRoot, "settings");
@@ -293,7 +293,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it.each(["file", "directory"] as const)("refuses an unowned %s through actual inventory while retaining the opened profile owner", async kind => {
-    const repoRoot = readyRoot(), stateRoot = profileStateRoot(repoRoot);
+    const repoRoot = await readyRoot(), stateRoot = profileStateRoot(repoRoot);
     const selected = readyProfiles.get(repoRoot)?.selected; assert.ok(selected);
     const context = selected.runtime.selectedContext(selected.token);
     assert.equal(context.database.getMeta().profileId, selected.admission.profileBinding.profileId);
@@ -327,7 +327,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("recovers after genuine abandoned server custody and retains dead worker evidence", async () => {
-    const repoRoot = readyRoot();
+    const repoRoot = await readyRoot();
     copyRuntimePackageFixture(repoRoot);
     const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
@@ -436,7 +436,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("refuses a newer authority under the current build before settings opens or config resolution", async () => {
-    const repoRoot = readyRoot();
+    const repoRoot = await readyRoot();
     copyRuntimePackageFixture(repoRoot);
     const stateRoot = profileStateRoot(repoRoot);
     const artifactRoot = join(profileStateRoot(repoRoot), "artifacts");
@@ -501,7 +501,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it.each([29, CURRENT_AUTHORITY_SCHEMA_VERSION + 1])("refuses unsupported selected-profile authority %s before acquiring a server process record", async version => {
-    const repoRoot = readyRoot();
+    const repoRoot = await readyRoot();
     copyRuntimePackageFixture(repoRoot);
     const path = join(profileStateRoot(repoRoot), "state.db");
     openFixtureDatabase({ path, busyTimeoutMs: 250, migrationOwner: "unsupported-schema-fixture" }).close();
@@ -519,7 +519,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("serves the exact editable settings command schema hash", async () => {
-    const repoRoot = readyRoot();
+    const repoRoot = await readyRoot();
     copyRuntimePackageFixture(repoRoot);
     const runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
@@ -537,7 +537,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("ignores retired malformed file authority and serves the SQLite baseline", async () => {
-    const repoRoot = readyRoot();
+    const repoRoot = await readyRoot();
     copyRuntimePackageFixture(repoRoot);
     const authorityPath = join(profileStateRoot(repoRoot), "state.db");
     mkdirSync(dirname(authorityPath), { recursive: true });
@@ -556,16 +556,16 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
     "refuses valid settings bytes with corrupt $label on dashboard boot",
     async (corruption) => {
-      const owner = createBoundProfileFixture({ sharedMachine: true });
+      const owner = await createBoundProfileFixture({ sharedMachine: true });
       const repoRoot = owner.workspace;
-      cleanups.push(() => owner.close());
+      cleanups.push(async () => await owner.close());
       copyRuntimePackageFixture(repoRoot);
       const clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
       const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null },
         processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot) });
       const storage: { admission?: RuntimeAdmission } = {};
       cleanups.push(async () => { await profile.close(); storage.admission?.release(); });
-      const signedIn = profile.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password",
+      const signedIn = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password",
         at: clock.now().toISOString() });
       assert.equal(signedIn.state, "active");
       if (signedIn.state !== "active") throw new Error("corruption-fixture-signin-refused");

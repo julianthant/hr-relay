@@ -44,18 +44,18 @@ import { AuthorityBackupService, AuthorityDatabase } from "../../../support/help
 
 {
 
-const cleanup: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const dispose of cleanup.splice(0).reverse()) dispose(); };
+const cleanup: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); };
 const signal = (): AbortSignal => new AbortController().signal;
-function harness(configureRunners?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]) {
-  const profile = createBoundProfileFixture();
+async function harness(configureRunners?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]) {
+  const profile = await createBoundProfileFixture();
   const repoRoot = profile.workspace, stateRoot = profile.stateRoot;
   const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
   const database = AuthorityDatabase.open({ path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "preflight-test" }, clock);
-  cleanup.push(() => {
+  cleanup.push(async () => {
     releaseSeededWriteOwners(database, clock.now().toISOString());
     database.close();
-    profile.close();
+    await profile.close();
   });
   const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock,
     { stateRoot, artifactRoot: profile.admission.artifactRoot });
@@ -100,7 +100,7 @@ function harness(configureRunners?: (runners: readonly PreflightRunner[]) => rea
 it("real plan/kernel/lifecycle admits healthy work and exact replay stays read-only after a fault", async () => {
 try {
 
-  const h = harness(); await h.plans.prepare?.(h.ingress, signal());
+  const h = await harness(); await h.plans.prepare?.(h.ingress, signal());
   const plan = h.plans.plan(h.ingress); const command = h.command(plan);
   assert.equal(h.kernel.execute(command).state, "applied");
   assert.equal(h.publications, 1); assert.equal(h.database.authority.runs.listByWorkflow(plan.workflowId).length, 1);
@@ -110,7 +110,7 @@ try {
   assert.equal(h.probes.length, count); assert.equal(h.publications, 1);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 
@@ -118,7 +118,7 @@ it("required faults and missing detector support prevent plan/enqueue effects", 
 try {
 
   for (const missing of [false, true]) {
-    const h = harness(); if (missing) h.missing(); else h.faults.add("endpoint.ucpath.prod");
+    const h = await harness(); if (missing) h.missing(); else h.faults.add("endpoint.ucpath.prod");
     const generation = h.database.getMeta().authorityGeneration;
     await assert.rejects(h.plans.prepare?.(h.ingress, signal()) ?? Promise.reject(new Error("fixture preparation is missing")), PreflightAdmissionRefusal);
     assert.throws(() => h.plans.plan(h.ingress), PreflightAdmissionRefusal);
@@ -127,28 +127,28 @@ try {
   }
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 
 it("a fault after planning refuses confirmation before plan consumption or session creation", async () => {
 try {
 
-  const h = harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+  const h = await harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
   h.faults.add("endpoint.ucpath.prod"); await h.preflight.admission.prepare(h.preflight.currentScope(plan.workflowId), signal());
   const result = h.kernel.execute(h.command(plan)); assert.equal(result.state, "rejected");
   assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
   assert.equal(h.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0); assert.equal(h.publications, 0);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 
 it("optional or unselected faults leave unrelated valid scopes usable; instance scopes cannot substitute", async () => {
 try {
 
-  const h = harness(); h.faults.add("provider.census"); h.faults.add("endpoint.ucpath.test");
+  const h = await harness(); h.faults.add("provider.census"); h.faults.add("endpoint.ucpath.test");
   await h.plans.prepare?.(h.ingress, signal()); assert.equal(h.kernel.execute(h.command(h.plans.plan(h.ingress))).state, "applied");
   assert.ok(!h.probes.includes("endpoint.ucpath.test"));
   const scope = h.preflight.currentScope(h.ingress.workflowId);
@@ -161,14 +161,14 @@ try {
   );
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 
 it("wrong fingerprints and divergent scoped reruns refuse before probes; failed and in-flight replay is stable", async () => {
 try {
 
-  const h = harness(); const dashboard = createPreflightHarness(h.clock, h.identity.configFingerprint).authority;
+  const h = await harness(); const dashboard = createPreflightHarness(h.clock, h.identity.configFingerprint).authority;
   const service = createPreflightReportService({ dashboard, runtime: h.preflight, clock: h.clock });
   const command = { commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", type: "rerun-preflight", target: {
     expectedConfigFingerprint: h.identity.configFingerprint, expectedDescriptorFingerprint: personLookupDescriptor.contractFingerprint, selection: { workflowId: personLookupDescriptor.id } } };
@@ -183,14 +183,14 @@ try {
   h.clock.advanceWall(60_000); h.clock.advanceMonotonic(60_000); assert.equal(service.read(command.target.selection).state, "unavailable");
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 
 it("claim checks the selected retained run before writing; browser gate refuses a new fault before open", async () => {
 try {
 
-  const h = harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+  const h = await harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
   assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
   const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
   h.clock.advanceWall(60_000); h.clock.advanceMonotonic(60_000); h.faults.add("endpoint.ucpath.prod");
@@ -213,13 +213,13 @@ try {
   assert.throws(() => h.preflight.runScope(stale.envelope), PreflightAdmissionRefusal);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 
 it("session readiness checks only its admitted system and freshly refuses every required prerequisite", async () => {
   try {
-    const h = harness();
+    const h = await harness();
     const scope = h.preflight.currentScope(personLookupDescriptor.id);
     let opens = 0;
     const reachedBrowser = new Error("session prerequisites passed");
@@ -250,7 +250,7 @@ it("session readiness checks only its admitted system and freshly refuses every 
     await assert.rejects(h.preflight.prepareSession(scope, "kuali", signal()), error => error instanceof PreflightAdmissionRefusal && error.reason === "scope-mismatch");
     await assert.rejects(h.preflight.prepareSession({ ...scope, configFingerprint: FingerprintSchema.parse("f".repeat(64)) }, "crm", signal()), PreflightAdmissionRefusal);
     assert.equal(h.probes.length, probes);
-  } finally { _afterEachFixture0(); }
+  } finally { await _afterEachFixture0(); }
 });
 
 for (const fault of ["missing", "duplicate", "throw", "protected-revision"] as const) {
@@ -258,7 +258,7 @@ for (const fault of ["missing", "duplicate", "throw", "protected-revision"] as c
     try {
       const failure = new Error("controlled detector failure");
       let revise: () => void = () => undefined;
-      const h = harness(runners => {
+      const h = await harness(runners => {
         if (fault === "missing") return runners.filter(runner => runner.check !== "browser.assets");
         if (fault === "duplicate") return [...runners, ...runners.filter(runner => runner.check === "browser.assets")];
         return runners.map(runner => runner.check !== "endpoint.crm.prod" ? runner : { ...runner, async run(context) {
@@ -282,26 +282,26 @@ for (const fault of ["missing", "duplicate", "throw", "protected-revision"] as c
         && (fault !== "throw" || error.cause === failure));
       assert.equal(opens, 0);
       if (fault === "missing" || fault === "duplicate") assert.equal(h.probes.length, 0);
-    } finally { _afterEachFixture0(); }
+    } finally { await _afterEachFixture0(); }
   });
 }
 
 it("descriptor scope is derived from graph systems rather than a caller capability list", async () => {
 try {
 
-  const h = harness(); const scope = workflowPreflightScope(personLookupDescriptor, h.identity);
+  const h = await harness(); const scope = workflowPreflightScope(personLookupDescriptor, h.identity);
   assert.ok(scope.requestedCapabilities.includes("system.ucpath.prod"));
   assert.throws(() => workflowPreflightScope(personLookupDescriptor, { ...h.identity, descriptorFingerprint: FingerprintSchema.parse("f".repeat(64)) }), PreflightAdmissionRefusal);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 
 it("production worker process composition refuses preflight before spawn and admits a healthy positive control", async () => {
 try {
 
-  const h = harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
+  const h = await harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
   const plan = CommandRequestSchema.parse({ commandId: "33333333-3333-4333-8333-333333333333", requestedAt: h.clock.now().toISOString(),
     requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count",
     target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } });
@@ -334,38 +334,38 @@ try {
   assert.ok(exit); exit(0, null); control.supervisor.close();
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 
 it("a protected-settings revision change invalidates admission without reusing a recent healthy report", async () => {
 try {
 
-  const h = harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+  const h = await harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
   h.changeProtected(); const count = h.probes.length;
   assert.equal(h.kernel.execute(h.command(plan)).state, "rejected"); assert.equal(h.publications, 0); assert.equal(h.probes.length, count);
   assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
   await h.plans.prepare?.(h.ingress, signal()); assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 }
 
 {
 
-const cleanup: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const dispose of cleanup.splice(0).reverse()) dispose(); };
+const cleanup: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); };
 const signal = (): AbortSignal => new AbortController().signal;
-function harness(beforeCrmEndpoint?: () => Promise<void>) {
-  const f = runtimeFixture(["executor.run", "system.ucpath.prod", "system.crm.prod"]);
+async function harness(beforeCrmEndpoint?: () => Promise<void>) {
+  const f = await runtimeFixture(["executor.run", "system.ucpath.prod", "system.crm.prod"]);
   const {root:repoRoot, clock}=f;
   const database=AuthorityDatabase.open({path:f.databasePath,busyTimeoutMs:250,migrationOwner:"setup-admission"},clock);
-  cleanup.push(() => {
+  cleanup.push(async () => {
     releaseSeededWriteOwners(database, clock.now().toISOString());
     database.close();
-    f.close();
+    await f.close();
   });
   const resolved = {...resolveConfigWithProvenance({},hostConfigFacts({}),clock),config:f.input.config,fingerprint:sha256Hex(canonicalJsonStringify(f.input.config))};
   const identity = { configSnapshotId: "66666666-6666-4666-8666-666666666666", configFingerprint: resolved.fingerprint };
@@ -375,7 +375,7 @@ function harness(beforeCrmEndpoint?: () => Promise<void>) {
   let probes=0;
   const preflight=composeRuntimePreflight({ admission: f.admission, credentials: f.credentials,database,clock,repoRoot,isolation:rebuildRuntimeIsolation,descriptors,
     descriptorSetHash:personLookupDescriptor.contractFingerprint,protectedSecrets:f.input.protectedSecrets,environment:{},
-    runnerFactory:input=>createRuntimePreflightRunners({...input,browserExecutablePath:()=>f.executable,dashboard:f.input.dashboard,providerAvailability:f.input.providerAvailability}).map(runner=>({...runner,run(context){probes++;return runner.check === "endpoint.crm.prod" && beforeCrmEndpoint !== undefined ? beforeCrmEndpoint().then(() => runner.run(context)) : runner.run(context);}}))});
+    runnerFactory:input=>createRuntimePreflightRunners({...input,browserExecutablePath:()=>f.executable,dashboard:f.input.dashboard,providerAvailability:f.input.providerAvailability}).map(runner=>({...runner,run(context){probes++;return runner.check === "endpoint.crm.prod" && beforeCrmEndpoint !== undefined ? (beforeCrmEndpoint()).then(() => runner.run(context)) : runner.run(context);}}))});
   let publications = 0;
   const lifecycle = new RunRecordService({ database, clock, ids: sequentialIdFactory("b"), publishQueued: run => { publications += 1; createTimelineEmitter({repository:database.authority.timelineEvents,clock}).emit(runQueuedSpanEvent({run,actorId:ActorIdSchema.parse("local-operator"),title:"Synthetic Setup admission proof"})); },
     admitQueuedRun: run => preflight.admission.assertReady(preflight.runScope(run.envelope)) });
@@ -398,7 +398,7 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
   let release = Promise.withResolvers<void>();
   let backupReadReached = Promise.withResolvers<void>();
   let gateSession = false;
-  const h = harness(async () => {
+  const h = await harness(async () => {
     if (!gateSession) return;
     endpointReached.resolve();
     await release.promise;
@@ -485,14 +485,14 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     release.resolve();
     await Promise.allSettled([doctorOutcome, openOutcome]);
     restoreRead();
-    _afterEachFixture0();
+    await _afterEachFixture0();
   }
 });
 
 it("real detectors block enqueue for a missing workflow secret, then admit after explicit repair; replay remains read-only",async()=>{
 try {
 
-  const h=harness();h.f.setProtected(populatedProtectedRecord("ucpathPassword"));
+  const h=await harness();h.f.setProtected(populatedProtectedRecord("ucpathPassword"));
   const generation=h.database.getMeta().authorityGeneration;
   await assert.rejects(h.plans.prepare?.(h.ingress,signal())??Promise.reject(new Error("missing prepare")),PreflightAdmissionRefusal);
   assert.throws(()=>h.plans.plan(h.ingress),PreflightAdmissionRefusal);
@@ -503,13 +503,13 @@ try {
   assert.equal(h.kernel.execute(command).state,"already-applied");assert.equal(h.probes,probes);assert.equal(h.publications,1);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 it("claim and browser consumers reject actual missing assets before effects, with healthy controls",async()=>{
 try {
 
-  const h=harness();await h.plans.prepare?.(h.ingress,signal());const plan=h.plans.plan(h.ingress);assert.equal(h.kernel.execute(h.command(plan)).state,"applied");
+  const h=await harness();await h.plans.prepare?.(h.ingress,signal());const plan=h.plans.plan(h.ingress);assert.equal(h.kernel.execute(h.command(plan)).state,"applied");
   const original=h.database.authority.runs.listByWorkflow(plan.workflowId)[0];assert.ok(original);
   testWorkerPorts(h.database, h.clock, { path: h.f.databasePath, descriptor: personLookupDescriptor, poolIndex: 1 });
   const workerId = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0].workerId;
@@ -530,13 +530,13 @@ try {
   h.f.setProtected(populatedProtectedRecord("ucpathPassword"));await assert.rejects(factory.open(open),PreflightAdmissionRefusal);assert.equal(opens,1);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 it("production worker process composition refuses preflight before spawn and admits a healthy positive control", async () => {
 try {
 
-  const h = harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
+  const h = await harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
   let workerId = "";
   const control = composeWorkerProcessControl({ profileRoot: h.f.input.config.paths.browserProfileRoot, processLockRoot: join(h.f.stateRoot, "locks"), database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
     preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
@@ -561,14 +561,14 @@ try {
   assert.ok(exit); exit(0, null); control.supervisor.close();
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 
 it("an unavailable optional executable provider leaves real unrelated admission usable; stale config refuses before probes",async()=>{
 try {
 
-  const h=harness();const scope=h.preflight.currentScope(h.ingress.workflowId);
+  const h=await harness();const scope=h.preflight.currentScope(h.ingress.workflowId);
   Reflect.set(h.f.input.providerAvailability, "census/geocode.census", false);
   const optional={...scope,requestedCapabilities:[...scope.requestedCapabilities,"provider.census" as const]};
   const report=await h.preflight.admission.prepare(optional,signal());
@@ -578,14 +578,14 @@ try {
   await h.plans.prepare?.(h.ingress,signal());assert.equal(h.kernel.execute(h.command(h.plans.plan(h.ingress))).state,"applied");assert.equal(h.publications,1);
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 }
 
 
 for (const capability of ["dashboard.serve", "executor.run"] as const) it(`the default runtime factory verifies actual credential-owned authority for ${capability}`, async () => {
-  const f = runtimeFixture([capability]);
+  const f = await runtimeFixture([capability]);
   const database = AuthorityDatabase.open({ path: f.databasePath, busyTimeoutMs: 250, migrationOwner: "default-preflight-owner" }, f.clock);
   try {
     const config = f.input.config, fingerprint = sha256Hex(canonicalJsonStringify(config));
@@ -601,11 +601,11 @@ for (const capability of ["dashboard.serve", "executor.run"] as const) it(`the d
     assert.deepEqual(report.results.map(result => result.check).sort(), [...requiredPreflightChecks([capability])].sort());
     assert.equal(report.results.find(result => result.check === "authority.health")?.status, "pass");
     assert.equal(database.getMeta().authorityGeneration, generation);
-  } finally { database.close(); f.close(); }
+  } finally { database.close(); await f.close(); }
 });
 
-for (const fault of ["missing", "foreign", "stale"] as const) it(`the default runtime composition refuses a ${fault} credential owner before protected value reads`, () => {
-  const f = runtimeFixture(["executor.run"]), foreign = fault === "foreign" ? runtimeFixture(["executor.run"]) : undefined;
+for (const fault of ["missing", "foreign", "stale"] as const) it(`the default runtime composition refuses a ${fault} credential owner before protected value reads`, async () => {
+  const f = await runtimeFixture(["executor.run"]), foreign = fault === "foreign" ? await runtimeFixture(["executor.run"]) : undefined;
   const database = AuthorityDatabase.open({ path: f.databasePath, busyTimeoutMs: 250, migrationOwner: "preflight-owner-refusal" }, f.clock);
   let secretReads = 0;
   const input = { admission: f.admission, credentials: f.credentials, database, clock: f.clock, repoRoot: f.root,
@@ -619,5 +619,5 @@ for (const fault of ["missing", "foreign", "stale"] as const) it(`the default ru
     assert.throws(() => composeRuntimePreflight(input), fault === "stale"
       ? /runtime-admission: missing or released admission/u : /credential-store-owner-mismatch/u);
     assert.equal(secretReads, 0);
-  } finally { database.close(); foreign?.close(); f.close(); }
+  } finally { database.close(); await foreign?.close(); await f.close(); }
 });

@@ -8,7 +8,7 @@ import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsh
 import { disposeHttpRouteHarness, harness } from '../../../support/helpers/backend/http-route-harness.js';
 afterEach(disposeHttpRouteHarness);
 it('registers attachments and versioned updates through the existing HTTP routes and SQLite library', async () => {
-  const h = harness(), writes: string[] = [];
+  const h = await harness(), writes: string[] = [];
   const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async (url, init) => {
     if (init?.method === 'POST') writes.push(new URL(String(url)).pathname);
     return h.app.request(String(url), { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), host: 'localhost', origin: 'http://localhost' } });

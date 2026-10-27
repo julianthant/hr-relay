@@ -1,3 +1,4 @@
+import { finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory } from "../../../src/backend/app/composition/profile-credential-inventory.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
@@ -7,12 +8,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createProfileSession } from "../../../src/backend/profiles/profile-session.js";
+import { createSyntheticProfileSession as createProfileSession } from "../../support/helpers/admission-fixture.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { LogoutOperationSchema } from "../../../src/models/profiles/profile.js";
 
 const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-22T12:01:00.000Z" };
-function fixture(withForeign = false) {
+async function fixture(withForeign = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "profile-logout-continuation-")));
   const machine = acquireEntrypointAdmission(root, "shared");
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
@@ -27,27 +28,27 @@ function fixture(withForeign = false) {
   };
   const session = open();
   if (withForeign) {
-    const foreign = session.signUp({ email: "foreign@ucsd.edu", password: "foreign-fixture-password", firstName: "Other", lastName: "Fixture", createdAt: "2026-10-22T11:59:00.000Z" });
+    const foreign = await finishProfileOnboarding(session, session.signUp({ email: "foreign@ucsd.edu", password: "foreign-fixture-password", firstName: "Other", lastName: "Fixture", createdAt: "2026-10-22T11:59:00.000Z" }));
     assert.equal(foreign.state, "active");
     if (foreign.state !== "active") throw new Error("actual foreign fixture signup required");
     busy = false;
     assert.equal(session.logOut(foreign.token, { at: fields.at }).state, "wiped");
     busy = true;
   }
-  const active = session.signUp({ ...fields, firstName: "Fixture", lastName: "Operator", createdAt: "2026-10-22T12:00:00.000Z" });
+  const active = await finishProfileOnboarding(session, session.signUp({ ...fields, firstName: "Fixture", lastName: "Operator", createdAt: "2026-10-22T12:00:00.000Z" }));
   assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("actual fixture signup required");
   const pending = session.logOut(active.token, { at: fields.at });
   assert.equal(pending.state, "cancelling");
   if (pending.state !== "cancelling" || pending.operationId === undefined) throw new Error("actual pending logout required");
-  session.close();
+  await session.close();
   const credentials = join(machine.stateRoot, "profiles", active.profileId, "credentials", "protected.json");
   return { machine, active, pending, credentials, open, idle() { busy = false; },
-    cleanup() { for (const owner of owners.reverse()) owner.close(); machine.release(); rmSync(root, { recursive: true, force: true }); } };
+    async cleanup() { for (const owner of owners.reverse()) await owner.close(); machine.release(); rmSync(root, { recursive: true, force: true }); } };
 }
 
-it("requires a fresh password and normal lockout before issuing a server-only logout continuation", () => {
-  const f = fixture();
+it("requires a fresh password and normal lockout before issuing a server-only logout continuation", async () => {
+  const f = await fixture();
   try {
     const session = f.open(), before = readFileSync(f.credentials);
     assert.equal(session.signIn({ ...fields, password: "wrong" }).state, "cancelling");
@@ -61,11 +62,11 @@ it("requires a fresh password and normal lockout before issuing a server-only lo
     assert.equal(authorized.state, "authorized");
     assert.equal("token" in authorized, false);
     assert.equal("profileId" in authorized, false);
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
-it("consumes exact pending-operation authority once and never grants an ordinary session", () => {
-  const f = fixture();
+it("consumes exact pending-operation authority once and never grants an ordinary session", async () => {
+  const f = await fixture();
   try {
     const session = f.open();
     const authorized = session.authorizeLogoutContinuation(fields);
@@ -80,11 +81,11 @@ it("consumes exact pending-operation authority once and never grants an ordinary
     const stale = session.readFile(f.active.token, "credentials/protected.json");
     assert.ok(!(stale instanceof Uint8Array));
     if (!(stale instanceof Uint8Array)) assert.equal(stale.state, "refused");
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
-for (const mutation of ["operation", "epoch", "owner-close"] as const) it(`refuses a logout continuation after ${mutation} changes`, () => {
-  const f = fixture();
+for (const mutation of ["operation", "epoch", "owner-close"] as const) it(`refuses a logout continuation after ${mutation} changes`, async () => {
+  const f = await fixture();
   try {
     const session = f.open(), before = readFileSync(f.credentials);
     const authorized = session.authorizeLogoutContinuation(fields);
@@ -94,16 +95,16 @@ for (const mutation of ["operation", "epoch", "owner-close"] as const) it(`refus
       const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(path, "utf8")));
       f.machine.publishProfileOperation({ ...operation, phase: "incomplete" });
     } else if (mutation === "epoch") createProfileRegistry(f.machine).advanceSession(null);
-    else session.close();
+    else await session.close();
     f.idle();
     assert.equal(authorized.resume().state, "refused");
     assert.equal(readFileSync(f.credentials).equals(before), true);
     assert.equal(session.logoutOperations().length, 1);
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
-it("does not invent cold process or inventory custody after fresh authentication", () => {
-  const f = fixture();
+it("does not invent cold process or inventory custody after fresh authentication", async () => {
+  const f = await fixture();
   try {
     const session = f.open(false), before = readFileSync(f.credentials);
     const authorized = session.authorizeLogoutContinuation(fields);
@@ -112,11 +113,11 @@ it("does not invent cold process or inventory custody after fresh authentication
     assert.equal(authorized.resume().state, "refused");
     assert.equal(readFileSync(f.credentials).equals(before), true);
     assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
-it("supersedes an older issued continuation without accepting a client operation identity", () => {
-  const f = fixture();
+it("supersedes an older issued continuation without accepting a client operation identity", async () => {
+  const f = await fixture();
   try {
     const session = f.open(), before = readFileSync(f.credentials);
     const older = session.authorizeLogoutContinuation(fields), current = session.authorizeLogoutContinuation(fields);
@@ -128,16 +129,16 @@ it("supersedes an older issued continuation without accepting a client operation
     f.idle();
     assert.equal(current.resume().state, "wiped");
     assert.equal(current.resume().state, "refused");
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
-it("does not authorize a different genuine profile to continue the pending logout", () => {
-  const f = fixture(true);
+it("does not authorize a different genuine profile to continue the pending logout", async () => {
+  const f = await fixture(true);
   try {
     const session = f.open(), before = readFileSync(f.credentials);
     assert.equal(session.authorizeLogoutContinuation({ email: "foreign@ucsd.edu", password: "foreign-fixture-password", at: fields.at }).state, "refused");
     assert.equal(readFileSync(f.credentials).equals(before), true);
     assert.equal(session.logoutOperations().length, 1);
     assert.equal(session.logoutOperations()[0]?.profileId, f.active.profileId);
-  } finally { f.cleanup(); }
+  } finally { await f.cleanup(); }
 });

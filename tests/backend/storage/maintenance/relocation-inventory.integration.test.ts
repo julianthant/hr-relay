@@ -30,13 +30,13 @@ function artifactBytes(bytes: Buffer): Readonly<{ name: string; stored: string }
   }) };
 }
 
-it("relocates the Duo key with the other credentials and refuses an unsafe one", () => {
+it("relocates the Duo key with the other credentials and refuses an unsafe one", async () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-duo-")));
   const source = { stateRoot: join(workspace, "source"), artifactRoot: join(workspace, "source", "artifacts") };
   const destination = { stateRoot: join(workspace, "destination"), artifactRoot: join(workspace, "destination", "artifacts") };
   for (const path of [source.stateRoot, source.artifactRoot, destination.stateRoot, destination.artifactRoot]) mkdirSync(path, { recursive: true, mode: 0o700 });
   const sourceAdmission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot), destinationAdmission = RuntimeAdmission.syntheticRoots(destination.stateRoot, destination.artifactRoot);
-  const profile = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture();
   try {
     const protectedStore = boundProfileCredentials(profile.admission);
     const revision = protectedStore.read().revision;
@@ -56,7 +56,7 @@ it("relocates the Duo key with the other credentials and refuses an unsafe one",
     assert.equal(lstatSync(join(destination.stateRoot, file.relativePath)).mode & 0o777, 0o600);
     chmodSync(duo, 0o644);
     assert.throws(() => inspectRelocationFiles(input), /unsafe Duo credential/u);
-  } finally { sourceAdmission.release(); destinationAdmission.release(); profile.close(); rmSync(workspace, { recursive: true, force: true }); }
+  } finally { sourceAdmission.release(); destinationAdmission.release(); await profile.close(); rmSync(workspace, { recursive: true, force: true }); }
 });
 
 it("relocates only a validated private ChatGPT record and refuses unsafe token authority", async () => {
@@ -65,7 +65,7 @@ it("relocates only a validated private ChatGPT record and refuses unsafe token a
   const destination = { stateRoot: join(workspace, "destination"), artifactRoot: join(workspace, "destination", "artifacts") };
   for (const path of [source.stateRoot, source.artifactRoot, destination.stateRoot, destination.artifactRoot]) mkdirSync(path, { recursive: true, mode: 0o700 });
   const sourceAdmission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot), destinationAdmission = RuntimeAdmission.syntheticRoots(destination.stateRoot, destination.artifactRoot);
-  const profile = createBoundProfileFixture(), foreign = createBoundProfileFixture();
+  const profile = await createBoundProfileFixture(), foreign = await createBoundProfileFixture();
   try {
     const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: "oaiapp_fixture",
       registration: { subject: "synthetic-subject", name: "Synthetic", email: "synthetic@example.com" },
@@ -113,7 +113,7 @@ it("relocates only a validated private ChatGPT record and refuses unsafe token a
     rmSync(stage);
     writeFileSync(join(source.stateRoot, "credentials", ".chatgpt-account.lock"), "synthetic");
     assert.throws(() => inspectRelocationFiles(input), /unsafe state descendant|unknown or unsafe ChatGPT/u);
-  } finally { sourceAdmission.release(); destinationAdmission.release(); foreign.close(); profile.close(); rmSync(workspace, { recursive: true, force: true }); }
+  } finally { sourceAdmission.release(); destinationAdmission.release(); await foreign.close(); await profile.close(); rmSync(workspace, { recursive: true, force: true }); }
 });
 
 it("enumerates nested artifacts once and copies private bytes with exact retry", () => {
@@ -239,8 +239,8 @@ it("refuses pending credential writes, invalid event records, and malformed back
   } finally { rmSync(workspace, { recursive: true, force: true }); }
 });
 
-it("refuses a generated artifact whose verified SQLite reference has no bytes", () => {
-  const profile = createBoundProfileFixture();
+it("refuses a generated artifact whose verified SQLite reference has no bytes", async () => {
+  const profile = await createBoundProfileFixture();
   const source = { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot };
   try {
     mkdirSync(source.artifactRoot, { recursive: true, mode: 0o700 });
@@ -261,11 +261,11 @@ it("refuses a generated artifact whose verified SQLite reference has no bytes", 
       try { insertGeneratedArtifact(raw, record); } finally { raw.close(); }
       assert.throws(() => verifyRelocationLiveReferences({ admission, source, credentials: boundProfileCredentials(admission) }), /ENOENT|no such file/u);
     } finally { admission.assertLive(); }
-  } finally { profile.close(); }
+  } finally { await profile.close(); }
 });
 
-it("refuses a durable intake session whose source artifact is missing", () => {
-  const profile = createBoundProfileFixture();
+it("refuses a durable intake session whose source artifact is missing", async () => {
+  const profile = await createBoundProfileFixture();
   const source = { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot };
   try {
     mkdirSync(source.artifactRoot, { recursive: true, mode: 0o700 });
@@ -283,6 +283,6 @@ it("refuses a durable intake session whose source artifact is missing", () => {
       try { insertImportedArtifact(raw, importedArtifact(JSON.stringify(session), null)); } finally { raw.close(); }
       assert.throws(() => verifyRelocationLiveReferences({ admission, source, credentials: boundProfileCredentials(admission) }), /ENOENT|no such file/u);
     } finally { admission.assertLive(); }
-  } finally { profile.close(); }
+  } finally { await profile.close(); }
 });
 

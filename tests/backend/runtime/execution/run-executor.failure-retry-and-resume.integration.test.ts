@@ -21,7 +21,7 @@ describe("failure, retry, and resume", () => {
       ucpath: () => ({ ...healthyUcpathDriver(), searchPersonOrg: (): Promise<never> => Promise.reject(new Error(rawDiagnostic)) }),
       crm: () => healthyCrmDriver(),
     });
-    const harness = executorHarness({ sessions, stores: registryWithUcpathSearch(directUcpathSearchFixtureTask) });
+    const harness = await executorHarness({ sessions, stores: registryWithUcpathSearch(directUcpathSearchFixtureTask) });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
 
@@ -51,7 +51,7 @@ describe("failure, retry, and resume", () => {
   });
 
   it("rolls back an ordinary checkpoint when its required timeline event cannot persist", async () => {
-    const h = executorHarness();
+    const h = await executorHarness();
     const { database, clock, path } = h.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const raw = new DatabaseSync(path);
@@ -69,7 +69,7 @@ describe("failure, retry, and resume", () => {
   });
 
   it("refuses an explicit startAt resume whose ancestors have no checkpoints, before any browser", async () => {
-    const harness = executorHarness();
+    const harness = await executorHarness();
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(
       database,
@@ -97,7 +97,7 @@ describe("failure, retry, and resume", () => {
   });
 
   it("retains a protected canary EID in real executor observed-data emission", async () => {
-    const harness = executorHarness({ sessions: happySessionHarness() });
+    const harness = await executorHarness({ sessions: happySessionHarness() });
     const { database, clock } = harness.authority;
     const binding = { kind: "test-data-local" as const, inputPath: "emplId" as const,
       name: "personLookupCanaryEid" as const, sourceId: "00000000-0000-4000-8000-000000000088" };
@@ -128,7 +128,7 @@ describe("failure, retry, and resume", () => {
       }),
       crm: () => healthyCrmDriver(),
     });
-    const harness = executorHarness({ sessions, taskDeadlineMs: 5_000 });
+    const harness = await executorHarness({ sessions, taskDeadlineMs: 5_000 });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const executing = executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
@@ -152,7 +152,7 @@ describe("failure, retry, and resume", () => {
 
 
   it("rejects injected patches naming a node this run does not replay", async () => {
-    const harness = executorHarness();
+    const harness = await executorHarness();
     const { database, clock } = harness.authority;
     const run = personLookupQueuedRun({ startAt: "cross-verify" });
     const envelope = run.envelope as Record<string, unknown>;
@@ -199,7 +199,7 @@ describe("failure, retry, and resume", () => {
       }),
       crm: () => healthyCrmDriver(),
     });
-    const harness = executorHarness({ sessions });
+    const harness = await executorHarness({ sessions });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const executing = executeClaimedRun({ ...harness.deps, retainCallback(identity, operation) {

@@ -20,7 +20,7 @@ afterEach(cleanup);
 
 describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, never silent)", () => {
   it("keeps the commit lane and session owned until a deadline-ignoring callback actually settles", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     let releaseCallback = (): void => undefined;
@@ -60,7 +60,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
   });
 
   it("settles the verified external commit despite fence-event delivery failure after pre-click recordData", async () => {
-    const h = harness({ emitterThrowsOn: "transaction.fenced" });
+    const h = await harness({ emitterThrowsOn: "transaction.fenced" });
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.commitRecordsBeforeClick = true;
@@ -78,7 +78,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
   });
 
   it("runs mandatory saved-effect verification despite its start-span delivery failure", async () => {
-    const h = harness({ emitterThrowsOn: "verify-start" });
+    const h = await harness({ emitterThrowsOn: "verify-start" });
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
@@ -101,7 +101,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
 describe("beat ⑦ — the whole bundle commits once or not at all", () => {
   for (const step of AtomicWriteCommitStorageStepSchema.options) {
     it(`rolls back everything when the inner primitive fails after ${step}`, async () => {
-      const h = harness({
+      const h = await harness({
         commitHooks: {
           afterStorageStep(failedStep) {
             if (failedStep === step) throw new Error(`injected failure after ${failedStep}`);
@@ -128,7 +128,7 @@ describe("beat ⑦ — the whole bundle commits once or not at all", () => {
 
   for (const step of SequencedWriteCommitStepSchema.options) {
     it(`rolls back everything when the outer bundle fails after ${step}`, async () => {
-      const h = harness({
+      const h = await harness({
         hooks: {
           afterSequencedStep(failedStep) {
             if (failedStep === step) throw new Error(`injected outer failure after ${failedStep}`);
@@ -155,7 +155,7 @@ describe("beat ⑦ — the whole bundle commits once or not at all", () => {
 
 describe("inline recovery of this run's own attempting intent", () => {
   it("backfills committed from a validated present recovery probe without a second click", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     const own = attemptingIntentFixture(WRITE_FIXTURE_RUN_ID);
     assert.equal(fenceWriteFixture(h.database, own).state, "fenced");
@@ -174,9 +174,9 @@ describe("inline recovery of this run's own attempting intent", () => {
 });
 
 describe("service-backed shared settlement", () => {
-  it("keeps settlement journal identity independent of protected proof bytes while binding ordinary proof", () => {
-    const settle = (documentNumber: string, transactionId = "T123456", protectedKey = false) => {
-      const h = harness();
+  it("keeps settlement journal identity independent of protected proof bytes while binding ordinary proof", async () => {
+    const settle = async (documentNumber: string, transactionId = "T123456", protectedKey = false) => {
+      const h = await harness();
       const queued = RunRecordSchema.parse(writeFixtureQueuedRun());
       const protectedBindings = [{ kind: "test-data-local", name: "separationsKualiFinalizationCanaryDocumentNumber",
         inputPath: "documentNumber", sourceId: "10000000-0000-4000-8000-000000000001" }];
@@ -212,12 +212,12 @@ describe("service-backed shared settlement", () => {
       assert.ok(journal && "requestFingerprint" in journal);
       return journal.requestFingerprint;
     };
-    assert.equal(settle("12345678"), settle("87654321"));
-    assert.notEqual(settle("12345678"), settle("12345678", "T234567"));
-    assert.equal(settle("12345678", "T123456", true), settle("87654321", "T123456", true));
+    assert.equal(await settle("12345678"), await settle("87654321"));
+    assert.notEqual(await settle("12345678"), await settle("12345678", "T234567"));
+    assert.equal(await settle("12345678", "T123456", true), await settle("87654321", "T123456", true));
   });
   it("replays the exact worker bundle without writes and refuses changed evidence", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     await h.execute(contextFor(run, claim));
@@ -249,7 +249,7 @@ describe("service-backed shared settlement", () => {
 
 describe("durable cancellation at a retained write fence", () => {
   it("lets the callback and write settlement finish before cancellation can terminalize", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     let release = (): void => undefined;

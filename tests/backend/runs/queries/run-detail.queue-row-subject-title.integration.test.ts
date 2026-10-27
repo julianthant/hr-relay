@@ -16,16 +16,16 @@ const { descriptor: subjectDescriptor, searchingCheckpoint, RESOLVED } = createS
 const worlds: DashboardWorld[] = [];
 
 
-function world(descriptor: AnyWorkflowDescriptor | "none" = subjectDescriptor): DashboardWorld {
-  const created = makeWorld({
+async function world(descriptor: AnyWorkflowDescriptor | "none" = subjectDescriptor): Promise<DashboardWorld> {
+  const created = await makeWorld({
     descriptors: { resolve: () => (descriptor === "none" ? undefined : descriptor) },
   });
   worlds.push(created);
   return created;
 }
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
+afterEach(async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 function rowOf(w: DashboardWorld, seed: number) {
@@ -45,8 +45,8 @@ function seedRun(w: DashboardWorld, seed: number, input: { displayName?: string 
 }
 
 describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
-  it("replaces the start-input title once the declared subject leaf has a checkpoint", () => {
-    const w = world();
+  it("replaces the start-input title once the declared subject leaf has a checkpoint", async () => {
+    const w = await world();
     seedRun(w, 1);
     assert.equal(rowOf(w, 1).title, "EID 10873698");
 
@@ -54,15 +54,15 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
     assert.equal(rowOf(w, 1).title, "Battistessa, Johnnie");
   });
 
-  it("keeps the start-input title while the declared node has produced no checkpoint", () => {
-    const w = world();
+  it("keeps the start-input title while the declared node has produced no checkpoint", async () => {
+    const w = await world();
     seedRun(w, 2);
 
     assert.equal(rowOf(w, 2).title, "EID 10873698");
   });
 
-  it("keeps the start-input title when the run took the union arm the declared leaf does not live on", () => {
-    const w = world();
+  it("keeps the start-input title when the run took the union arm the declared leaf does not live on", async () => {
+    const w = await world();
     seedRun(w, 3);
 
     w.authority.putCheckpoint(searchingCheckpoint(3, {
@@ -73,16 +73,16 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
     assert.equal(rowOf(w, 3).title, "EID 10873698");
   });
 
-  it("keeps the start-input title forever for a workflow that declares no subject leaf", () => {
+  it("keeps the start-input title forever for a workflow that declares no subject leaf", async () => {
 
-    const w = world(separationsKualiFinalizationDescriptor);
+    const w = await world(separationsKualiFinalizationDescriptor);
     seedRun(w, 4);
     w.authority.putCheckpoint(searchingCheckpoint(4, RESOLVED) as never);
     assert.equal(rowOf(w, 4).title, "EID 10873698");
   });
 
-  it("resolves nothing for a workflow this build holds no descriptor for", () => {
-    const w = world("none");
+  it("resolves nothing for a workflow this build holds no descriptor for", async () => {
+    const w = await world("none");
     seedRun(w, 5);
     w.authority.putCheckpoint(searchingCheckpoint(5, RESOLVED) as never);
     // Same posture as `#pipeline`'s: a build that cannot read the declaration
@@ -90,8 +90,8 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
     assert.equal(rowOf(w, 5).title, "EID 10873698");
   });
 
-  it("refuses by name when the declared leaf holds something that is not a name", () => {
-    const w = world();
+  it("refuses by name when the declared leaf holds something that is not a name", async () => {
+    const w = await world();
     seedRun(w, 6);
     // Checkpoint JSON does not validate a declared string leaf; reject non-string titles at this read boundary.
     w.authority.putCheckpoint(searchingCheckpoint(6, {
@@ -104,8 +104,8 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
     );
   });
 
-  it("refuses by name when the declared leaf holds a blank string", () => {
-    const w = world();
+  it("refuses by name when the declared leaf holds a blank string", async () => {
+    const w = await world();
     seedRun(w, 7);
     w.authority.putCheckpoint(searchingCheckpoint(7, {
       status: "resolved",
@@ -114,8 +114,8 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
     assert.throws(() => rowOf(w, 7), /blank string/);
   });
 
-  it("serves the operator's own name BESIDE the title, never folded into it", () => {
-    const w = world();
+  it("serves the operator's own name BESIDE the title, never folded into it", async () => {
+    const w = await world();
     seedRun(w, 8, { displayName: "Johnnie — final check" });
     w.authority.putCheckpoint(searchingCheckpoint(8, RESOLVED) as never);
 
@@ -125,8 +125,8 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
     assert.equal(row.title, "Battistessa, Johnnie");
   });
 
-  it("names the absence of an operator title rather than omitting it", () => {
-    const w = world();
+  it("names the absence of an operator title rather than omitting it", async () => {
+    const w = await world();
     seedRun(w, 9);
     assert.deepEqual(rowOf(w, 9).displayName, {
       state: "absent",
@@ -134,8 +134,8 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
     });
   });
 
-  it("gives the run-detail header the same title the queue row shows", () => {
-    const w = world();
+  it("gives the run-detail header the same title the queue row shows", async () => {
+    const w = await world();
     const generic = runRecordOf({ seed: 10, version: 2 });
     const run = RunRecordSchema.parse({ ...generic, envelope: { ...generic.envelope,
       descriptorVersion: subjectDescriptor.version, contractFingerprint: subjectDescriptor.contractFingerprint } });
@@ -156,8 +156,8 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
     assert.equal(detail.header.title, rowOf(w, 10).title);
   });
 
-  it("carries the resolved title into the whole-day payload every count is derived from", () => {
-    const w = world();
+  it("carries the resolved title into the whole-day payload every count is derived from", async () => {
+    const w = await world();
     seedRun(w, 11);
     w.authority.putCheckpoint(searchingCheckpoint(11, RESOLVED) as never);
 

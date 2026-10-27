@@ -21,7 +21,7 @@ afterEach(async () => {
   const open = [...servers];
   servers.clear();
   await Promise.all(open.map((server) => server.close()));
-  for (const w of worlds.splice(0)) w.dispose();
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 const { harness } = createStreamBackpressureFixtures(worlds, hubs, MAX_PENDING);
@@ -38,7 +38,7 @@ function parseSse(text: string): DashboardStreamEnvelope[] {
 
 describe("dashboard stream backpressure (bridge + Node adapter)", () => {
   it("bridge: a reader that stops pulling leaves the hub bounded and reads exactly one reset-required on resume", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     const connection = await hub.connect({ day: DAY });
     const body = dashboardEventStreamBody(connection);
     const reader = body.getReader();
@@ -74,7 +74,7 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
   });
 
   it("bridge: a hub close ends the body cleanly and closes the connection exactly once", async () => {
-    const { hub } = harness();
+    const { hub } = await harness();
     const connection = await hub.connect({ day: DAY });
     const reader = dashboardEventStreamBody(connection).getReader();
     for (let step = 0; step < connection.initial.length; step += 1) await reader.read();

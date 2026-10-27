@@ -6,8 +6,8 @@ import { acquireRuntimeProcessLock, bindWorkerProcessAdmission, observeRuntimeLo
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-for (const refuseChildClose of [false, true]) it(`closes actual profile storage before failed worker admission releases process custody (${refuseChildClose ? "unproved child" : "proved child"})`, () => {
-  const f = createBoundProfileFixture();
+for (const refuseChildClose of [false, true]) it(`closes actual profile storage before failed worker admission releases process custody (${refuseChildClose ? "unproved child" : "proved child"})`, async () => {
+  const f = await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const processLockRoot = join(f.workspace, "process-locks");
   const initial = acquireRuntimeProcessLock({ processLockRoot, name: "workers", pid: process.pid,
@@ -33,5 +33,5 @@ for (const refuseChildClose of [false, true]) it(`closes actual profile storage 
     if (refuseChildClose) f.admission.assertLive();
     else assert.throws(() => f.admission.assertLive());
     assert.deepEqual(events, refuseChildClose ? ["database closed"] : ["database closed", "child released"]);
-  } finally { f.admission.release(); initial.release(); f.close(); }
+  } finally { f.admission.release(); initial.release(); await f.close(); }
 });

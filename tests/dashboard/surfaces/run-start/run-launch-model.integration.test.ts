@@ -13,8 +13,8 @@ import { launchHarness } from "../../../support/fixtures/run-launch-fixtures.js"
 
 const disposers: (() => void)[] = [];
 afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
-function setup(enqueue: Parameters<typeof launchHarness>[0] = "reject-active", overrides: Partial<DashboardClient> = {}) {
-  const h = launchHarness(enqueue); disposers.push(h.dispose);
+async function setup(enqueue: Parameters<typeof launchHarness>[0] = "reject-active", overrides: Partial<DashboardClient> = {}) {
+  const h = await launchHarness(enqueue); disposers.push(h.dispose);
   const client: DashboardClient = { ...h.client, ...overrides };
   let active: CommandExecutionScope | undefined = { ...h.binding.scope, client };
   const executor = new CommandExecutor(() => active);
@@ -35,7 +35,7 @@ const planIdentityError = (error: unknown) => {
 
 describe("Start enqueue verification through the actual command and day transports", () => {
   it("binds plan previews to the current actor and submitted options without losing partial refusals", async () => {
-    const w = setup();
+    const w = await setup();
     const request = { workflowId: w.h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: true,
       browserMode: "headless", captureBrowserScreenshots: false, priority: "interactive" };
     const plan = await w.launch.preview(request);
@@ -60,7 +60,7 @@ describe("Start enqueue verification through the actual command and day transpor
     ["unrelated lineage", (row: QueueSurfaceWire) => ({ ...row, lineage: { state: "child", parentRunId: OTHER_RUN }, containment: "linked" })],
   ] as const) {
     it(`retains uncertainty for ${name} without publishing enqueue success`, async () => {
-      const w = setup();
+      const w = await setup();
       w.client.dashboardDay = async day => {
         const snapshot = await w.h.client.dashboardDay(day);
         return DashboardDayWireSchema.parse({ ...snapshot, queueSurfaces: snapshot.queueSurfaces.map(row => QueueSurfaceWireSchema.parse(change(row))) });
@@ -74,7 +74,7 @@ describe("Start enqueue verification through the actual command and day transpor
   }
   for (const name of ["wrong run", "wrong plan", "no created run", "duplicate run"] as const) {
     it(`refuses an applied acknowledgment naming ${name}`, async () => {
-      const w = setup();
+      const w = await setup();
       w.client.executeCommand = async input => {
         const reply = await w.h.client.executeCommand(input);
         assert.ok(reply.state === "applied");
@@ -91,7 +91,7 @@ describe("Start enqueue verification through the actual command and day transpor
   }
   for (const name of ["missing", "failed"] as const) {
     it(`retains the original command after ${name} readback and replays exact bytes`, async () => {
-      const w = setup(); let broken = true;
+      const w = await setup(); let broken = true;
       w.client.dashboardDay = async day => {
         if (broken && name === "failed") throw new Error("readback diagnostic detail");
         const snapshot = await w.h.client.dashboardDay(day);
@@ -107,7 +107,7 @@ describe("Start enqueue verification through the actual command and day transpor
     });
   }
   it("accepts only the reviewed supersede targets and retains no-plan replay with unprovable prior runs", async () => {
-    const w = setup("supersede-active"); w.h.start(w.h.proposal());
+    const w = await setup("supersede-active"); w.h.start(w.h.proposal());
     const plan = w.h.proposal(); const command = w.launch.prepareFinal(plan);
     assert.equal((await w.launch.submit(command, w.binding, plan)).kind, "confirmed");
     assert.equal(w.h.queueRoots.length, 2);
@@ -116,7 +116,7 @@ describe("Start enqueue verification through the actual command and day transpor
   });
   for (const replacement of ["client", "actor", "authority", "day ABA"] as const) {
     it(`keeps a late applied reply from publishing after ${replacement} replacement`, async () => {
-      const w = setup(); let release: (() => void) | undefined; let committed: (() => void) | undefined;
+      const w = await setup(); let release: (() => void) | undefined; let committed: (() => void) | undefined;
       const pending = new Promise<void>(resolve => { release = resolve; });
       const dispatched = new Promise<void>(resolve => { committed = resolve; });
       w.client.executeCommand = async input => { const result = await w.h.client.executeCommand(input); assert.ok(committed); committed(); await pending; return result; };
@@ -130,7 +130,7 @@ describe("Start enqueue verification through the actual command and day transpor
     });
   }
   it("does not allow another actor to replay the retained command", async () => {
-    const w = setup(); w.h.loseResponse();
+    const w = await setup(); w.h.loseResponse();
     const command = w.launch.prepareFinal(w.h.proposal());
     assert.equal((await w.launch.submit(command, w.binding)).kind, "uncertain");
     const scope = { ...w.binding.scope, actorId: "other-operator" }; w.replaceScope(scope);
@@ -138,13 +138,13 @@ describe("Start enqueue verification through the actual command and day transpor
     assert.equal(outcome.kind, "refused"); assert.equal(outcome.kind === "refused" ? outcome.reason : undefined, "actor-mismatch");
     assert.equal(w.h.finalCommands.length, 1);
   });
-  it("requires an explicit served clock when preparing final commands", () => {
-    const w = setup(); assert.throws(() => createRunLaunchService(w.client, "local-operator").prepareFinal(w.h.proposal()), /AUTHORITY_UNAVAILABLE/u);
+  it("requires an explicit served clock when preparing final commands", async () => {
+    const w = await setup(); assert.throws(() => createRunLaunchService(w.client, "local-operator").prepareFinal(w.h.proposal()), /AUTHORITY_UNAVAILABLE/u);
     assert.equal(w.h.finalCommands.length, 0);
   });
   for (const lostReply of [false, true]) {
     it(`confirms the actual enqueue partition across midnight${lostReply ? " after lost-ack exact replay" : ""}`, async () => {
-      const w = setup(); w.h.clock.setWall(new Date("2026-08-01T06:59:59.000Z"));
+      const w = await setup(); w.h.clock.setWall(new Date("2026-08-01T06:59:59.000Z"));
       const plan = w.h.proposal(); const command = w.launch.prepareFinal(plan);
       assert.equal(command.requestedAt, "2026-08-01T06:59:59.000Z");
       w.h.clock.advanceWall(2_000); assert.ok(Date.parse(plan.expiresAt) > w.h.clock.nowMs());
@@ -162,7 +162,7 @@ describe("Start enqueue verification through the actual command and day transpor
     });
   }
   it("resolves reviewed supersede targets on their own prior partition", async () => {
-    const w = setup("supersede-active"); w.h.clock.setWall(new Date("2026-08-01T06:59:59.000Z"));
+    const w = await setup("supersede-active"); w.h.clock.setWall(new Date("2026-08-01T06:59:59.000Z"));
     w.h.start(w.h.proposal()); const plan = w.h.proposal(); const command = w.launch.prepareFinal(plan);
     w.h.clock.advanceWall(2_000); const queriedDays: string[] = [];
     w.client.dashboardDay = async day => { queriedDays.push(day); return w.h.client.dashboardDay(day); };
@@ -172,7 +172,7 @@ describe("Start enqueue verification through the actual command and day transpor
   });
 
   it("finds the acknowledged selected run beyond the first history page", async () => {
-    const w = setup();
+    const w = await setup();
     for (let index = 0; index < 50; index += 1) {
       const run = w.h.start(w.h.proposal());
       requireLifecycleApplied(w.h.lifecycle.transition({ commandId: w.h.ids.uuid(), runId: run.envelope.runId,
@@ -186,7 +186,7 @@ describe("Start enqueue verification through the actual command and day transpor
   });
   for (const failure of ["unavailable", "stale", "wrong selected revision", "wrong partition"] as const) {
     it(`retains uncertainty for ${failure} history without guessing another partition`, async () => {
-      const w = setup(); const queriedDays: string[] = [];
+      const w = await setup(); const queriedDays: string[] = [];
       w.client.dashboardDay = async day => { queriedDays.push(day); return w.h.client.dashboardDay(day); };
       w.client.itemAttemptHistory = async (runId, options) => {
         const history = await w.h.client.itemAttemptHistory(runId, options);
@@ -203,7 +203,7 @@ describe("Start enqueue verification through the actual command and day transpor
   }
 
   it("does not accept matching runs moved into each other's partition snapshots", async () => {
-    const w = setup("supersede-active"); w.h.clock.setWall(new Date("2026-08-01T06:59:59.000Z"));
+    const w = await setup("supersede-active"); w.h.clock.setWall(new Date("2026-08-01T06:59:59.000Z"));
     w.h.start(w.h.proposal()); const plan = w.h.proposal(); const command = w.launch.prepareFinal(plan);
     w.h.clock.advanceWall(2_000); const queriedDays: string[] = [];
     w.client.dashboardDay = async day => {

@@ -14,8 +14,8 @@ const AD_TYPE = "_eventId_authn/PasswordAD";
 const BUSINESS_TYPE = "_eventId_authn/PasswordRACF";
 const SID: FakeCookie = { name: "sid", domain: "act-crm.my.site.com", value: "opaque" };
 
-const crmContextFor = (script: FakePageScript, signal?: AbortSignal): ReturnType<typeof contextFor> =>
-  contextFor(script, signal, "crm");
+const crmContextFor = async (script: FakePageScript, signal?: AbortSignal): Promise<Awaited<ReturnType<typeof contextFor>>> =>
+  await contextFor(script, signal, "crm");
 
 describe("crm landing verification", () => {
   it("accepts only the authenticated Communities app", () => {
@@ -34,17 +34,17 @@ describe("crm landing verification", () => {
 describe("authenticated-application proof", () => {
 
   it("proves a CRM session from the Salesforce session cookie and absent forms", async () => {
-    const { context } = contextFor({ url: CRM_APP, elements: NO_SIGN_IN_FORMS, cookies: [SID] });
+    const { context } = await contextFor({ url: CRM_APP, elements: NO_SIGN_IN_FORMS, cookies: [SID] });
     const probe = await verifyCrmAuthenticatedApplication(context);
     assert.ok(probe.authenticated);
     assert.match(probe.evidence.positive, /sid session cookie for my\.site\.com/);
 
-    const noSession = contextFor({ url: CRM_APP, elements: NO_SIGN_IN_FORMS });
+    const noSession = await contextFor({ url: CRM_APP, elements: NO_SIGN_IN_FORMS });
     const refused = await verifyCrmAuthenticatedApplication(noSession.context);
     assert.ok(!refused.authenticated);
     assert.match(refused.reason, /never issued its sid session cookie/);
 
-    const communitiesLogin = contextFor({
+    const communitiesLogin = await contextFor({
       url: CRM_APP,
       elements: { ...NO_SIGN_IN_FORMS, "communities-login": { count: 1 } },
       cookies: [SID],
@@ -62,7 +62,7 @@ describe("crm login recipe", () => {
   } as const;
 
   it("selects Active Directory only when the control disagrees", async () => {
-    const preselected = crmContextFor({
+    const preselected = await crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {
@@ -78,7 +78,7 @@ describe("crm login recipe", () => {
     assert.equal(preselected.harness.actions().includes("select:login-type-select"), false);
     assert.equal(preselected.evidence().length, 1);
 
-    const wrongType = crmContextFor({
+    const wrongType = await crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {
@@ -94,7 +94,7 @@ describe("crm login recipe", () => {
     assert.equal(wrongType.harness.actions().includes("select:login-type-select"), true);
 
     // Absent control: a genuinely valid rendering, so it is not a failure.
-    const absent = crmContextFor({
+    const absent = await crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {
@@ -111,7 +111,7 @@ describe("crm login recipe", () => {
 
   it("refuses to submit credentials when the realm did not actually switch", async () => {
 
-    const { context, harness } = crmContextFor({
+    const { context, harness } = await crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {
@@ -133,7 +133,7 @@ describe("crm login recipe", () => {
   });
 
   it("fails loud when a present login-type control cannot be set", async () => {
-    const { context } = crmContextFor({
+    const { context } = await crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: { "login-type-select": { failWith: "detached" } },
@@ -148,7 +148,7 @@ describe("crm login recipe", () => {
   });
 
   it("treats the Communities login page as unauthenticated, not as a landing", async () => {
-    const { context } = crmContextFor({
+    const { context } = await crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: "https://act-crm.my.site.com/hr/login" },
       elements: {
@@ -168,7 +168,7 @@ describe("crm login recipe", () => {
   });
 
   it("refuses a Communities landing with no Salesforce session", async () => {
-    const { context } = crmContextFor({
+    const { context } = await crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {

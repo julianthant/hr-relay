@@ -76,7 +76,7 @@ describe("worker browser sessions", () => {
       clock,
       scheduler: new ManualScheduler(clock),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock),
       onEvent: (event) => events.push(event),
       browserScreenshotCapture: { async capture(context) { captured.push(context); } },
     });

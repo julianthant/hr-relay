@@ -42,11 +42,11 @@ function protectedSettingsCommand(input: Readonly<{
 }
 
 describe("apply-protected-settings authority", () => {
-  it("refuses a stale protected schema before reading or materializing credentials", () => {
+  it("refuses a stale protected schema before reading or materializing credentials", async () => {
     assert.notEqual(HASH_A, PROTECTED_SETTINGS_SCHEMA_HASH);
     const stateRoot = databasePath("invalid-credential-root");
     const credentials = createCredentialStore({ stateRoot });
-    const harness = createHarness(undefined, createSettingsApplicationExecutor(() => { throw new Error("protected fixture reached ordinary settings"); }, credentials));
+    const harness = await createHarness(undefined, createSettingsApplicationExecutor(() => { throw new Error("protected fixture reached ordinary settings"); }, credentials));
     const command = protectedSettingsCommand({
       protectedSchemaHash: HASH_A,
       value: "must-not-reach-authority",
@@ -64,9 +64,9 @@ describe("apply-protected-settings authority", () => {
     assert.equal(harness.database.authority.settingsCurrent.get(), undefined);
   });
 
-  it("keeps an independently committed credential across audit failure and settles exact retry", () => {
+  it("keeps an independently committed credential across audit failure and settles exact retry", async () => {
     let failAudit = true;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       commandAudits: {
         ...repositories.commandAudits,
@@ -130,8 +130,8 @@ describe("apply-protected-settings authority", () => {
     assert.deepEqual(readFileSync(protectedPath), committedBytes);
   });
 
-  it("journals only marked operations while the independent store owns credential values", () => {
-    const harness = createHarness();
+  it("journals only marked operations while the independent store owns credential values", async () => {
+    const harness = await createHarness();
     const protectedValue = "protected-value-that-must-never-reach-sqlite";
     const command = protectedSettingsCommand({ value: protectedValue });
     const result = harness.kernel.execute(command);

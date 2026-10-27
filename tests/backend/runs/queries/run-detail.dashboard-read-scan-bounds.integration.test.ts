@@ -16,13 +16,13 @@ import { AT, instantOffsetOf, makeWorld, queuedEventOf, traceOf, uuidOf, type Da
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
-function world(): DashboardWorld {
-  const created = makeWorld({ descriptors: { resolve: () => personLookupDescriptor } });
+async function world(): Promise<DashboardWorld> {
+  const created = await makeWorld({ descriptors: { resolve: () => personLookupDescriptor } });
   worlds.push(created);
   return created;
 }
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
+afterEach(async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 /** A settled `done` run, fold and authority agreeing, as the projector sees one. */
@@ -56,8 +56,8 @@ describe("a logs GET opens only its run partitions", () => {
     finally { raw.close(); }
   }
 
-  it("serves the run's notes without reading a distant partition of the same workflow", () => {
-    const w = world();
+  it("serves the run's notes without reading a distant partition of the same workflow", async () => {
+    const w = await world();
     terminalDone(w, 1);
     emitNotes(w, 1, 3);
     // A whole-corpus reader would hand these bytes to `NoteWireSchema.parse`
@@ -72,8 +72,8 @@ describe("a logs GET opens only its run partitions", () => {
     );
   });
 
-  it("does not read another workflow's partition on the run's own day", () => {
-    const w = world();
+  it("does not read another workflow's partition on the run's own day", async () => {
+    const w = await world();
     terminalDone(w, 1);
     emitNotes(w, 1, 2);
     queuedEventOf(w, { seed: 102, workflow: "separations" });
@@ -83,8 +83,8 @@ describe("a logs GET opens only its run partitions", () => {
     assert.equal(section.payload.notes.length, 2);
   });
 
-  it("REFUSES an unparsable line inside the scope, naming the file and line it could not read", () => {
-    const w = world();
+  it("REFUSES an unparsable line inside the scope, naming the file and line it could not read", async () => {
+    const w = await world();
     terminalDone(w, 1);
     emitNotes(w, 1, 2);
     poison(w, "2026-08-03");
@@ -96,8 +96,8 @@ describe("a logs GET opens only its run partitions", () => {
     );
   });
 
-  it("still serves a note written the day AFTER the run's last durable instant", () => {
-    const w = world();
+  it("still serves a note written the day AFTER the run's last durable instant", async () => {
+    const w = await world();
     terminalDone(w, 1);
     emitNotes(w, 1, 1);
     // The midnight the margin exists for: an append-at-now partition rolls over
@@ -109,8 +109,8 @@ describe("a logs GET opens only its run partitions", () => {
     assert.deepEqual(section.payload.notes.map((note) => note.message), ["note 0", "note 1"]);
   });
 
-  it("serves an empty page, not a throw, for a run whose workflow wrote no notes", () => {
-    const w = world();
+  it("serves an empty page, not a throw, for a run whose workflow wrote no notes", async () => {
+    const w = await world();
     terminalDone(w, 1);
     mkdirSync(join(w.stateRoot, "notes"), { recursive: true });
     writeFileSync(join(w.stateRoot, "notes", "separations-2026-08-03.jsonl"), `{"n":1}\n`);
@@ -144,8 +144,8 @@ describe("a logs GET opens only its run partitions", () => {
     });
   }
 
-  it("serves declared operator observations in Logs while Run data retains the complete evidence", () => {
-    const w = world();
+  it("serves declared operator observations in Logs while Run data retains the complete evidence", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const first = instantOffsetOf(0, 10);
     const fence = instantOffsetOf(0, 20);
@@ -176,9 +176,9 @@ describe("a logs GET opens only its run partitions", () => {
     assert.equal("points" in fenced, false, "a durable fence is not fabricated page data");
   });
 
-  it("serves a real transaction module as probe, prepare, fence, commit, verify without fabricating fence data", () => {
+  it("serves a real transaction module as probe, prepare, fence, commit, verify without fabricating fence data", async () => {
     const module = separationsKualiFinalizationModule;
-    const w = makeWorld({ descriptors: { resolve: () => module.descriptor } });
+    const w = await makeWorld({ descriptors: { resolve: () => module.descriptor } });
     worlds.push(w);
     queuedEventOf(w, { seed: 1, workflow: "separations-kuali-finalization" });
     const emitObserved = (taskId: string, direction: "read" | "write", at: string): void => {
@@ -249,8 +249,8 @@ describe("a logs GET opens only its run partitions", () => {
     assert.ok(section.payload.rows.every((row) => row.kind === "note" || row.producer.system === "kuali"));
   });
 
-  it("preserves a descriptor's absent browser system and still refuses an ambiguous producer", () => {
-    const w = world();
+  it("preserves a descriptor's absent browser system and still refuses an ambiguous producer", async () => {
+    const w = await world();
     terminalDone(w, 1);
     observedEvent(w);
     const section = buildRunSection(
@@ -272,8 +272,8 @@ describe("a logs GET opens only its run partitions", () => {
     );
   });
 
-  it("examines only this run's indexed span rows, excludes another run, and preserves legal retry attempts", () => {
-    const w = world();
+  it("examines only this run's indexed span rows, excludes another run, and preserves legal retry attempts", async () => {
+    const w = await world();
     terminalDone(w, 1, { attempt: 2 });
     terminalDone(w, 2);
     observedEvent(w, { seed: 2, at: instantOffsetOf(0, 5) });
@@ -299,8 +299,8 @@ describe("a logs GET opens only its run partitions", () => {
     assert.deepEqual(observations.map((row) => row.at), [instantOffsetOf(0, 10), instantOffsetOf(0, 20)]);
   });
 
-  it("serves an observation appended more than two days after the run instead of dropping its append partition", () => {
-    const w = world();
+  it("serves an observation appended more than two days after the run instead of dropping its append partition", async () => {
+    const w = await world();
     terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
     w.clock.setWall(new Date(AT.getTime() + 3 * DAY_MS));
     observedEvent(w, { at: instantOffsetOf(0, 10) });
@@ -311,8 +311,8 @@ describe("a logs GET opens only its run partitions", () => {
     assert.deepEqual(section.payload.observations?.map((row) => row.kind), ["observed"]);
   });
 
-  it("keeps SQLite ingestion order when equal-time observations append on different days", () => {
-    const w = world();
+  it("keeps SQLite ingestion order when equal-time observations append on different days", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const observedAt = instantOffsetOf(0, 10);
     observedEvent(w, { at: observedAt });
@@ -326,8 +326,8 @@ describe("a logs GET opens only its run partitions", () => {
       deterministicUuid(`log:${line.file.path}:${String(line.lineNumber)}`)));
   });
 
-  it("orders equal-clock rows by their durable stream location and pages the combined list without a second scan", () => {
-    const w = world();
+  it("orders equal-clock rows by their durable stream location and pages the combined list without a second scan", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const tie = instantOffsetOf(0, 10);
     for (let index = 0; index < 201; index += 1) fencedEvent(w, tie);
@@ -359,8 +359,8 @@ describe("a logs GET opens only its run partitions", () => {
     );
   });
 
-  it("orders equal-clock SQLite observations by ingestion cursor rather than random event identity", () => {
-    const w = world();
+  it("orders equal-clock SQLite observations by ingestion cursor rather than random event identity", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const identities = ["ffffffff-ffff-4fff-8fff-ffffffffffff", "00000000-0000-4000-8000-000000000001"];
     const writer = createTimelineEmitter({ repository: w.timeline, clock: w.clock, pid: 4242,
@@ -378,8 +378,8 @@ describe("a logs GET opens only its run partitions", () => {
     assert.deepEqual(data.payload.observations?.map((row) => row.kind), ["observed"]);
   });
 
-  it("keeps a page walk on one immutable ordering when a later append has an older record clock", () => {
-    const w = world();
+  it("keeps a page walk on one immutable ordering when a later append has an older record clock", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const tie = instantOffsetOf(0, 20);
     for (let index = 0; index < 201; index += 1) fencedEvent(w, tie);
@@ -401,8 +401,8 @@ describe("a logs GET opens only its run partitions", () => {
     assert.ok(walked.every((row) => row.kind === "transaction-fenced" && row.at === tie));
   });
 
-  it("ignores retired malformed spans and refuses corrupt SQLite events instead of serving an empty observation page", () => {
-    const w = world();
+  it("ignores retired malformed spans and refuses corrupt SQLite events instead of serving an empty observation page", async () => {
+    const w = await world();
     terminalDone(w, 1);
     rmSync(join(w.stateRoot, "spans"), { recursive: true, force: true });
     const noSpans = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
@@ -430,8 +430,8 @@ describe("a logs GET opens only its run partitions", () => {
     );
   });
 
-  it("does not open another workflow's span partition even when it is malformed", () => {
-    const w = world();
+  it("does not open another workflow's span partition even when it is malformed", async () => {
+    const w = await world();
     terminalDone(w, 1);
     mkdirSync(join(w.stateRoot, "spans"), { recursive: true });
     writeFileSync(join(w.stateRoot, "spans", "separations-2026-08-03.jsonl"), "{ not json at all\n");

@@ -34,14 +34,14 @@ afterEach(cleanup);
 
 describe("settings apply during a production worker claim", () => {
   it.each(["protected", "ordinary"] as const)("%s apply preserves the active run and permits the next retained run", async (kind) => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const database = reopen(stateRoot, clock);
     const spans = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
     const queued = database.authority.runs.get(RUN_ID); assert.ok(queued);
     const credentials = createCredentialStore({ stateRoot });
-    const { kernel } = kernelHarness({ database, clock, settings: createSettingsApplicationExecutor(
+    const { kernel } = await kernelHarness({ database, clock, settings: createSettingsApplicationExecutor(
       (settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }), credentials) });
     const source = createCredentialSecretSource(credentials);
     const applyProtected = (value: string, revision: number) => kernel.execute({
@@ -172,13 +172,13 @@ function refusingWorkerSupervisor(): WorkerPoolProcessSupervisor {
   });
 }
 
-function kernelHarness(existing?: { database: AuthorityDatabase; clock: TestClock;
-  settings: ReturnType<typeof createSettingsApplicationExecutor> }): { database: AuthorityDatabase; kernel: CommandKernel; clock: TestClock; stateRoot?: string } {
+async function kernelHarness(existing?: { database: AuthorityDatabase; clock: TestClock;
+  settings: ReturnType<typeof createSettingsApplicationExecutor> }): Promise<{ database: AuthorityDatabase; kernel: CommandKernel; clock: TestClock; stateRoot?: string }> {
   const clock = existing?.clock ?? manualClock(new Date(NOW));
   let database: AuthorityDatabase;
   let ownedStateRoot: string | undefined;
   if (existing === undefined) {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     ownedStateRoot = stateRoot;
     ensureBaselineRuntimeConfig(repoRoot, clock);
     database = reopen(stateRoot, clock);
@@ -227,12 +227,12 @@ function envelope(commandId = nextCommandId()) {
 }
 
 describe("dashboard-composed worker-browser command arms", () => {
-  async function plan(harness: ReturnType<typeof kernelHarness>, desiredWorkers = 1) {
+  async function plan(harness: Awaited<ReturnType<typeof kernelHarness>>, desiredWorkers = 1) {
     return harness.kernel.executeWorkerPool({ ...envelope(), type: "plan-worker-count",
       target: { workflowId: WORKFLOW_ID, expectedVersion: 0 }, payload: { desiredWorkers } });
   }
   it.each(["pause-worker", "stop-worker"] as const)("refuses %s for an external member without changing its directive", async type => {
-    const harness = kernelHarness();
+    const harness = await kernelHarness();
     const planned = await plan(harness);
     assert.equal(planned.state, "applied");
     const slot = harness.database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
@@ -263,7 +263,7 @@ describe("dashboard-composed worker-browser command arms", () => {
     } finally { await lifetime.close(); }
   });
   it("admits three native members without asserting they have started", async () => {
-    const harness = kernelHarness();
+    const harness = await kernelHarness();
     const result = await plan(harness, 3);
     assert.equal(result.state, "applied");
     assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID)?.desiredWorkers, 3);
@@ -272,7 +272,7 @@ describe("dashboard-composed worker-browser command arms", () => {
       .every(slot => harness.database.authority.workerLeases.get(slot.workerId) === undefined));
   });
   it("retains uncertain spawn evidence when the composed supervisor throws", async () => {
-    const harness = kernelHarness(); await plan(harness);
+    const harness = await kernelHarness(); await plan(harness);
     const slot = harness.database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
     const commandId = nextCommandId();
     await assert.rejects(harness.kernel.executeWorkerPool({ ...envelope(commandId), type: "spawn-worker",
@@ -283,7 +283,7 @@ describe("dashboard-composed worker-browser command arms", () => {
     assert.equal(harness.database.authority.workerLeases.get(slot.workerId), undefined);
   });
   it("keeps refresh and reopen unavailable without acknowledging a browser effect", async () => {
-    const harness = kernelHarness(); await plan(harness);
+    const harness = await kernelHarness(); await plan(harness);
     const slot = harness.database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
     assert.ok(harness.stateRoot);
     const lifetime = await workerLifetime(harness.stateRoot, harness.clock, slot.workerId);
@@ -305,7 +305,7 @@ describe("dashboard-composed worker-browser command arms", () => {
 });
 
 it("F live worker selects the claim token after a later activation", async () => {
- const { repoRoot, stateRoot } = repoRootWithState();
+ const { repoRoot, stateRoot } = await repoRootWithState();
  const clock = manualClock(new Date(NOW));
  seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
  let database: AuthorityDatabase | undefined;

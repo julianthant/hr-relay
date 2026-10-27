@@ -13,7 +13,7 @@ import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../support/helpers/
 const fingerprint = FingerprintSchema.parse("1".repeat(64));
 const need = { system: "ucpath", access: "read", session: "reuse-worker" } as const;
 const owner = { taskId: taskId("ucpath/search-person-org"), nodeId: "searching", attempt: 1 };
-function world(enabled: boolean, failure?: "unavailable" | "missing" | "persist" | "capture" | "capture-and-close", pause?: () => Promise<void>) {
+async function world(enabled: boolean, failure?: "unavailable" | "missing" | "persist" | "capture" | "capture-and-close", pause?: () => Promise<void>) {
   const calls: string[] = [];
   const warnings: unknown[] = [];
   const captures: Parameters<RunBrowserScreenshotCapture["capture"]>[0][] = [];
@@ -38,7 +38,7 @@ function world(enabled: boolean, failure?: "unavailable" | "missing" | "persist"
   const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
   const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse("fixture-worker"), workflowId: WorkflowIdSchema.parse("person-lookup"),
     stores: taskStoreRegistry, factory, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: fixtureDuoCeremonyGates(clock), browserScreenshotCapture: { capture: async context => {
+    duoCeremony: await fixtureDuoCeremonyGates(clock), browserScreenshotCapture: { capture: async context => {
       calls.push("persist"); if (failure === "persist") throw new Error("fixture persistence failed"); captures.push(context);
     } },
   });
@@ -48,7 +48,7 @@ function world(enabled: boolean, failure?: "unavailable" | "missing" | "persist"
 
 describe("task-owned screenshots", () => {
   for (const enabled of [true, false]) it(`captures at the requested point without a lease-end duplicate (enabled=${enabled})`, async () => {
-    const { sessions, calls, captures, owner, warnings } = world(enabled);
+    const { sessions, calls, captures, owner, warnings } = await world(enabled);
     let retained: (() => Promise<void>) | undefined;
     await sessions.withDriver(need, "prod", new AbortController().signal, async (_driver, captureScreenshot) => {
       retained = captureScreenshot;
@@ -62,7 +62,7 @@ describe("task-owned screenshots", () => {
     await sessions.closeAll("worker-stop");
   });
   it("allows a task-owned lease to defer capture while retaining automatic capture for other leases", async () => {
-    const { sessions, captures, owner } = world(true);
+    const { sessions, captures, owner } = await world(true);
     await sessions.withDriver(need, "prod", new AbortController().signal, async () => {}, owner);
     assert.equal(captures.length, 0);
     await sessions.withDriver(need, "prod", new AbortController().signal, async () => {});
@@ -70,7 +70,7 @@ describe("task-owned screenshots", () => {
     await sessions.closeAll("worker-stop");
   });
   for (const failure of ["unavailable", "missing", "persist", "capture"] as const) it(`does nothing with capture opted out for ${failure}`, async () => {
-    const { sessions, calls, captures, warnings, owner } = world(false, failure);
+    const { sessions, calls, captures, warnings, owner } = await world(false, failure);
     assert.equal(await sessions.withDriver(need, "prod", new AbortController().signal, async (_driver, captureScreenshot) => {
       await captureScreenshot();
       return "found";
@@ -81,7 +81,7 @@ describe("task-owned screenshots", () => {
     await sessions.closeAll("worker-stop");
   });
   for (const failure of ["unavailable", "missing", "persist", "capture"] as const) it(`continues with one safe warning for ${failure}`, async () => {
-    const { sessions, captures, warnings, owner } = world(true, failure);
+    const { sessions, captures, warnings, owner } = await world(true, failure);
     const result = await sessions.withDriver(need, "prod", new AbortController().signal, async (_driver, captureScreenshot) => {
       await captureScreenshot();
       return { status: "found" };
@@ -98,7 +98,7 @@ it("refuses a task capture that resolves after cancellation", async () => {
   let started = (): void => {};
   const waiting = new Promise<void>(resolve => { started = resolve; });
   const delayed = new Promise<void>(resolve => { release = resolve; });
-  const { sessions, captures, owner } = world(true, undefined, async () => { started(); await delayed; });
+  const { sessions, captures, owner } = await world(true, undefined, async () => { started(); await delayed; });
   const controller = new AbortController();
   const operation = sessions.withDriver(need, "prod", controller.signal, async (_driver, captureScreenshot) => { await captureScreenshot(); }, owner);
   await waiting;
@@ -111,7 +111,7 @@ it("refuses a task capture that resolves after cancellation", async () => {
 });
 
 it("retains the task failure and failure-diagnostic and cleanup errors together", async () => {
-  const { sessions, owner } = world(true, "capture-and-close");
+  const { sessions, owner } = await world(true, "capture-and-close");
   await assert.rejects(sessions.withDriver(need, "prod", new AbortController().signal, async (_driver, captureScreenshot) => {
     await captureScreenshot();
     throw new Error("task operation failed");

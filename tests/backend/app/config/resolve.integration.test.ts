@@ -204,18 +204,18 @@ describe("instance and fiscal safety", () => {
 }
 
 {
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 
-const cleanupOriginalFixture = () => {
+const cleanupOriginalFixture = async () => {
   for (const database of openDatabases.splice(0)) database.close();
-  for (const profile of profiles.splice(0)) profile.close();
+  for (const profile of profiles.splice(0)) await profile.close();
 };
 
 const NOW = "2026-08-03T09:00:00.000Z";
 
-function repoRootWithState() {
-  const profile = createBoundProfileFixture(); profiles.push(profile);
+async function repoRootWithState() {
+  const profile = await createBoundProfileFixture(); profiles.push(profile);
   const repoRoot = profile.workspace;
   const stateRoot = profile.stateRoot;
   writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "worker-composition-fixture", version: "0.1.0", type: "module" }));
@@ -271,16 +271,16 @@ function journalWorkerSettings(
 
 it("F composed dashboard reads active settings after boot through real HTTP", async () => {
 const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?: RuntimeAdmission } = {};
- onTestFinished(async () => { await acquired.profile?.close(); acquired.admission?.release(); cleanupOriginalFixture(); });
+ onTestFinished(async () => { await acquired.profile?.close(); acquired.admission?.release(); await cleanupOriginalFixture(); });
 
- const { repoRoot, stateRoot, profile: owner } = repoRootWithState();
+ const { repoRoot, stateRoot, profile: owner } = await repoRootWithState();
  const clock = manualClock(new Date(NOW));
  for (const name of ["package.json", "package-lock.json"])
   writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
  const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null },
    processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot) });
  acquired.profile = profile;
- const active = profile.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+ const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
  assert.equal(active.state, 'active');
  if (active.state !== 'active') throw new Error('config fixture sign-in refused');
  const currentAdmission = owner.machine.admitProfile(createProfileRegistry(owner.machine).storageClaim(active.profileId));
@@ -332,12 +332,12 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
 {
 const cleanups: (() => void)[] = [];
 const cleanupOriginalFixture = () => { for (const close of cleanups.splice(0).reverse()) close(); vi.restoreAllMocks(); };
-function fixture(isolateBrowser = false) { const f = settingsFixture(isolateBrowser); cleanups.push(f.close); return f; }
+async function fixture(isolateBrowser = false) { const f = await settingsFixture(isolateBrowser); cleanups.push(f.close); return f; }
 
 it("saved idle cadence applies at the next boundary without retiming the pending wait", async () => {
 onTestFinished(cleanupOriginalFixture);
 
-  const f = fixture();
+  const f = await fixture();
   const scheduler = new ManualScheduler(f.clock, 0);
   const stop = new AbortController();
   const sessions = happySessionHarness();
@@ -348,7 +348,7 @@ onTestFinished(cleanupOriginalFixture);
     descriptor: personLookupDescriptor, stores: taskStoreRegistry, authority: f.database,
     sessionFactory: sessions.factory, emitter: recordingTimelineEmitter(f.database, f.clock).emitter,
     clock: f.clock, ids: { uuid: randomUUID }, scheduler, taskDeadlineMs: 60_000, sessionAcquireMs: 20_000,
-    duoCeremony: fixtureDuoCeremonyGates(f.clock), heartbeatIntervalMs: 500, idleRepollMs: initial,
+    duoCeremony: await fixtureDuoCeremonyGates(f.clock), heartbeatIntervalMs: 500, idleRepollMs: initial,
     idleCadence: cadence, log: recordingLogger().log, stopSignal: stop.signal, exitWhenIdle: false,
     controlPoll: () => "pause",
   });

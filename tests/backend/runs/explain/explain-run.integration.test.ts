@@ -10,8 +10,8 @@ const {STEP, TYPED_FACT, omittedStepFixture, cleanup } = createStepOmissionTestW
 afterEach(cleanup);
 
 describe("explain run under step omission", () => {
-  function explainView() {
-    const fixture = omittedStepFixture();
+  async function explainView() {
+    const fixture = await omittedStepFixture();
     return buildExplainRunView({
       run: fixture.run,
       checkpoints: fixture.checkpoints,
@@ -24,8 +24,8 @@ describe("explain run under step omission", () => {
     });
   }
 
-  it("lists the omitted step keys and renders them as their own section", () => {
-    const view = explainView();
+  it("lists the omitted step keys and renders them as their own section", async () => {
+    const view = await explainView();
     assert.deepEqual(view.omittedSteps, [STEP]);
     const rendered = renderExplainRun(view);
     assert.match(rendered, /omitted steps\n\s+crm-read — omitted at start/u);

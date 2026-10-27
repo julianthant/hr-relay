@@ -17,18 +17,18 @@ const SECOND = "22222222-2222-4222-8222-222222222222";
 const THIRD = "33333333-3333-4333-8333-333333333333";
 const SOURCE_FIELD = { nodeId: "crm-dates", fieldPath: "employmentDate", label: "Employment date" };
 
-function draft(f: ReturnType<typeof explorerAuthorityFixture>, changes: readonly unknown[] = [{ kind: "workflow-label", value: "People search" }]) {
+function draft(f: Awaited<ReturnType<typeof explorerAuthorityFixture>>, changes: readonly unknown[] = [{ kind: "workflow-label", value: "People search" }]) {
   return { draftVersion: 1, workflowId: f.descriptor.id, baseDescriptorVersion: f.descriptor.version,
     baseContractFingerprint: f.descriptor.contractFingerprint, baseOverrideRevision: 0, changes };
 }
 
-function untouched(f: ReturnType<typeof explorerAuthorityFixture>) {
+function untouched(f: Awaited<ReturnType<typeof explorerAuthorityFixture>>) {
   assert.deepEqual(f.database.authority.explorerOverrides.readAll(), []);
   assert.equal(f.database.authority.commands.get(FIRST), undefined);
   assert.equal(f.database.authority.commandAudits.findByCommand(FIRST), undefined);
 }
 
-function validControl(f: ReturnType<typeof explorerAuthorityFixture>) {
+function validControl(f: Awaited<ReturnType<typeof explorerAuthorityFixture>>) {
   assert.equal(f.service.validate(draft(f)).state, "ready-to-apply");
   assert.equal(f.kernel.execute(f.command(SECOND)).state, "applied");
   assert.equal(f.database.authority.explorerOverrides.read("person-lookup")?.revision, 1);
@@ -36,8 +36,8 @@ function validControl(f: ReturnType<typeof explorerAuthorityFixture>) {
 
 describe("Explorer registered graph and service acceptance", () => {
 
-  it("distinguishes an empty registry and an unregistered target from an impossible zero-node workflow", () => {
-    const f = explorerAuthorityFixture();
+  it("distinguishes an empty registry and an unregistered target from an impossible zero-node workflow", async () => {
+    const f = await explorerAuthorityFixture();
     const held: { f: typeof f; primary?: { error: unknown } } = { f };
     retainedExplorerCases.add(held);
     try {
@@ -48,12 +48,12 @@ describe("Explorer registered graph and service acceptance", () => {
       untouched(f);
       validControl(f);
     } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
-    f.dispose();
+    await f.dispose();
     retainedExplorerCases.delete(held);
   });
 
-  it("refuses manifest source drift before effects, then accepts the unchanged registered control", () => {
-    const f = explorerAuthorityFixture();
+  it("refuses manifest source drift before effects, then accepts the unchanged registered control", async () => {
+    const f = await explorerAuthorityFixture();
     const held: { f: typeof f; primary?: { error: unknown } } = { f };
     retainedExplorerCases.add(held);
     try {
@@ -66,12 +66,12 @@ describe("Explorer registered graph and service acceptance", () => {
       untouched(f);
       validControl(f);
     } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
-    f.dispose();
+    await f.dispose();
     retainedExplorerCases.delete(held);
   });
 
-  it("refuses served scenario registration drift before effects while accepting absent physical scenario sources", () => {
-    const f = explorerAuthorityFixture();
+  it("refuses served scenario registration drift before effects while accepting absent physical scenario sources", async () => {
+    const f = await explorerAuthorityFixture();
     const held: { f: typeof f; primary?: { error: unknown } } = { f };
     retainedExplorerCases.add(held);
     try {
@@ -83,12 +83,12 @@ describe("Explorer registered graph and service acceptance", () => {
       untouched(f);
       validControl(f);
     } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
-    f.dispose();
+    await f.dispose();
     retainedExplorerCases.delete(held);
   });
 
-  it.each(["graph", "selector", "schema", "timeline-label", "notification-preferences"])("rejects forbidden %s drafts and commands without successful records", kind => {
-    const f = explorerAuthorityFixture();
+  it.each(["graph", "selector", "schema", "timeline-label", "notification-preferences"])("rejects forbidden %s drafts and commands without successful records", async kind => {
+    const f = await explorerAuthorityFixture();
     const held: { f: typeof f; primary?: { error: unknown } } = { f };
     retainedExplorerCases.add(held);
     try {
@@ -98,7 +98,7 @@ describe("Explorer registered graph and service acceptance", () => {
       untouched(f);
       validControl(f);
     } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
-    f.dispose();
+    await f.dispose();
     retainedExplorerCases.delete(held);
   });
 
@@ -108,8 +108,8 @@ describe("Explorer registered graph and service acceptance", () => {
     { changes: [{ kind: "workflow-label", value: "People search" }, { kind: "enqueue-policy", value: "allow-parallel" }], category: "mixed-apply-levels" },
     { changes: [{ kind: "enqueue-policy", value: "reject-active" }, { kind: "edit-data-fields", fields: [SOURCE_FIELD] }], category: "partial-no-op" },
     { changes: [{ kind: "edit-data-fields", fields: [{ ...SOURCE_FIELD, fieldPath: "not.allowlisted" }] }], category: "edit-data-field-allowlist" },
-  ])("refuses $category without effects and preserves a reachable valid command", ({ changes, category }) => {
-    const f = explorerAuthorityFixture();
+  ])("refuses $category without effects and preserves a reachable valid command", async ({ changes, category }) => {
+    const f = await explorerAuthorityFixture();
     const held: { f: typeof f; primary?: { error: unknown } } = { f };
     retainedExplorerCases.add(held);
     try {
@@ -121,12 +121,12 @@ describe("Explorer registered graph and service acceptance", () => {
       untouched(f);
       validControl(f);
     } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
-    f.dispose();
+    await f.dispose();
     retainedExplorerCases.delete(held);
   });
 
-  it("refuses all stale bases, replays exactly and restores appearance at a new revision after reopening SQLite", () => {
-    const f = explorerAuthorityFixture();
+  it("refuses all stale bases, replays exactly and restores appearance at a new revision after reopening SQLite", async () => {
+    const f = await explorerAuthorityFixture();
     const held: { f: typeof f; primary?: { error: unknown } } = { f };
     retainedExplorerCases.add(held);
     try {
@@ -150,7 +150,7 @@ describe("Explorer registered graph and service acceptance", () => {
       assert.equal(f.kernel.execute(command).state, "already-applied");
       assert.equal(f.database.authority.commandAudits.findByCommand(THIRD)?.result.state, "applied");
     } catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
-    f.dispose();
+    await f.dispose();
     retainedExplorerCases.delete(held);
   });
 });

@@ -27,7 +27,7 @@ function inventory(directory: string) {
 }
 
 it.each([false, true])("inspects committed WAL: %s without creating or changing source companions", async liveWal => {
-  const fixture = createBoundProfileFixture(), { workspace, path, admission } = fixture;
+  const fixture = await createBoundProfileFixture(), { workspace, path, admission } = fixture;
   const credentials = boundProfileCredentials(admission);
   let writer: DatabaseSync | undefined;
   const failures: unknown[] = [];
@@ -61,7 +61,7 @@ it.each([false, true])("inspects committed WAL: %s without creating or changing 
     }
   } catch (error) { failures.push(error); } finally {
     try { writer?.close(); } catch (error) { failures.push(error); }
-    try { fixture.close(); } catch (error) { failures.push(error); }
+    try { await fixture.close(); } catch (error) { failures.push(error); }
   }
   if (failures.length) throw new AggregateError(failures, "readonly authority fixture failed");
 });

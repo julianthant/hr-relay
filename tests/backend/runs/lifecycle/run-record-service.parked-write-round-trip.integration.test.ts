@@ -13,7 +13,7 @@ afterEach(cleanup);
 describe("post-fence park → typed outcome arm → typed operator resolution", () => {
 
   it("confirmed-present settles the same beat ⑦ bundle and resumes the run", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);

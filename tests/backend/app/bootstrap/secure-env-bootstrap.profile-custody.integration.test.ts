@@ -14,7 +14,7 @@ import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/compos
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
 for (const uncertain of [false, true]) it(`bootstrap ${uncertain ? "retains" : "releases"} actual parent custody after ${uncertain ? "unproved closure" : "ordinary refusal"}`, async () => {
-  const f = createBoundProfileFixture();
+  const f = await createBoundProfileFixture();
   const cause = new Error("synthetic runtime refusal");
   const failure = uncertain ? new RuntimeCustodyUncertainError([cause]) : cause;
   try {
@@ -24,11 +24,11 @@ for (const uncertain of [false, true]) it(`bootstrap ${uncertain ? "retains" : "
     }), error => error === failure);
     if (uncertain) { f.machine.assertLive(); f.admission.assertLive(); }
     else assert.throws(() => f.machine.assertLive());
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 for (const unproved of [false, true]) it(`preserves actual source descriptor and pre-handoff worker custody when close is ${unproved ? 'unproved' : 'proved'}`, async () => {
-  const f = createBoundProfileFixture(), argv = [...process.argv];
+  const f = await createBoundProfileFixture(), argv = [...process.argv];
   const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
   const before = fs.readFileSync(keyPath), key = fs.lstatSync(keyPath);
   const realClose = fs.closeSync, realOpen = fs.openSync;
@@ -112,6 +112,6 @@ for (const unproved of [false, true]) it(`preserves actual source descriptor and
   } finally {
     workspace.mockRestore(); processHook.mockRestore(); opened.mockRestore(); closed.mockRestore(); syncBuiltinESMExports();
     process.argv.splice(0, process.argv.length, ...argv);
-    if (proved) f.close();
+    if (proved) await f.close();
   }
 });

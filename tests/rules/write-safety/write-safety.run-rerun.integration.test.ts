@@ -12,7 +12,7 @@ afterEach(cleanup);
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
   it("a changed business key renews the exact warning while an edited memo preserves it", async () => {
-    const h = setup(); const source = await h.completeSource();
+    const h = await setup(); const source = await h.completeSource();
     const other = h.start(h.proposal(undefined, undefined, false, "10812346"));
     const absence = absentProbeEvidence(h.clock.now().toISOString()); h.world.subjectEid = "10812346";
     h.world.probeResults.push({ ...absence, evidence: { ...absence.evidence,

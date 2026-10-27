@@ -25,7 +25,7 @@ describe("native verification reservation exclusion", () => {
   it("refuses verification admission around an unresolved canonical Spawn without advancing pool CAS", async () => {
     const world = createDashboardPoolTestWorld();
     try {
-      const harness = world.openControlHarness();
+      const harness = await world.openControlHarness();
       const member = await world.admitPoolSlot(harness);
       const pending = pendingSpawn(world, harness, member.workerId);
       harness.database.withAuthorityTransaction(repositories => {
@@ -50,7 +50,7 @@ describe("native verification reservation exclusion", () => {
   it("holds membership through the callback against canonical controls, primitive mutations, claims and lease birth", async () => {
     const world = createDashboardPoolTestWorld();
     try {
-      const harness = world.openControlHarness();
+      const harness = await world.openControlHarness();
       const custody = { processLockRoot: harness.processLockRoot, stateRoot: harness.root };
       const lock = acquireRuntimeProcessLock({ processLockRoot: custody.processLockRoot, name: "live-smoke", pid: process.pid }, harness.clock);
       try {
@@ -127,7 +127,7 @@ describe("native verification reservation exclusion", () => {
   it("preserves the reservation and pool CAS when cleanup is uncertain or a historical unresolved control crosses retirement", async () => {
     const world = createDashboardPoolTestWorld();
     try {
-      const harness = world.openControlHarness();
+      const harness = await world.openControlHarness();
       const custody = { processLockRoot: harness.processLockRoot, stateRoot: harness.root };
       const lock = acquireRuntimeProcessLock({ processLockRoot: custody.processLockRoot, name: "live-smoke", pid: process.pid }, harness.clock);
       try {
@@ -136,7 +136,7 @@ describe("native verification reservation exclusion", () => {
         harness.clock.advanceWall(600_000);
         expect(harness.database.authority.workerSlots.verifications("person-lookup")).toHaveLength(1);
       } finally { lock.release(); }
-      const other = world.openControlHarness();
+      const other = await world.openControlHarness();
       const otherCustody = { processLockRoot: join(other.root, "locks"), stateRoot: other.root };
       const otherLock = acquireRuntimeProcessLock({ processLockRoot: otherCustody.processLockRoot, name: "live-smoke", pid: process.pid }, other.clock);
       try {

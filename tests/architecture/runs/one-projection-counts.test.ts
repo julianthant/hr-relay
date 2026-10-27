@@ -151,12 +151,12 @@ describe("one-projection-counts", () => {
   });
 
   const worlds: DashboardWorld[] = [];
-  afterEach(() => {
-    for (const world of worlds.splice(0)) world.dispose();
+  afterEach(async () => {
+    for (const world of worlds.splice(0)) await world.dispose();
   });
 
-  it("proves badge total == status sum == rendered rows by construction over a hostile seeded world", () => {
-    const world = makeWorld();
+  it("proves badge total == status sum == rendered rows by construction over a hostile seeded world", async () => {
+    const world = await makeWorld();
     worlds.push(world);
 
     queuedEventOf(world, { seed: 1 }); // plain queued

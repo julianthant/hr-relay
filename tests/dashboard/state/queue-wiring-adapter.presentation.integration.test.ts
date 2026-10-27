@@ -14,7 +14,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const { world, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
 it("keeps attempts within the selected day and selects the exact run", async () => {
-  const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   for (let attempt = 1; attempt <= 7; attempt++) seedPersonLookupPresentation(w, {
     seed: 80 + attempt, attempt, itemId: uuidOf(5081),
     enqueuedAt: attempt <= 2 ? `2026-07-31T17:0${attempt}:00.000Z` : `2026-08-03T17:0${attempt}:00.000Z`,

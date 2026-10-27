@@ -379,7 +379,7 @@ describe("through createWorkerPoolRuntimeExecutor", () => {
 
   it("admits native slots for spawn and stop but refuses plan completion without native retirement proof", async () => {
     const harness = openHarness();
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     try {
     const initial = workerBrowserCommand({ type: "plan-worker-count", target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { desiredWorkers: 2 } });
     if (initial.type !== "plan-worker-count") throw new Error("fixture plan required");
@@ -416,7 +416,7 @@ describe("through createWorkerPoolRuntimeExecutor", () => {
     harness.leases.delete(member(2).workerId);
     await refused;
     expect(harness.gracefulRequests).toHaveLength(1);
-    } finally { authority.dispose(); }
+    } finally { await authority.dispose(); }
   });
 });
 

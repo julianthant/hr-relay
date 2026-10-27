@@ -17,9 +17,9 @@ afterEach(cleanup);
 
 describe("native SQLite authority schema", () => {
 
-  it("creates a fresh authority at the current schema with one baseline journal row", () => {
-    const path = databasePath("fresh-v32.sqlite");
-    openDatabase(path).close();
+  it("creates a fresh authority at the current schema with one baseline journal row", async () => {
+    const path = await databasePath("fresh-v32.sqlite");
+    (await openDatabase(path)).close();
 
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
@@ -53,53 +53,53 @@ describe("native SQLite authority schema", () => {
     }
   });
 
-  it("fails loud for empty, foreign, newer, locked, and structurally invalid databases", () => {
-    const emptyPath = databasePath("empty.sqlite");
+  it("fails loud for empty, foreign, newer, locked, and structurally invalid databases", async () => {
+    const emptyPath = await databasePath("empty.sqlite");
     writeFileSync(emptyPath, "");
-    assert.throws(() => openDatabase(emptyPath), /exists but is empty/);
+    await assert.rejects(async () => await openDatabase(emptyPath), /exists but is empty/);
 
-    const foreignPath = databasePath("foreign.sqlite");
+    const foreignPath = await databasePath("foreign.sqlite");
     writeFileSync(foreignPath, "not a sqlite database");
     const foreignBytes = readFileSync(foreignPath);
-    assert.throws(() => openDatabase(foreignPath), { code: "ERR_SQLITE_ERROR", errcode: 26, message: "file is not a database" });
+    await assert.rejects(async () => await openDatabase(foreignPath), { code: "ERR_SQLITE_ERROR", errcode: 26, message: "file is not a database" });
     assert.deepEqual(readFileSync(foreignPath), foreignBytes);
 
-    const newerPath = databasePath("newer.sqlite");
-    openDatabase(newerPath).close();
+    const newerPath = await databasePath("newer.sqlite");
+    (await openDatabase(newerPath)).close();
     const newer = new DatabaseSync(newerPath);
     newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
     newer.close();
-    assert.throws(() => openDatabase(newerPath), new RegExp(`authority schema ${CURRENT_AUTHORITY_SCHEMA_VERSION + 1} does not match supported ${CURRENT_AUTHORITY_SCHEMA_VERSION}`));
+    await assert.rejects(async () => await openDatabase(newerPath), new RegExp(`authority schema ${CURRENT_AUTHORITY_SCHEMA_VERSION + 1} does not match supported ${CURRENT_AUTHORITY_SCHEMA_VERSION}`));
 
-    const malformedPath = databasePath("malformed.sqlite");
-    openDatabase(malformedPath).close();
+    const malformedPath = await databasePath("malformed.sqlite");
+    (await openDatabase(malformedPath)).close();
     const malformed = new DatabaseSync(malformedPath);
     malformed.exec("DROP TABLE artifacts");
     malformed.close();
-    assert.throws(() => openDatabase(malformedPath), /authority-native-schema-shape-mismatch/);
+    await assert.rejects(async () => await openDatabase(malformedPath), /authority-native-schema-shape-mismatch/);
 
-    const badForeignKeyPath = databasePath("bad-foreign-key.sqlite");
-    openDatabase(badForeignKeyPath).close();
+    const badForeignKeyPath = await databasePath("bad-foreign-key.sqlite");
+    (await openDatabase(badForeignKeyPath)).close();
     const badForeignKey = new DatabaseSync(badForeignKeyPath, { enableForeignKeyConstraints: false });
     badForeignKey.prepare(`
       INSERT INTO command_audits (id, command_id, payload_json, created_at)
       VALUES (?, ?, ?, ?)
     `).run(UUID_2, UUID_8, JSON.stringify(COMMAND_AUDIT), NOW);
     badForeignKey.close();
-    assert.throws(() => openDatabase(badForeignKeyPath), /foreign-key validation failed/);
+    await assert.rejects(async () => await openDatabase(badForeignKeyPath), /foreign-key validation failed/);
   });
 });
 
 describe("authority generation accounting", () => {
   const cases: readonly MutationCase[] = authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT });
 
-  it("#16 enumerates every current deletion guard and each aborts without an admitted owner deletion", () => {
+  it("#16 enumerates every current deletion guard and each aborts without an admitted owner deletion", async () => {
     const declarations = SQLITE_MIGRATIONS.flatMap(({ statements }) => statements.flatMap(statement =>
       [...statement.matchAll(/CREATE TRIGGER\s+([a-z0-9_]+)\s+BEFORE DELETE ON "?([a-z0-9_]+)"?[\s\S]*?BEGIN SELECT RAISE\(ABORT,'([^']+)'\); END;?/gu)]
         .map(match => ({ name: match[1], tableName: match[2], message: match[3] }))));
     const expected = [...new Map(declarations.map(trigger => [trigger.name, trigger])).values()];
     assert.ok(expected.length > 0, "deletion guard census must not be empty");
-    const inventory = openDatabase();
+    const inventory = await openDatabase();
     const inventoryPath = databasePaths.get(inventory); assert.ok(inventoryPath);
     const rawInventory = new DatabaseSync(inventoryPath);
     try {
@@ -109,7 +109,7 @@ describe("authority generation accounting", () => {
     for (const trigger of expected) {
       assert.ok(trigger.tableName); assert.ok(trigger.message); assert.ok(trigger.name);
       assert.match(trigger.tableName, /^[a-z0-9_]+$/u);
-      const database = openDatabase();
+      const database = await openDatabase();
       const path = databasePaths.get(database); assert.ok(path);
       if (trigger.name === "commands_bulk_retained") {
         database.authority.commands.acceptBulk(BULK_COMMAND_ACCEPTANCE);
@@ -127,7 +127,7 @@ describe("authority generation accounting", () => {
         assert.ok(mutation, `${trigger.name} needs a current owner fixture`);
         if (mutation.table !== "settings" && mutation.table !== "settings_snapshots") database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
         mutation.prepare?.(database);
-        mutation.mutate(database);
+        await mutation.mutate(database);
       }
       const raw = new DatabaseSync(path);
       try {

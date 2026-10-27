@@ -44,8 +44,8 @@ afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
 
-function sharedAuthority(): AuthorityHarness {
-  const authority = openAuthorityHarness();
+async function sharedAuthority(): Promise<AuthorityHarness> {
+  const authority = await openAuthorityHarness();
   assert.equal(authority.database.authority.runtimeConfig.get()?.configFingerprint, CONFIG_SNAPSHOT.fingerprint);
   disposers.push(authority.dispose);
   return authority;
@@ -79,7 +79,7 @@ function activeClaimsByWorker(database: AuthorityDatabase): ReadonlyMap<string, 
 
 describe("graceful teardown with a run in flight", () => {
   it("abandons rather than terminalizing, and the claim sweep — not the loop — releases the row", async () => {
-    const authority = sharedAuthority();
+    const authority = await sharedAuthority();
     const { database, clock } = authority;
     database.authority.runs.enqueue(queuedRun(1));
 
@@ -97,7 +97,7 @@ describe("graceful teardown with a run in flight", () => {
       }),
       crm: () => healthyCrmDriver(),
     });
-    const dying = workerHarness(authority, "1", "a", { sessions, exitWhenIdle: false });
+    const dying = await workerHarness(authority, "1", "a", { sessions, exitWhenIdle: false });
     const looping = runWorkerLoop(dying.deps);
     await driverStarted;
 
@@ -128,7 +128,7 @@ describe("graceful teardown with a run in flight", () => {
     });
     assert.deepEqual(swept.map(({ state }) => state), ["requeued"]);
 
-    const successor = workerHarness(authority, "2", "b");
+    const successor = await workerHarness(authority, "2", "b");
     const recovered = await runWorkerLoop(successor.deps);
     assert.deepEqual(recovered.outcomes.map(({ state }) => state), ["done"]);
     assert.deepEqual([...activeClaimsByWorker(database).keys()], []);
@@ -196,7 +196,7 @@ function teardownFactory(closeFailsFor: readonly string[] = []): TeardownFactory
   };
 }
 
-function teardownManager(factory: TeardownFactory): WorkerSessionManager {
+async function teardownManager(factory: TeardownFactory): Promise<WorkerSessionManager> {
   const clock = manualClock(new Date("2026-08-09T09:00:00.000Z"));
   const sessions = new WorkerSessionManager({
     workerId: TEARDOWN_WORKER,
@@ -206,7 +206,7 @@ function teardownManager(factory: TeardownFactory): WorkerSessionManager {
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: fixtureDuoCeremonyGates(clock),
+    duoCeremony: await fixtureDuoCeremonyGates(clock),
   });
 
   sessions.bindRunConfigFingerprint(TEARDOWN_FINGERPRINT);
@@ -216,7 +216,7 @@ function teardownManager(factory: TeardownFactory): WorkerSessionManager {
 describe("worker-stop waits behind in-flight callbacks", () => {
   it("closes nothing under an active lease, refuses a second concurrent closeAll, then completes", async () => {
     const factory = teardownFactory();
-    const sessions = teardownManager(factory);
+    const sessions = await teardownManager(factory);
 
     // A settled crm lease leaves a warm resource; ucpath then goes in-flight.
     await sessions.withDriver(CRM_REUSE, "prod", NEVER_ABORTS, async () => "crm-read");
@@ -264,7 +264,7 @@ describe("worker-stop waits behind in-flight callbacks", () => {
 describe("poison-close paths survive teardown", () => {
   it("names the task failure AND the failed close, retains the resource, and aggregates every system at stop", async () => {
     const factory = teardownFactory(["ucpath", "crm"]);
-    const sessions = teardownManager(factory);
+    const sessions = await teardownManager(factory);
 
     // Preserve task and close errors separately; an unproven close blocks session reuse.
     await assert.rejects(
@@ -287,7 +287,7 @@ describe("poison-close paths survive teardown", () => {
     // A second system is opened and also cannot prove closure. Worker-stop must
     // report BOTH, not the first one it tripped over.
     const crmFactory = teardownFactory(["crm"]);
-    const crmSessions = teardownManager(crmFactory);
+    const crmSessions = await teardownManager(crmFactory);
     await assert.rejects(
       crmSessions.withDriver(CRM_REUSE, "prod", NEVER_ABORTS, () =>
         Promise.reject(new Error("injected crm task failure"))),
@@ -313,7 +313,7 @@ describe("poison-close paths survive teardown", () => {
 
 describe("bounded multi-worker soak over one authority database", () => {
   it(`drains ${String(SOAK_RUNS)} runs across ${String(SOAK_WORKERS)} workers and leaves authority provably intact`, async () => {
-    const authority = sharedAuthority();
+    const authority = await sharedAuthority();
     const { database } = authority;
     const enqueued: string[] = [];
     for (let index = 1; index <= SOAK_RUNS; index += 1) {
@@ -332,8 +332,8 @@ describe("bounded multi-worker soak over one authority database", () => {
     };
 
     const prefixes = ["a", "b", "c"] as const;
-    const harnesses = prefixes.map((prefix, index) =>
-      workerHarness(authority, String(index + 1), prefix, { onSpan: sample }));
+    const harnesses = await Promise.all(prefixes.map((prefix, index) =>
+      workerHarness(authority, String(index + 1), prefix, { onSpan: sample })));
 
     const startedAtMs = performance.now();
     const reports = await Promise.all(harnesses.map(({ deps }) => runWorkerLoop(deps)));

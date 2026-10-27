@@ -15,7 +15,7 @@ afterEach(cleanup);
 
 describe("SQLite settings authority", () => {
   it("refuses a retained credential identity before async worker-pool effects", async () => {
-    const f = fixture();
+    const f = await fixture();
     const pending = protectedCommand(f.store.read().revision);
     assert.throws(() => f.execute(pending, failAudit(f.database)), /credential-audit-uncertain/u);
     const path = join(f.root, "credentials", "protected.json");

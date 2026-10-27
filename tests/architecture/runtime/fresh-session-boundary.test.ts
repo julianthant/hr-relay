@@ -93,7 +93,7 @@ describe("fresh session boundary", () => {
   it("never mints a boundary for repeated reuse-worker needs", async () => {
     const harness = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver() });
     const events: WorkerSessionEvent[] = [];
-    const sessions = sessionManagerFor(
+    const sessions = await sessionManagerFor(
       harness,
       manualClock(new Date("2026-08-03T09:00:00.000Z")),
       (event) => events.push(event),
@@ -113,7 +113,7 @@ describe("fresh session boundary", () => {
   it("closes with proof before the replacement starts on an authored fresh need", async () => {
     const harness = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver() });
     const events: WorkerSessionEvent[] = [];
-    const sessions = sessionManagerFor(
+    const sessions = await sessionManagerFor(
       harness,
       manualClock(new Date("2026-08-03T09:00:00.000Z")),
       (event) => events.push(event),
@@ -142,7 +142,7 @@ describe("fresh session boundary", () => {
   it("forces the same proven boundary when the reuse identity drifts", async () => {
     const harness = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver() });
     const events: WorkerSessionEvent[] = [];
-    const sessions = sessionManagerFor(
+    const sessions = await sessionManagerFor(
       harness,
       manualClock(new Date("2026-08-03T09:00:00.000Z")),
       (event) => events.push(event),

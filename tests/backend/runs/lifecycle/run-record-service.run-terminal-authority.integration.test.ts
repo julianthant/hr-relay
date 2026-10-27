@@ -33,8 +33,8 @@ afterEach(cleanup);
 
 describe("atomic failure terminal authority", () => {
 
-  it("copies a failure's diagnostic admission stamp exactly when terminalizing", () => {
-    const database = openDatabase();
+  it("copies a failure's diagnostic admission stamp exactly when terminalizing", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const record = { ...failure(running), diagnosticSafetyVersion: 1 as const };
     const applied = database.terminalizeFailure(personLookupDescriptor, {
@@ -51,8 +51,8 @@ describe("atomic failure terminal authority", () => {
     );
   });
 
-  it("rejects identity, execution, version, claim, and generic failed bypasses", () => {
-    const database = openDatabase();
+  it("rejects identity, execution, version, claim, and generic failed bypasses", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const record = failure(running);
     assert.throws(() => database.terminalizeFailure(personLookupDescriptor, {
@@ -85,8 +85,8 @@ describe("atomic failure terminal authority", () => {
   });
 
   for (const injectedStep of ["failure", "run"] as const) {
-    it(`rolls back every failure terminal write when ${injectedStep} persistence fails`, () => {
-      const database = openDatabase({
+    it(`rolls back every failure terminal write when ${injectedStep} persistence fails`, async () => {
+      const database = await openDatabase({
         afterFailureStorageStep: (step) => {
           if (step === injectedStep) throw new Error(`injected ${step} failure`);
         },
@@ -108,8 +108,8 @@ describe("atomic failure terminal authority", () => {
 
 describe("atomic success terminal authority", () => {
 
-  it("rejects an authenticated result whose exact checkpoint was never stored", () => {
-    const database = openDatabase();
+  it("rejects an authenticated result whose exact checkpoint was never stored", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const { result, authorization, factoryAuthorization } = resultRequest(database, running);
     // A second connection corrupts the exact checkpoint while this authority
@@ -136,8 +136,8 @@ describe("atomic success terminal authority", () => {
   });
 
   for (const injectedStep of ["result", "run"] as const) {
-    it(`rolls back every success terminal write when ${injectedStep} persistence fails`, () => {
-      const database = openDatabase({
+    it(`rolls back every success terminal write when ${injectedStep} persistence fails`, async () => {
+      const database = await openDatabase({
         afterSuccessStorageStep: (step) => {
           if (step === injectedStep) throw new Error(`injected ${step} failure`);
         },
@@ -162,8 +162,8 @@ describe("atomic success terminal authority", () => {
 describe("public settlement write boundaries", () => {
   for (const kind of ["success", "failure"] as const) {
     for (const table of [kind === "success" ? "run_results" : "run_failures", "runs", "timeline_events", "commands", "command_audits"]) {
-      it(`${kind} rolls back completion, consequence, timeline and journal after ${table} write`, () => {
-        const database = openDatabase(); const running = startRunning(database);
+      it(`${kind} rolls back completion, consequence, timeline and journal after ${table} write`, async () => {
+        const database = await openDatabase(); const running = startRunning(database);
         const built = kind === "success" ? resultRequest(database, running) : undefined;
         const request = { kind, commandId: "99000000-0000-4000-8000-000000000011",
           terminal: built === undefined ? { failure: failure(running), authorization: failureAuthorization(running) }

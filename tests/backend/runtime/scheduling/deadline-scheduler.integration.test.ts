@@ -19,7 +19,7 @@ describe("worker browser sessions", () => {
   it("does not capture a historical or explicitly disabled browser lease", async () => {
     const harness = sessionFactory();
     const captured: unknown[] = [];
-    const sessions = manager(harness, [], {
+    const sessions = await manager(harness, [], {
       captureBrowserScreenshots: false,
       browserScreenshotCapture: { async capture(context) { captured.push(context); } },
     });
@@ -30,7 +30,7 @@ describe("worker browser sessions", () => {
 
   it("preserves a task failure with its selected screenshot failure and still poison-closes", async () => {
     const harness = sessionFactory({ screenshotFailure: true });
-    const sessions = manager(harness, [], {
+    const sessions = await manager(harness, [], {
       captureBrowserScreenshots: true,
       browserScreenshotCapture: { async capture() {} },
     });
@@ -47,7 +47,7 @@ describe("worker browser sessions", () => {
 
   it("keeps driver use exclusive and login single-flight per worker/system", async () => {
     const harness = sessionFactory();
-    const sessions = manager(harness);
+    const sessions = await manager(harness);
     let active = 0;
     let maximum = 0;
     let releaseFirst = (): void => undefined;
@@ -87,7 +87,7 @@ describe("worker browser sessions", () => {
 
   it("poison-closes after task or reset failure and closes everything before a park", async () => {
     const taskFailureHarness = sessionFactory();
-    const taskFailureSessions = manager(taskFailureHarness);
+    const taskFailureSessions = await manager(taskFailureHarness);
     await assert.rejects(
       taskFailureSessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, () =>
         Promise.reject(new Error("injected task failure"))),
@@ -97,7 +97,7 @@ describe("worker browser sessions", () => {
     assert.equal(taskFailureHarness.closes(), 1);
 
     const resetFailureHarness = sessionFactory({ resetFailureAt: 1 });
-    const resetFailureSessions = manager(resetFailureHarness);
+    const resetFailureSessions = await manager(resetFailureHarness);
     await assert.rejects(
       resetFailureSessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "result"),
       /injected reset failure/,
@@ -106,7 +106,7 @@ describe("worker browser sessions", () => {
     assert.equal(resetFailureHarness.closes(), 1);
 
     const parkedHarness = sessionFactory();
-    const parkedSessions = manager(parkedHarness);
+    const parkedSessions = await manager(parkedHarness);
     await parkedSessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "result");
     await parkedSessions.closeAll("parked");
     assert.deepEqual(parkedSessions.activeSystems(), []);
@@ -115,7 +115,7 @@ describe("worker browser sessions", () => {
 
   it("waits for an active driver callback before closing sessions for a park", async () => {
     const harness = sessionFactory();
-    const sessions = manager(harness);
+    const sessions = await manager(harness);
     let releaseOperation = (): void => undefined;
     const operationMayFinish = new Promise<void>((resolve) => {
       releaseOperation = resolve;
@@ -146,7 +146,7 @@ describe("worker browser sessions", () => {
 
   it("abort-races an active callback and poison-closes its browser resource", async () => {
     const harness = sessionFactory();
-    const sessions = manager(harness);
+    const sessions = await manager(harness);
     const controller = new AbortController();
     let operationStarted = (): void => undefined;
     const operationDidStart = new Promise<void>((resolve) => {
@@ -165,7 +165,7 @@ describe("worker browser sessions", () => {
 
   it("retains a fenced transaction callback through parent abort and poison-closes after settlement", async () => {
     const harness = sessionFactory();
-    const sessions = manager(harness);
+    const sessions = await manager(harness);
     const controller = new AbortController();
     const parentFailure = new Error("parent cancelled retained transaction lease");
     let releaseOperation = (): void => undefined;
@@ -210,7 +210,7 @@ describe("worker browser sessions", () => {
 
   it("keeps ordinary abort-race semantics before a transaction lease retains its fence", async () => {
     const harness = sessionFactory();
-    const sessions = manager(harness);
+    const sessions = await manager(harness);
     const controller = new AbortController();
     let operationStarted = (): void => undefined;
     const operationDidStart = new Promise<void>((resolve) => {
@@ -235,7 +235,7 @@ describe("worker browser sessions", () => {
 
   it("retains and poisons a resource when failed login cleanup cannot prove closure", async () => {
     const harness = sessionFactory({ loginFailure: true, closeFailureAt: 1 });
-    const sessions = manager(harness);
+    const sessions = await manager(harness);
     await assert.rejects(
       sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "must not run"),
       (error) => error instanceof AggregateError
@@ -256,7 +256,7 @@ describe("worker browser sessions", () => {
 
   it("refuses an OnBase close that cannot prove identity-lease release", async () => {
     const harness = sessionFactory({ omitExclusiveRelease: true });
-    const sessions = manager(harness);
+    const sessions = await manager(harness);
     await sessions.withDriver(
       { system: "onbase", access: "read", session: "reuse-worker", exclusive: true },
       "prod",
@@ -290,7 +290,7 @@ describe("bounded browser-session acquisition", () => {
     const harness = sessionFactory({ loginHangs: true });
     const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
     const scheduler = new ManualScheduler(clock);
-    const sessions = manager(harness, [], { clock, scheduler });
+    const sessions = await manager(harness, [], { clock, scheduler });
 
     const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => "must not run");
     const rejection = assert.rejects(lease, (error) => error instanceof Error
@@ -318,7 +318,7 @@ describe("bounded browser-session acquisition", () => {
     const harness = sessionFactory();
     const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
     const scheduler = new ManualScheduler(clock);
-    const sessions = manager(harness, [], { clock, scheduler });
+    const sessions = await manager(harness, [], { clock, scheduler });
 
     assert.equal(await sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => "read"), "read");
     assert.deepEqual(scheduler.pending(), []);

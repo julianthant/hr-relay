@@ -21,7 +21,7 @@ import { boundProfileCredentials, createBoundProfileFixture } from "../../../sup
 const retainedRestoredErasureOwners = new Set<object>();
 
 for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-mutation", "never-initialized", "missing-with-history", "retained-active-engine"] as const) it(`guards restored partial-history repair with ${copy} and preserves exact original erasure identity`, async () => {
-  const held: { fixture?: ReturnType<typeof createBoundProfileFixture>; context?: ReturnType<typeof composeSelectedProfileStorage>;
+  const held: { fixture?: Awaited<ReturnType<typeof createBoundProfileFixture>>; context?: ReturnType<typeof composeSelectedProfileStorage>;
     session?: ReturnType<typeof createProfileSession>; child?: RuntimeAdmission;
     settlement?: RuntimeAdmission;
     inventoryAdmission?: RuntimeAdmission;
@@ -29,7 +29,7 @@ for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-muta
   retainedRestoredErasureOwners.add(held);
   let primary: { error: unknown } | undefined;
   try {
-    const f = createBoundProfileFixture();
+    const f = await createBoundProfileFixture();
     held.fixture = f;
     const clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
     assert.equal(AuthorityDatabase.readProfileMaintenanceInventory(f.admission).settingsAuthority.state, "never-initialized");
@@ -44,7 +44,7 @@ for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-muta
       initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine, admission: child,
         clock, hostFacts: { primaryDisplay: null } })(operation, writer, copies) });
     held.session = session;
-    const active = session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+    const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("genuine profile sign-in refused");
     const child = f.machine.admitProfile(createProfileRegistry(f.machine).storageClaim(active.profileId));
@@ -133,7 +133,7 @@ for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-muta
   } catch (error) { primary = { error }; held.primary = error; }
   if (primary !== undefined) throw retainAuthoritySourceClosure([primary.error], { admission: held });
   try {
-    held.settlement?.release(); held.child?.release(); held.fixture?.close();
+    held.settlement?.release(); held.child?.release(); await held.fixture?.close();
     retainedRestoredErasureOwners.delete(held);
   } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 });

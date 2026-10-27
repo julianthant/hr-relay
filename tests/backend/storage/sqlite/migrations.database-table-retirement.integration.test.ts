@@ -43,8 +43,8 @@ const CURRENT_TABLES = [
   "write_attempts",
   "write_intents"
 ];
-it("fresh native authority has the exact current physical inventory", () => {
-  const f = foundationFixture();
+it("fresh native authority has the exact current physical inventory", async () => {
+  const f = await foundationFixture();
   try {
     const raw = new DatabaseSync(f.path, { readOnly: true });
     try {
@@ -54,5 +54,5 @@ it("fresh native authority has the exact current physical inventory", () => {
       assert.deepEqual(AUTHORITY_TABLE_REGISTRY.map(row => row.name).sort(), CURRENT_TABLES);
       assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 6);
     } finally { raw.close(); }
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });

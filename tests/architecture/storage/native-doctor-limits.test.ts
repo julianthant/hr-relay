@@ -17,7 +17,7 @@ it.each([
   { label: "one payload's UTF-8 bytes", count: 1, payloadBytes: 262_145, distinctRuns: false, code: "event" },
   { label: "distinct run-scope IDs", count: 10_001, payloadBytes: 2, distinctRuns: true, code: "run" },
 ])("refuses excess $label before parsing records and leaves authority unchanged", async (limit) => {
-  const fixture = createBoundProfileFixture(), { workspace, path, admission } = fixture;
+  const fixture = await createBoundProfileFixture(), { workspace, path, admission } = fixture;
   try {
     AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-doctor-limit" }).close();
     // Offline-corrupt rows exercise the metric refusal before strict record parsing.
@@ -50,6 +50,6 @@ it.each([
     assert.match(report.spanAuthority.cause.summary, new RegExp(`^timeline-doctor-${limit.code}-limit-exceeded`));
     assert.deepEqual(readFileSync(path), before);
   } finally {
-    fixture.close();
+    await fixture.close();
   }
 });

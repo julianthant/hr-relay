@@ -15,7 +15,7 @@ afterEach(cleanup);
 describe("corruption → degraded → restore → rebuild, through the CLI", () => {
 
   it("observes a crashed holder as stopped rather than bricking recovery", async () => {
-    const paths = drillPaths();
+    const paths = await drillPaths();
     const database = open(paths);
     seedRealShapedAuthority(database,paths);
     const manifestPath = await takeBackup(database, paths);

@@ -88,7 +88,7 @@ const writeCredentials = createCredentialDoctorWriter(COMMAND_ID, WRITE_ID);
 
 
 
-async function unchanged(f: ReturnType<typeof fixture>) {
+async function unchanged(f: Awaited<ReturnType<typeof fixture>>) {
   const meta = f.database.getMeta();
   const before = snapshot(f.machineRoot), controlBefore = snapshot(join(f.workspace, ".tracker", "control"));
   const report = await doctorAuthorityStorage(f.admission,f.options, undefined, f.credentialStore);
@@ -102,7 +102,7 @@ describe("credential presence doctor", () => {
 afterEach(_afterEachFixture0);
 
   it("reports every name and presence without a credential value or identity", async () => {
-    const f = fixture();
+    const f = await fixture();
     const record = writeCredentials(f, {
       timekeeperName: { set: "Protected Doctor Canary" },
       ucpathPassword: { set: "doctor-private-password" },
@@ -128,7 +128,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("refuses missing or foreign credential owners without changing authority", async () => {
-    const f = fixture(), other = fixture();
+    const f = await fixture(), other = await fixture();
     const before = snapshot(f.machineRoot), control = snapshot(join(f.workspace, ".tracker", "control")), meta = f.database.getMeta();
     for (const owner of [undefined, other.credentialStore]) {
       const report = await doctorAuthorityStorage(f.admission, f.options, undefined, owner);
@@ -140,13 +140,13 @@ afterEach(_afterEachFixture0);
   });
 
   it("refuses a missing established credential document without creating a baseline", async () => {
-    const f = fixture();
+    const f = await fixture();
     unlinkSync(f.credentialPath);
     assert.equal((await unchanged(f)).state, "unavailable");
   });
 
   it("observes an authenticated empty credential record without creating a baseline", async () => {
-    const f = fixture();
+    const f = await fixture();
     assert.deepEqual(await unchanged(f), {
       state: "available",
       entries: ProtectedSettingsNameSchema.options.map((name) => ({ name, present: false })),
@@ -167,8 +167,8 @@ const NOW_1 = "2026-09-06T12:00:00.000Z";
 const NOW_2 = "2026-09-06T12:01:00.000Z";
 const roots: string[] = [];
 
-const _afterEachFixture0 = () => {
-  releaseFixtures();
+const _afterEachFixture0 = async () => {
+  await releaseFixtures();
   vi.restoreAllMocks();
   syncBuiltinESMExports();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });

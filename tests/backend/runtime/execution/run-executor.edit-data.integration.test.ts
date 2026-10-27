@@ -162,8 +162,8 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string, attempt
 
 /* ── 3. the executor consume ─────────────────────────────────────────────── */
 
-function executorHarness(descriptor: AnyWorkflowDescriptor) {
-  const authority = openAuthorityHarness();
+async function executorHarness(descriptor: AnyWorkflowDescriptor) {
+  const authority = await openAuthorityHarness();
   testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: descriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const sessions = happySessionHarness();
@@ -178,7 +178,7 @@ function executorHarness(descriptor: AnyWorkflowDescriptor) {
     descriptor,
     stores,
     authority: authority.database,
-    sessions: sessionManagerFor(sessions, authority.clock),
+    sessions: await sessionManagerFor(sessions, authority.clock),
     emitter: emitter.emitter,
     clock: authority.clock,
     ids: sequentialIdFactory("f"),
@@ -206,7 +206,7 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
 describe("executor consume — injected corrections at replay", () => {
   it("applies the patch to the replayed checkpoint and lands the corrected row at the resuming attempt", async () => {
     const descriptor = editDescriptor();
-    const harness = executorHarness(descriptor);
+    const harness = await executorHarness(descriptor);
     const { database } = harness.authority;
     // Run 1 executes fresh, writing the original checkpoint at attempt 1.
     database.authority.runs.enqueue(queuedRunFor(descriptor));
@@ -238,7 +238,7 @@ describe("executor consume — injected corrections at replay", () => {
 
   it("refuses a patch naming a node this run does not replay — a fresh read supersedes it", async () => {
     const descriptor = editDescriptor();
-    const harness = executorHarness(descriptor);
+    const harness = await executorHarness(descriptor);
     const { database } = harness.authority;
 
     database.authority.runs.enqueue(queuedRunFor(descriptor, undefined, 1, [PATCH]));
@@ -257,7 +257,7 @@ describe("executor consume — injected corrections at replay", () => {
 
   it("refuses an injected value the producing schema rejects at replay", async () => {
     const descriptor = editDescriptor();
-    const harness = executorHarness(descriptor);
+    const harness = await executorHarness(descriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(descriptor));
     const first = claim(database, descriptor);

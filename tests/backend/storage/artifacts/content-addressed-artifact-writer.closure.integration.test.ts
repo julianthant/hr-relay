@@ -13,7 +13,7 @@ import { chatGptFixture } from "../../../support/helpers/chatgpt-account-fixture
 vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 
 it("retains actual artifact close uncertainty through the account owner and proves the exact native handle before test-only release", async () => {
-  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
   const writer = createContentAddressedArtifactWriter({ admission: profile.admission });
   let handle: filesystem.FileHandle | undefined, originalClose: (() => Promise<void>) | undefined, fd: number | undefined;
   let restoreClose: (() => void) | undefined;
@@ -51,6 +51,6 @@ it("retains actual artifact close uncertainty through the account owner and prov
     vi.restoreAllMocks();
     assert.equal(proved, true, "artifact-closure-fixture-custody-unproved");
     await assert.rejects(f.cleanup(), ChatGptResourceClosureUnprovedError);
-    profile.close();
+    await profile.close();
   }
 });

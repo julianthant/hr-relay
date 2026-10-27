@@ -25,8 +25,8 @@ function corruptLatest(w: DashboardWorld): void {
 afterEach(cleanup);
 
 describe("THE run/queue projection", () => {
-  it("shows the six declared Separations steps in the queue pipeline", () => {
-    const w = world({ descriptors: { resolve: () => separationsDescriptor } });
+  it("shows the six declared Separations steps in the queue pipeline", async () => {
+    const w = await world({ descriptors: { resolve: () => separationsDescriptor } });
     queuedEventOf(w, { seed: 1, workflow: "separations", lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1, version: 2 });
 
     const pipeline = w.projection.queueSurface(uuidOf(1))?.pipeline;
@@ -59,8 +59,8 @@ describe("THE run/queue projection", () => {
   });
 
 
-  it("serves each row the controls its descriptor enables, bound to that row's revision", () => {
-    const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+  it("serves each row the controls its descriptor enables, bound to that row's revision", async () => {
+    const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
     seedWorld(w);
     const day = w.projection.buildDashboardDayWire(DAY);
 
@@ -96,9 +96,9 @@ describe("THE run/queue projection", () => {
     }
   });
 
-  it("projects a current lifetime claim from authority and never opens a browser from a span", () => {
+  it("projects a current lifetime claim from authority and never opens a browser from a span", async () => {
 
-    const w = world();
+    const w = await world();
     declareProjectionWorker(w.authority, "person-lookup-worker-1", 1);
     w.authority.putWorkerLease(workerLeaseOf({
       // Keep launch-time lease requirements different from the current registry to detect accidental rewriting.
@@ -140,8 +140,8 @@ describe("THE run/queue projection", () => {
     assert.deepEqual(card.currentRun, { state: "present", runId: uuidOf(1), traceId: traceOf(1) });
   });
 
-  it("keeps observed browser spans from fabricating current physical ownership", () => {
-    const w = world();
+  it("keeps observed browser spans from fabricating current physical ownership", async () => {
+    const w = await world();
     declareProjectionWorker(w.authority, "person-lookup-worker-1", 1);
     w.authority.putWorkerLease(workerLeaseOf());
     const spanPath = `worker/person-lookup/person-lookup-worker-1/browser:ucpath#${uuidOf(50)}`;
@@ -165,8 +165,8 @@ describe("THE run/queue projection", () => {
     assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workerCards[0].browsers, []);
   });
 
-  it("splits a settled lease by its recorded reason and serves the terminal facts", () => {
-    const w = world();
+  it("splits a settled lease by its recorded reason and serves the terminal facts", async () => {
+    const w = await world();
     declareProjectionWorker(w.authority, "person-lookup-worker-1", 1);
     declareProjectionWorker(w.authority, "person-lookup-worker-2", 2);
     w.authority.putWorkerLease(workerLeaseOf({
@@ -214,9 +214,9 @@ describe("THE run/queue projection", () => {
     assert.deepEqual(failed.browsers, []);
   });
 
-  it("stays live over observed-data and transaction-fence beats and rebuilds identically", () => {
+  it("stays live over observed-data and transaction-fence beats and rebuilds identically", async () => {
 
-    const w = world();
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const base = {
@@ -272,8 +272,8 @@ describe("THE run/queue projection", () => {
     );
   });
 
-  it("rebuilds optional evidence in memory without changing canonical runs", () => {
-    const w = world();
+  it("rebuilds optional evidence in memory without changing canonical runs", async () => {
+    const w = await world();
     seedWorld(w);
     const before = w.runReader.list({ disposition: "live", limit: 1000 });
     w.projection.rebuildFromTimeline();
@@ -281,8 +281,8 @@ describe("THE run/queue projection", () => {
     assert.equal(w.projection.runFold(uuidOf(9))?.queued.runId, uuidOf(9));
   });
 
-  it("rebuilds the identical day payload from nothing but the span JSONL", () => {
-    const w = world();
+  it("rebuilds the identical day payload from nothing but the span JSONL", async () => {
+    const w = await world();
     seedWorld(w);
     const before = w.projection.buildDashboardDayWire(DAY);
 
@@ -306,8 +306,8 @@ describe("THE run/queue projection", () => {
     );
   });
 
-  it("stays loudly degraded when a stored timeline row is corrupt", () => {
-    const w = world();
+  it("stays loudly degraded when a stored timeline row is corrupt", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     corruptLatest(w);
     w.projection.rebuildFromTimeline();
@@ -337,8 +337,8 @@ describe("THE run/queue projection", () => {
     });
   }
 
-  it("folds each line exactly once — its own emissions included — and an idle tick changes nothing", () => {
-    const w = world();
+  it("folds each line exactly once — its own emissions included — and an idle tick changes nothing", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 }); // the harness writer already ticked the tail once
     w.projection.ingestFromTimeline();
     w.projection.ingestFromTimeline();
@@ -348,8 +348,8 @@ describe("THE run/queue projection", () => {
     assert.equal(w.projection.runFold(uuidOf(1))?.eventCount, 1);
   });
 
-  it("does not observe another connection's uncommitted event, then sees it once after commit", () => {
-    const w = world(); queuedEventOf(w, { seed: 1 });
+  it("does not observe another connection's uncommitted event, then sees it once after commit", async () => {
+    const w = await world(); queuedEventOf(w, { seed: 1 });
     const other = otherConnection(w);
     try {
       other.database.withAuthorityTransaction(() => {
@@ -365,8 +365,8 @@ describe("THE run/queue projection", () => {
     } finally { other.database.close(); }
   });
 
-  it("ignores changed, corrupt and torn retired span files after SQLite history is available", () => {
-    const w = world(); queuedEventOf(w, { seed: 1 });
+  it("ignores changed, corrupt and torn retired span files after SQLite history is available", async () => {
+    const w = await world(); queuedEventOf(w, { seed: 1 });
     const before = w.projection.buildDashboardDayWire(DAY);
     mkdirSync(join(w.stateRoot, "spans"));
     appendFileSync(join(w.stateRoot, "spans", `person-lookup-${DAY}.jsonl`), "not-json\n{torn");
@@ -377,8 +377,8 @@ describe("THE run/queue projection", () => {
     assert.equal(w.projection.runFold(uuidOf(1))?.eventCount, 1);
   });
 
-  it("notices a workflow whose first SQLite event arrives after boot", () => {
-    const w = world();
+  it("notices a workflow whose first SQLite event arrives after boot", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     const nativeOwner = runRecordOf({ seed: 2, workflow: "zz-flow" });
     w.authority.put(nativeOwner);
@@ -389,8 +389,8 @@ describe("THE run/queue projection", () => {
     assert.equal(w.projection.runFold(uuidOf(2))?.queued.workflow, "zz-flow");
   });
 
-  it("degrades on a corrupt newly ingested record and the guarded rebuild refuses it", () => {
-    const w = world({ collectRebuilds: true });
+  it("degrades on a corrupt newly ingested record and the guarded rebuild refuses it", async () => {
+    const w = await world({ collectRebuilds: true });
     queuedEventOf(w, { seed: 1 });
     appendOther(w, { t: "span.started", kind: "worker", workflow: "person-lookup", workerId: "other-worker",
       spanPath: "worker/other-worker", ts: w.clock.now().toISOString(), name: "Worker" });
@@ -407,8 +407,8 @@ describe("THE run/queue projection", () => {
     assert.throws(() => w.projection.buildDashboardDayWire(DAY), /degraded and refuses to serve counts/);
   });
 
-  it("a rebuild resets the tail cursors, so replayed history is never refolded", () => {
-    const w = world();
+  it("a rebuild resets the tail cursors, so replayed history is never refolded", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     w.projection.rebuildFromTimeline();
@@ -417,16 +417,16 @@ describe("THE run/queue projection", () => {
     assert.equal(w.projection.runFold(uuidOf(1))?.eventCount, 2);
   });
 
-  it("refuses to render a span-known run that authority does not hold", () => {
-    const w = world();
+  it("refuses to render a span-known run that authority does not hold", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     w.authority.records.delete(uuidOf(1));
     assert.deepEqual(w.projection.buildDashboardDayWire(DAY).queueSurfaces, []);
     assert.equal(w.projection.queueSurface(uuidOf(1)), undefined);
   });
 
-  it("emits count-neutral patches and count-bearing snapshots on the right events", () => {
-    const w = world();
+  it("emits count-neutral patches and count-bearing snapshots on the right events", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 }); // new run: snapshot
     w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1 }));
     claimEventOf(w, 1); // canonical queued -> running: snapshot

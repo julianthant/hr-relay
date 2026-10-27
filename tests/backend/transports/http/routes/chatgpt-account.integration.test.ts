@@ -11,8 +11,8 @@ import { ChatGptResourceClosureUnprovedError } from "../../../../../src/backend/
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import type { ChatGptAuthorization } from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 const path = "/api/v1/settings/chatgpt-account";
-function setup() {
-  const fixture = chatGptFixture();
+async function setup() {
+  const fixture = await chatGptFixture();
   let authorization: ChatGptAuthorization | undefined;
   const app: DashboardApp = new Hono();
   app.use("/api/v1/settings/chatgpt-account/sign-in", operatorMutationIngressGuard);
@@ -23,7 +23,7 @@ function setup() {
   return { ...fixture, app, request, authorization: () => { assert.ok(authorization); return authorization; } };
 }
 it("serves token-free account lifecycle with original PKCE, state and nonce binding", async () => {
-  const f = setup(); try {
+  const f = await setup(); try {
     assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
     const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
     assert.notEqual(started.attemptId, new URL(started.authorizationUrl).searchParams.get("state"));
@@ -41,7 +41,7 @@ it("serves token-free account lifecycle with original PKCE, state and nonce bind
   } finally { await f.cleanup(); }
 });
 it("refuses bad JSON input, cross-origin writes, stale attempts and overlapping starts", async () => {
-  const f = setup(); try {
+  const f = await setup(); try {
     assert.equal((await f.app.request(`http://127.0.0.1${path}/sign-in`, { method: "POST", body: "{}" })).status, 403);
     assert.equal((await (await f.request("/sign-in", { usePlan: true, token: "synthetic" })).json() as { state: string }).state, "refused");
     const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
@@ -55,7 +55,7 @@ it("refuses bad JSON input, cross-origin writes, stale attempts and overlapping 
   } finally { await f.cleanup(); }
 });
 for (const failure of ["nonce", "expiry", "denial"] as const) it(`keeps ${failure} refusal distinct without a token response`, async () => {
-  const f = setup(); try {
+  const f = await setup(); try {
     const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
     if (failure === "nonce") f.setClaims({ nonce: "wrong" });
     if (failure === "expiry") f.clock.advanceWall(300_000);
@@ -66,7 +66,7 @@ for (const failure of ["nonce", "expiry", "denial"] as const) it(`keeps ${failur
   } finally { await f.cleanup(); }
 });
 it("keeps local sign-out authoritative when remote revocation is unconfirmed", async () => {
-  const f = setup(); try {
+  const f = await setup(); try {
     await f.connected(); f.setRevocation(503);
     assert.deepEqual(await (await f.request("/sign-out", {})).json(), { state: "signed-out", remoteRevocation: "unconfirmed" });
     assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
@@ -82,7 +82,7 @@ it("keeps typed OCR resource closure uncertainty distinct and exposes only its d
 });
 
 for (const alreadyAborted of [false, true]) it(`ends only the completion GET wait when its request is ${alreadyAborted ? "already aborted" : "aborted while pending"}`, async () => {
-  const f = setup();
+  const f = await setup();
   try {
     const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
     const cancellation = new AbortController(), reason = new Error("synthetic completion request ended");
@@ -107,7 +107,7 @@ for (const alreadyAborted of [false, true]) it(`ends only the completion GET wai
 });
 
 it("refuses an already completed authorization result when the completion GET aborts before its awaited return", async () => {
-  const f = setup();
+  const f = await setup();
   try {
     const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
     await f.callback(f.authorization());

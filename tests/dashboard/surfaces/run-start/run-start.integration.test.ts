@@ -11,7 +11,7 @@ afterEach(cleanup);
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
   it("lost response survives unmount and exact replay without a second run", async () => {
-    const h = setup(); const source = await h.completeSource(); await mount(h, source); await press("Continue"); await press("Confirm");
+    const h = await setup(); const source = await h.completeSource(); await mount(h, source); await press("Continue"); await press("Confirm");
     assert.equal(field("Employee ID").value, "10812345"); await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
     h.loseResponse(); await press("Start dry run"); assert.match(text(), /uncertain/u); const roots = h.queueRoots;
     await unmount(); document.body.replaceChildren();
@@ -19,7 +19,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(document.querySelector('[role="dialog"]') === null, true, 'exact replay must close the launch dialog'); assert.match(text(), /Run submission confirmed/u); assert.deepEqual(h.queueRoots, roots);
   });
   it("rapid clicks share one envelope and a delayed response cannot overwrite a reopened launch", async () => {
-    const h = setup(); const source = await h.completeSource(); let release: () => void = () => { throw new Error("release not initialized"); };
+    const h = await setup(); const source = await h.completeSource(); let release: () => void = () => { throw new Error("release not initialized"); };
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const client = { ...h.client, executeCommand: async (input: unknown) => { const result = await h.client.executeCommand(input); await pending; return result; } };
     await mount(h, source, client); await press("Continue"); await press("Confirm"); assert.equal(field("Employee ID").value, "10812345");
@@ -32,13 +32,13 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.deepEqual(h.finalCommands[1], h.finalCommands[0]); assert.equal(h.queueRoots.length, 2);
   });
   it("a stale source refuses in the mounted launcher before warning navigation or plan allocation", async () => {
-    const h = setup(); const source = await h.completeSource();
+    const h = await setup(); const source = await h.completeSource();
     const before = h.authoritySnapshot(); await mount(h, { ...source, version: PositiveIntSchema.parse(source.version - 1) });
     assert.match(text(), /source-stale/u); assert.equal(button("Continue").disabled, true); assert.equal(h.authoritySnapshot(), before);
   });
 
   it("keeps the dialog and recovery when readback omits the exact plan origin", async () => {
-    const h = setup(); const source = await h.completeSource();
+    const h = await setup(); const source = await h.completeSource();
     const client = { ...h.client, dashboardDay: async (day: string) => {
       const snapshot = await h.client.dashboardDay(day);
       return { ...snapshot, queueSurfaces: snapshot.queueSurfaces.map(row => ({ ...row,
@@ -53,7 +53,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   });
   for (const replacement of ["client", "actor", "day ABA"] as const) {
     it(`does not close or toast from a late Start after ${replacement} replacement`, async () => {
-      const h = setup(); const source = await h.completeSource(); let release: (() => void) | undefined;
+      const h = await setup(); const source = await h.completeSource(); let release: (() => void) | undefined;
       const pending = new Promise<void>(resolve => { release = resolve; });
       const client = { ...h.client, executeCommand: async (input: unknown) => {
         const reply = await h.client.executeCommand(input); await pending; return reply;
@@ -73,7 +73,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     });
   }
   it("does not publish a late final result after editing the reviewed plan", async () => {
-    const h = setup(); const source = await h.completeSource(); let release: (() => void) | undefined;
+    const h = await setup(); const source = await h.completeSource(); let release: (() => void) | undefined;
     const pending = new Promise<void>(resolve => { release = resolve; });
     const client = { ...h.client, executeCommand: async (input: unknown) => { const reply = await h.client.executeCommand(input); await pending; return reply; } };
     await mount(h, source, client); await press("Continue"); await press("Confirm"); await press("Continue");
@@ -85,7 +85,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(window.sessionStorage.length, 1); assert.equal(h.finalCommands.length, 1);
   });
   it("refuses a final submission without a command binding", async () => {
-    const h = setup(); const source = await h.completeSource(); const replaceBinding = await mount(h, source);
+    const h = await setup(); const source = await h.completeSource(); const replaceBinding = await mount(h, source);
     await replaceBinding(h.client, { bound: false }); await press("Rerun source");
     await press("Continue"); await press("Confirm"); await press("Continue");
     await act(async () => checkbox("Dry run").click()); await press("Continue"); await press("Start dry run");

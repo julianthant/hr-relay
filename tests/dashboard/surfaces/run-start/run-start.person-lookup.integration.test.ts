@@ -20,7 +20,7 @@ const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.i
 
 describe("older typed Rerun backend prefill through mounted current form", () => {
   for (const kind of ["padded-name", "missing-control"] as const) it(`preserves exact accepted fields for ${kind}`, async () => {
-    const backend = rerunValuesHarness();
+    const backend = await rerunValuesHarness();
     try {
       const queued = backend.start(backend.proposal()); assert.equal((await backend.execute(queued)).state, "done");
       const completed = backend.fresh(queued);
@@ -51,6 +51,6 @@ describe("older typed Rerun backend prefill through mounted current form", () =>
       assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [kind === "padded-name"
         ? { mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000", crmCheck: true, includeCrmDates: false }
         : { mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true, includeCrmDates: false }]);
-    } finally { backend.dispose(); }
+    } finally { await backend.dispose(); }
   });
 });

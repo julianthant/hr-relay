@@ -83,8 +83,8 @@ describe("Queue consumes the served day boundary", () => {
     assert.match(markup, new RegExp(`${operation.memberRollup.terminal} of ${operation.memberRollup.total} finished; ${operation.memberRollup.failed} failed`, "u"));
   });
 
-  it("retains every row when bounded summary pages are assembled, then applies only the requested scope", () => {
-    const f = summaryFixture();
+  it("retains every row when bounded summary pages are assembled, then applies only the requested scope", async () => {
+    const f = await summaryFixture();
     try {
       const selectedIds = [id(9761), id(9762), id(9763)];
       const now = "2026-09-09T12:00:00.000Z";
@@ -107,7 +107,7 @@ describe("Queue consumes the served day boundary", () => {
       const markup = panelMarkup(served);
       for (const runId of seen) assert.equal(markup.split(`data-demo-row-id="${runId}"`).length - 1, 1);
       assert.deepEqual(queryQueueSummaries(f.db, { workflow: "person-lookup", status: "failed", limit: 1 }).items, []);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("renders one queue row for repeated item attempts and opens the exact selected run", async () => {

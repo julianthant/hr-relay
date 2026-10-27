@@ -17,7 +17,7 @@ import { healthyRuntimePreflightRunners } from "../../../support/fixtures/prefli
 import { happySessionHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
 for (const failure of ["none", "artifact", "artifact-and-close"] as const) it(`owns every bound worker startup stage with ${failure} failure`, async () => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   copyFileSync("package.json", join(f.workspace, "package.json"));
   const initialized = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
@@ -50,7 +50,7 @@ for (const failure of ["none", "artifact", "artifact-and-close"] as const) it(`o
   try {
     const running = composeWorkerRuntime({ admission: f.machine, repoRoot: f.workspace, isolation: rebuildRuntimeIsolation,
       args: ["person-lookup", "--pool-index", "1", "--drain"], clock, env: {}, processId: process.pid,
-      preflightRunnerFactory: healthyRuntimePreflightRunners, duoCeremony: fixtureDuoCeremonyGates(clock), sessionFactory: happySessionHarness().factory,
+      preflightRunnerFactory: healthyRuntimePreflightRunners, duoCeremony: await fixtureDuoCeremonyGates(clock), sessionFactory: happySessionHarness().factory,
       stopSignal: new AbortController().signal, write: () => undefined,
       openDatabase: (options, openClock) => {
         assert.ok(issued); assert.ok(store);
@@ -85,5 +85,5 @@ for (const failure of ["none", "artifact", "artifact-and-close"] as const) it(`o
       assert.throws(() => actualDatabase.getMeta(), /closed/u); assert.throws(() => actualChild.assertLive());
       assert.equal(snapshot().processLocks.workers.state, "stopped");
     }
-  } finally { vi.restoreAllMocks(); opened?.close(); f.close(); }
+  } finally { vi.restoreAllMocks(); opened?.close(); await f.close(); }
 });

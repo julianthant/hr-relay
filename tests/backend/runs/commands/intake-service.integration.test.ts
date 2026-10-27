@@ -51,11 +51,11 @@ const ROSTER_CSV = [
   "",
 ].join("\n");
 
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
-  for (const profile of profiles.splice(0)) profile.close();
+  for (const profile of profiles.splice(0)) await profile.close();
 });
 
 let commandSequence = 0;
@@ -80,8 +80,8 @@ interface Surface {
   ) => Promise<{ readonly state: string }>;
 }
 
-function surface(): Surface {
-  const profile = createBoundProfileFixture(); profiles.push(profile);
+async function surface(): Promise<Surface> {
+  const profile = await createBoundProfileFixture(); profiles.push(profile);
   const root = profile.stateRoot;
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
@@ -229,7 +229,7 @@ async function uploadRoster(intake: IntakeService) {
 
 describe("intake upload route", () => {
   it("creates a mapping session with discovery already run over the real file", async () => {
-    const { intake, database } = surface();
+    const { intake, database } = await surface();
     const created = await uploadRoster(intake);
     assert.equal(created.state, "created");
 
@@ -253,7 +253,7 @@ describe("intake upload route", () => {
   });
 
   it("proposes bindings as hints and applies none of them", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     const wire = (await uploadRoster(intake)).session;
     assert.deepEqual(wire.bindings, []);
     const eidSuggestions = wire.suggestions.filter((entry) => String(entry.targetFieldId) === "emplId");
@@ -269,7 +269,7 @@ describe("intake upload route", () => {
   });
 
   it("joins the open session when the same bytes are uploaded again", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     const first = await uploadRoster(intake);
     const second = await uploadRoster(intake);
     assert.equal(second.state, "joined");
@@ -277,7 +277,7 @@ describe("intake upload route", () => {
   });
 
   it("refuses a file the grid edge cannot read, and mints no session", async () => {
-    const { intake, database } = surface();
+    const { intake, database } = await surface();
     const blank = "\n\n\n";
     const outcome = await intake.upload({
       workflow: INTAKE_FIXTURE_WORKFLOW_ID,
@@ -293,7 +293,7 @@ describe("intake upload route", () => {
   });
 
   it("refuses a media type the grid edge does not read, an empty body, and an oversize one", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     await assert.rejects(() => intake.upload({
       workflow: INTAKE_FIXTURE_WORKFLOW_ID,
       mediaType: "application/pdf",
@@ -315,7 +315,7 @@ describe("intake upload route", () => {
   });
 
   it("refuses a workflow that declares no intake projection", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     await assert.rejects(
       () => intake.upload({
         workflow: "person-lookup",
@@ -330,7 +330,7 @@ describe("intake upload route", () => {
 
 describe("intake session wire", () => {
   it("serves the re-derived validation dispositions against the retained readAt", async () => {
-    const { intake, send } = surface();
+    const { intake, send } = await surface();
     const created = await uploadRoster(intake);
     const sessionId = created.session.intakeSessionId;
     const headerFingerprint = created.session.headerFingerprint;
@@ -364,7 +364,7 @@ describe("intake session wire", () => {
   });
 
   it("re-derives an excluded row out of the valid set without storing a single row", async () => {
-    const { intake, send, database } = surface();
+    const { intake, send, database } = await surface();
     const created = await uploadRoster(intake);
     const sessionId = created.session.intakeSessionId;
     const headerFingerprint = created.session.headerFingerprint;
@@ -404,7 +404,7 @@ describe("intake session wire", () => {
   });
 
   it("fails loud on a session that does not exist", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     await assert.rejects(
       () => intake.read("11111111-1111-4111-8111-111111111111"),
       /does not exist/,
@@ -452,7 +452,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   }
 
   it("reserves one manifest identity at upload and consumes it unchanged at enqueue", async () => {
-    const harness = surface();
+    const harness = await surface();
     const created = await uploadRoster(harness.intake);
     const reservedManifestId = created.session.reservedManifestId;
     assert.notEqual(reservedManifestId, undefined, "the durable upload session reserves its manifest identity");
@@ -488,7 +488,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("serves no rerun view for a file that has never been enqueued", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     const created = await uploadRoster(intake);
     assert.equal(created.session.rerun, undefined);
     assert.equal(Object.hasOwn(created.session, "comparisonManifestId"), false);
@@ -497,7 +497,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("puts every enqueued row on the queue surface under the workflow's own title", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionId = await runTheRoster(harness);
     const manifestId = (await harness.intake.read(sessionId)).intakeManifestId;
     if (manifestId === undefined) throw new Error("the enqueued session names no manifest");
@@ -523,7 +523,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("serves the manifest and a same-plan diff on the session that enqueued it", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionId = await runTheRoster(harness);
     const wire = await harness.intake.read(sessionId);
     assert.equal(wire.state, "enqueued");
@@ -535,7 +535,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("binds each terminal reread to that session's exact manifest after a newer same-source run", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionA = await runTheRoster(harness);
     const manifestA = (await harness.intake.read(sessionA)).intakeManifestId;
     if (manifestA === undefined) throw new Error("session A did not name its manifest");
@@ -555,7 +555,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("serves the explicit comparison decision even when the implicit rerun was already the same manifest", async () => {
-    const harness = surface();
+    const harness = await surface();
     const completed = await runTheRoster(harness);
     const manifestId = (await harness.intake.read(completed)).intakeManifestId;
     assert.ok(manifestId);
@@ -574,7 +574,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("selects its sole eligible manifest while excluding its reservation and a future manifest", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionA = await runTheRoster(harness);
     const manifestAId = (await harness.intake.read(sessionA)).intakeManifestId;
     if (manifestAId === undefined) throw new Error("session A did not name its manifest");
@@ -603,7 +603,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("selects the uniquely latest eligible manifest for an open session", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionA = await runTheRoster(harness);
     const manifestAId = (await harness.intake.read(sessionA)).intakeManifestId;
     if (manifestAId === undefined) throw new Error("session A did not name its manifest");
@@ -624,7 +624,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("refuses an open session whose latest eligible manifests have the same creation time", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionA = await runTheRoster(harness);
     const manifestAId = (await harness.intake.read(sessionA)).intakeManifestId;
     if (manifestAId === undefined) throw new Error("session A did not name its manifest");
@@ -657,7 +657,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("shows the mapping axis moving when the same bytes are mapped differently", async () => {
-    const harness = surface();
+    const harness = await surface();
     const first = await runTheRoster(harness);
     assert.equal((await harness.intake.read(first)).state, "enqueued");
 
@@ -687,7 +687,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
 
 describe("2.6.1-2 retained intake evidence", () => {
   it("cold rereads preserve exact source bytes, manifest and database generation", async () => {
-    const h = surface(); const sessionId = await runTheRoster(h);
+    const h = await surface(); const sessionId = await runTheRoster(h);
     const before = await h.intake.read(sessionId);
     const file = join(h.root, "artifacts", `${before.artifact.sha256}.artifact`);
     const bytes = readFileSync(file); const generation = h.database.getMeta().authorityGeneration;
@@ -699,7 +699,7 @@ describe("2.6.1-2 retained intake evidence", () => {
     assert.equal(h.database.getMeta().authorityGeneration, generation);
   });
   it("refuses missing exact manifest linkage instead of finding a newer manifest", async () => {
-    const h = surface(); const sessionId = await runTheRoster(h);
+    const h = await surface(); const sessionId = await runTheRoster(h);
     const before = await h.intake.read(sessionId); const generation = h.database.getMeta().authorityGeneration;
     assert.ok(before.intakeManifestId);
     await assert.rejects(() => h.freshIntake(true).read(sessionId), /names missing manifest/u);
@@ -707,7 +707,7 @@ describe("2.6.1-2 retained intake evidence", () => {
     assert.deepEqual(await h.intake.read(sessionId), before);
   });
   it("a cold read refuses removed artifact bytes without an empty or cached replacement", async () => {
-    const h = surface(); const sessionId = await runTheRoster(h);
+    const h = await surface(); const sessionId = await runTheRoster(h);
     const before = await h.intake.read(sessionId); const generation = h.database.getMeta().authorityGeneration;
     rmSync(join(h.root, "artifacts", `${before.artifact.sha256}.artifact`));
     await assert.rejects(() => h.freshIntake().read(sessionId), /ENOENT/u);
@@ -720,7 +720,7 @@ describe("2.6.1-2 retained intake evidence", () => {
 
 describe("saved workbook intake bridge", () => {
   it("retains immutable workbook provenance, all sheets and data, joins only exact sources, and refuses stale versions", async () => {
-    const h = surface();
+    const h = await surface();
     const library = createWorkbookLibraryService({ repository: h.database.authority.workbooks, clock: h.clock });
     const first = library.create({ name: "Roster.xlsx", themes: [], hasFormulas: false, sheets: [
       { id: "roster", name: "Roster", width: 2, hidden: [], headerRow: 1, sourceHeaderRow: 7,
@@ -754,7 +754,7 @@ describe("saved workbook intake bridge", () => {
     await h.send(result.session.intakeSessionId, result.session.expectedVersion, "inspect-intake", { sheet: "Roster", headerRowIndex: 0 });
     assert.deepEqual((await h.intake.read(result.session.intakeSessionId)).workbookSource, result.session.workbookSource);
     await assert.rejects(h.intake.upload({ workflow: INTAKE_FIXTURE_WORKFLOW_ID, fileName: "Raw.xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes }), { code: "WORKBOOK_INTAKE_SOURCE_CONFLICT" });
-    const ordinary = surface();
+    const ordinary = await surface();
     const raw = await ordinary.intake.upload({ workflow: INTAKE_FIXTURE_WORKFLOW_ID, fileName: "Raw.xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes });
     if (raw.state === "refused") throw new Error(raw.message);
     const ordinaryLibrary = createWorkbookLibraryService({ repository: ordinary.database.authority.workbooks, clock: ordinary.clock });
@@ -790,7 +790,7 @@ describe("saved workbook intake bridge", () => {
     finally { reopened.close(); }
   });
   it("reads only the actual recorded intake request and result for its exact session without effects", async () => {
-    const h = surface(), id = (await uploadRoster(h.intake)).session.intakeSessionId;
+    const h = await surface(), id = (await uploadRoster(h.intake)).session.intakeSessionId;
     const outcome = CommandResultSchema.parse(await h.send(id, 1, "inspect-intake", { sheet: "default", headerRowIndex: 1 }));
     const query = createIntakeCommandResultQuery(h.database);
     const generation = h.database.getMeta().authorityGeneration;

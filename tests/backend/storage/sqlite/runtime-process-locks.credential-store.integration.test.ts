@@ -19,8 +19,8 @@ const PRIVATE_VALUE_1 = "credential-store-private-one";
 const NOW_1 = "2026-09-06T12:00:00.000Z";
 const roots: string[] = [];
 
-afterEach(() => {
-  releaseFixtures();
+afterEach(async () => {
+  await releaseFixtures();
   vi.restoreAllMocks();
   syncBuiltinESMExports();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });

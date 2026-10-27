@@ -63,8 +63,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     } finally { restored.close(); }
   });
 
-  it("admits concurrent worker processes under one aggregate restore lock", () => {
-    const paths = drillPaths();
+  it("admits concurrent worker processes under one aggregate restore lock", async () => {
+    const paths = await drillPaths();
     const first = acquireRuntimeProcessLock(
       {
         processLockRoot: paths.processLockRoot,
@@ -102,8 +102,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     }
   });
 
-  it("unwinds a worker that loses the check/write race to restore admission", () => {
-    const paths = drillPaths();
+  it("unwinds a worker that loses the check/write race to restore admission", async () => {
+    const paths = await drillPaths();
     let restoreAdmission: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
     assert.throws(
       () => acquireRuntimeProcessLock({
@@ -132,8 +132,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     }
   });
 
-  it("refuses malformed restore admission and archives crashed ownership", () => {
-    const malformedPaths = drillPaths();
+  it("refuses malformed restore admission and archives crashed ownership", async () => {
+    const malformedPaths = await drillPaths();
     mkdirSync(malformedPaths.processLockRoot, { recursive: true });
     writeFileSync(join(malformedPaths.processLockRoot, "restore-admission.lock.json"), "{}\n");
     assert.throws(
@@ -146,7 +146,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
       /restore admission record .* is malformed/u,
     );
 
-    const stalePaths = drillPaths();
+    const stalePaths = await drillPaths();
     acquireRuntimeRestoreAdmission({
       processLockRoot: stalePaths.processLockRoot,
       pid: deadPid(),
@@ -166,8 +166,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     );
   });
 
-  it("advances the aggregate generation whenever a worker starts or restarts", () => {
-    const paths = drillPaths();
+  it("advances the aggregate generation whenever a worker starts or restarts", async () => {
+    const paths = await drillPaths();
     const observe = () => observeRuntimeLockSnapshot(
       { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: "a".repeat(64) },
       CLOCK,
@@ -191,8 +191,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     restarted.release();
   });
 
-  it("retries release after its first durable write attempt fails", () => {
-    const paths = drillPaths();
+  it("retries release after its first durable write attempt fails", async () => {
+    const paths = await drillPaths();
     let nowCalls = 0;
     const failFirstReleaseClock = {
       ...CLOCK,
@@ -216,8 +216,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
   });
 
-  it("retries singleton release after its first durable write attempt fails", () => {
-    const paths = drillPaths();
+  it("retries singleton release after its first durable write attempt fails", async () => {
+    const paths = await drillPaths();
     let nowCalls = 0;
     const failFirstReleaseClock = {
       ...CLOCK,
@@ -269,8 +269,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     }
   });
 
-  it("fails loud on a malformed worker process-lock record", () => {
-    const paths = drillPaths();
+  it("fails loud on a malformed worker process-lock record", async () => {
+    const paths = await drillPaths();
     const workersRoot = join(paths.processLockRoot, "workers");
     mkdirSync(workersRoot, { recursive: true, mode:0o700 });
     writeFileSync(join(workersRoot, "broken.lock.json"), "{}\n",{mode:0o600});
@@ -287,8 +287,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     );
   });
 
-  it("refuses a second live holder of one role lock", () => {
-    const paths = drillPaths();
+  it("refuses a second live holder of one role lock", async () => {
+    const paths = await drillPaths();
     const first = acquireRuntimeProcessLock(
       { processLockRoot: paths.processLockRoot, name: "server", pid: process.pid },
       CLOCK,
@@ -312,7 +312,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
   });
 
   it("admits exactly one singleton under 16-process contention and never observes it stopped", async () => {
-    const paths = drillPaths();
+    const paths = await drillPaths();
     const contenderCount = 16;
     const readyDirectory = join(paths.repoRoot, "contenders-ready");
     const startPath = join(paths.repoRoot, "contenders-start");
@@ -376,8 +376,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     next.release();
   }, 30_000);
 
-  it("keeps one live process identity stable when the caller timezone changes", () => {
-    const paths = drillPaths();
+  it("keeps one live process identity stable when the caller timezone changes", async () => {
+    const paths = await drillPaths();
     const priorTimezone = process.env["TZ"];
     let held: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
     try {
@@ -411,8 +411,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     }
   });
 
-  it("treats a reused pid with a different OS start identity as a crashed owner", () => {
-    const paths = drillPaths();
+  it("treats a reused pid with a different OS start identity as a crashed owner", async () => {
+    const paths = await drillPaths();
     const originalIdentity = Object.freeze({ platform: "darwin" as const, startToken: "birth-a" });
     const reusedIdentity = Object.freeze({ platform: "darwin" as const, startToken: "birth-b" });
     acquireRuntimeProcessLock(
@@ -428,8 +428,8 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     assert.deepEqual(snapshot.processLocks.server, { state: "stopped", generation: 2 });
   });
 
-  it("archives restore admission when its pid was reused by a different process birth", () => {
-    const paths = drillPaths();
+  it("archives restore admission when its pid was reused by a different process birth", async () => {
+    const paths = await drillPaths();
     const originalIdentity = Object.freeze({ platform: "darwin" as const, startToken: "birth-a" });
     const reusedIdentity = Object.freeze({ platform: "darwin" as const, startToken: "birth-b" });
     acquireRuntimeRestoreAdmission(

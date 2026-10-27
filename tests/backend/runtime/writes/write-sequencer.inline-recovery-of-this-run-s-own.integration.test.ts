@@ -12,7 +12,7 @@ afterEach(cleanup);
 describe("inline recovery of this run's own attempting intent", () => {
 
   it("parks on an absent recovery probe — one observation is never retry authority", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     assert.equal(
       fenceWriteFixture(h.database, attemptingIntentFixture(WRITE_FIXTURE_RUN_ID)).state,

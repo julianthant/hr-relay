@@ -26,7 +26,7 @@ function seededCommandId(): string {
 describe("corruption → degraded → restore → rebuild, through the CLI", () => {
 
   it("names the corruption read-only, restores the named backup, and keeps every authority family", async () => {
-    const paths = drillPaths();
+    const paths = await drillPaths();
     const credentialDirectory = join(paths.stateRoot, "credentials");
     const credentialPath = join(credentialDirectory, "protected.json");
     const credentialOutcome = paths.credentials.apply(
@@ -119,7 +119,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
         WRITE_INTENT_ATTEMPTING,
       );
       assert.equal(reopened.getMeta().authorityGeneration, generation);
-      const world = makeWorld({ reader: sqliteRunReader(reopened, CLOCK) });
+      const world = await makeWorld({ reader: sqliteRunReader(reopened, CLOCK) });
       try {
         assert.equal(world.projection.runFold(seeded.runId), undefined);
         assert.equal(world.projection.queueSurface(seeded.runId)?.status, "running",
@@ -133,7 +133,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
         assert.deepEqual(reopened.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
           WRITE_INTENT_ATTEMPTING);
       } finally {
-        world.dispose();
+        await world.dispose();
       }
       // The post-backup row is gone — the restore restored the BACKUP, not a merge.
       assert.equal(reopened.authority.notifications.get(NOTIFICATION.notificationId), undefined);

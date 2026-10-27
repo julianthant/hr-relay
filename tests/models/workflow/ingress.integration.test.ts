@@ -22,23 +22,23 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const worlds: DashboardWorld[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   while (databases.length > 0) databases.pop()?.close();
   while (roots.length > 0) {
     const root = roots.pop();
     if (root !== undefined) rmSync(root, { recursive: true, force: true });
   }
-  for (const world of worlds.splice(0)) world.dispose();
+  for (const world of worlds.splice(0)) await world.dispose();
 });
 
-function openDatabase(): AuthorityDatabase {
-  const profile = createBoundProfileFixture();
+async function openDatabase(): Promise<AuthorityDatabase> {
+  const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
   const close = database.close.bind(database);
-  database.close = () => { close(); profile.close(); };
+  database.close = async () => { close(); await profile.close(); };
   databases.push(database);
   return database;
 }

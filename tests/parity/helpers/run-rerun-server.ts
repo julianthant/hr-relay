@@ -32,7 +32,7 @@ const retainedRunRerunFixtureOwners = new Set<object>();
 
 export async function startRunRerunServer() {
   assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
-  const h = launchHarness("reject-active", seedInitialSettingsRuntimeConfig);
+  const h = await launchHarness("reject-active", seedInitialSettingsRuntimeConfig);
   const held: { harness: typeof h; primary?: unknown; server?: ReturnType<typeof createServer> } = { harness: h };
   retainedRunRerunFixtureOwners.add(held);
   try { const source = await h.completeSource(); return await serveLaunchAuthority(h, source, undefined, held); }
@@ -41,7 +41,7 @@ export async function startRunRerunServer() {
 
 export async function startSeparationsStartServer() {
   assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
-  const h = launchHarness("reject-active", seedInitialSettingsRuntimeConfig, {
+  const h = await launchHarness("reject-active", seedInitialSettingsRuntimeConfig, {
     descriptor: separationsDescriptor, protectedSecrets: { read: populatedProtectedRecord },
   });
   const held: { harness: typeof h; primary?: unknown; server?: ReturnType<typeof createServer> } = { harness: h };
@@ -50,7 +50,7 @@ export async function startSeparationsStartServer() {
   catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 
-async function serveLaunchAuthority<Source>(h: ReturnType<typeof launchHarness>, source: Source, catalog: FrontendBootstrapWire | undefined, held: { harness: ReturnType<typeof launchHarness>; primary?: unknown; server?: ReturnType<typeof createServer> }) {
+async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchHarness>>, source: Source, catalog: FrontendBootstrapWire | undefined, held: { harness: Awaited<ReturnType<typeof launchHarness>>; primary?: unknown; server?: ReturnType<typeof createServer> }) {
   const stateRoot = h.profile.stateRoot;
   const database = h.database; const descriptorHash = catalog?.descriptorHash ?? descriptorSetHash([h.descriptor.contractFingerprint]);
   const day = h.clock.now().toISOString().slice(0, 10);
@@ -130,13 +130,13 @@ async function serveLaunchAuthority<Source>(h: ReturnType<typeof launchHarness>,
   let closePromise: Promise<void> | undefined;
   return { h, source, day, descriptorHash, projection, snapshot, commands, publish, saveSettings, baseUrl: `http://127.0.0.1:${address.port}`,
     loseResponse: () => { loseNextResponse = true; },
-    close() {
+    async close() {
       if (closePromise !== undefined) return closePromise;
       closePromise = (async () => {
         try {
           for (const stream of streams) stream.destroy(); server.closeAllConnections();
           await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-          h.dispose();
+          await h.dispose();
           retainedRunRerunFixtureOwners.delete(held);
         } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
       })();

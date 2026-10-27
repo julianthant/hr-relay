@@ -20,8 +20,8 @@ const NOW = "2026-09-06T12:00:00.000Z";
 const roots: string[] = [];
 const { fixture, registeredFixture, releaseFixtures, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW);
 
-afterEach(() => {
-  releaseFixtures();
+afterEach(async () => {
+  await releaseFixtures();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -46,8 +46,8 @@ describe("credential history plaintext", () => {
     assert.equal(readFileSync(stored.path, "utf8").includes(SECRET), false);
   });
 
-  it("strips a restored password when the erasure journal survived the crash", () => {
-    const stored = registeredFixture({ afterErasureJournal: () => { throw new Error("crash after journal"); } });
+  it("strips a restored password when the erasure journal survived the crash", async () => {
+    const stored = await registeredFixture({ afterErasureJournal: () => { throw new Error("crash after journal"); } });
     const applied = stored.store.apply(request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -88,8 +88,8 @@ describe("credential history plaintext", () => {
     assert.equal(readFileSync(stored.path, "utf8"), bytes);
   });
 
-  it("strips an older password generation restored after erasure", () => {
-    const stored = registeredFixture();
+  it("strips an older password generation restored after erasure", async () => {
+    const stored = await registeredFixture();
     const first = stored.store.apply(request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -125,8 +125,8 @@ describe("credential history plaintext", () => {
       expectedRevision: stored.readErasure().revision, commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: NOW })));
   });
 
-  it("does not treat a missing established erasure journal as empty", () => {
-    const stored = registeredFixture();
+  it("does not treat a missing established erasure journal as empty", async () => {
+    const stored = await registeredFixture();
     const applied = stored.store.apply(request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -152,8 +152,8 @@ describe("credential history plaintext", () => {
 });
 
 
-it("refuses a missing established erasure anchor and accepts the same restored anchor", () => {
-  const stored = registeredFixture();
+it("refuses a missing established erasure anchor and accepts the same restored anchor", async () => {
+  const stored = await registeredFixture();
   assert.equal(stored.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1, expectedRevision: 2, entries: { ucpathPassword: { set: SECRET } } })).state, "applied");
   assert.equal(stored.erase(CredentialEraseInputSchema.parse({ commandId: COMMAND_2, commandFingerprint: "b".repeat(64), expectedRevision: 3,
     protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: WRITE_2, updatedAt: NOW })).state, "applied");
@@ -185,8 +185,8 @@ it("keeps genuine private profile reads and writes beneath a sticky workspace wh
   } finally { chmodSync(stored.stateRoot, 0o700); }
 });
 
-it("refuses a substituted local journal ancestor before treating missing files as empty", () => {
-  const stored = registeredFixture();
+it("refuses a substituted local journal ancestor before treating missing files as empty", async () => {
+  const stored = await registeredFixture();
   assert.equal(stored.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
     expectedRevision: 2, entries: { ucpathPassword: { set: SECRET } } })).state, "applied");
   assert.equal(stored.erase(CredentialEraseInputSchema.parse({ commandId: COMMAND_2,
@@ -261,7 +261,7 @@ it.each(["commandFingerprint", "expectedRevision", "protectedSchemaHash"] as con
 it("refuses passive doctor presence when an exact external erasure advances between observations", async () => {
   const snapshot = createCredentialDoctorFixtures([]).snapshot;
   let captured: unknown, capturedControl: unknown, armed = false;
-  const stored = registeredFixture({ betweenPresenceObservations: () => {
+  const stored = await registeredFixture({ betweenPresenceObservations: () => {
     if (!armed) return;
     armed = false;
     const erased = stored.erase(CredentialEraseInputSchema.parse({ commandId: COMMAND_2, writeId: WRITE_2,

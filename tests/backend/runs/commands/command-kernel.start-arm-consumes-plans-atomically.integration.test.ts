@@ -15,8 +15,8 @@ afterEach(() => {
 });
 
 describe("start arm consumes plans atomically", () => {
-  it("requires renewed review for a start plan made before settings activation", () => {
-    const harness = createHarness();
+  it("requires renewed review for a start plan made before settings activation", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     applyCurrentSettings(harness);
 
@@ -27,8 +27,8 @@ describe("start arm consumes plans atomically", () => {
     assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
   });
 
-  it("consumes the plan and enqueues every accepted run in one applied command", () => {
-    const harness = createHarness();
+  it("consumes the plan and enqueues every accepted run in one applied command", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
     assert.equal(plan.planned.length, 2);
     assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), [], "saving a request creates no runs");
@@ -63,8 +63,8 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(audit.versionChanges[0].after, plan.version + 1);
   });
 
-  it("the fan-out is ONE durable session, written before its first member, and membership is the run rows", () => {
-    const harness = createHarness();
+  it("the fan-out is ONE durable session, written before its first member, and membership is the run rows", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
@@ -87,9 +87,9 @@ describe("start arm consumes plans atomically", () => {
     assert.deepEqual(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).map((row) => row.sessionId), [sessionId]);
   });
 
-  it("rolls back consumption and the journal when a run insert crashes", () => {
+  it("rolls back consumption and the journal when a run insert crashes", async () => {
     let shouldFail = false;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       runs: {
         ...repositories.runs,
@@ -119,9 +119,9 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(retried.state, "applied");
   });
 
-  it("creates zero runs when the active-run authority lookup fails", () => {
+  it("creates zero runs when the active-run authority lookup fails", async () => {
     let shouldFail = false;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       runs: {
         ...repositories.runs,
@@ -140,8 +140,8 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
   });
 
-  it("conflicts on a stale confirmation revision without consuming the plan", () => {
-    const harness = createHarness();
+  it("conflicts on a stale confirmation revision without consuming the plan", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     const command = { ...startCommand(plan), target: { ...startCommand(plan).target, expectedVersion: plan.version + 5 } };
     const result = harness.kernel.execute(command);
@@ -152,8 +152,8 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
   });
 
-  it("rejects binding drift as schema-mismatch and an expired plan as invalid-state", () => {
-    const harness = createHarness();
+  it("rejects binding drift as schema-mismatch and an expired plan as invalid-state", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     const base = startCommand(plan);
     const drifted = { ...base, payload: { ...base.payload, inputFingerprint: HASH_A } };
@@ -171,8 +171,8 @@ describe("start arm consumes plans atomically", () => {
     }
   });
 
-  it("refuses the whole command under reject-active when an active run appeared after planning", () => {
-    const harness = createHarness();
+  it("refuses the whole command under reject-active when an active run appeared after planning", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
     const itemId = deriveItemId("kernel-reject", "eid:10800001");
     const conflicting = {
@@ -223,8 +223,8 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
   });
 
-  it("supersede-active terminalizes the exact active run and creates the replacement atomically", () => {
-    const harness = createHarness();
+  it("supersede-active terminalizes the exact active run and creates the replacement atomically", async () => {
+    const harness = await createHarness();
     const first = createPlan(harness, supersedeDescriptor, ["10800000"]);
     const firstResult = harness.kernel.execute(startCommand(first));
     assert.equal(firstResult.state, "applied");
@@ -245,8 +245,8 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(replacement?.lifecycle.state, "queued");
   });
 
-  it("allow-parallel enqueues beside an active run for the same item", () => {
-    const harness = createHarness();
+  it("allow-parallel enqueues beside an active run for the same item", async () => {
+    const harness = await createHarness();
     const first = createPlan(harness, parallelDescriptor, ["10800000"]);
     const firstResult = harness.kernel.execute(startCommand(first));
     assert.equal(firstResult.state, "applied");

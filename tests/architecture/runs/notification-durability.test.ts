@@ -14,9 +14,9 @@ import { createNotificationInbox, type NotificationInbox } from "../../../src/ba
 import { HASH_A, HASH_B, HASH_C, NOW, UUID_1, UUID_2, UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 const NEXT = "2026-07-31T17:05:00.000Z";
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 function sequentialIds(lane = "0"): { uuid: () => string } {
@@ -29,15 +29,15 @@ function sequentialIds(lane = "0"): { uuid: () => string } {
   };
 }
 
-function openDatabase(): AuthorityDatabase {
-  const profile = createBoundProfileFixture();
+async function openDatabase(): Promise<AuthorityDatabase> {
+  const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "notification-durability" },
     manualClock(new Date(NOW)),
   );
-  disposers.push(() => {
+  disposers.push(async () => {
     database.close();
-    profile.close();
+    await profile.close();
   });
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_2 }));
@@ -97,7 +97,7 @@ const EVERY_EVENT = [
 
 describe("notification-durability: every closed trigger commits a durable item", () => {
   it("routes each trigger to its channel and stores it unread", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const inbox = inboxFor(database, NOW);
     const routed: [string, string, string][] = [];
     for (const event of EVERY_EVENT) {
@@ -154,7 +154,7 @@ describe("notification-durability: every closed trigger commits a durable item",
 
 describe("notification-durability: the durable row is committed before delivery", () => {
   it("reports a missing desktop channel as no-channel, never as delivered", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const report = await inboxFor(database, NOW).publish(RUN_FAILED);
     assert.equal(report.delivery.state, "no-channel");
     assert.equal(database.authority.notifications.get(report.notification.notificationId)?.status, "unread");
@@ -163,7 +163,7 @@ describe("notification-durability: the durable row is committed before delivery"
 
 describe("notification-durability: repeats fold, they do not spam", () => {
   it("folds a distinct occurrence of the same trigger into one row with count and lastSeenAt", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const first = await inboxFor(database, NOW).publish(RUN_FAILED);
     const second = await inboxFor(database, NEXT).publish({ ...RUN_FAILED, failureId: UUID_4 });
 
@@ -176,7 +176,7 @@ describe("notification-durability: repeats fold, they do not spam", () => {
   });
 
   it("makes a repeat unread again after the operator read it", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const created = await inboxFor(database, NOW).publish(RUN_FAILED);
     const read = inboxFor(database, NEXT).markRead(created.notification.notificationId, 1);
     assert.equal(read.status, "read");
@@ -188,7 +188,7 @@ describe("notification-durability: repeats fold, they do not spam", () => {
   });
 
   it("keeps two different actors' rows apart even for one trigger", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const operator = await inboxFor(database, NOW).publish(RUN_FAILED);
     const second = createNotificationInbox({
       runReader: createTrustRunReader(database),
@@ -205,7 +205,7 @@ describe("notification-durability: repeats fold, they do not spam", () => {
 
 describe("notification-durability: snooze suppresses delivery and nothing else", () => {
   it("keeps the status the operator left and skips the toast until expiry", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const created = await inboxFor(database, NOW).publish(RUN_FAILED);
     const until = "2026-07-31T18:00:00.000Z";
     const snoozed = inboxFor(database, NEXT).snooze(created.notification.notificationId, 1, until);
@@ -224,7 +224,7 @@ describe("notification-durability: snooze suppresses delivery and nothing else",
   });
 
   it("keeps read state and snooze independent in both directions", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const created = await inboxFor(database, NOW).publish(RUN_FAILED);
     const inbox = inboxFor(database, NEXT);
     const snoozed = inbox.snooze(created.notification.notificationId, 1, "2026-07-31T18:00:00.000Z");
@@ -237,7 +237,7 @@ describe("notification-durability: snooze suppresses delivery and nothing else",
   });
 
   it("refuses a state change against a stale version", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const created = await inboxFor(database, NOW).publish(RUN_FAILED);
     const inbox = inboxFor(database, NEXT);
     inbox.markRead(created.notification.notificationId, 1);

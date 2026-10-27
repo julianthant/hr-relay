@@ -6,14 +6,14 @@ import { selectActiveRunSettings } from "../../../../src/backend/runs/settings/r
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); });
-function fixture() { const f = settingsFixture(); cleanups.push(f.close); return f; }
-function counts(f: ReturnType<typeof fixture>) {
+async function fixture() { const f = await settingsFixture(); cleanups.push(f.close); return f; }
+function counts(f: Awaited<ReturnType<typeof fixture>>) {
   const db = new DatabaseSync(f.path, { readOnly: true });
   try { return ["settings_snapshots", "commands", "command_audits", "runs"].map((table) =>
     db.prepare(`SELECT count(*) AS n FROM ${table}`).get()); } finally { db.close(); }
 }
-it("atomically saves a complete resolution, selects new groups, retains old runs and replays without effects", () => {
-  const f = fixture(); const old = f.create(); const oldSnapshot = f.database.authority.configSnapshots.get(old.envelope.configSnapshotId);
+it("atomically saves a complete resolution, selects new groups, retains old runs and replays without effects", async () => {
+  const f = await fixture(); const old = f.create(); const oldSnapshot = f.database.authority.configSnapshots.get(old.envelope.configSnapshotId);
   const command = f.command({ "timeouts.taskMs": { set: 90_000 } });
   const generation = f.database.getMeta().authorityGeneration;
   const result = f.execute(command); assert.equal(result.state, "applied");

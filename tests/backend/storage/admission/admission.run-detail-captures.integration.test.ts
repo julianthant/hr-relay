@@ -34,8 +34,8 @@ import { makeWorld,queuedEventOf,uuidOf } from "../../../support/helpers/backend
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 const BYTES = Buffer.from("[]");
 const ATTACHMENT = {
@@ -84,11 +84,11 @@ function bundleOf(bundleSeed: number, origin: BundleInput["origin"], options: {
 }
 
 async function harness() {
-  const world = makeWorld();
-  cleanups.push(() => world.dispose());
+  const world = await makeWorld();
+  cleanups.push(async () => await world.dispose());
   queuedEventOf(world, { seed: 1, enqueuedAt: NOW });
-  const profile = createBoundProfileFixture();
-  cleanups.push(() => profile.close());
+  const profile = await createBoundProfileFixture();
+  cleanups.push(async () => await profile.close());
   const database = AuthorityDatabase.open({
     path: profile.path, busyTimeoutMs: 1000,
     migrationOwner: "run-detail-captures-test",

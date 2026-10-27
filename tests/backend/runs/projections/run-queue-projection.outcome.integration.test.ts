@@ -10,14 +10,14 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 const { world, runRecordOf, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
 
-function setup(options: { workflow?: string; fieldPath?: string } = {}) {
+async function setup(options: { workflow?: string; fieldPath?: string } = {}) {
   const seed = 80;
   const workflow = options.workflow ?? "person-lookup";
   const fieldPath = options.fieldPath ?? "activeStatus.state";
   assert.ok(personLookupDescriptor.outcomeProjection);
   const descriptor = { ...personLookupDescriptor, titleProjection: undefined, subtitleProjection: undefined, details: [], id: WorkflowIdSchema.parse(workflow),
     outcomeProjection: { ...personLookupDescriptor.outcomeProjection, fieldPath } };
-  const w = world({ descriptors: { resolve: () => descriptor } });
+  const w = await world({ descriptors: { resolve: () => descriptor } });
   queuedEventOf(w, { seed, workflow });
   const run = runRecordOf({ seed, workflow, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 60_000) }, version: 3 });
   w.authority.put(run);
@@ -41,29 +41,29 @@ describe("declared Queue business outcomes", () => {
     ["crm-only", "CRM only", "warning"], ["multiple-matches", "Multiple matches", "warning"],
     ["not-found", "Not found", "neutral"], ["undetermined", "Undetermined", "warning"],
     ["found", "Found", "success"], ["not-found-in-ucpath", "Not found in UCPath", "neutral"],
-  ])("projects %s from the verified receipt", (value, label, tone) => {
-    const { receipt, save, row } = setup();
+  ])("projects %s from the verified receipt", async (value, label, tone) => {
+    const { receipt, save, row } = await setup();
     const fact = receipt.output[0]; assert.ok(fact.state === "satisfied");
     fact.value = { key: "state", state: "allowed", classification: "safe-diagnostic", transform: "allow", value };
     save();
     assert.deepEqual(row()?.outcome, { label, tone });
   });
 
-  it("uses an arbitrary workflow and exact different result path", () => {
-    const { row } = setup({ workflow: "another-workflow", fieldPath: "resolution.category" });
+  it("uses an arbitrary workflow and exact different result path", async () => {
+    const { row } = await setup({ workflow: "another-workflow", fieldPath: "resolution.category" });
     assert.deepEqual(row()?.outcome, { label: "Active", tone: "success" });
   });
 
-  it("keeps a safe outcome when a protected input exists", () => {
-    const { w, run, row } = setup();
+  it("keeps a safe outcome when a protected input exists", async () => {
+    const { w, run, row } = await setup();
     w.authority.put({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
       protectedBindings: [{ kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: uuidOf(99) }],
     } } });
     assert.deepEqual(row()?.outcome, { label: "Active", tone: "success" });
   });
 
-  it("does not project a missing receipt", () => {
-    const { w, row } = setup();
+  it("does not project a missing receipt", async () => {
+    const { w, row } = await setup();
     w.authority.receipts.clear();
     assert.equal(row()?.outcome, undefined);
   });
@@ -80,8 +80,8 @@ describe("declared Queue business outcomes", () => {
     ["redacted output with raw value", receipt => { const fact = receipt.output[0]; assert.ok(fact.state === "satisfied"); fact.value = { key: "state", state: "redacted", classification: "sensitive-hr", transform: "drop", rawValue: "active" }; }],
     ["transformed output", receipt => { const fact = receipt.output[0]; assert.ok(fact.state === "satisfied"); fact.value = { key: "state", state: "transformed", classification: "direct-identifier", transform: "last4", value: "tive", rawValue: "active" }; }],
   ];
-  it.each(unvalidated)("does not project %s", (_name, change) => {
-    const { receipt, save, row } = setup();
+  it.each(unvalidated)("does not project %s", async (_name, change) => {
+    const { receipt, save, row } = await setup();
     change(receipt); save();
     assert.equal(row()?.outcome, undefined);
   });
@@ -94,22 +94,22 @@ describe("declared Queue business outcomes", () => {
     ["descriptor", receipt => { receipt.descriptorFingerprint = FingerprintSchema.parse("d".repeat(64)); }],
     ["config", receipt => { receipt.configFingerprint = FingerprintSchema.parse("e".repeat(64)); }],
   ];
-  it.each(identities)("refuses a mismatched %s identity", (_name, change) => {
-    const { receipt, save, row } = setup();
+  it.each(identities)("refuses a mismatched %s identity", async (_name, change) => {
+    const { receipt, save, row } = await setup();
     change(receipt); save();
     assert.throws(row, /result-outcome-receipt-identity-mismatch/u);
   });
 
-  it.each(["undeclared", null, 7, { state: "active" }])("refuses an undeclared authoritative output %j", value => {
-    const { receipt, save, row } = setup();
+  it.each(["undeclared", null, 7, { state: "active" }])("refuses an undeclared authoritative output %j", async value => {
+    const { receipt, save, row } = await setup();
     const fact = receipt.output[0]; assert.ok(fact.state === "satisfied");
     fact.value = { key: "state", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "active", rawValue: value };
     save();
     assert.throws(row, /result-outcome-value-undeclared/u);
   });
 
-  it("keeps noncompleted rows on their lifecycle status even with a verified receipt", () => {
-    const { w, run, row } = setup();
+  it("keeps noncompleted rows on their lifecycle status even with a verified receipt", async () => {
+    const { w, run, row } = await setup();
     for (const lifecycle of [
       { state: "queued" },
       { state: "running", workerId: "fixture-worker", claimedAt: instantOffsetOf(0, 1), heartbeatAt: instantOffsetOf(0, 2) },

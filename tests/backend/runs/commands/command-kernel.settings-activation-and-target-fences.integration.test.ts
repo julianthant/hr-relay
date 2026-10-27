@@ -13,8 +13,8 @@ afterEach(() => {
 });
 
 describe("settings activation and target fences", () => {
-  it("activates settings while refusing an absent intake target", () => {
-    const harness = createHarness();
+  it("activates settings while refusing an absent intake target", async () => {
+    const harness = await createHarness();
     applyCurrentSettings(harness);
     const fixture = commandFixture("intake", "enqueue-intake-manifest");
     const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });
@@ -26,8 +26,8 @@ describe("settings activation and target fences", () => {
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
   });
 
-  it("activates settings while refusing an absent retry target", () => {
-    const harness = createHarness();
+  it("activates settings while refusing an absent retry target", async () => {
+    const harness = await createHarness();
     applyCurrentSettings(harness);
     const fixture = commandFixture("run", "retry");
     const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });

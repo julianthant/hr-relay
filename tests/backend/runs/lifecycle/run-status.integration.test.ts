@@ -40,7 +40,7 @@ function statusPair(w: DashboardWorld, seed: number): { row: string; panel: stri
 }
 
 describe("authority-only run status", () => {
-  it("run-status-fold-contributes-no-lifecycle-arm", () => {
+  it("run-status-fold-contributes-no-lifecycle-arm", async () => {
     const cases = [
       { state: "claimed" as const, fold: "done" as const, expected: "running" },
       { state: "queued" as const, fold: "claim" as const, expected: "queued" },
@@ -51,7 +51,7 @@ describe("authority-only run status", () => {
       { state: "running" as const, fold: "none" as const, cancelRequested: true as const, expected: "cancelling" },
     ];
     for (const [index, entry] of cases.entries()) {
-      const w = world();
+      const w = await world();
       const seed = index + 1;
       queuedEventOf(w, { seed });
       if (entry.fold === "done") runEndedEventOf(w, seed, "done");
@@ -70,9 +70,9 @@ describe("authority-only run status", () => {
     }
   });
 
-  it("lets AUTHORITY outrank the fold when the two disagree", () => {
+  it("lets AUTHORITY outrank the fold when the two disagree", async () => {
 
-    const w = world();
+    const w = await world();
     queuedEventOf(w, { seed: 6 });
     runEndedEventOf(w, 6, "done");
     w.authority.put(runRecordOf({
@@ -91,9 +91,9 @@ describe("authority-only run status", () => {
     assert.equal(panel, "failed");
   });
 
-  it("is literally the one exported function — no second copy to drift", () => {
+  it("is literally the one exported function — no second copy to drift", async () => {
 
-    const w = world();
+    const w = await world();
     queuedEventOf(w, { seed: 7 });
     runEndedEventOf(w, 7, "superseded");
     const fold = w.projection.runFold(uuidOf(7));
@@ -123,8 +123,8 @@ const VOCABULARY: readonly (readonly [SpanOutcomeWire, string])[] = [
 
 describe("one task-outcome vocabulary", () => {
   for (const [outcome, expected] of VOCABULARY) {
-    it(`reads a ${outcome} span as ${expected} on the pipeline chip AND the timeline step`, () => {
-      const w = world();
+    it(`reads a ${outcome} span as ${expected} on the pipeline chip AND the timeline step`, async () => {
+      const w = await world();
       queuedEventOf(w, { seed: 10 });
       claimEventOf(w, 10);
       taskEventsOf(w, 10, NODE, outcome, outcome === "skipped" ? "condition-false" : undefined);
@@ -140,8 +140,8 @@ describe("one task-outcome vocabulary", () => {
     });
   }
 
-  it("reads a started-but-unended span as `active` on both, which is a fact and not a default", () => {
-    const w = world();
+  it("reads a started-but-unended span as `active` on both, which is a fact and not a default", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 11 });
     claimEventOf(w, 11);
     taskEventsOf(w, 11, NODE);

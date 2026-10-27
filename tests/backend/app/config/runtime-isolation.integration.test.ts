@@ -13,7 +13,7 @@ afterEach(cleanup);
 describe("corruption → degraded → restore → rebuild, through the CLI", () => {
 
   it("names every storage-doctor exit-zero condition in command help", async () => {
-    const paths = drillPaths();
+    const paths = await drillPaths();
     const usage = await composeStorageCommand(
       rebuildRuntimeIsolation,
       [],
@@ -28,7 +28,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
   });
 
   it("refuses restore without an exact named manifest", async () => {
-    const paths = drillPaths();
+    const paths = await drillPaths();
     const database = open(paths);
     seedRealShapedAuthority(database,paths);
     database.close();

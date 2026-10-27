@@ -13,7 +13,7 @@ afterEach(cleanup);
 
 describe("terminal identity binding", () => {
   it("refuses to execute a run bound to a different descriptor identity", async () => {
-    const harness = executorHarness();
+    const harness = await executorHarness();
     const { database, clock } = harness.authority;
     const run = personLookupQueuedRun();
     const envelope = run.envelope as Record<string, unknown>;

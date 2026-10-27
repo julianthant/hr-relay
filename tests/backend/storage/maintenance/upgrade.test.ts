@@ -17,12 +17,12 @@ import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgr
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 describe("native authority backup", () => {
   it("plans a fresh native root without creating authority and initializes only behind stopped admission",async()=>{
-    const fixture=createBoundProfileFixture({pending:true}),root=fixture.stateRoot,path=fixture.path;
-    cleanups.push(()=>fixture.close());const admission=fixture.admission,processLockRoot=join(root,"locks"),clock=capturedInstantClock(NOW);
+    const fixture=await createBoundProfileFixture({pending:true}),root=fixture.stateRoot,path=fixture.path;
+    cleanups.push(async ()=>await fixture.close());const admission=fixture.admission,processLockRoot=join(root,"locks"),clock=capturedInstantClock(NOW);
     mkdirSync(processLockRoot,{mode:0o700});
     await expect(upgradeStorage(admission,{stateRoot:root,processLockRoot,plan:true},clock)).resolves.toMatchObject({state:"planned",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION});
     expect(()=>readFileSync(path)).toThrow();
@@ -33,7 +33,7 @@ describe("native authority backup", () => {
 });
 
 for (const entry of ['service', 'command'] as const) it(`retains actual stopped source custody through ${entry} upgrade failure`, async () => {
-  const f = createBoundProfileFixture({ pending: true });
+  const f = await createBoundProfileFixture({ pending: true });
   AuthorityDatabase.initializeProfile(f.admission, systemClock);
   const root = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), before = fs.readFileSync(f.path);
   const actualRemove = fs.rmSync, actualCreate = fs.mkdtempSync;
@@ -76,12 +76,12 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
     restore?.release(); proved = true;
   } finally {
     created.mockRestore(); removed.mockRestore(); syncBuiltinESMExports();
-    if (proved) f.close();
+    if (proved) await f.close();
   }
 });
 
 for (const entry of ['service', 'command'] as const) it(`releases proved upgrade owners after an ordinary ${entry} snapshot creation refusal`, async () => {
-  const f = createBoundProfileFixture({ pending: true });
+  const f = await createBoundProfileFixture({ pending: true });
   AuthorityDatabase.initializeProfile(f.admission, systemClock);
   const root = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), before = fs.readFileSync(f.path);
   const actualCreate = fs.mkdtempSync, injected = new Error('upgrade-source-create-unavailable');
@@ -109,5 +109,5 @@ for (const entry of ['service', 'command'] as const) it(`releases proved upgrade
     }
     assert.equal(refused, 1); assert.deepEqual(fs.readFileSync(f.path), before);
     f.admission.assertLive(); f.machine.assertLive(); proved = true;
-  } finally { creation.mockRestore(); syncBuiltinESMExports(); if (proved) f.close(); }
+  } finally { creation.mockRestore(); syncBuiltinESMExports(); if (proved) await f.close(); }
 });

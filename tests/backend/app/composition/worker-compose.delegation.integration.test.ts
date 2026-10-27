@@ -30,11 +30,11 @@ import type { BuildManifest } from "../../../../src/models/workflow/build-manife
 
 vi.mock("../../../../src/backend/storage/sqlite/storage-doctor.js", { spy: true });
 
-const cleanup: (() => void)[] = [];
-afterEach(() => {
+const cleanup: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
   const failures: unknown[] = [];
   for (const close of cleanup.splice(0).reverse()) {
-    try { close(); } catch (error) { failures.push(error); }
+    try { await close(); } catch (error) { failures.push(error); }
   }
   if (failures.length > 0) throw new AggregateError(failures, "child composition cleanup failed");
 });
@@ -77,11 +77,11 @@ it("executes two real children and a nested child with one actual home process a
     assert.ok(descriptorRuntimeNodes(module.descriptor).every(node => node.kind !== "transaction"));
     assert.deepEqual(workflowProjections(module.descriptor).systems, []);
   }
-  const profile = createBoundProfileFixture({ sharedMachine: true });
+  const profile = await createBoundProfileFixture({ sharedMachine: true });
   let runtimeAttempted = false, runtimeClosureProved = false;
-  cleanup.push(() => {
+  cleanup.push(async () => {
     if (runtimeAttempted && !runtimeClosureProved) throw new Error("child-composition-fixture-custody-retained");
-    profile.close();
+    await profile.close();
   });
   copyFileSync(join(process.cwd(), "package.json"), join(profile.workspace, "package.json"));
   copyFileSync(join(process.cwd(), "package-lock.json"), join(profile.workspace, "package-lock.json"));

@@ -26,7 +26,7 @@ afterEach(cleanup);
 describe("cold login action note secrecy", () => {
   for (const failed of [false, true]) {
     it(`drops unbound raw credentials when cold login ${failed ? "fails" : "succeeds"}`, async () => {
-      const h = executorHarness();
+      const h = await executorHarness();
       const { database, clock } = h.authority;
       const { run } = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
       const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
@@ -46,7 +46,7 @@ describe("cold login action note secrecy", () => {
     });
 
     it(`never records SSO credential values when the actual fill ${failed ? "precedes failure" : "succeeds"}`, async () => {
-      const h = executorHarness();
+      const h = await executorHarness();
       const { database, clock } = h.authority;
       const { run, claim } = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
       const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
@@ -113,7 +113,7 @@ function actionBindingRetrySessions(): SessionFactoryHarness {
 describe("complete operation display action binding", () => {
   it("binds completed synthetic driver gestures in append order and redacts protected input before native durability", async () => {
     const sessions = actionBindingSessions({ clicks: 2 });
-    const harness = executorHarness({ sessions, descriptor: actionBindingCompiled.descriptor });
+    const harness = await executorHarness({ sessions, descriptor: actionBindingCompiled.descriptor });
     const { database, clock, stateRoot: _stateRoot } = harness.authority;
     const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const claimed = enqueueAndClaim(
@@ -224,7 +224,7 @@ describe("complete operation display action binding", () => {
   });
 
   it("keeps retry attempts distinct while retaining completed-gesture append order", async () => {
-    const harness = executorHarness({
+    const harness = await executorHarness({
       sessions: actionBindingRetrySessions(),
       descriptor: actionBindingCompiled.descriptor,
       autoFireAtOrBelowMs: 2_500,
@@ -256,7 +256,7 @@ describe("complete operation display action binding", () => {
   });
 
   it("binds child invocation identity from the immutable child envelope", async () => {
-    const harness = executorHarness({ sessions: actionBindingSessions(), descriptor: actionBindingCompiled.descriptor });
+    const harness = await executorHarness({ sessions: actionBindingSessions(), descriptor: actionBindingCompiled.descriptor });
     const { database, clock, stateRoot: _stateRoot } = harness.authority;
     const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     database.authority.runs.enqueue(personLookupQueuedRun());
@@ -287,7 +287,7 @@ describe("complete operation display action binding", () => {
   });
 
   it("binds a declared operation-level page open to its completed driver gesture", async () => {
-    const harness = executorHarness({
+    const harness = await executorHarness({
       sessions: actionBindingSessions({ openedTarget: "ucpath.person-org.search" }),
       descriptor: actionBindingCompiled.descriptor,
     });
@@ -311,7 +311,7 @@ describe("complete operation display action binding", () => {
   });
 
   it("does not manufacture an action occurrence when a task fails before a completed driver gesture", async () => {
-    const harness = executorHarness({
+    const harness = await executorHarness({
       sessions: actionBindingSessions({ failBeforeGesture: true }),
       descriptor: actionBindingCompiled.descriptor,
     });

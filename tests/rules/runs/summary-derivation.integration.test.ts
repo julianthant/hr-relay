@@ -121,14 +121,14 @@ describe("canonical activity person", () => {
       else assert.deepEqual(deriveCanonicalPerson(fixture.run,fixture.result??null),{state:"unavailable",reason:"canonical-result-unavailable"},fixture.name);
     }
   });
-  it("returns unavailable for an absent canonical run without minting identity rows",()=>{
-    const opened=openBoundDatabaseFixture("canonical-person",manualClock(new Date(COMPOSITION_NOW)));
+  it("returns unavailable for an absent canonical run without minting identity rows",async ()=>{
+    const opened=await openBoundDatabaseFixture("canonical-person",manualClock(new Date(COMPOSITION_NOW)));
     const db=opened.database;
     try {const before=db.getMeta();assert.deepEqual(db.canonicalPerson(TERMINAL_RUN.envelope.runId),{state:"unavailable",reason:"canonical-live-run-unavailable"});assert.deepEqual(db.getMeta(),before);}
-    finally{opened.close();}
+    finally{await opened.close();}
   });
-  it("reads the exact approved subject repeatedly without a generation key or write",()=>{
-    const opened=openBoundDatabaseFixture("canonical-person",manualClock(new Date(COMPOSITION_NOW)));
+  it("reads the exact approved subject repeatedly without a generation key or write",async ()=>{
+    const opened=await openBoundDatabaseFixture("canonical-person",manualClock(new Date(COMPOSITION_NOW)));
     const db=opened.database;
     try {
       db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -136,7 +136,7 @@ describe("canonical activity person", () => {
       for(let n=0;n<3;n++)assert.deepEqual(db.canonicalPerson(TERMINAL_SEPARATIONS_RUN.envelope.runId),{state:"available",identity:CURRENT_SEPARATIONS_RESULT.approved.emplId});
       assert.deepEqual(db.getMeta(),before);
       const raw=new DatabaseSync(opened.path,{readOnly:true});try {assert.deepEqual(raw.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'activity_person_pseudonym%'").all(),[]);}finally{raw.close();}
-    }finally{opened.close();}
+    }finally{await opened.close();}
   });
   it("uses approved identity even when later transaction and finalization identities differ",()=>{
     const base=CURRENT_SEPARATIONS_RESULT;

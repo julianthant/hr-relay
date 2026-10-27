@@ -23,8 +23,8 @@ let root: Root | undefined;
 const cleanup: (() => void)[] = [];
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); window.sessionStorage.clear();
   for (const dispose of cleanup.splice(0)) dispose(); });
-function setup() { const h = launchHarness(); cleanup.push(h.dispose); return h; }
-type Harness = ReturnType<typeof setup>;
+async function setup() { const h = await launchHarness(); cleanup.push(h.dispose); return h; }
+type Harness = Awaited<ReturnType<typeof setup>>;
 const text = () => document.body.textContent ?? "";
 function button(name: string): HTMLButtonElement {
   if (name === "Continue" && [...document.querySelectorAll("button")].some(node => node.textContent?.trim() === "Preview plan")) name = "Preview plan";
@@ -50,7 +50,7 @@ async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
   for (const outcome of ["failed", "interrupted"] as const) it(`${outcome} defaults preserve required completed work and select unfinished work`, async () => {
-    const h = setup(); const source = h.start(h.proposal(undefined, undefined, true));
+    const h = await setup(); const source = h.start(h.proposal(undefined, undefined, true));
     if (outcome === "failed") {
       h.world.onPrepare = () => { throw new Error("synthetic prepare failure"); };
       assert.equal((await h.execute(source)).state, "failed"); delete h.world.onPrepare;

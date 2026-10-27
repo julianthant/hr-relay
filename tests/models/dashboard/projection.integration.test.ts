@@ -98,7 +98,7 @@ afterEach(_afterEachFixture0);
 it("read/snooze commands preserve publication identity, count, and expired snooze evidence", async () => {
 try {
 
-  const { database, kernel } = harness();
+  const { database, kernel } = await harness();
   const initial = record({ snooze: { state: "snoozed", until: "2026-07-31T17:00:30.000Z" } });
   database.authority.notifications.create(initial);
   const before = notificationWireOf(initial, Date.parse(LATER));
@@ -113,7 +113,7 @@ try {
   assert.equal(after.title, "Run failed");
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 }
@@ -125,21 +125,21 @@ const { seedWorld } = createSeededDashboardWorld();
 
 const worlds: DashboardWorld[] = [];
 
-function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-  const created = makeWorld(...args);
+async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
+  const created = await makeWorld(...args);
   worlds.push(created);
   return created;
 }
 
-const _afterEachFixture0 = () => {
-  for (const w of worlds.splice(0)) w.dispose();
+const _afterEachFixture0 = async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 };
 
 describe("THE run/queue projection", () => {
 afterEach(_afterEachFixture0);
 
-  it("folds the seeded world into one payload whose three count renderings agree by construction", () => {
-    const w = world();
+  it("folds the seeded world into one payload whose three count renderings agree by construction", async () => {
+    const w = await world();
     seedWorld(w);
     const day = w.projection.buildDashboardDayWire(DAY);
     DashboardDayWireSchema.parse(day);
@@ -198,8 +198,8 @@ afterEach(_afterEachFixture0);
     return surface;
   }
 
-  it("the wire refuses a gate instant on a row that is not waiting", () => {
-    const w = world();
+  it("the wire refuses a gate instant on a row that is not waiting", async () => {
+    const w = await world();
     seedWorld(w);
     const running = rowOf(w, 2);
     assert.equal(QueueSurfaceWireSchema.safeParse({

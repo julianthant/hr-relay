@@ -13,7 +13,7 @@ describe("worker execution session identity", () => {
     const world = createWorkerSessionManagerTestWorld();
     const harness = world.sessionFactory();
     const events: WorkerSessionEvent[] = [];
-    const manager = world.manager(harness, events);
+    const manager = await world.manager(harness, events);
     manager.releaseRunConfigFingerprint();
     manager.configureExecution(childWorkflow, taskStoreRegistry);
     manager.bindRunConfigFingerprint(world.RUN_FINGERPRINT);
@@ -50,7 +50,7 @@ describe("worker execution session identity", () => {
   it("refuses an execution switch while a run or retained parent session is owned", async () => {
     const world = createWorkerSessionManagerTestWorld();
     const harness = world.sessionFactory();
-    const manager = world.manager(harness);
+    const manager = await world.manager(harness);
     assert.throws(() => manager.configureExecution(childWorkflow, taskStoreRegistry), WorkerSessionClosureUnprovedError);
     try {
       await manager.withDriver(need, "prod", new AbortController().signal, async () => undefined);
@@ -67,7 +67,7 @@ describe("worker execution session identity", () => {
   it("retains failed parent-session closure and refuses a child execution switch", async () => {
     const world = createWorkerSessionManagerTestWorld();
     const harness = world.sessionFactory({ closeFailureAt: 1 });
-    const manager = world.manager(harness);
+    const manager = await world.manager(harness);
     await manager.withDriver(need, "prod", new AbortController().signal, async () => undefined);
     manager.releaseRunConfigFingerprint();
     await assert.rejects(manager.closeAll("parked"), WorkerSessionClosureUnprovedError);

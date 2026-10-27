@@ -14,7 +14,7 @@ import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-ad
 
 {
 
-function insertReceipt(f: ReturnType<typeof foundationFixture>, seed: number) {
+function insertReceipt(f: Awaited<ReturnType<typeof foundationFixture>>, seed: number) {
   const run = f.createRun(uuidOf(seed));
   const failed = {
     ...failure_m0(),
@@ -37,8 +37,8 @@ function insertReceipt(f: ReturnType<typeof foundationFixture>, seed: number) {
 }
 
 describe("evidence receipt repository", () => {
-  it("filters multiple real SQLite receipt rows by exact run with stable cardinality", () => {
-    const f = foundationFixture();
+  it("filters multiple real SQLite receipt rows by exact run with stable cardinality", async () => {
+    const f = await foundationFixture();
     try {
       const seeds = [503, 501, 502] as const;
       const inserted = seeds.map(seed => insertReceipt(f, seed));
@@ -50,31 +50,31 @@ describe("evidence receipt repository", () => {
         inserted.map(receipt => receipt.record.receiptId),
       );
     } finally {
-      f.dispose();
+      await f.dispose();
     }
   });
 
-  it("returns no receipt for a well-formed absent run in populated SQLite authority", () => {
-    const f = foundationFixture();
+  it("returns no receipt for a well-formed absent run in populated SQLite authority", async () => {
+    const f = await foundationFixture();
     try {
       insertReceipt(f, 504);
       const receipts = f.db.authority.evidenceReceipts.listByRun(uuidOf(505));
 
       assert.deepEqual(receipts, []);
     } finally {
-      f.dispose();
+      await f.dispose();
     }
   });
 
-  it("refuses a list read whose run id is not exact", () => {
-    const f = foundationFixture();
+  it("refuses a list read whose run id is not exact", async () => {
+    const f = await foundationFixture();
     try {
       assert.throws(
         () => f.db.authority.evidenceReceipts.listByRun("not-a-run-id"),
         /run id must be a UUID/,
       );
     } finally {
-      f.dispose();
+      await f.dispose();
     }
   });
 });

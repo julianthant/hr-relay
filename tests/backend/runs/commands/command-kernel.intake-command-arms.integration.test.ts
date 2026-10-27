@@ -97,18 +97,18 @@ function commandId(): string {
   return `${String(commandSequence).padStart(8, "0")}-0000-4000-8000-000000000000`;
 }
 
-function harness(sessionOverrides: Record<string, unknown> = {}, preReservation = false) {
+async function harness(sessionOverrides: Record<string, unknown> = {}, preReservation = false) {
   const clock = manualClock(new Date(NOW));
-  const opened = openBoundDatabaseFixture("intake-arms-test", clock);
+  const opened = await openBoundDatabaseFixture("intake-arms-test", clock);
   const database = opened.database;
   const path = opened.path;
   const close = database.close.bind(database);
   let closed = false;
-  database.close = () => {
+  database.close = async () => {
     if (closed) return;
     closed = true;
     close();
-    opened.profile.close();
+    await opened.profile.close();
   };
   roots.push(opened.profile.workspace);
   openDatabases.push(database);
@@ -222,8 +222,8 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
 /* ── the arms ────────────────────────────────────────────────────────────── */
 
 describe("intake arms — confirm-intake-mapping", () => {
-  it("mints a binding against the layout the file actually presents", () => {
-    const { current, bindEid } = harness();
+  it("mints a binding against the layout the file actually presents", async () => {
+    const { current, bindEid } = await harness();
     assert.equal(bindEid().state, "applied");
     const session = current();
     assert.equal(session.version, 2);
@@ -234,8 +234,8 @@ describe("intake arms — confirm-intake-mapping", () => {
     assert.equal(String(session.bindings[0].sourceColumnId), String(EID_COLUMN));
   });
 
-  it("refuses a confirmation built against a layout this file does not present", () => {
-    const { current, send } = harness();
+  it("refuses a confirmation built against a layout this file does not present", async () => {
+    const { current, send } = await harness();
     const result = send("confirm-intake-mapping", {
       targetFieldId: "emplId",
       sourceColumnId: EID_COLUMN,
@@ -246,8 +246,8 @@ describe("intake arms — confirm-intake-mapping", () => {
     assert.equal(current().version, 1, "a refused confirmation moves no authority row");
   });
 
-  it("rejects mapping confirmation before mutation when the target or source column is unknown", () => {
-    const { send } = harness();
+  it("rejects mapping confirmation before mutation when the target or source column is unknown", async () => {
+    const { send } = await harness();
     const unknownTarget = send("confirm-intake-mapping", {
       targetFieldId: "notAField",
       sourceColumnId: EID_COLUMN,
@@ -262,8 +262,8 @@ describe("intake arms — confirm-intake-mapping", () => {
     assert.equal(unknownColumn.state, "rejected");
   });
 
-  it("rebinds one target to one column, and repeats are no-ops", () => {
-    const { current, send, bindEid } = harness();
+  it("rebinds one target to one column, and repeats are no-ops", async () => {
+    const { current, send, bindEid } = await harness();
     bindEid();
     const rebind = send("confirm-intake-mapping", {
       targetFieldId: "emplId",
@@ -286,21 +286,21 @@ describe("intake arms — confirm-intake-mapping", () => {
 });
 
 describe("intake arms — inspect-intake", () => {
-  it("settles the header row discovery preselects when the operator has not chosen", () => {
-    const { current, send } = harness({ headerRowIndex: null });
+  it("settles the header row discovery preselects when the operator has not chosen", async () => {
+    const { current, send } = await harness({ headerRowIndex: null });
     assert.equal(current().headerRowIndex, null);
     assert.equal(send("inspect-intake", {}).state, "applied");
     assert.equal(current().headerRowIndex, HEADER_ROW);
   });
 
-  it("is a no-op when the selection already holds", () => {
-    const { current, send } = harness();
+  it("is a no-op when the selection already holds", async () => {
+    const { current, send } = await harness();
     assert.equal(send("inspect-intake", { sheet: SHEET, headerRowIndex: HEADER_ROW }).state, "applied");
     assert.equal(current().version, 1);
   });
 
-  it("discards bindings, corrections and exclusions when the layout moves", () => {
-    const { current, send, bindEid } = harness();
+  it("discards bindings, corrections and exclusions when the layout moves", async () => {
+    const { current, send, bindEid } = await harness();
     bindEid();
     send("correct-intake-row", { sourceRow: 2, field: "emplId", correctedValue: "10456799" });
     send("exclude-intake-row", { sourceRow: 3, reason: "Duplicate of row 1" });
@@ -317,8 +317,8 @@ describe("intake arms — inspect-intake", () => {
     assert.equal(moved.validation.state, "none");
   });
 
-  it("refuses a header row the sheet does not have, and an unknown sheet", () => {
-    const { current, send } = harness();
+  it("refuses a header row the sheet does not have, and an unknown sheet", async () => {
+    const { current, send } = await harness();
     const absentRow = send("inspect-intake", { headerRowIndex: 99 });
     assert.equal(absentRow.state, "rejected");
     assert.match(absentRow.state === "rejected" ? absentRow.message : "", /header-row-absent/);
@@ -329,23 +329,23 @@ describe("intake arms — inspect-intake", () => {
 });
 
 describe("intake arms — corrections and exclusions", () => {
-  it("refuses a correction for a field with no bound column", () => {
-    const { send } = harness();
+  it("refuses a correction for a field with no bound column", async () => {
+    const { send } = await harness();
     const result = send("correct-intake-row", { sourceRow: 1, field: "emplId", correctedValue: "10456712" });
     assert.equal(result.state, "rejected");
     assert.match(result.state === "rejected" ? result.message : "", /no bound column/);
   });
 
-  it("refuses a source row past the end of the sheet's data rows", () => {
-    const { send, bindEid } = harness();
+  it("refuses a source row past the end of the sheet's data rows", async () => {
+    const { send, bindEid } = await harness();
     bindEid();
     const result = send("correct-intake-row", { sourceRow: 9, field: "emplId", correctedValue: "10456712" });
     assert.equal(result.state, "rejected");
     assert.match(result.state === "rejected" ? result.message : "", /beyond the 3 data rows/);
   });
 
-  it("upserts one correction per (row, field) and no-ops an identical one", () => {
-    const { current, send, bindEid } = harness();
+  it("upserts one correction per (row, field) and no-ops an identical one", async () => {
+    const { current, send, bindEid } = await harness();
     bindEid();
     send("correct-intake-row", { sourceRow: 2, field: "emplId", correctedValue: "10456799" });
     send("correct-intake-row", { sourceRow: 2, field: "emplId", correctedValue: "10456700" });
@@ -356,8 +356,8 @@ describe("intake arms — corrections and exclusions", () => {
     assert.equal(current().version, versionBefore);
   });
 
-  it("keeps an exclusion's original reason and refuses a conflicting second one", () => {
-    const { current, send } = harness();
+  it("keeps an exclusion's original reason and refuses a conflicting second one", async () => {
+    const { current, send } = await harness();
     assert.equal(send("exclude-intake-row", { sourceRow: 2, reason: "Not in scope" }).state, "applied");
     const versionBefore = current().version;
     assert.equal(send("exclude-intake-row", { sourceRow: 2, reason: "Not in scope" }).state, "applied");
@@ -369,8 +369,8 @@ describe("intake arms — corrections and exclusions", () => {
 });
 
 describe("intake arms — validate-intake", () => {
-  it("retains the validation arm with the readAt it resolved rows against", () => {
-    const { current, send, bindEid } = harness();
+  it("retains the validation arm with the readAt it resolved rows against", async () => {
+    const { current, send, bindEid } = await harness();
     bindEid();
     assert.equal(send("validate-intake").state, "applied");
     const session = current();
@@ -381,8 +381,8 @@ describe("intake arms — validate-intake", () => {
     assert.equal(session.validation.validatedAt, NOW);
   });
 
-  it("unvalidates the session as soon as any decision moves", () => {
-    const { current, send, bindEid } = harness();
+  it("unvalidates the session as soon as any decision moves", async () => {
+    const { current, send, bindEid } = await harness();
     bindEid();
     send("validate-intake");
     assert.equal(current().state, "validated");
@@ -391,15 +391,15 @@ describe("intake arms — validate-intake", () => {
     assert.equal(current().validation.state, "none");
   });
 
-  it("refuses when the workflow declares no intake projection", () => {
-    const { send } = harness({ workflow: "person-lookup" });
+  it("refuses when the workflow declares no intake projection", async () => {
+    const { send } = await harness({ workflow: "person-lookup" });
     const result = send("validate-intake");
     assert.equal(result.state, "rejected");
     assert.equal(result.state === "rejected" ? result.code : "", "policy-refused");
   });
 
-  it("refuses while no header row is settled", () => {
-    const { send } = harness({ headerRowIndex: null });
+  it("refuses while no header row is settled", async () => {
+    const { send } = await harness({ headerRowIndex: null });
     const result = send("validate-intake");
     assert.equal(result.state, "rejected");
     assert.match(result.state === "rejected" ? result.message : "", /no settled header row/);
@@ -407,8 +407,8 @@ describe("intake arms — validate-intake", () => {
 });
 
 describe("intake arms — every arm needs its session", () => {
-  it("refuses every arm on a session that does not exist", () => {
-    const { kernel } = harness();
+  it("refuses every arm on a session that does not exist", async () => {
+    const { kernel } = await harness();
     const result = kernel.execute({
       commandId: commandId(),
       requestedAt: NOW,
@@ -428,13 +428,13 @@ describe("intake arms — every arm needs its session", () => {
 /** The fixture file's row 2 (`10-4567`) is the one the canonical EID refuses. */
 const REJECTED_ROW = 2;
 
-function enqueue(send: ReturnType<typeof harness>["send"], dryRun = false) {
+function enqueue(send: Awaited<ReturnType<typeof harness>>["send"], dryRun = false) {
   return send("enqueue-intake-manifest", { dryRun });
 }
 
 describe("enqueue-intake-manifest — the readiness gate", () => {
-  it("refuses a pre-reservation session by id instead of minting a manifest identity", () => {
-    const { database, send, mapAndValidate } = harness({}, true);
+  it("refuses a pre-reservation session by id instead of minting a manifest identity", async () => {
+    const { database, send, mapAndValidate } = await harness({}, true);
     send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
     mapAndValidate();
 
@@ -447,8 +447,8 @@ describe("enqueue-intake-manifest — the readiness gate", () => {
     assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 0);
   });
 
-  it("refuses a session that has not been validated", () => {
-    const { database, current, send, bindEid } = harness();
+  it("refuses a session that has not been validated", async () => {
+    const { database, current, send, bindEid } = await harness();
     bindEid();
     const before = database.getMeta().authorityGeneration;
     const result = enqueue(send);
@@ -459,8 +459,8 @@ describe("enqueue-intake-manifest — the readiness gate", () => {
     assert.equal(database.getMeta().authorityGeneration, before, "a refused enqueue moves no authority row");
   });
 
-  it("refuses while a row is still rejected, naming the rows that block it", () => {
-    const { database, send, mapAndValidate } = harness();
+  it("refuses while a row is still rejected, naming the rows that block it", async () => {
+    const { database, send, mapAndValidate } = await harness();
     mapAndValidate();
     const result = enqueue(send);
     assert.equal(result.state, "rejected");
@@ -471,8 +471,8 @@ describe("enqueue-intake-manifest — the readiness gate", () => {
     assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 0);
   });
 
-  it("refuses a file whose every row is excluded rather than reporting a no-op success", () => {
-    const { database, send, mapAndValidate } = harness();
+  it("refuses a file whose every row is excluded rather than reporting a no-op success", async () => {
+    const { database, send, mapAndValidate } = await harness();
     for (const sourceRow of [1, 2, 3]) send("exclude-intake-row", { sourceRow, reason: "Wrong sheet" });
     mapAndValidate();
     const result = enqueue(send);
@@ -481,8 +481,8 @@ describe("enqueue-intake-manifest — the readiness gate", () => {
     assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 0);
   });
 
-  it("refuses a dry run the GRAPH cannot offer", () => {
-    const { send, mapAndValidate } = harness();
+  it("refuses a dry run the GRAPH cannot offer", async () => {
+    const { send, mapAndValidate } = await harness();
     send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
     mapAndValidate();
     const result = enqueue(send, true);
@@ -495,8 +495,8 @@ describe("enqueue-intake-manifest — the readiness gate", () => {
     );
   });
 
-  it("conflicts when the session moved since the plan was reviewed", () => {
-    const { current, kernel, send, mapAndValidate } = harness();
+  it("conflicts when the session moved since the plan was reviewed", async () => {
+    const { current, kernel, send, mapAndValidate } = await harness();
     send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
     mapAndValidate();
     const result = kernel.execute({
@@ -515,15 +515,15 @@ describe("enqueue-intake-manifest — the readiness gate", () => {
 });
 
 describe("enqueue-intake-manifest — the fan-out", () => {
-  function readyHarness() {
-    const created = harness();
+  async function readyHarness() {
+    const created = await harness();
     created.send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
     created.mapAndValidate();
     return created;
   }
 
-  it("mints one immutable manifest and one queued run per valid row", () => {
-    const { database, current, send } = readyHarness();
+  it("mints one immutable manifest and one queued run per valid row", async () => {
+    const { database, current, send } = await readyHarness();
     const result = enqueue(send);
     assert.equal(result.state, "applied");
 
@@ -569,8 +569,8 @@ describe("enqueue-intake-manifest — the fan-out", () => {
     }
   });
 
-  it("records the excluded row and the source value a correction replaced", () => {
-    const { database, current, send } = harness();
+  it("records the excluded row and the source value a correction replaced", async () => {
+    const { database, current, send } = await harness();
     send("exclude-intake-row", { sourceRow: 3, reason: "Left the department" });
     send("confirm-intake-mapping", {
       targetFieldId: "emplId",
@@ -602,8 +602,8 @@ describe("enqueue-intake-manifest — the fan-out", () => {
     );
   });
 
-  it("fans out exactly once — a second enqueue is refused", () => {
-    const { database, current, kernel, send } = readyHarness();
+  it("fans out exactly once — a second enqueue is refused", async () => {
+    const { database, current, kernel, send } = await readyHarness();
     assert.equal(enqueue(send).state, "applied");
     const manifestId = current().intakeManifestId;
     const result = kernel.execute({
@@ -622,16 +622,16 @@ describe("enqueue-intake-manifest — the fan-out", () => {
     assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 1);
   });
 
-  it("refuses every mapping command once the session enqueued", () => {
-    const { send } = readyHarness();
+  it("refuses every mapping command once the session enqueued", async () => {
+    const { send } = await readyHarness();
     assert.equal(enqueue(send).state, "applied");
     const result = send("exclude-intake-row", { sourceRow: 1, reason: "Too late" });
     assert.equal(result.state, "rejected");
     assert.match(result.state === "rejected" ? result.message : "", /only an open session/);
   });
 
-  it("writes NOTHING when the enqueue policy refuses the LAST row", () => {
-    const { database, current, send } = harness({ workflow: INTAKE_SERIAL_WORKFLOW_ID });
+  it("writes NOTHING when the enqueue policy refuses the LAST row", async () => {
+    const { database, current, send } = await harness({ workflow: INTAKE_SERIAL_WORKFLOW_ID });
     send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
     send("confirm-intake-mapping", {
       targetFieldId: "emplId",

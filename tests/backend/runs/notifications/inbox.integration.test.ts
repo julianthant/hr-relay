@@ -24,11 +24,11 @@ const { _afterEachFixture0, record, harness, command } = createNotificationInbox
 describe("notification collection commands", () => {
   afterEach(_afterEachFixture0);
   const actor = "local-operator";
-  const collectionCommand = (database: ReturnType<typeof harness>["database"], type = "notification-read-all") => ({
+  const collectionCommand = (database: Awaited<ReturnType<typeof harness>>["database"], type = "notification-read-all") => ({
     ...command(type, 1), target: database.withAuthorityReadSnapshot(() => database.authority.notifications.collection(actor, type === "notification-read-all" ? "read" : type === "notification-unread-all" ? "unread" : type === "notification-snooze-all" ? "snooze" : "unsnooze")),
   });
-  it("changes more than twenty current notices atomically, preserves pinned and UNKNOWN evidence, and replays one aggregate audit", () => {
-    const { database, kernel } = harness();
+  it("changes more than twenty current notices atomically, preserves pinned and UNKNOWN evidence, and replays one aggregate audit", async () => {
+    const { database, kernel } = await harness();
     const ids = Array.from({ length: 25 }, () => randomUUID());
     for (const [index, notificationId] of ids.entries()) database.authority.notifications.create(record({ notificationId, dedupeFingerprint: index.toString(16).padStart(64, "0"), trigger: "write-parked" }));
     const pinned = record({ notificationId: randomUUID(), dedupeFingerprint: "b".repeat(64), trigger: "backfill-gap", links: [] });
@@ -50,8 +50,8 @@ describe("notification collection commands", () => {
     assert.deepEqual(database.authority.commandAudits.findByCommand(request.commandId), audit);
     assert.equal(database.getMeta().authorityGeneration, generation);
   });
-  it.each(["added", "changed", "foreign", "duplicate", "omitted"])("refuses the whole collection after %s membership drift", change => {
-    const { database, kernel } = harness();
+  it.each(["added", "changed", "foreign", "duplicate", "omitted"])("refuses the whole collection after %s membership drift", async change => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record());
     const request = collectionCommand(database);
     if (change === "added") database.authority.notifications.create(record({ notificationId: randomUUID(), dedupeFingerprint: "c".repeat(64) }));
@@ -64,9 +64,9 @@ describe("notification collection commands", () => {
     if (change === "duplicate") assert.throws(() => kernel.execute(candidate)); else assert.equal(result?.state, "rejected");
     assert.deepEqual(database.authority.notifications.listByActor(actor), rows);
   });
-  it.each(["late-row", "audit"])("rolls all rows and command publication back on %s failure", boundary => {
+  it.each(["late-row", "audit"])("rolls all rows and command publication back on %s failure", async boundary => {
     let writes = 0;
-    const { database, kernel } = harness(repositories => ({ ...repositories,
+    const { database, kernel } = await harness(repositories => ({ ...repositories,
       notifications: { ...repositories.notifications, updateState: input => {
         writes++; if (boundary === "late-row" && writes === 23) throw new Error("controlled late row failure");
         return repositories.notifications.updateState(input);
@@ -83,8 +83,8 @@ describe("notification collection commands", () => {
     assert.equal(database.authority.commandAudits.findByCommand(request.commandId), undefined);
     assert.equal(database.getMeta().authorityGeneration, generation);
   });
-  it.each(["read", "unread", "snooze", "unsnooze"] as const)("uses the same per-row %s rules and never includes another actor", operation => {
-    const { database, kernel } = harness();
+  it.each(["read", "unread", "snooze", "unsnooze"] as const)("uses the same per-row %s rules and never includes another actor", async operation => {
+    const { database, kernel } = await harness();
     const mutable = record({ status: operation === "unread" ? "read" : "unread", snooze: { state: "snoozed", until: "2026-08-01T18:00:00.000Z" } });
     const pinned = record({ notificationId: randomUUID(), dedupeFingerprint: "b".repeat(64), trigger: "backfill-gap", links: [] });
     const foreign = record({ notificationId: randomUUID(), actorId: "other-operator" });
@@ -99,8 +99,8 @@ describe("notification collection commands", () => {
     assert.deepEqual(database.authority.notifications.get(pinned.notificationId), pinned);
     assert.deepEqual(database.authority.notifications.get(foreign.notificationId), foreign);
   });
-  it("honestly applies an empty current collection with no affected rows", () => {
-    const { database, kernel } = harness(), request = collectionCommand(database), result = kernel.execute(request);
+  it("honestly applies an empty current collection with no affected rows", async () => {
+    const { database, kernel } = await harness(), request = collectionCommand(database), result = kernel.execute(request);
     assert.equal(result.state, "applied"); if (result.state !== "applied") throw new Error("applied required");
     assert.deepEqual(result.affectedTargets, []);
     assert.equal(result.noChange, "no-matching-notifications");
@@ -122,8 +122,8 @@ describe("notification collection commands", () => {
 describe("notification lifecycle arms", () => {
 afterEach(_afterEachFixture0);
 
-  it("refuses a crafted mark-read command for a pinned backfill gap", () => {
-    const { database, kernel } = harness();
+  it("refuses a crafted mark-read command for a pinned backfill gap", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record({
       trigger: "backfill-gap",
       links: [],
@@ -141,8 +141,8 @@ afterEach(_afterEachFixture0);
     assert.equal(unchanged?.version, 1);
   });
 
-  it("refuses a crafted snooze command for a pinned backfill gap", () => {
-    const { database, kernel } = harness();
+  it("refuses a crafted snooze command for a pinned backfill gap", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record({
       trigger: "backfill-gap",
       links: [],
@@ -157,8 +157,8 @@ afterEach(_afterEachFixture0);
     assert.equal(unchanged?.version, 1);
   });
 
-  it("refuses a crafted same-state mark-unread command for a pinned backfill gap", () => {
-    const { database, kernel } = harness();
+  it("refuses a crafted same-state mark-unread command for a pinned backfill gap", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record({
       trigger: "backfill-gap",
       links: [],
@@ -171,8 +171,8 @@ afterEach(_afterEachFixture0);
     assert.equal(database.authority.notifications.get(UUID_7)?.version, 1);
   });
 
-  it("marks read preserving the snooze, and unread preserving it too", () => {
-    const { database, kernel } = harness();
+  it("marks read preserving the snooze, and unread preserving it too", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record({
       snooze: { state: "snoozed", until: "2026-07-31T18:00:00.000Z" },
     }));
@@ -186,8 +186,8 @@ afterEach(_afterEachFixture0);
     assert.equal(database.authority.notifications.get(UUID_7)?.status, "unread");
   });
 
-  it("snoozes for one backend-clock hour, preserving read state, then unsnoozes", () => {
-    const { database, kernel } = harness();
+  it("snoozes for one backend-clock hour, preserving read state, then unsnoozes", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record({ status: "read", version: 1 }));
 
     const snoozed = kernel.execute(command("notification-snooze", 1));
@@ -203,8 +203,8 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(database.authority.notifications.get(UUID_7)?.snooze, { state: "not-snoozed" });
   });
 
-  it("rejects a stale version and a foreign actor", () => {
-    const { database, kernel } = harness();
+  it("rejects a stale version and a foreign actor", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record());
 
     const stale = kernel.execute(command("notification-read", 7));
@@ -223,15 +223,15 @@ afterEach(_afterEachFixture0);
 
 {
 
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
-const _afterEachFixture0 = () => {
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+const _afterEachFixture0 = async () => {
   const failures: unknown[] = [];
-  for (const profile of profiles.splice(0)) { try { profile.close(); } catch (error) { failures.push(error); } }
+  for (const profile of profiles.splice(0)) { try { await profile.close(); } catch (error) { failures.push(error); } }
   if (failures.length > 0) throw new AggregateError(failures, "notification publication fixture cleanup failed");
 };
 const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
-function harness() {
-  const profile = createBoundProfileFixture({ sharedMachine: true }); profiles.push(profile);
+async function harness() {
+  const profile = await createBoundProfileFixture({ sharedMachine: true }); profiles.push(profile);
   const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
   const path = profile.path;
   const open = () => AuthorityDatabase.open(profile.admission, { path, busyTimeoutMs: 250, migrationOwner: "notification-test" }, clock,
@@ -242,8 +242,8 @@ function harness() {
 describe("durable notification publication", () => {
 afterEach(_afterEachFixture0);
 
-  it.each(["before", "after"])("survives process death %s publication commit", boundary => {
-    const f = harness(); const initial = f.open(); initial.close();
+  it.each(["before", "after"])("survives process death %s publication commit", async boundary => {
+    const f = await harness(); const initial = f.open(); initial.close();
     const script = `
       import { AuthorityDatabase } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/sqlite/authority-database.ts"))};
       import { acquireEntrypointAdmission } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/admission/bootstrap-admission.ts"))};
@@ -272,7 +272,7 @@ afterEach(_afterEachFixture0);
     } finally { db.close(); }
   });
   it("adopts historical occurrences without resetting the existing operator row", async () => {
-    const f = harness(), db = f.open();
+    const f = await harness(), db = f.open();
     try {
       const inbox = f.inbox(db);
       const { projectNotificationTrigger } = await import("../../../../src/rules/notifications/notification-triggers.js");
@@ -289,7 +289,7 @@ afterEach(_afterEachFixture0);
     } finally { db.close(); }
   });
   it("retains a committed source without an OS delivery channel across restart", async () => {
-    const f = harness(); let db = f.open();
+    const f = await harness(); let db = f.open();
     try {
       const inbox = f.inbox(db);
       expect((await inbox.publish(event)).delivery.state).toBe("no-channel");
@@ -298,7 +298,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("commits one occurrence under concurrent replay and preserves read/snooze across restart", async () => {
-    const f = harness(); let db = f.open();
+    const f = await harness(); let db = f.open();
     try {
       const inbox = f.inbox(db);
       const reports = await Promise.all([inbox.publish(event), inbox.publish(event)]);
@@ -311,7 +311,7 @@ afterEach(_afterEachFixture0);
     } finally { db.close(); }
   });
   it("rolls back source and row together, then folds each distinct source once", async () => {
-    const f = harness(), db = f.open();
+    const f = await harness(), db = f.open();
     try {
       const inbox = f.inbox(db);
       const first = await inbox.publish(event);
@@ -335,7 +335,7 @@ describe("committed publication signal", () => {
   afterEach(world._afterEachFixture0);
   const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
   it("emits created and folded exactly once after the outer commit, excluding replay and state commands", async () => {
-    const { database } = world.harness();
+    const { database } = await world.harness();
     const inbox = createNotificationInbox({ authority: database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("f"), actorId: "local-operator" });
     const emitted: import("../../../../src/backend/runs/notifications/inbox.js").NotificationPublication[] = [];
     const dispose = inbox.onPublication(value => { assert(database.authority.notificationPublications.get(value.sourceId)); emitted.push(value); });
@@ -363,7 +363,7 @@ describe("committed publication signal", () => {
     assert.equal(emitted.length, 2);
   });
   it("discards both outer and nested rolled-back publications, permitting later retry after rollback", async () => {
-    const { database } = world.harness();
+    const { database } = await world.harness();
     const inbox = createNotificationInbox({ authority: database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("f"), actorId: "local-operator" });
     const emitted: unknown[] = []; inbox.onPublication(value => emitted.push(value));
     let pending: ReturnType<typeof inbox.publish> | undefined;

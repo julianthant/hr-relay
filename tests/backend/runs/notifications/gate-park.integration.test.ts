@@ -14,9 +14,9 @@ import { NOW,UUID_1,UUID_2 } from "../../../support/fixtures/phase1c-contract-fi
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 const PARK_A = { runId: UUID_1, workflowId: "separations", gateId: "identity-approval" } as const;
@@ -47,10 +47,10 @@ function recordingInbox(): {
   };
 }
 
-function realWorld() {
+async function realWorld() {
   const clock = manualClock(new Date(NOW));
-  const opened = openBoundDatabaseFixture("gate-park-test", clock);
-  disposers.push(() => opened.close());
+  const opened = await openBoundDatabaseFixture("gate-park-test", clock);
+  disposers.push(async () => await opened.close());
   const database = opened.database;
   seedSyntheticRuntimeConfig(database);
   const active = database.authority.runtimeConfig.get(); assert.ok(active);
@@ -159,7 +159,7 @@ describe("gate-park notifier: a park publishes on the transition, exactly once",
 
 describe("gate-park notifier: the durable row it actually writes", () => {
   it("lands ONE unread gate-waiting ping carrying a run link, and no second row", async () => {
-    const { database, inbox } = realWorld();
+    const { database, inbox } = await realWorld();
     const notifier = createGateParkNotifier({ inbox });
 
     const first = await notifier.observed([PARK_A]);
@@ -189,7 +189,7 @@ describe("gate-park notifier: the durable row it actually writes", () => {
 
 
   it("serves exact run and Storage destinations without diagnostic prose", async () => {
-    const { clock, inbox } = realWorld();
+    const { clock, inbox } = await realWorld();
     const notifier = createGateParkNotifier({ inbox });
     const first = await notifier.observed([PARK_A]);
     const parked = first.published[0]?.report.notification;

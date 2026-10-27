@@ -45,7 +45,7 @@ describe("failure, retry, and resume", () => {
         return output;
       },
     });
-    const first = executorHarness({ sessions: failingCrm, stores: registryWithCrmSearch(failingSearch) });
+    const first = await executorHarness({ sessions: failingCrm, stores: registryWithCrmSearch(failingSearch) });
     const { database, clock } = first.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const failed = await executeClaimedRun(first.deps, { ...claimed, signal: SIGNAL });
@@ -81,7 +81,7 @@ describe("failure, retry, and resume", () => {
       },
       crm: () => healthyCrmDriver(),
     });
-    const second = executorHarness({ sessions: healthySessions });
+    const second = await executorHarness({ sessions: healthySessions });
     // Reuse the FIRST authority database — the checkpoints live there.
     const secondDeps: RunExecutorDependencies = {
       ...second.deps,

@@ -6,8 +6,8 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { acquireInstallation } from "../../../../src/backend/storage/admission/installation.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-it("keeps registry entry lease freshness and scope refusal precedence", () => {
-  const profile = createBoundProfileFixture({ sharedMachine: true });
+it("keeps registry entry lease freshness and scope refusal precedence", async () => {
+  const profile = await createBoundProfileFixture({ sharedMachine: true });
   try {
     const directory = join(profile.workspace, ".tracker", "control", "leases");
     const before = new Set(readdirSync(directory));
@@ -45,5 +45,5 @@ it("keeps registry entry lease freshness and scope refusal precedence", () => {
       profile.admission.release();
       assert.throws(() => profile.admission.readProfileRegistry(), /missing or released admission/u);
     } finally { admission.release(); }
-  } finally { profile.close(); }
+  } finally { await profile.close(); }
 });

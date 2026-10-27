@@ -14,7 +14,7 @@ afterEach(() => { vi.restoreAllMocks(); cleanup(); });
 
 describe("worker run loop", () => {
   it("drains two queued items sequentially — one active item — and closes sessions at stop", async () => {
-    const harness = loopHarness();
+    const harness = await loopHarness();
     const { database } = harness.authority;
     database.authority.runs.enqueue(personLookupQueuedRun());
     database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_5, itemId: UUID_7 }));
@@ -45,7 +45,7 @@ describe("worker run loop", () => {
   });
 
   it("returns accumulated outcomes and a failed worker span when session closure is unproved", async () => {
-    const harness = loopHarness();
+    const harness = await loopHarness();
     harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());
     vi.spyOn(WorkerSessionManager.prototype, "closeAll").mockRejectedValue(
       new WorkerSessionClosureUnprovedError(EXECUTOR_WORKER_ID, [new Error("closure fixture")]),
@@ -58,7 +58,7 @@ describe("worker run loop", () => {
   });
 
   it("rejects unexpected closure errors and preserves loop failures", async () => {
-    const harness = loopHarness();
+    const harness = await loopHarness();
     const unexpected = new Error("unexpected close failure");
     const close = vi.spyOn(WorkerSessionManager.prototype, "closeAll").mockRejectedValue(unexpected);
     await assert.rejects(runWorkerLoop(harness.deps), error => error === unexpected);
@@ -100,7 +100,7 @@ describe("worker run loop", () => {
       },
       crm: () => healthyCrmDriver(),
     });
-    const harness = loopHarness({ sessions, heartbeatIntervalMs: 500 });
+    const harness = await loopHarness({ sessions, heartbeatIntervalMs: 500 });
     const { database, clock } = harness.authority;
     database.authority.runs.enqueue(personLookupQueuedRun());
 
@@ -140,7 +140,7 @@ describe("worker run loop", () => {
       }),
       crm: () => healthyCrmDriver(),
     });
-    const harness = loopHarness({ sessions });
+    const harness = await loopHarness({ sessions });
     const { database, clock } = harness.authority;
     database.authority.runs.enqueue(personLookupQueuedRun());
 

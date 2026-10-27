@@ -97,7 +97,7 @@ vi.mock("node:fs", async (importOriginal) => {
 
 afterEach(cleanup);
 
-function committedExplorer() {
+async function committedExplorer() {
   const descriptor = DESCRIPTORS.find(({ id }) => String(id) === "person-lookup");
   assert.ok(descriptor !== undefined);
   const request = ExplorerEditApplyRequestSchema.parse({
@@ -116,7 +116,7 @@ function committedExplorer() {
     },
     payload: { changes: [{ kind: "workflow-label", value: "Recovered people search" }] },
   });
-  const profile = createProfileFixture(manualClock(new Date(request.requestedAt)));
+  const profile = await createProfileFixture(manualClock(new Date(request.requestedAt)));
   const repoRoot = profile.workspace;
   const path = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "explorer-overrides.json");
   const override = ExplorerWorkflowOverrideSchema.parse({
@@ -133,7 +133,7 @@ function committedExplorer() {
   return { profile, repoRoot, path, request, override };
 }
 
-function explorerAudit(request: ReturnType<typeof committedExplorer>["request"]) {
+function explorerAudit(request: Awaited<ReturnType<typeof committedExplorer>>["request"]) {
   const target = { family: "explorer", workflowId: request.target.workflowId, revision: 1 } as const;
   return CommandAuditRecordSchema.parse({
     auditId: "99999999-9999-4999-8999-999999999999",
@@ -146,7 +146,7 @@ function explorerAudit(request: ReturnType<typeof committedExplorer>["request"])
 }
 
 function journalExplorer(
-  fixture: ReturnType<typeof committedExplorer>,
+  fixture: Awaited<ReturnType<typeof committedExplorer>>,
   request = fixture.request,
   audit: ReturnType<typeof explorerAudit> | null = explorerAudit(fixture.request),
 ): void {
@@ -194,7 +194,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("publishes a lease-only worker card from the real tail tick, before any span exists", async () => {
-    const profile = createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
+    const profile = await createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
     const repoRoot = profile.workspace;
     const runtime = await composeDashboardRuntime({
       ...profile.dashboardInput,
@@ -244,7 +244,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const pid = child.pid;
     let settleLifetime: (() => void) | undefined;
     let release: Promise<void> | undefined;
-    releaseWorker = () => {
+    releaseWorker = async () => {
       release ??= (async () => {
         if (child.connected) {
           await new Promise<void>((resolve, reject) => {
@@ -369,7 +369,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   }
 
   it.each(["GET", "validate"] as const)("serves one SQLite snapshot without unrelated file reads per Explorer %s request", async operation => {
-    const fixture = committedExplorer(); journalExplorer(fixture);
+    const fixture = await committedExplorer(); journalExplorer(fixture);
     for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) writeFileSync(`${fixture.path}${suffix}`, "unrelated bytes");
     const sql = observeExplorerSnapshot(join(fixture.profile.stateRoot, "state.db"));
     const runtime = await composeDashboardRuntime({ ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
@@ -396,7 +396,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   }, 20_000);
 
   it.each(["GET", "validate"] as const)("keeps the captured Explorer %s view across a concurrent commit and sees it on the next request", async operation => {
-    const fixture = committedExplorer(); journalExplorer(fixture);
+    const fixture = await committedExplorer(); journalExplorer(fixture);
     let committed: (() => void) | undefined;
     observeExplorerSnapshot(join(fixture.profile.stateRoot, "state.db"), () => committed?.());
     const runtime = await composeDashboardRuntime({ ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
@@ -433,7 +433,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   }, 20_000);
 
   it("applies and replays the complete Explorer command after a real runtime restart", async () => {
-    const fixture = committedExplorer();
+    const fixture = await committedExplorer();
     let runtime = await composeDashboardRuntime({ ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
       clock: manualClock(new Date(fixture.request.requestedAt)) });
     const send = (request: unknown) => {
@@ -456,7 +456,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
 
   it("plans new runs with saved settings without a dashboard restart", async () => {
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const profile = createProfileFixture(clock);
+    const profile = await createProfileFixture(clock);
     const repoRoot = profile.workspace;
     const runtime = await composeDashboardRuntime({
       ...profile.dashboardInput,
@@ -500,7 +500,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
 
   it("activates the exact persisted settings generation after a dashboard restart", async () => {
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const profile = createProfileFixture(clock);
+    const profile = await createProfileFixture(clock);
     const repoRoot = profile.workspace;
     let runtime = await composeDashboardRuntime({
       ...profile.dashboardInput,

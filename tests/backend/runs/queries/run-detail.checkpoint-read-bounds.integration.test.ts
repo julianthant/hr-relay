@@ -12,10 +12,10 @@ import { readTimelineRecords } from "../../../../src/backend/storage/events/time
 import { TimelinePageRequestSchema } from "../../../../src/models/events/timeline.js";
 
 const worlds: DashboardWorld[] = [];
-afterEach(() => { for (const world of worlds.splice(0)) world.dispose(); });
+afterEach(async () => { for (const world of worlds.splice(0)) await world.dispose(); });
 
-it("keeps checkpoint reads fixed as timeline nodes and checkpoint executions grow", () => {
-  const w = makeWorld();
+it("keeps checkpoint reads fixed as timeline nodes and checkpoint executions grow", async () => {
+  const w = await makeWorld();
   worlds.push(w);
   queuedEventOf(w, { seed: 1 });
   for (const attempt of [2, 3]) {

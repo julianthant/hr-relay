@@ -28,18 +28,18 @@ import { taskStoreRegistry } from "../../../src/backend/app/registries/task-regi
 
 const clock = manualClock(new Date("2026-10-11T10:00:00.000Z"));
 const credentialKey = FingerprintSchema.parse("ab".repeat(32));
-const fixtures: { root: string; database: AuthorityDatabase; profile: ReturnType<typeof createBoundProfileFixture>; processLockRoot: string }[] = [];
-afterEach(() => {
+const fixtures: { root: string; database: AuthorityDatabase; profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; processLockRoot: string }[] = [];
+afterEach(async () => {
   vi.restoreAllMocks();
   const failures: unknown[] = [];
   for (const { database, profile } of fixtures.splice(0)) {
     try { database.close(); } catch (error) { failures.push(error); continue; }
-    try { profile.close(); } catch (error) { failures.push(error); }
+    try { await profile.close(); } catch (error) { failures.push(error); }
   }
   if (failures.length > 0) throw new AggregateError(failures, "browser login fixture cleanup failed");
 });
-function fixture() {
-  const profile = createBoundProfileFixture(), root = profile.stateRoot;
+async function fixture() {
+  const profile = await createBoundProfileFixture(), root = profile.stateRoot;
   const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
   let database: AuthorityDatabase;
   try {
@@ -47,7 +47,7 @@ function fixture() {
       undefined, undefined, undefined, boundProfileCredentials(profile.admission));
   } catch (error) {
     const failures: unknown[] = [error];
-    try { profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+    try { await profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
     if (failures.length > 1) throw new AggregateError(failures, "fixture opening and cleanup failed", { cause: error });
     throw error;
   }
@@ -91,8 +91,8 @@ async function withSmokeWorker(database: AuthorityDatabase, operation: Parameter
 }
 
 describe("registered browser-login smoke lifecycle", () => {
-  it("reproduces the old unregistered worker FK refusal without touching live state", () => {
-    const { database } = fixture();
+  it("reproduces the old unregistered worker FK refusal without touching live state", async () => {
+    const { database } = await fixture();
     expect(() => database.authority.duoCeremonyLeases.acquire({ credentialKey, workerId: "live-smoke-worker-1",
       system: "ucpath", now: clock.now().toISOString(), ttlMs: 80000 })).toThrow(/FOREIGN KEY constraint failed/u);
     expect(database.authority.workerSlots.list()).toEqual([]);
@@ -100,7 +100,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("admits exactly one fresh identity, uses it for the real lease FK, releases and retires it", async () => {
-    const { database, gates } = fixture();
+    const { database, gates } = await fixture();
     await withSmokeWorker(database, async (slot, ownedGates) => {
       expect(database.authority.workerSlots.list()).toEqual([slot]);
       const gate = gates.openGate({ workerId: slot.workerId, system: "ucpath", envelopeDeadlineMonotonicMs: 60000,
@@ -120,7 +120,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("preserves peers and restores the declared count after allocating its own global ordinal", async () => {
-    const { database, plan, allocate } = fixture();
+    const { database, plan, allocate } = await fixture();
     const peers = database.withAuthorityTransaction(() => { plan(2); return [allocate(1), allocate(3)]; });
     const pool = database.authority.workerPools.get("person-lookup");
     await withSmokeWorker(database, async slot => {
@@ -134,7 +134,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("adds a fourth temporary member without changing peers and restores the count", async () => {
-    const { database, plan, allocate } = fixture();
+    const { database, plan, allocate } = await fixture();
     const peers = database.withAuthorityTransaction(() => { plan(3); return [allocate(1), allocate(2), allocate(3)]; });
     const pool = database.authority.workerPools.get("person-lookup");
     let operated = false;
@@ -151,7 +151,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("refuses inconsistent historical roster authority before the operation", async () => {
-    const { database, plan } = fixture();
+    const { database, plan } = await fixture();
     plan(2);
     const before = database.authority.workerPools.get("person-lookup");
     let operated = false;
@@ -162,7 +162,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("retires after setup failure before any gate opens", async () => {
-    const { database } = fixture();
+    const { database } = await fixture();
     const failure = new Error("offline setup failed");
     await expect(withSmokeWorker(database, async () => { throw failure; }, clock)).rejects.toBe(failure);
     expect(database.authority.workerSlots.list()).toHaveLength(1);
@@ -170,7 +170,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("disposes a retained Duo lease before retirement when login throws", async () => {
-    const { database, gates } = fixture();
+    const { database, gates } = await fixture();
     const failure = new DuoTerminalRefusalError("ucpath", "offline refusal", "https://example.test");
     await expect(withSmokeWorker(database, async (slot, ownedGates) => {
       const gate = gates.openGate({ workerId: slot.workerId, system: "ucpath", envelopeDeadlineMonotonicMs: 60000,
@@ -187,7 +187,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("releases its held gate but preserves the slot when browser closure is unproved", async () => {
-    const { database, gates, plan, allocate } = fixture();
+    const { database, gates, plan, allocate } = await fixture();
     const peer = database.withAuthorityTransaction(() => { plan(1); return allocate(1); });
     const pool = database.authority.workerPools.get("person-lookup");
     const login = new DuoTerminalRefusalError("ucpath", "offline refusal", "https://example.test");
@@ -209,7 +209,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("preserves the slot when factory setup and closure fail before session registration", async () => {
-    const { database, plan, allocate } = fixture();
+    const { database, plan, allocate } = await fixture();
     const peer = database.withAuthorityTransaction(() => { plan(1); return allocate(1); });
     const setup = new Error("offline context setup failed");
     const close = new Error("offline unregistered context closure failed");
@@ -230,8 +230,8 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(database.authority.workerPools.get("person-lookup")?.desiredWorkers).toBe(2);
   });
 
-  it("retires only a recorded smoke slot after immutable closure proof and parent release", () => {
-    const { root, database, plan, allocate } = fixture();
+  it("retires only a recorded smoke slot after immutable closure proof and parent release", async () => {
+    const { root, database, plan, allocate } = await fixture();
     const peer = database.withAuthorityTransaction(() => { plan(1); return allocate(1); });
     const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
@@ -262,8 +262,8 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(cleanup).toThrow(SmokeSlotOwnershipUnavailableError);
   });
 
-  it("refuses historical process-only claims, unknown closure, active owners and held leases", () => {
-    const { root, database, plan } = fixture();
+  it("refuses historical process-only claims, unknown closure, active owners and held leases", async () => {
+    const { root, database, plan } = await fixture();
     plan(0);
     const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
@@ -285,8 +285,8 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(database.authority.workerSlots.get(slot.workerId)).toEqual({ ...slot, phase: "waiting" });
   });
 
-  it("keeps corrupted, linked or changed ownership records fail-loud", () => {
-    const { root, database, plan } = fixture();
+  it("keeps corrupted, linked or changed ownership records fail-loud", async () => {
+    const { root, database, plan } = await fixture();
     plan(0);
     const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
@@ -314,7 +314,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("never records closure after a generic launcher rejection leaves profile custody unknown", async () => {
-    const { root: stateRoot, database, gates } = fixture();
+    const { root: stateRoot, database, gates } = await fixture();
     const scheduler = new ManualScheduler(clock);
     const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
     await helpers.withTempRuntime(async ({ config }) => {
@@ -371,7 +371,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("performs one manager/factory fresh-profile recovery under its own retained Duo lease", async () => {
-    const { database, gates } = fixture();
+    const { database, gates } = await fixture();
     const scheduler = new ManualScheduler(clock);
     const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
     await helpers.withTempRuntime(async ({ config: originalConfig, root }) => {
@@ -435,7 +435,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("times out a real manager/factory acquisition and removes its slot, profile and lease", async () => {
-    const { database, gates } = fixture();
+    const { database, gates } = await fixture();
     const scheduler = new ManualScheduler(clock);
     const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
     await helpers.withTempRuntime(async ({ config: originalConfig, root }) => {
@@ -507,8 +507,8 @@ describe("registered browser-login smoke lifecycle", () => {
     });
   });
 
-  it("binds claim creation and profile admission to the native acquisition", () => {
-    const { root, database } = fixture();
+  it("binds claim creation and profile admission to the native acquisition", async () => {
+    const { root, database } = await fixture();
     const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     try {
@@ -533,7 +533,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("re-admits only its exact already-admitted profile once for fresh-profile recovery", async () => {
-    const { root, database } = fixture();
+    const { root, database } = await fixture();
     const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     try {
@@ -561,7 +561,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("refuses unowned existing, linked and nonprivate smoke profiles", async () => {
-    const { root, database } = fixture();
+    const { root, database } = await fixture();
     const processLockRoot = fixtureOwner(database).processLockRoot;
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     try {
@@ -678,7 +678,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("keeps cleanup failure visible and never retires while its gate remains held", async () => {
-    const { database } = fixture();
+    const { database } = await fixture();
     const failure = new DuoTerminalRefusalError("ucpath", "offline refusal", "https://example.test");
     const cleanup = new Error("offline gate release failed");
     const gates = createDuoCeremonyGateFactory({

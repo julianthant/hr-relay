@@ -81,8 +81,8 @@ describe("workflow definition registry conformance", () => {
     }
   });
 
-  it("serves every definition-backed workflow through the existing bootstrap/start, detail timeline, and Explorer projections", () => {
-    const world = makeWorld();
+  it("serves every definition-backed workflow through the existing bootstrap/start, detail timeline, and Explorer projections", async () => {
+    const world = await makeWorld();
     try {
       const bootstrap = buildBootstrap({
         appVersion: "0.1.0",
@@ -148,7 +148,7 @@ describe("workflow definition registry conformance", () => {
         })));
       }
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
@@ -183,7 +183,7 @@ describe("workflow definition registry conformance", () => {
 /** Real SQLite summary consumers through their independently composed HTTP/read ports. */
 describe("composed Activity and Queue boundaries", () => {
   it("serves JSON and CSV from the same bounded Activity query and pages Queue independently", async () => {
-    const f = foundationFixture();
+    const f = await foundationFixture();
     try {
       f.db.withAuthorityTransaction(() => {
         for (let n = 0; n < 7; n += 1) f.db.authority.runs.enqueue(RunRecordSchema.parse({ ...f.run,
@@ -225,7 +225,7 @@ describe("composed Activity and Queue boundaries", () => {
         assert.notEqual((await app.request(path)).status, 200, "a missing or reversed range cannot become a default report");
       }
       assert.throws(() => queue.queue({ fromDay: to, toDay: "2026-09-08", limit: 2, topLevel: true }), /range-invalid/u);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });
 }

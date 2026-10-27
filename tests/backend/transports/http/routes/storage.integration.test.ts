@@ -10,7 +10,7 @@ import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-execu
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves the read-only storage doctor on demand (2i-D)", async () => {
-    const h = harness();
+    const h = await harness();
     const response = await h.app.request("/api/v1/storage/doctor");
     assert.equal(response.status, 200);
     const report = StorageDoctorWireSchema.parse(await response.json());
@@ -50,7 +50,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("serves a sanitized span-stream structural diagnosis through the real storage doctor", async () => {
-    const h = harness();
+    const h = await harness();
     const run = RunRecordSchema.parse(personLookupQueuedRun({ runId: RUN_ID }));
     h.database.authority.runs.enqueue(run);
     createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock, pid: 4242 }).emit({

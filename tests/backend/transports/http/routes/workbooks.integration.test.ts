@@ -7,7 +7,7 @@ afterEach(disposeHttpRouteHarness);
 const headers = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
 const workbook = { name: "Dates.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Dates", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: new Date("2026-01-01T00:00:00.000Z") }] }] }] };
 it("serves create/list/open/save/conflict/history with exact Date transport and durable CAS", async () => {
-  const h = harness();
+  const h = await harness();
   const created = await h.app.request("http://localhost/api/v1/workbooks", { method: "POST", headers, body: JSON.stringify({ workbook: encodeEditableWorkbook(workbook) }) });
   assert.equal(created.status, 201);
   const first = decodeSavedWorkbook(await created.json());
@@ -23,12 +23,12 @@ it("serves create/list/open/save/conflict/history with exact Date transport and 
   assert.deepEqual((await (await h.app.request(`${path}/history`)).json() as unknown[]).map(decodeSavedWorkbook), [first, second]);
 });
 it.each(["/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake"])("requires JSON before effects for %s", async path => {
-  const h = harness(), generation = h.database.getMeta().authorityGeneration;
+  const h = await harness(), generation = h.database.getMeta().authorityGeneration;
   const response = await h.app.request(`http://localhost${path}`, { method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "text/plain" }, body: "{}" });
   assert.equal(response.status, 415); assert.equal(h.database.getMeta().authorityGeneration, generation);
 });
 it.each(foreignOriginCases())("rejects foreign workbook mutation %s before reading the body", async (_label, originHeaders) => {
-  const h = harness();
+  const h = await harness();
   for (const path of ["/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake"]) {
     const request = new Request(`http://localhost${path}`, { method: "POST", headers: { ...originHeaders, "content-type": "application/json" }, body: "{}" });
     const read = vi.spyOn(request, "json");
@@ -37,7 +37,7 @@ it.each(foreignOriginCases())("rejects foreign workbook mutation %s before readi
 });
 
 it("refuses malformed workbook dates and dimensions with WORKBOOK_INVALID before library effects", async () => {
-  const h = harness();
+  const h = await harness();
   const wire = encodeEditableWorkbook(workbook);
   for (const malformed of [
     { ...wire, sheets: [{ ...wire.sheets[0], width: 2 }] },

@@ -29,7 +29,7 @@ describe("worker-browser arms", () => {
   }
 
   it("plans worker capacity under activated settings without spawning an unreviewed worker", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     applyCurrentSettings(harness);
     const result = await harness.kernel.executeWorkerPool(workerCommand("plan-worker-count", { workflowId: "kernel-reject", expectedVersion: 0 }, { desiredWorkers: 2 }));
     assert.equal(result.state, "applied");
@@ -38,7 +38,7 @@ describe("worker-browser arms", () => {
   });
 
   it("writes pause/resume directives and reserves Stop for owner reset against exact membership", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "kernel.sqlite"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
     const workerId = harness.database.authority.workerSlots.list(rejectActiveDescriptor.id)[0].workerId;
 
@@ -60,7 +60,7 @@ describe("worker-browser arms", () => {
   });
 
   it("delegates plan/spawn/refresh/reopen to the typed runtime seam after authority validation", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
 
     const planned = await harness.kernel.executeWorkerPool(workerCommand(
       "plan-worker-count",
@@ -124,7 +124,7 @@ describe("worker-browser arms", () => {
   });
 
   it("plan/spawn CAS against the durable POOL version and refuse a stale one by name, before the runtime seam", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     // No row yet: the basis is 0, and citing 1 is told so — with the current version.
     const unplanned = await harness.kernel.executeWorkerPool(workerCommand(
       "plan-worker-count",

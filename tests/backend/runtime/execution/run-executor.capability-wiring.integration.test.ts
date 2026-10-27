@@ -56,7 +56,7 @@ function terminalFailure(database: AuthorityDatabase) {
 
 describe("executor capability wiring refusals", () => {
   it("refuses a providers-declaring contract when the composition wires no admitted client", async () => {
-    const harness = wiringHarness(providersDescriptor, registryFor(providersOnlyTask));
+    const harness = await wiringHarness(providersDescriptor, registryFor(providersOnlyTask));
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(providersDescriptor));
     const claimed = claim(harness.authority, providersDescriptor);
@@ -69,7 +69,7 @@ describe("executor capability wiring refusals", () => {
   });
 
   it("refuses an artifacts-declaring contract when the composition wires no writer", async () => {
-    const harness = wiringHarness(artifactsDescriptor, registryFor(artifactsOnlyTask));
+    const harness = await wiringHarness(artifactsDescriptor, registryFor(artifactsOnlyTask));
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(artifactsDescriptor));
     const claimed = claim(harness.authority, artifactsDescriptor);

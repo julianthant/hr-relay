@@ -40,7 +40,7 @@ import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 {
 
 it.each(["poolIndex", "membershipRevision"] as const)("refuses an altered same-id spawned member %s before stop effects", async field => {
-  const fixture = foundationFixture();
+  const fixture = await foundationFixture();
   const slot = fixture.db.authority.workerSlots.list("person-lookup")[0];
   assert.ok(slot);
   const member = workerPoolMember(slot);
@@ -98,7 +98,7 @@ it.each(["poolIndex", "membershipRevision"] as const)("refuses an altered same-i
     assert.deepEqual(terminal.lifecycle, { state: 'terminal', outcome: 'cancelled', endedAt: now });
     assert.equal(fixture.db.authority.runs.listByWorker(claim.workerId).some(owned => runClaim(owned) !== undefined), false);
     assert.doesNotThrow(() => fixture.db.assertWorkerLifecycleRelease(claim.workerId));
-    fixture.dispose();
+    await fixture.dispose();
   } catch (error) { cleanupFailures.push(error); }
   if (primary !== undefined) {
     if (cleanupFailures.length !== 0) throw new AggregateError([primary.error, ...cleanupFailures], 'supervisor-fixture-cleanup-failed', { cause: primary.error });
@@ -119,8 +119,8 @@ async function waitFor(test: () => boolean, message: string, diagnostics: () => 
 
 it("retires a real worker only after its opened Chromium profile closes, custody releases and the slot directory is deleted", async () => {
   const world = createDashboardPortTestWorld(() => undefined, releaseAdmissionFixtures);
-  let profile: ReturnType<typeof world.createProfileFixture>;
-  try { profile = world.createProfileFixture(systemClock); }
+  let profile: Awaited<ReturnType<typeof world.createProfileFixture>>;
+  try { profile = await world.createProfileFixture(systemClock); }
   catch (primary) {
     let cleanupFailure: { error: unknown } | undefined = undefined;
     try { await world.cleanup(); } catch (error) { cleanupFailure = { error }; }

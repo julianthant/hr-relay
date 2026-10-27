@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 describe("the seven-beat happy path", () => {
   it("probes, prepares, binds, fences before the click, and settles beat ⑦ atomically", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.onCommitClick = () => {

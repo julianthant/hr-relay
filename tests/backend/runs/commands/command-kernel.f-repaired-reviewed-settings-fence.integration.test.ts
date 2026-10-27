@@ -13,8 +13,8 @@ afterEach(() => {
 
 
 describe("F repaired reviewed settings fence", () => {
-  it("requires a fresh review without consuming a plan after active settings change", () => {
-    const h = createHarness();
+  it("requires a fresh review without consuming a plan after active settings change", async () => {
+    const h = await createHarness();
     const plan = createPlan(h, rejectActiveDescriptor, ["10800000"]);
     applyCurrentSettings(h);
     const result = h.kernel.execute(startCommand(plan));

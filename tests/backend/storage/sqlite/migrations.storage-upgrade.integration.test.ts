@@ -10,8 +10,8 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 const cleanups: Array<() => void> = [];
 const clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
-function fresh() {
-  const f = storageRecoveryFixture();
+async function fresh() {
+  const f = await storageRecoveryFixture();
   cleanups.push(f.dispose);
   return f;
 }
@@ -33,13 +33,13 @@ describe("stopped native SQLite initialization", () => {
       new URL("../../../../docs/rebuild/reference/clock-config-secrets.md", import.meta.url), "utf8",
     ).match(/CURRENT_AUTHORITY_SCHEMA_VERSION = (\d+)/u)?.[1]);
     assert.equal(versionInReference, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    const f = fresh(); const before = storageTree(f.root);
+    const f = await fresh(); const before = storageTree(f.root);
     assert.deepEqual(await f.run(true), { state: "planned", fromSchemaVersion: 0,
       toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
     assert.deepEqual(storageTree(f.root), before);
     assert.equal((await f.run()).state, "initialized");
     assert.equal(existsSync(`${f.root}/credentials`), false);
-    f.finish();
+    await f.finish();
     const db = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "upgrade-readback" }, clock);
     try { assert.equal(db.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { db.close(); }
     const bytes = readFileSync(f.path); const admitted = rows(f.path);

@@ -24,7 +24,7 @@ async function settleOwnedReset(harness: ControlHarness, commandId: string) {
   assert.ok(reset, "the command must retain its exact reset binding");
   const sessions = new WorkerSessionManager({ workerId: reset.member.workerId, workflowId: reset.member.workflowId,
     resetOwner: { member: reset.member, lifetime: reset.lifetime }, stores: taskStoreRegistry, factory: { open: async () => { throw new Error("browserless reset must not acquire"); } },
-    clock: harness.clock, scheduler: harness.scheduler, acquireDeadlineMs: 1000, duoCeremony: fixtureDuoCeremonyGates(harness.clock) });
+    clock: harness.clock, scheduler: harness.scheduler, acquireDeadlineMs: 1000, duoCeremony: await fixtureDuoCeremonyGates(harness.clock) });
   const lifecycle = new RunRecordService({ database: harness.database, clock: harness.clock,
     ids: sequentialIdFactory("e"), publishQueued: () => { throw new Error("reset must not queue work"); } });
   await createWorkerResetControl({ database: harness.database, workerId: reset.member.workerId,
@@ -36,7 +36,7 @@ async function settleOwnedReset(harness: ControlHarness, commandId: string) {
 describe("the composed worker process control through the kernel pool door", () => {
 
   it("binds Stop to the command instant and confirms only the exact owner's durable idle reset", async () => {
-    const harness = openControlHarness(); await spawnPoolWorker(harness);
+    const harness = await openControlHarness(); await spawnPoolWorker(harness);
     harness.clock.advanceWall(5_000);
     const stopAt = harness.clock.now().toISOString(), commandId = nextCommandId();
     const command = { ...envelope(harness, commandId), type: "stop-worker" as const,
@@ -63,7 +63,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("plans only after validation, and writes the desired count from the command — never from the ack path", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     // A stale CAS basis refuses BEFORE the supervisor is consulted: no pool
     // row, no journal row, no process effect.
     const staleId = nextCommandId();
@@ -98,7 +98,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("serializes concurrent pool plans: the loser refuses before any directive or escalation effect lands", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     await spawnPoolWorker(harness, MEMBER_1);
     await spawnPoolWorker(harness, MEMBER_2);
 
@@ -141,7 +141,7 @@ describe("the composed worker process control through the kernel pool door", () 
 
   it("maps a phase-C pool CAS loss to a typed conflict naming the already-executed effect", async () => {
     let effectCalls = 0;
-    const harness = openControlHarness({
+    const harness = await openControlHarness({
       interceptPool: (pool, edges) => ({
         ...pool,
         planPoolWorkerCount: async (context) => {
@@ -181,7 +181,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it.each(["admitted", "executing"] as const)("reconciles an expired %s command without delivering its effect again", async state => {
-    const harness = openControlHarness(); await spawnPoolWorker(harness);
+    const harness = await openControlHarness(); await spawnPoolWorker(harness);
     const commandId = nextCommandId(); const request = { ...envelope(harness, commandId), type: "pause-worker" as const,
       target: { workerId: WORKER_1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) } };
     harness.database.withAuthorityTransaction(r => {
@@ -203,7 +203,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("rolls reset settlement back on audit loss and replays the exact completed reset without a supervisor", async () => {
-    const harness = openControlHarness(); await spawnPoolWorker(harness);
+    const harness = await openControlHarness(); await spawnPoolWorker(harness);
     const commandId = nextCommandId(), command = { ...envelope(harness, commandId), type: "stop-worker" as const,
       target: { workerId: WORKER_1, membershipRevision: MEMBER_1.membershipRevision, expectedVersion: 1,
         controlBasis: servedControlBasis(harness.database, WORKER_1) }, reason: "shift over" };
@@ -236,7 +236,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("does not identify an unjournaled historical stop by matching actor and reason", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     assert.equal(admitExternalSlot(harness), WORKER_1);
     harness.database.authority.workerLeases.start({ workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
       processId: process.pid, requestedBy: "local-operator", now: NOW });
@@ -253,7 +253,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("refuses a new same-identity stop against a dead lease's stale directive: invalid-state, never applied", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     assert.equal(admitExternalSlot(harness), WORKER_1);
     // A COMPLETED stop, all the way through the worker's own death: the lease
     // carries the stop directive that stopped it and the lifecycle is stopped.
@@ -292,7 +292,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("refuses actor, reason and instant drift under the same retained command identity before effects", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     await spawnPoolWorker(harness);
     const commandId = nextCommandId();
     const command = { ...envelope(harness, commandId), type: "pause-worker" as const,
@@ -314,7 +314,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("audits reset settlement's own lease versions, not later unrelated heartbeats", async () => {
-    const harness = openControlHarness(); await spawnPoolWorker(harness, MEMBER_1);
+    const harness = await openControlHarness(); await spawnPoolWorker(harness, MEMBER_1);
     const commandId = nextCommandId(), command = { ...envelope(harness, commandId), type: "stop-worker" as const,
       target: { workerId: WORKER_1, membershipRevision: MEMBER_1.membershipRevision, expectedVersion: 1,
         controlBasis: servedControlBasis(harness.database, WORKER_1) } };
@@ -333,7 +333,7 @@ describe("the composed worker process control through the kernel pool door", () 
   });
 
   it("drives the composed pause→resume round-trip: durable directives at the command's now, versioned and audited", async () => {
-    const harness = openControlHarness();
+    const harness = await openControlHarness();
     await spawnPoolWorker(harness, MEMBER_1);
 
     const pauseAt = harness.clock.now().toISOString();

@@ -7,20 +7,20 @@ import { CONFIG_SNAPSHOT,NOW } from "../../support/fixtures/phase1c-contract-fix
 import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { openBoundDatabaseFixture } from "../../support/helpers/admission-fixture.js";
 
-const closers: (() => void)[] = [];
-function open(): ReturnType<typeof openBoundDatabaseFixture>["database"] {
-  const opened = openBoundDatabaseFixture("unit-test", manualClock(new Date(NOW)));
-  closers.push(() => opened.close());
+const closers: (() => void | Promise<void>)[] = [];
+async function open(): Promise<Awaited<ReturnType<typeof openBoundDatabaseFixture>>["database"]> {
+  const opened = await openBoundDatabaseFixture("unit-test", manualClock(new Date(NOW)));
+  closers.push(async () => await opened.close());
   if (opened.database.authority.runtimeConfig.get() === undefined) opened.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   return opened.database;
 }
-afterEach(() => {
-  for (const close of closers.splice(0)) close();
+afterEach(async () => {
+  for (const close of closers.splice(0)) await close();
 });
 
 describe("worker_pools — the CAS basis the spawn control needs (§11.5)", () => {
-  it("reads a workflow with no row as version 0, and the first plan creates the row at version 1", () => {
-    const database = open();
+  it("reads a workflow with no row as version 0, and the first plan creates the row at version 1", async () => {
+    const database = await open();
     assert.equal(database.authority.workerPools.get(WORKFLOW_ID), undefined);
     assert.equal(workerPoolVersion(database.authority.workerPools.get(WORKFLOW_ID)), 0);
 

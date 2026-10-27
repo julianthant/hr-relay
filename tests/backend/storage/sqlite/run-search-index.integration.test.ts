@@ -11,8 +11,8 @@ import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-ad
 
 const retainedCorruptionOwners = new Set<object>();
 
-it("refuses a missing genuine permanent successful start audit before nonmatching reads or unrelated mutation", () => {
-  const h = sourceBoundHarness();
+it("refuses a missing genuine permanent successful start audit before nonmatching reads or unrelated mutation", async () => {
+  const h = await sourceBoundHarness();
   const held: { h: typeof h; database?: AuthorityDatabase; raw?: DatabaseSync; primary?: { error: unknown } } = { h };
   retainedCorruptionOwners.add(held);
   try {
@@ -93,7 +93,7 @@ it("refuses a missing genuine permanent successful start audit before nonmatchin
     assert.deepEqual(h.world.events, []);
     raw.close();
     database.close();
-    h.dispose();
+    await h.dispose();
     retainedCorruptionOwners.delete(held);
   } catch (error) {
     held.primary = { error };

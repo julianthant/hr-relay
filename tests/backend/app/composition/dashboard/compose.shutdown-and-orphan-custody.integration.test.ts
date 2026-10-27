@@ -27,7 +27,7 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
     "two real children over the real ingress; internal child shutdown, dashboard shutdown with one live child, then PID-proved teardown",
     async () => {
       reportW5Phase("runtime-shutdown", "startup", "begin");
-      const profile = createBoundProfileFixture({ sharedMachine: true }), repoRoot = profile.workspace;
+      const profile = await createBoundProfileFixture({ sharedMachine: true }), repoRoot = profile.workspace;
       copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
       copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
       const stateRoot = profile.stateRoot;
@@ -40,8 +40,8 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
         `${record.member.workerId}: ${record.output.join("")}`).join("\n");
 
       const profileRuntime = composeProfileRuntime({ admission: profile.machine, clock: systemClock, hostFacts: { primaryDisplay: null }, processLockRoot: lockRoot });
-      cleanups.push(async () => { await profileRuntime.close(); profile.close(); });
-      const active = profileRuntime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
+      cleanups.push(async () => { await profileRuntime.close(); await profile.close(); });
+      const active = profileRuntime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
       assert.equal(active.state, "active");
       if (active.state !== "active") throw new Error("fixture-profile-sign-in-refused");
       const context = profileRuntime.selectedContext(active.token);

@@ -12,7 +12,7 @@ import { createBoundProfileFixture } from "../../../../support/helpers/admission
 import { chatGptFixture, completedOcrStream } from "../../../../support/helpers/chatgpt-account-fixtures.js";
 
 it("the actual selected dashboard Test OCR uses its account, fixed page and shared reader without a workflow execution", async () => {
-  const profile = createBoundProfileFixture(), transport = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture(), transport = await chatGptFixture(profile.admission);
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(profile.workspace, file));
   const createAccount = accounts.createChatGptAccountService;
   let account: accounts.ChatGptAccountService | undefined, app: DashboardApp | undefined;
@@ -21,7 +21,7 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
   });
   const runtime = composeProfileRuntime({ admission: profile.machine, clock: transport.clock, hostFacts: { primaryDisplay: null },
     processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot) });
-  const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: transport.clock.now().toISOString() });
+  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: transport.clock.now().toISOString() });
   assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("synthetic selected context required");
   let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
@@ -87,5 +87,5 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     assert.equal(context.database.getMeta().authorityGeneration, generation);
     assert.equal(factory.mock.calls[0]?.[0].admission, context.admission);
     assert.equal(factory.mock.calls[0]?.[0].stateRoot, profile.stateRoot);
-  } finally { if (dashboard !== undefined) await dashboard.stop(); else await runtime.close(); factory.mockRestore(); await transport.cleanup(); profile.close(); }
+  } finally { if (dashboard !== undefined) await dashboard.stop(); else await runtime.close(); factory.mockRestore(); await transport.cleanup(); await profile.close(); }
 });

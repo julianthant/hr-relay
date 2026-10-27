@@ -18,7 +18,7 @@ import { trustWorld } from "../../../support/helpers/backend/trust-authority-fix
 
 describe("diagnostic byte retention", () => {
   it("retains shared pinned bytes and removes only unreferenced expired bytes", async () => {
-    const w = trustWorld();
+    const w = await trustWorld();
     try {
       const run = w.create(820); w.cancel(run, 821);
       const artifacts = createContentAddressedArtifactWriter({ admission: w.profile.admission }); await artifacts.ready;
@@ -34,7 +34,7 @@ describe("diagnostic byte retention", () => {
       assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${shared.attachments[0]?.digest}.artifact`)), true);
       assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${alone.attachments[0]?.digest}.artifact`)), false);
       assert.equal(w.database.authority.diagnosticBundles.get(pinned.bundleId)?.availability, undefined);
-    } finally { w.dispose(); }
+    } finally { await w.dispose(); }
   });
 });
 }

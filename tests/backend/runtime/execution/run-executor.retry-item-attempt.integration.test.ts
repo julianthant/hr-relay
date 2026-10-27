@@ -119,15 +119,15 @@ function unreachable(arm: string): () => never {
 }
 
 
-function harness(): Readonly<{
+async function harness(): Promise<Readonly<{
   database: AuthorityDatabase;
   now: () => string;
   emitter: ReturnType<typeof recordingEmitter>;
   deps: RunExecutorDependencies;
   ucpathOpens: () => number;
   kernel: ReturnType<typeof createCommandKernel>;
-}> {
-  const authority = openAuthorityHarness();
+}>> {
+  const authority = await openAuthorityHarness();
   testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: retryDescriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const sessions = sessionFactoryHarness({
@@ -146,7 +146,7 @@ function harness(): Readonly<{
     descriptor: retryDescriptor,
     stores: taskStoreRegistry,
     authority: authority.database,
-    sessions: sessionManagerFor(sessions, authority.clock),
+    sessions: await sessionManagerFor(sessions, authority.clock),
     emitter: emitter.emitter,
     clock: authority.clock,
     ids: sequentialIdFactory("e"),
@@ -234,7 +234,7 @@ function retryCommand(runId: string, expectedVersion: number) {
 }
 
 /** Run the whole failing first run, then take the REAL retry command. */
-function failThenRetry(h: ReturnType<typeof harness>): Promise<Readonly<{
+function failThenRetry(h: Awaited<ReturnType<typeof harness>>): Promise<Readonly<{
   first: RunRecord;
   retried: RunRecord;
 }>> {
@@ -261,7 +261,7 @@ function failThenRetry(h: ReturnType<typeof harness>): Promise<Readonly<{
 
 describe("a retry re-executes an always-rerun node without colliding", () => {
   it("walks fail → retry → terminal done, storing BOTH executions of the item", async () => {
-    const h = harness();
+    const h = await harness();
     const { first, retried } = await failThenRetry(h);
 
     assert.equal(retried.envelope.retryOf, RUN_ID);
@@ -323,7 +323,7 @@ describe("a retry re-executes an always-rerun node without colliding", () => {
   });
 
   it("makes the two runs' executions distinguishable in the span stream", async () => {
-    const h = harness();
+    const h = await harness();
     const { first, retried } = await failThenRetry(h);
     const second = claim(h.database, h.now());
     assert.equal((await executeClaimedRun(h.deps, { ...second, signal: SIGNAL })).state, "done");
@@ -341,7 +341,7 @@ describe("a retry re-executes an always-rerun node without colliding", () => {
   });
 
   it("refuses the PRE-FIX shape at the door, with the immutable insert still underneath", async () => {
-    const h = harness();
+    const h = await harness();
     const { first, retried } = await failThenRetry(h);
     const itemId = first.envelope.itemId;
 

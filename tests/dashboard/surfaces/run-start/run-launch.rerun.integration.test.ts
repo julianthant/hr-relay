@@ -10,7 +10,7 @@ import { absentProbeEvidence } from "../../../support/fixtures/write-sequencer-f
 
 const { setup, text, button, press, checkbox, field, fill, mount, cleanup } = createMountedRerunWorld();
 afterEach(cleanup);
-type Harness = ReturnType<typeof setup>;
+type Harness = Awaited<ReturnType<typeof setup>>;
 
 function sourceBytes(h: Harness, source: RunRecord) { return JSON.stringify({ run: h.fresh(source),
   checkpoints: h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId).filter((row) => row.runId === source.envelope.runId),
@@ -18,7 +18,7 @@ function sourceBytes(h: Harness, source: RunRecord) { return JSON.stringify({ ru
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
   it.each(["fingerprint", "version", "steps"] as const)("opens an earlier %s source with current defaults and accepted input", async change => {
-    const h = setup(); const source = await h.completeSource();
+    const h = await setup(); const source = await h.completeSource();
     h.registerDescriptor(launchDescriptor("reject-active", { fingerprint: "b".repeat(64),
       ...(change === "version" ? { version: 2 } : {}), ...(change === "steps" ? { stepPrefix: "current-" } : {}) }));
     await mount(h, source);
@@ -27,7 +27,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await press("Confirm"); assert.equal(field("Employee ID").value, "10812345");
   });
   it("selects completed steps again after a fingerprint-only change on a failed source", async () => {
-    const h = setup(); const queued = h.start(h.proposal());
+    const h = await setup(); const queued = h.start(h.proposal());
     h.world.onPrepare = () => { throw new Error("synthetic prepare failure"); };
     assert.equal((await h.execute(queued)).state, "failed"); delete h.world.onPrepare;
     const source = h.fresh(queued);
@@ -37,7 +37,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await press("Continue"); assert.equal(field("Employee ID").value, "10812345");
   });
   it("submits an earlier source as a new current run with repeat consent and fresh evidence", async () => {
-    const h = setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
+    const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
     h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
     await mount(h, source); await press("Continue");
     assert.match(text(), /already submitted/u); assert.equal(h.finalCommands.length, 0);
@@ -62,7 +62,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   });
 
   it("submits Rerun without offering or retaining a worker choice", async () => {
-    const h = setup();
+    const h = await setup();
     const selectedStepKeys = h.descriptor.timeline.map(step => step.key);
     const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }],
       dryRun: false, selectedStepKeys });
@@ -75,7 +75,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.match(text(), /Review the plan/u);
   });
   it("warns before Values exist, Cancel returns to Steps and Confirm only advances; final dry run executes fresh work", async () => {
-    const h = setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
+    const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
     await mount(h, source);
     for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).getAttribute("aria-checked"), "true");
     assert.equal(checkbox("Read employee").disabled, true); assert.match(text(), /Completed in the source; this workflow requires it to run again/u);
@@ -100,7 +100,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.ok(h.world.events.includes("read:edited memo")); assert.equal(sourceBytes(h, source), bytes);
   });
   it("omitted work has no new transaction proof; copied omission facts can be cleared/edited without attribution", async () => {
-    const h = setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source); await mount(h, source);
+    const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source); await mount(h, source);
     await act(async () => { checkbox("Check employee").click(); checkbox("File transaction").click(); });
     const before = h.authoritySnapshot(); await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]'));
     assert.equal(h.authoritySnapshot(), before);

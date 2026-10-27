@@ -28,7 +28,7 @@ import { happySessionHarness, ManualScheduler, personLookupQueuedRun } from "../
 for (const failure of ["close", "launch"] as const) it(failure === "close"
   ? "retains an unproved closure report while settling the worker lease as crashed"
   : "records a crashed lease for the real factory's generic launcher rejection", async () => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   copyFileSync("package.json", join(f.workspace, "package.json"));
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
@@ -107,12 +107,12 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
       assert.equal(closedNames.has(`${path} (deleted)`), false, "closed database cannot retain a deleted descriptor");
     }
     assert.equal(custodyOraclesProved, true, "worker-closure-fixture-custody-unproved");
-    issued?.release(); custody?.processLock.release(); f.close();
+    issued?.release(); custody?.processLock.release(); await f.close();
   }
 });
 
 it("retains database, child and process custody when its actual OCR account cannot prove closure", async () => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   copyFileSync("package.json", join(f.workspace, "package.json"));
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
@@ -159,6 +159,6 @@ it("retains database, child and process custody when its actual OCR account cann
       assert.equal(names.has(path), false); assert.equal(names.has(`${path} (deleted)`), false);
     }
     // The empty loop and zero transport calls precede this test-owned custody release.
-    assert.ok(issued); issued.release(); held.processLock.release(); f.close();
+    assert.ok(issued); issued.release(); held.processLock.release(); await f.close();
   }
 });

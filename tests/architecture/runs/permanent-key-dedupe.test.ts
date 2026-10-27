@@ -24,14 +24,14 @@ import {
 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 const CLOCK = manualClock(new Date(NOW));
-const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const databases: AuthorityDatabase[] = [];
 const UUID_9 = "99999999-9999-4999-8999-999999999999";
 const UUID_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OBSERVED_KEY = "10101010|termination|2026-08-02";
 
-function authorityPath(): string {
-  const profile = createBoundProfileFixture();
+async function authorityPath(): Promise<string> {
+  const profile = await createBoundProfileFixture();
   profiles.push(profile);
   return profile.path;
 }
@@ -76,15 +76,15 @@ function observedPresentIntent() {
   };
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of databases) releaseSeededWriteOwners(database, NOW);
   for (const database of databases.splice(0)) database.close();
-  for (const profile of profiles.splice(0)) profile.close();
+  for (const profile of profiles.splice(0)) await profile.close();
 });
 
 describe("permanent system-scoped write keys", () => {
-  it("keeps a committed key permanent across a later sequential starter", () => {
-    const path = authorityPath();
+  it("keeps a committed key permanent across a later sequential starter", async () => {
+    const path = await authorityPath();
     const database = open(path);
     assert.equal(fenceWriteFixture(database, {
       intent: WRITE_INTENT_ATTEMPTING,
@@ -101,8 +101,8 @@ describe("permanent system-scoped write keys", () => {
     assert.equal(database.getMeta().authorityGeneration, generationAfterCommit);
   });
 
-  it("deduplicates the same key through an independently opened competing connection", () => {
-    const path = authorityPath();
+  it("deduplicates the same key through an independently opened competing connection", async () => {
+    const path = await authorityPath();
     const first = open(path);
     const contender = open(path);
     assert.equal(fenceWriteFixture(first, {
@@ -118,8 +118,8 @@ describe("permanent system-scoped write keys", () => {
     assert.equal(contender.getMeta().authorityGeneration, generationAfterFence);
   });
 
-  it("records observed-present permanently with zero attempt, ledger, or span outbox", () => {
-    const path = authorityPath();
+  it("records observed-present permanently with zero attempt, ledger, or span outbox", async () => {
+    const path = await authorityPath();
     const database = open(path);
     const observed = observedPresentIntent();
     writeFenceFixtureInput(database, competingFence());
@@ -151,8 +151,8 @@ describe("permanent system-scoped write keys", () => {
     assert.equal(database.getMeta().authorityGeneration, generation);
   });
 
-  it("fails loud when the natural key or binding proof does not match its digest", () => {
-    const database = open(authorityPath());
+  it("fails loud when the natural key or binding proof does not match its digest", async () => {
+    const database = open(await authorityPath());
     assert.throws(() => fenceWriteFixture(database, {
       intent: { ...WRITE_INTENT_ATTEMPTING, idempotencyKey: `${IDEMPOTENCY_KEY}|changed` },
       attempt: WRITE_ATTEMPT,

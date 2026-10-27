@@ -16,10 +16,10 @@ import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.j
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
-function fixture() {
+async function fixture() {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "canonical-operator-"));
   cleanups.push(() => rmSync(root, { recursive: true }));
   const clock = manualClock(AT);
@@ -35,8 +35,8 @@ function fixture() {
     withRunTreeSnapshot: (ids, work) => { treeCalls += 1; return realReader.withRunTreeSnapshot(ids, work); },
     list: (input) => { listCalls += 1; return realReader.list(input); },
   };
-  const world = makeWorld({ reader });
-  cleanups.push(() => world.dispose());
+  const world = await makeWorld({ reader });
+  cleanups.push(async () => await world.dispose());
   const service = new RunRecordService({ database, clock,
     ids: { uuid: () => { throw new Error("read fixture cannot create identities"); } },
     publishQueued: () => { throw new Error("this proof must not publish spans"); },
@@ -53,7 +53,7 @@ function fixture() {
 }
 
 it("reads a real canonical run without any spans through queue, detail, Activity and polling", async () => {
-  const f = fixture();
+  const f = await fixture();
   const run = runRecordOf({ seed: 401 });
   f.database.authority.runs.enqueue(run);
   assert.equal(f.world.projection.runFold(run.envelope.runId), undefined);
@@ -76,8 +76,8 @@ it("reads a real canonical run without any spans through queue, detail, Activity
   assert.equal(f.world.changes.length, before + 1, "unchanged authority must not churn snapshots");
 });
 
-it("does not resurrect absent or deleted canonical runs from retained spans", () => {
-  const f = fixture();
+it("does not resurrect absent or deleted canonical runs from retained spans", async () => {
+  const f = await fixture();
   const queued = queuedEventOf(f.world, { seed: 402 });
   assert.equal(f.reader.read(queued.runId).state, "absent");
   assert.equal(f.world.projection.queueSurface(queued.runId), undefined);
@@ -97,8 +97,8 @@ it("does not resurrect absent or deleted canonical runs from retained spans", ()
   assert.throws(() => f.detail(queued.runId), /is deleted/);
 });
 
-it("refuses a real generation change between canonical list pages instead of mixing generations", () => {
-  const f = fixture();
+it("refuses a real generation change between canonical list pages instead of mixing generations", async () => {
+  const f = await fixture();
   f.database.withAuthorityTransaction((repositories) => {
     for (let seed = 1; seed <= 1001; seed++) repositories.runs.enqueue(runRecordOf({ seed }));
   });
@@ -112,8 +112,8 @@ it("refuses a real generation change between canonical list pages instead of mix
   assert.equal(calls, 2);
 });
 
-it("moves a claimed run back to the queue and preserves its canonical attempt without a requeue span", () => {
-  const f = fixture();
+it("moves a claimed run back to the queue and preserves its canonical attempt without a requeue span", async () => {
+  const f = await fixture();
   const run = runRecordOf({ seed: 410 });
   f.database.authority.runs.enqueue(run);
   const claimMember1 = f.database.authority.workerSlots.get("person-lookup-worker-1");
@@ -143,8 +143,8 @@ it("moves a claimed run back to the queue and preserves its canonical attempt wi
 });
 
 
-it("publishes cancellation and rename without spans, while a pure claim heartbeat does not churn snapshots", () => {
-  const f = fixture();
+it("publishes cancellation and rename without spans, while a pure claim heartbeat does not churn snapshots", async () => {
+  const f = await fixture();
   const run = runRecordOf({ seed: 403 });
   f.database.authority.runs.enqueue(run);
   assert.equal(f.database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, 1).workerLifetime, workflow: run.envelope.workflow,
@@ -181,8 +181,8 @@ it("publishes cancellation and rename without spans, while a pure claim heartbea
 });
 
 
-it("counts zero, one and multiple spanless members and removes the settled tree through canonical deletion", () => {
-  const f = fixture();
+it("counts zero, one and multiple spanless members and removes the settled tree through canonical deletion", async () => {
+  const f = await fixture();
   const parent = runRecordOf({ seed: 404, shape: "operation" });
   f.database.authority.runs.enqueue(parent);
   const rollup = () => {
@@ -218,8 +218,8 @@ it("counts zero, one and multiple spanless members and removes the settled tree 
 });
 
 
-it("materializes only the requested bounded canonical page", () => {
-  const f = fixture();
+it("materializes only the requested bounded canonical page", async () => {
+  const f = await fixture();
   f.database.withAuthorityTransaction(repositories => {
     for (let seed = 1; seed <= 1001; seed++) repositories.runs.enqueue(runRecordOf({ seed }));
   });

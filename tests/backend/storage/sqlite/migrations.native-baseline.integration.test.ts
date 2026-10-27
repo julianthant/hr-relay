@@ -8,7 +8,7 @@ import { inspectAuthorityBackupReadOnly,upgradeStorage } from "../../../support/
 
 describe("current stopped authority initialization", () => {
   it.each([7, 29, 31, 38, 46, 47, 48, 49, 56])("refuses noncurrent schema %s before credentials or rewriting bytes", async version => {
-    const f = storageRecoveryFixture(version);
+    const f = await storageRecoveryFixture(version);
     try {
       credentialTrap(f.root);
       writeFileSync(f.input.environmentFile, "malformed obsolete environment");
@@ -17,10 +17,10 @@ describe("current stopped authority initialization", () => {
         && error.code === "authority-schema-mismatch" && error.schemaVersion === version);
       assert.deepEqual(storageTree(f.root), before);
       assert.equal(existsSync(f.input.processLockRoot), false);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
   it("plans without writes, initializes directly, and repeats without changing authority or independent inputs", async () => {
-    const f = storageRecoveryFixture();
+    const f = await storageRecoveryFixture();
     try {
       writeFileSync(f.input.environmentFile, "HRAUTO_DEFAULT_WORKERS=17\nUCPATH_PASSWORD=synthetic-retired-input\n");
       writeFileSync(join(f.root, "settings.json"), "corrupt obsolete input");
@@ -40,26 +40,26 @@ describe("current stopped authority initialization", () => {
       assert.equal(existsSync(join(f.input.processLockRoot, "restore-admission.lock.json")), false);
       assert.equal(readFileSync(f.input.environmentFile, "utf8"), "HRAUTO_DEFAULT_WORKERS=17\nUCPATH_PASSWORD=synthetic-retired-input\n");
       assert.equal(readFileSync(join(f.root, "settings.json"), "utf8"), "corrupt obsolete input");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
   it("preserves a fresh source after admission fails and admits the exact retry", async () => {
-    const f = storageRecoveryFixture();
+    const f = await storageRecoveryFixture();
     try {
       const before = storageTree(f.root);
       await assert.rejects(upgradeStorage(f.input, f.clock, () => { throw new Error("injected-admission-failure"); }), /injected-admission-failure/u);
       assert.deepEqual(storageTree(f.root), before);
       assert.equal(existsSync(f.path), false);
       assert.equal((await f.run()).state, "initialized");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
   it("refuses an aliased database without changing its genuine current source", async () => {
-    const f = storageRecoveryFixture(), source = storageRecoveryFixture();
+    const f = await storageRecoveryFixture(), source = await storageRecoveryFixture();
     try {
       await source.run();
       symlinkSync(source.path, f.path);
       const before = storageTree(source.root);
       await assert.rejects(f.run(), /source-integrity/u);
       assert.deepEqual(storageTree(source.root), before);
-    } finally { f.dispose(); source.dispose(); }
+    } finally { await f.dispose(); await source.dispose(); }
   });
 });

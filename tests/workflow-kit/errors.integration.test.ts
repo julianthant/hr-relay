@@ -42,9 +42,9 @@ import {
 import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
 import { openBoundDatabaseFixture } from "../support/helpers/admission-fixture.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 const SIGNAL = new AbortController().signal;
@@ -63,7 +63,7 @@ describe("failure, retry, and resume", () => {
         readOnboardingDates: () => Promise.reject(new Error("unused")),
       }),
     });
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const deps: RunExecutorDependencies = {
@@ -78,7 +78,7 @@ describe("failure, retry, and resume", () => {
         },
       })),
       authority: database,
-      sessions: sessionManagerFor(mismatched, clock),
+      sessions: await sessionManagerFor(mismatched, clock),
       emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
       clock,
       ids: sequentialIdFactory("b"),
@@ -120,14 +120,14 @@ describe("failure, retry, and resume", () => {
 describe("dry-run — structurally zero intent, zero fence, zero commit", () => {
   it("executeTransaction refuses a dry-run context before any side effect", async () => {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const opened = openBoundDatabaseFixture("write-sequencer-test", clock);
+    const opened = await openBoundDatabaseFixture("write-sequencer-test", clock);
     const database = opened.database;
-    disposers.push(() => opened.close());
+    disposers.push(async () => await opened.close());
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     testWorkerPorts(database, clock, { path: opened.path, descriptor: writeFixtureDescriptor, poolIndex: 1 });
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
-    const manager = writeFixtureSessionManager(writeFixtureSessions(world), registry, clock);
+    const manager = await writeFixtureSessionManager(writeFixtureSessions(world), registry, clock);
     const sequencer = createWriteSequencer({
       lifecycle: testRunLifecycle(database, clock),
       stores: registry,

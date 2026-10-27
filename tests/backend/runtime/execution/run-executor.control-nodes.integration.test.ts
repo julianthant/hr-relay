@@ -195,12 +195,12 @@ function controlQueuedRun(descriptor: AnyWorkflowDescriptor, route: "left" | "ri
   };
 }
 
-function controlHarness(descriptor: AnyWorkflowDescriptor, childRuns?: ChildRunExecutor): Readonly<{
+async function controlHarness(descriptor: AnyWorkflowDescriptor, childRuns?: ChildRunExecutor): Promise<Readonly<{
   authority: AuthorityHarness;
   emitter: ReturnType<typeof recordingTimelineEmitter>;
   deps: RunExecutorDependencies;
-}> {
-  const authority = openAuthorityHarness();
+}>> {
+  const authority = await openAuthorityHarness();
   testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: descriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const sessions = happySessionHarness();
@@ -210,7 +210,7 @@ function controlHarness(descriptor: AnyWorkflowDescriptor, childRuns?: ChildRunE
     descriptor,
     stores: taskStoreRegistry,
     authority: authority.database,
-    sessions: sessionManagerFor(sessions, authority.clock),
+    sessions: await sessionManagerFor(sessions, authority.clock),
     emitter: emitter.emitter,
     clock: authority.clock,
     ids: sequentialIdFactory("d"),
@@ -311,7 +311,7 @@ const childTerminalGateDescriptor = defineWorkflowDescriptor({
 
 describe("conditional operator gates", () => {
   it("records a false declared condition without a gate result or opened gate", async () => {
-    const harness = controlHarness(conditionalGateDescriptor);
+    const harness = await controlHarness(conditionalGateDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(controlQueuedRun(conditionalGateDescriptor, "left"));
     const outcome = await executeClaimedRun(harness.deps, {
@@ -324,7 +324,7 @@ describe("conditional operator gates", () => {
   });
 
   it("parks when the declared evidence condition requires an operator", async () => {
-    const harness = controlHarness(conditionalGateDescriptor);
+    const harness = await controlHarness(conditionalGateDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(controlQueuedRun(conditionalGateDescriptor, "right"));
     const outcome = await executeClaimedRun(harness.deps, {
@@ -336,7 +336,7 @@ describe("conditional operator gates", () => {
   });
 
   it("refuses a stored human result after current evidence makes the gate inapplicable", async () => {
-    const harness = controlHarness(conditionalGateDescriptor);
+    const harness = await controlHarness(conditionalGateDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(controlQueuedRun(conditionalGateDescriptor, "left"));
     const gateResult = {
@@ -365,7 +365,7 @@ describe("conditional operator gates", () => {
 
 describe("registered source gate settlement", () => {
   it("fails loudly when a non-operator gate has no registered provider", async () => {
-    const harness = controlHarness(childTerminalGateDescriptor);
+    const harness = await controlHarness(childTerminalGateDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(controlQueuedRun(childTerminalGateDescriptor, "left"));
     const outcome = await executeClaimedRun(harness.deps, {
@@ -380,7 +380,7 @@ describe("registered source gate settlement", () => {
   });
 
   it("settles a declared children-terminal event only for its retained terminal set", async () => {
-    const harness = controlHarness(childTerminalGateDescriptor);
+    const harness = await controlHarness(childTerminalGateDescriptor);
     const { database, clock } = harness.authority;
     database.authority.runs.enqueue(controlQueuedRun(childTerminalGateDescriptor, "left"));
     let deliver: (event: GateSourceEnvelope) => Promise<GateSourceDelivery> = async () => ({
@@ -440,7 +440,7 @@ describe("registered source gate settlement", () => {
   });
 
   it("binds retained input correlation, refuses invalid events, and replays one typed source result", async () => {
-    const harness = controlHarness(sourceGateDescriptor);
+    const harness = await controlHarness(sourceGateDescriptor);
     const { database, clock } = harness.authority;
     database.authority.runs.enqueue(controlQueuedRun(sourceGateDescriptor, "left"));
     const operatorResult = { schemaHash: deriveSchemaHash(SOURCE_APPROVAL, "output"),
@@ -575,7 +575,7 @@ describe("registered source gate settlement", () => {
 describe("branch + gate dispatch", () => {
 
   it("parks at the gate under dryRun exactly as it does under a real run", async () => {
-    const harness = controlHarness(gateBranchDescriptor);
+    const harness = await controlHarness(gateBranchDescriptor);
     const { database } = harness.authority;
     const queued = controlQueuedRun(gateBranchDescriptor, "left");
     database.authority.runs.enqueue({
@@ -613,7 +613,7 @@ describe("branch + gate dispatch", () => {
   });
 
   it("selects a branch case, parks on the reached gate, and resumes through the stored result", async () => {
-    const harness = controlHarness(gateBranchDescriptor);
+    const harness = await controlHarness(gateBranchDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(controlQueuedRun(gateBranchDescriptor, "left"));
     const first = claim(database, gateBranchDescriptor);
@@ -679,7 +679,7 @@ describe("branch + gate dispatch", () => {
       ...descriptorMeta("control-broken-branch", "cb"),
       flow: brokenFlow,
     });
-    const harness = controlHarness(broken);
+    const harness = await controlHarness(broken);
     const { database } = harness.authority;
     database.authority.runs.enqueue(controlQueuedRun(broken, "left"));
     const claimed = claim(database, broken);
@@ -698,7 +698,7 @@ describe("branch + gate dispatch", () => {
 
 describe("parallel and seam arms", () => {
   it("refuses an all-settled parallel join loudly instead of guessing member semantics", async () => {
-    const harness = controlHarness(settledParallelDescriptor);
+    const harness = await controlHarness(settledParallelDescriptor);
     const { database } = harness.authority;
     database.authority.runs.enqueue(controlQueuedRun(settledParallelDescriptor, "left"));
     const claimed = claim(database, settledParallelDescriptor);
@@ -715,7 +715,7 @@ describe("parallel and seam arms", () => {
   });
 
   it("fails a child-run node loudly when the delegation seam is not wired, and dispatches when it is", async () => {
-    const unwired = controlHarness(childRunDescriptor);
+    const unwired = await controlHarness(childRunDescriptor);
     unwired.authority.database.authority.runs.enqueue(controlQueuedRun(childRunDescriptor, "left"));
     const claimed = claim(unwired.authority.database, childRunDescriptor);
     const outcome = await executeClaimedRun(unwired.deps, { ...claimed, signal: SIGNAL });
@@ -731,7 +731,7 @@ describe("parallel and seam arms", () => {
 
     // With a seam wired, the arm parses the typed child outcome.
     const contexts: string[] = [];
-    const wired = controlHarness(childRunDescriptor);
+    const wired = await controlHarness(childRunDescriptor);
     const { database, path } = wired.authority;
     const resolve = (id: string) => [childRunDescriptor, childLeafDescriptor].find(descriptor => descriptor.id === id);
     let rootIdIssued = false;

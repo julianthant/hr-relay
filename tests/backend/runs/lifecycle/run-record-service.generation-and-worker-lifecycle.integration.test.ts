@@ -29,8 +29,8 @@ afterEach(cleanup);
 
 describe("canonical run-record service", () => {
 
-  it("refuses a new claim without physical lifetime before journal or publication", () => {
-    const { service, request, runtimeConfig, database, published } = fixture();
+  it("refuses a new claim without physical lifetime before journal or publication", async () => {
+    const { service, request, runtimeConfig, database, published } = await fixture();
     const run = created(service, { ...request, descriptorVersion: personLookupDescriptor.version,
       contractFingerprint: personLookupDescriptor.contractFingerprint });
     const commandId = "99000000-0000-4000-8000-000000000099";
@@ -49,8 +49,8 @@ describe("canonical run-record service", () => {
     assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
   });
 
-  it("table-class coverage drives every public service method and generation class", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("table-class coverage drives every public service method and generation class", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const covered = new Set<string>();
     let commandSequence = 100;
     const commandId = () => `99000000-0000-4000-8000-${String(commandSequence++).padStart(12, "0")}`;
@@ -218,8 +218,8 @@ describe("canonical run-record service", () => {
 
 
 describe("worker lifecycle service capability", () => {
-  it("separates command authority and stable nested identities", () => {
-    const { service } = fixture();
+  it("separates command authority and stable nested identities", async () => {
+    const { service } = await fixture();
     assert.deepEqual(Object.keys(workerRunLifecyclePort(service)).sort(),
       ["admitDelegation", "assertCurrentExecution", "claimNext", "renewClaim", "requeue", "terminalize", "workerTransition"].sort());
     assert.deepEqual(Object.keys(runContinuationPort(service)), ["transition"]);
@@ -228,8 +228,8 @@ describe("worker lifecycle service capability", () => {
     assert.notEqual(lifecycleCommandId("continuation", UUID_1), UUID_1);
   });
 
-  it("settles admitted cancellation under both fences; outer rollback removes journal and lifecycle", () => {
-    const { database, service, request, runtimeConfig } = fixture();
+  it("settles admitted cancellation under both fences; outer rollback removes journal and lifecycle", async () => {
+    const { database, service, request, runtimeConfig } = await fixture();
     const run = created(service, request);
     const claimed = requireLifecycleApplied(service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID,
       workerId: WORKER_ID, runtimeConfig, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime }));
@@ -255,8 +255,8 @@ describe("worker lifecycle service capability", () => {
     assert.equal(database.getMeta().authorityGeneration, after);
   });
 
-  it("finds attempting evidence from an absent run before releasing or cancelling the same item", () => {
-    const { database, service, request, runtimeConfig } = fixture();
+  it("finds attempting evidence from an absent run before releasing or cancelling the same item", async () => {
+    const { database, service, request, runtimeConfig } = await fixture();
     const run = created(service, request);
     const claimed = requireLifecycleApplied(service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID,
       workerId: WORKER_ID, runtimeConfig, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime }));
@@ -346,8 +346,8 @@ describe("worker lifecycle service capability", () => {
 
 
 for (const finishingGeneration of [2, 3]) {
-  it(`rejects generation1 after reassignment; generation${finishingGeneration} finishes and Retry preserves completion`, () => {
-    const f = fixture(); let next = 20;
+  it(`rejects generation1 after reassignment; generation${finishingGeneration} finishes and Retry preserves completion`, async () => {
+    const f = await fixture(); let next = 20;
     testWorkerPorts(f.database, f.clock, { path: syntheticDatabasePath(f.database), descriptor: personLookupDescriptor, poolIndex: 2 });
     const id = () => `99000000-0000-4000-8000-${String(next++).padStart(12, "0")}`;
     let running = runningRun(f.service, f.request, f.runtimeConfig);
@@ -390,7 +390,7 @@ for (const finishingGeneration of [2, 3]) {
 }
 
 it("competing connections cannot accept conflicting failure settlements", async () => {
-  const f = fixture(); const running = runningRun(f.service, f.request, f.runtimeConfig);
+  const f = await fixture(); const running = runningRun(f.service, f.request, f.runtimeConfig);
   const firstRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000051");
   const secondRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000052");
   secondRequest.terminal.failure.failureId = UUID_5;
@@ -427,8 +427,8 @@ it("competing connections cannot accept conflicting failure settlements", async 
 
 
 describe("current settings selection",()=>{
-  for(const operation of ["retry","restart"] as const)it(`${operation} selects active settings and preserves source and journal replay`,()=>{
-    const f=settingsFixture();
+  for(const operation of ["retry","restart"] as const)it(`${operation} selects active settings and preserves source and journal replay`,async ()=>{
+    const f=await settingsFixture();
     try{
       const source=f.create(),terminal=requireLifecycleApplied(f.service.transition({commandId:UUID_5,
         runId:source.envelope.runId,expectedVersion:source.version,lifecycle:{state:"terminal",outcome:"cancelled",endedAt:NOW}}));
@@ -446,12 +446,12 @@ describe("current settings selection",()=>{
       const generation=f.database.getMeta().authorityGeneration;
       assert.deepEqual(requireLifecycleApplied(f.service[operation](request,personLookupDescriptor)),next);
       assert.equal(f.database.getMeta().authorityGeneration,generation);
-    }finally{f.close();}
+    }finally{await f.close();}
   });
 });
 
-it("direct creation selects current settings while exact replay retains the original snapshot",()=>{
-  const f=settingsFixture();
+it("direct creation selects current settings while exact replay retains the original snapshot",async ()=>{
+  const f=await settingsFixture();
   try{
     assert.equal(f.save({"timeouts.taskMs":{set:90000}}).state,"applied");
     const selected=f.database.authority.runtimeConfig.get();assert.ok(selected);
@@ -462,5 +462,5 @@ it("direct creation selects current settings while exact replay retains the orig
     const generation=f.database.getMeta().authorityGeneration;
     assert.deepEqual(requireLifecycleApplied(f.service.create(request)),next);
     assert.equal(f.database.getMeta().authorityGeneration,generation);
-  }finally{f.close();}
+  }finally{await f.close();}
 });

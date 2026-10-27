@@ -20,7 +20,7 @@ const WORKER = WorkerIdSchema.parse("person-lookup-worker-1");
 const WORKFLOW = WorkflowIdSchema.parse("person-lookup");
 const HASH = FingerprintSchema.parse("a".repeat(64));
 const SIGNAL = new AbortController().signal;
-function harness() {
+async function harness() {
   const clock = manualClock(new Date(NOW));
   const observations: Omit<WorkerBrowserObservation, "leaseGeneration">[] = [];
   const opened: Parameters<WorkerBrowserSessionFactory["open"]>[0][] = [];
@@ -38,7 +38,7 @@ function harness() {
     };
   } };
   const sessions = new WorkerSessionManager({ workerId: WORKER, workflowId: WORKFLOW, stores: taskStoreRegistry, factory, clock,
-    scheduler: new ManualScheduler(clock), acquireDeadlineMs: 10_000, duoCeremony: fixtureDuoCeremonyGates(clock), onObservation: value => observations.push(value) });
+    scheduler: new ManualScheduler(clock), acquireDeadlineMs: 10_000, duoCeremony: await fixtureDuoCeremonyGates(clock), onObservation: value => observations.push(value) });
   const warm = async (system: "crm" | "ucpath" = "crm", fingerprint = HASH) => {
     sessions.bindRunConfigFingerprint(fingerprint, "headed");
     try { await sessions.withDriver({ system, session: "reuse-worker", access: "read" }, "prod", SIGNAL, async () => undefined); }
@@ -50,12 +50,12 @@ function harness() {
 
 describe("exact worker browser controls", () => {
   it("refreshes the same idle session and reopens only after closure with its retained configuration", async () => {
-    const h = harness();
+    const h = await harness();
     try {
       const first = await h.warm();
       const other = await h.warm("ucpath", FingerprintSchema.parse("b".repeat(64)));
       h.sessions.configureRunResources({ sessionFactory: { open: async () => { throw new Error("new-settings-must-not-open-retained-resource"); } }, sessionAcquireMs: 100,
-        duoCeremony: fixtureDuoCeremonyGates(h.clock), defaultBrowserMode: "headless" });
+        duoCeremony: await fixtureDuoCeremonyGates(h.clock), defaultBrowserMode: "headless" });
       assert.equal((await h.sessions.controlBrowser("refresh-browser", first, SIGNAL)).sessionId, first);
       const replacement = await h.sessions.controlBrowser("reopen-browser", first, SIGNAL);
       assert.notEqual(replacement.sessionId, first);
@@ -71,7 +71,7 @@ describe("exact worker browser controls", () => {
   });
 
   it("refuses a whole active run between driver steps without retaining a later action", async () => {
-    const h = harness();
+    const h = await harness();
     try {
       const id = await h.warm();
       h.sessions.bindRunConfigFingerprint(HASH);
@@ -83,7 +83,7 @@ describe("exact worker browser controls", () => {
   });
 
   it("excludes a new run and second control while refresh owns the resource", async () => {
-    const h = harness();
+    const h = await harness();
     let release!: () => void;
     try {
       const id = await h.warm();
@@ -98,7 +98,7 @@ describe("exact worker browser controls", () => {
   });
 
   it("keeps failed reset poisoned and never creates a replacement after unproven closure", async () => {
-    const h = harness();
+    const h = await harness();
     const id = await h.warm();
     h.failReset();
     await assert.rejects(h.sessions.controlBrowser("refresh-browser", id, SIGNAL), /reset-failed/);
@@ -106,14 +106,14 @@ describe("exact worker browser controls", () => {
     await assert.rejects(h.sessions.controlBrowser("reopen-browser", id, SIGNAL), /unproven-close/);
     assert.equal(h.opened.length, 1);
     await h.sessions.closeAll("worker-stop");
-    const h2 = harness(); const id2 = await h2.warm(); h2.failClose();
+    const h2 = await harness(); const id2 = await h2.warm(); h2.failClose();
     await assert.rejects(h2.sessions.controlBrowser("reopen-browser", id2, SIGNAL), /close-unproven/);
     assert.equal(h2.opened.length, 1);
     await assert.rejects(h2.sessions.closeAll("worker-stop"), /failed to close/);
   });
 
   it("retains failed authentication after reopening and proves the failed replacement closed", async () => {
-    const h = harness();
+    const h = await harness();
     try {
       const id = await h.warm(); h.failLogin();
       await assert.rejects(h.sessions.controlBrowser("reopen-browser", id, SIGNAL), /authentication-failed/);
@@ -154,7 +154,7 @@ describe("durable worker control admission", () => {
   });
 
   it("executes a ready exact-session request once and retains its result after another connection loses acknowledgement", async () => {
-    const h = harness(); const root = mkdtempSync(join(realpathSync(tmpdir()), "worker-channel-"));
+    const h = await harness(); const root = mkdtempSync(join(realpathSync(tmpdir()), "worker-channel-"));
     const db = AuthorityDatabase.open({ path: join(root, "authority.db"), busyTimeoutMs: 250, migrationOwner: "test" }, h.clock);
     try {
       const sessionId = await h.warm();
@@ -179,7 +179,7 @@ describe("durable worker control admission", () => {
 
 describe("worker delivery fencing", () => {
   it.each(["expired", "generation", "revision", "busy", "replaced", "effect-failure"] as const)("retains %s evidence and cannot deliver a deferred or duplicate effect", async scenario => {
-    const h=harness(); let bound = false; const root=mkdtempSync(join(realpathSync(tmpdir()),"worker-fence-"));
+    const h=await harness(); let bound = false; const root=mkdtempSync(join(realpathSync(tmpdir()),"worker-fence-"));
     const db=AuthorityDatabase.open({path:join(root,"authority.db"),busyTimeoutMs:250,migrationOwner:"test"},h.clock);
     try {
       const sessionId=await h.warm();

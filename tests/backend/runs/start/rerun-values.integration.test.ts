@@ -26,8 +26,8 @@ import { absentProbeEvidence } from "../../../support/fixtures/write-sequencer-f
 
 const disposers: (() => void)[] = [];
 afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
-function harness(writes = false) { const h = writes ? sourceBoundHarness() : rerunValuesHarness(); disposers.push(h.dispose); return h; }
-type Harness = ReturnType<typeof harness>;
+async function harness(writes = false) { const h = writes ? await sourceBoundHarness() : await rerunValuesHarness(); disposers.push(h.dispose); return h; }
+type Harness = Awaited<ReturnType<typeof harness>>;
 async function completed(h: Harness) { const queued = h.start(h.proposal()); assert.equal((await h.execute(queued)).state, "done"); return h.fresh(queued); }
 function request(run: RunRecord) { return { runId: run.envelope.runId, expectedVersion: run.version }; }
 function snapshot(h: Harness, run: RunRecord) {
@@ -47,7 +47,7 @@ function firstCheckpoint(h: Harness, run: RunRecord) { const cp = h.database.aut
 
 describe("source-bound Rerun value read", () => {
   it.each(["fingerprint", "version", "steps"] as const)("offers earlier %s source values without treating them as current authority", async change => {
-    const h = harness(); const run = await completed(h); const before = snapshot(h, run);
+    const h = await harness(); const run = await completed(h); const before = snapshot(h, run);
     h.registerDescriptor(mappedReadDescriptor(undefined, { contractFingerprint: "b".repeat(64),
       ...(change === "version" ? { version: 2 } : {}), ...(change === "steps" ? { stepKey: "current-reading" } : {}) }));
     const result = readRerunValues(rerunValuesDeps(h), request(run));
@@ -60,7 +60,7 @@ describe("source-bound Rerun value read", () => {
     assert.equal(snapshot(h, run), before);
   });
   it("opens a fresh start after the source read node was removed", async () => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     h.registerDescriptor(mappedReadDescriptor(undefined, { contractFingerprint: "b".repeat(64), nodeId: "current-read", stepKey: "current-reading" }));
     const removedGate = GateResultRecordSchema.parse({ runId: source.envelope.runId, nodeId: "removed-gate", gateId: "removed-gate",
       commandId: h.ids.uuid(), expectedVersion: source.version, resolvedBy: "local-operator", resolvedAt: h.clock.now().toISOString(),
@@ -80,7 +80,7 @@ describe("source-bound Rerun value read", () => {
     const run = h.start(plan); assert.equal((await h.execute(run)).state, "done");
   });
   it("disregards an incompatible historical same-ID gate for fresh read-only work", async () => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     const gate = GateResultRecordSchema.parse({ runId: source.envelope.runId, nodeId: "approval", gateId: "approval",
       commandId: h.ids.uuid(), expectedVersion: source.version, resolvedBy: "local-operator", resolvedAt: h.clock.now().toISOString(),
       checkpointFingerprint: "a".repeat(64), result: { schemaHash: "a".repeat(64), value: { oldApproval: "accepted" } } });
@@ -99,7 +99,7 @@ describe("source-bound Rerun value read", () => {
       error => error instanceof RerunRefusedError && error.code === "schema-mismatch");
   });
   it("refuses an incompatible historical gate consumed by current transaction warnings", async () => {
-    const h = launchHarness(); disposers.push(h.dispose); const source = await h.completeSource();
+    const h = await launchHarness(); disposers.push(h.dispose); const source = await h.completeSource();
     const plan = h.proposal(undefined, undefined, true);
     const stored = h.database.authority.startPlans.get(plan.startPlanId); assert.ok(stored);
     h.registerDescriptor(launchDescriptor("reject-active", { fingerprint: "b".repeat(64), gateDependency: true }));
@@ -114,7 +114,7 @@ describe("source-bound Rerun value read", () => {
       error => error instanceof RerunRefusedError && error.code === "schema-mismatch");
   });
   it.each(["padded-name", "missing-control"] as const)("prefills older typed %s only where current input accepts exact values", async kind => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     const descriptor = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "person-lookup"); assert.ok(descriptor);
     const value = kind === "padded-name" ? { mode: "match", lastName: " Example ", firstName: "Person", dob: "01/15/2000", crmCheck: true, includeCrmDates: false }
       : { mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true };
@@ -132,7 +132,7 @@ describe("source-bound Rerun value read", () => {
       : { mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true });
   });
   it("leaves an earlier value rejected by the current input uncopied without coercing it", async () => {
-    const h = harness(); const run = await completed(h);
+    const h = await harness(); const run = await completed(h);
     const input = z.strictObject({ eid: EidSchema.refine(value => value === "10899999") });
     h.registerDescriptor(mappedReadDescriptor(undefined, { contractFingerprint: "b".repeat(64),
       canonicalInput: defineCanonicalInput(input, input, [{ eid: "10899999" }]) }));
@@ -143,7 +143,7 @@ describe("source-bound Rerun value read", () => {
   });
 
   it("plans and consumes an earlier source with current identity and no inherited checkpoint or write authority", async () => {
-    const h = harness(); const source = await completed(h);
+    const h = await harness(); const source = await completed(h);
     const sourceCheckpoints = canonicalJsonStringify(h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId));
     h.registerDescriptor(mappedReadDescriptor(undefined, { version: 2, contractFingerprint: "b".repeat(64) }));
     const plan = h.proposal(source);
@@ -165,7 +165,7 @@ describe("source-bound Rerun value read", () => {
       .filter(checkpoint => checkpoint.runId === source.envelope.runId)), sourceCheckpoints);
   });
   it("retains earlier-source repeat warnings and requires acknowledgment before a fresh start", async () => {
-    const h = launchHarness(); disposers.push(h.dispose); const source = await h.completeSource();
+    const h = await launchHarness(); disposers.push(h.dispose); const source = await h.completeSource();
     h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
     const selectedStepKeys = h.descriptor.timeline.map(step => step.key);
     const warning = h.planner.previewWarnings({ workflowId: h.descriptor.id,
@@ -181,7 +181,7 @@ describe("source-bound Rerun value read", () => {
     assert.deepEqual(h.database.authority.writeIntents.listByRun(run.envelope.runId), []);
   });
   it("refuses missing or incompatible submitted-write warning evidence during preview and planned revalidation", async () => {
-    const h = launchHarness(); disposers.push(h.dispose); const source = await h.completeSource();
+    const h = await launchHarness(); disposers.push(h.dispose); const source = await h.completeSource();
     h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
     const selectedStepKeys = h.descriptor.timeline.map(step => step.key);
     const rerunSource = { ...request(source), intent: "rerun" as const, selectedStepKeys };
@@ -200,7 +200,7 @@ describe("source-bound Rerun value read", () => {
     }
   });
   it.each([false, true])("refuses a parked UNKNOWN source after descriptor advance %s", async older => {
-    const h = launchHarness(); disposers.push(h.dispose); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    const h = await launchHarness(); disposers.push(h.dispose); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     h.world.commitThrows = new Error("synthetic lost submit outcome");
     const queued = h.start(h.proposal()); const outcome = await h.execute(queued);
     assert.equal(outcome.state, "parked-write"); const source = h.fresh(queued);
@@ -209,7 +209,7 @@ describe("source-bound Rerun value read", () => {
     assert.throws(() => h.proposal(source), error => error instanceof RerunRefusedError && error.code === "invalid-state");
   });
   it("offers exact completed values and provenance without changing authority or minting plans", async () => {
-    const h = harness(); const run = await completed(h); const before = snapshot(h, run);
+    const h = await harness(); const run = await completed(h); const before = snapshot(h, run);
     const result = readRerunValues(rerunValuesDeps(h), request(run));
     assert.equal(result.state, "available"); if (result.state !== "available") throw new Error("valid source refused");
     const cp = firstCheckpoint(h, run);
@@ -227,7 +227,7 @@ describe("source-bound Rerun value read", () => {
     assert.equal(snapshot(h, run), before);
   });
   it("keeps source plan identity without carrying a worker choice", async () => {
-    const h = harness();
+    const h = await harness();
     const selectedStepKeys = h.descriptor.timeline.map(({ key }) => key);
     const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }],
       dryRun: false, selectedStepKeys });
@@ -242,7 +242,7 @@ describe("source-bound Rerun value read", () => {
     assert.throws(() => h.planner.plan({ ...input, workers: 2 }));
   });
   it.each(["session", "plan", "mismatch"] as const)("refuses a missing or mismatched source %s without a worker choice", async missing => {
-    const h = harness(); const run = await completed(h); const deps = rerunValuesDeps(h);
+    const h = await harness(); const run = await completed(h); const deps = rerunValuesDeps(h);
     const authority = { ...h.database.authority,
       ...(missing === "session" ? { runSessions: { ...h.database.authority.runSessions, get: () => undefined } }
         : { startPlans: { ...h.database.authority.startPlans, get: (id: string) => {
@@ -264,7 +264,7 @@ describe("source-bound Rerun value read", () => {
     error => error instanceof RerunRefusedError && error.code === "schema-mismatch");
   });
   it.each(["sessionless", "intake"] as const)("accepts a legitimate %s source without a start choice", async origin => {
-    const h = harness(); const original = await completed(h); const deps = rerunValuesDeps(h);
+    const h = await harness(); const original = await completed(h); const deps = rerunValuesDeps(h);
     const { sessionId: _sessionId, ...sessionless } = original;
     const run = origin === "sessionless" ? RunRecordSchema.parse(sessionless) : original;
     const sessions = h.database.authority.runSessions;
@@ -276,7 +276,7 @@ describe("source-bound Rerun value read", () => {
     assert.ok(result.state === "available"); assert.equal(Object.hasOwn(result.snapshot, "workers"), false);
   });
   it("round-trips attribution into the existing planner and rejects an edited value retaining attribution", async () => {
-    const h = harness(); const run = await completed(h);
+    const h = await harness(); const run = await completed(h);
     const result = readRerunValues(rerunValuesDeps(h), request(run)); assert.ok(result.state === "available");
     const value = result.snapshot.values[0]; assert.ok(value?.state === "available");
     const selectedStepKeys = h.descriptor.timeline.map(({ key }) => key);
@@ -289,22 +289,22 @@ describe("source-bound Rerun value read", () => {
     assert.ok(h.planner.plan({ ...input, submissions: [{ eid: "10899999" }], rerunSource: { ...input.rerunSource, copiedFrom: [] } }));
   });
   it("canonical absence and stale versions win over retained evidence", async () => {
-    const h = harness(); const run = await completed(h); const before = snapshot(h, run);
+    const h = await harness(); const run = await completed(h); const before = snapshot(h, run);
     const deps = rerunValuesDeps(h);
     assert.deepEqual(readRerunValues({ ...deps, reader: { read: () => ({ state: "absent", runId: run.envelope.runId }) } }, request(run)), { state: "refused", code: "target-not-found" });
     assert.deepEqual(readRerunValues(deps, { ...request(run), expectedVersion: run.version - 1 }), { state: "refused", code: "source-stale" });
     assert.deepEqual(readRerunValues({ ...deps, descriptors: { resolve: () => undefined } }, request(run)), { state: "refused", code: "descriptor-mismatch" });
     assert.equal(snapshot(h, run), before);
   });
-  it("refuses active and cancelled canonical sources", () => {
-    const h = harness(); const queued = h.start(h.proposal());
+  it("refuses active and cancelled canonical sources", async () => {
+    const h = await harness(); const queued = h.start(h.proposal());
     assert.deepEqual(readRerunValues(rerunValuesDeps(h), request(queued)), { state: "refused", code: "source-ineligible" });
     const cancelled = requireLifecycleApplied(h.lifecycle.transition({ commandId: h.ids.uuid(), ...request(queued),
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() } }));
     assert.deepEqual(readRerunValues(rerunValuesDeps(h), request(cancelled)), { state: "refused", code: "source-ineligible" });
   });
   it("never borrows another run's checkpoint", async () => {
-    const h = harness(); const run = await completed(h); const cp = firstCheckpoint(h, run);
+    const h = await harness(); const run = await completed(h); const cp = firstCheckpoint(h, run);
     const deps = checkpointsDeps(h, [RunCheckpointRecordSchema.parse({ ...cp, runId: h.ids.uuid() })]);
     const result = readRerunValues(deps, request(run)); assert.ok(result.state === "available");
     assert.equal(result.snapshot.steps[0]?.state, "unfinished");
@@ -315,20 +315,20 @@ describe("source-bound Rerun value read", () => {
     ["schema", { output: { schemaHash: "f".repeat(64), value: { eid: "10812345" } } }],
     ["payload", { output: { value: { eid: "bad" } } }],
   ] as const) it(`refuses mismatched checkpoint ${name}`, async () => {
-    const h = harness(); const run = await completed(h); const cp = firstCheckpoint(h, run);
+    const h = await harness(); const run = await completed(h); const cp = firstCheckpoint(h, run);
     const deps = checkpointsDeps(h, [RunCheckpointRecordSchema.parse({ ...cp, ...patch,
       output: "output" in patch ? { ...cp.output, ...patch.output } : cp.output })]);
     assert.deepEqual(readRerunValues(deps, request(run)), { state: "refused", code: "source-invalid" });
   });
   it("reports missing provenance rather than inventing an observation date", async () => {
-    const h = harness(); const run = await completed(h); const cp = firstCheckpoint(h, run);
+    const h = await harness(); const run = await completed(h); const cp = firstCheckpoint(h, run);
     const deps = checkpointsDeps(h, [{ ...cp, provenance: [] }]);
     const result = readRerunValues(deps, request(run)); assert.ok(result.state === "available");
     assert.equal(result.snapshot.values[0]?.state, "unavailable");
     assert.ok(result.snapshot.values[0]?.state === "unavailable" && result.snapshot.values[0].reason === "provenance-unavailable");
   });
   it("does not label operator assertions or later failed work as completed", async () => {
-    const h = harness(); const run = await completed(h); const cp = firstCheckpoint(h, run);
+    const h = await harness(); const run = await completed(h); const cp = firstCheckpoint(h, run);
     const asserted = RunCheckpointRecordSchema.parse({ ...cp, assertion: { step: "read", assertedAt: cp.writtenAt } });
     const deps = checkpointsDeps(h, [asserted]);
     let result = readRerunValues(deps, request(run)); assert.ok(result.state === "available");
@@ -339,7 +339,7 @@ describe("source-bound Rerun value read", () => {
     assert.ok(result.state === "available"); assert.equal(result.snapshot.steps[0]?.state, "unfinished");
   });
   for (const disposition of ["committed", "observed-present"] as const) it(`serves ${disposition} transaction coordinates without granting consent`, async () => {
-    const h = harness(true);
+    const h = await harness(true);
     h.world.probeResults.push(disposition === "committed" ? absentProbeEvidence(h.clock.now().toISOString())
       : { state: "present", proof: { transactionId: "T123456" } });
     const run = await completed(h); const before = snapshot(h, run);
@@ -350,7 +350,7 @@ describe("source-bound Rerun value read", () => {
     assert.equal(snapshot(h, run), before);
   });
   it("withholds captured protected values, embedded copies, absent leaves and invalid targets", async () => {
-    const h = valueShapeHarness(); disposers.push(h.dispose);
+    const h = await valueShapeHarness(); disposers.push(h.dispose);
     const queued = h.start(h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345", documentNumber: "PRIVATE987" }],
       dryRun: false, selectedStepKeys: h.descriptor.timeline.map(({ key }) => key) }));
     const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
@@ -385,7 +385,7 @@ describe("source-bound Rerun value read", () => {
     assert.deepEqual(result.snapshot.steps.map(({ state }) => state), ["completed", "unfinished"]);
   });
   it("deletion wins over retained checkpoints and never resurrects the source", async () => {
-    const h = harness(); const run = await completed(h);
+    const h = await harness(); const run = await completed(h);
     const cp = firstCheckpoint(h, run);
     const deleted=h.kernel.execute({commandId:h.ids.uuid(),requestedAt:h.clock.now().toISOString(),requestedBy:"local-operator",
       source:"dashboard",family:"run",type:"delete",target:request(run)});
@@ -397,7 +397,7 @@ describe("source-bound Rerun value read", () => {
   });
 
   for (const kind of ["nested-schema", "proof-link"] as const) it(`refuses transaction ${kind} corruption`, async () => {
-    const h = harness(true); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    const h = await harness(true); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     const run = await completed(h); const cp = firstCheckpoint(h, run);
     const outcome = TransactionOutcomeSchema.parse(cp.output.value);
     const proof = kind === "nested-schema" ? { ...outcome.proof, schemaHash: "f".repeat(64) }
@@ -407,7 +407,7 @@ describe("source-bound Rerun value read", () => {
   });
 
   it("classifies a real failed source from its retained failure without exposing its diagnostic text", async () => {
-    const h = harness(true); h.world.subjectReadThrows = new Error("synthetic private diagnostic");
+    const h = await harness(true); h.world.subjectReadThrows = new Error("synthetic private diagnostic");
     const queued = h.start(h.proposal()); assert.equal((await h.execute(queued)).state, "failed"); const run = h.fresh(queued);
     const result = readRerunValues(rerunValuesDeps(h), request(run)); assert.ok(result.state === "available", JSON.stringify(result));
     assert.equal(result.snapshot.source.outcome, "failed"); assert.equal(result.snapshot.steps[0]?.state, "failed");
@@ -415,7 +415,7 @@ describe("source-bound Rerun value read", () => {
   });
 
   it("refuses an otherwise eligible source while the same item has an attempting write", async () => {
-    const h = harness(); const run = await completed(h); const deps = rerunValuesDeps(h);
+    const h = await harness(); const run = await completed(h); const deps = rerunValuesDeps(h);
     const attempting = WriteIntentRecordSchema.parse({ ...WRITE_INTENT_ATTEMPTING, workflowId: h.descriptor.id,
       itemId: run.envelope.itemId, runId: run.envelope.runId, runAttempt: run.envelope.attempt });
     const database = { withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database),
@@ -425,7 +425,7 @@ describe("source-bound Rerun value read", () => {
   });
 
   it("offers a transaction output as attributed input while the existing planner still requires repeat consent", async () => {
-    const h = mappedTransactionHarness(); disposers.push(h.dispose);
+    const h = await mappedTransactionHarness(); disposers.push(h.dispose);
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString())); const run = await completed(h);
     const result = readRerunValues(rerunValuesDeps(h), request(run)); assert.ok(result.state === "available");
     const value = result.snapshot.values[0]; assert.ok(value?.state === "available", JSON.stringify(value));
@@ -439,7 +439,7 @@ describe("source-bound Rerun value read", () => {
   });
 
   it("never echoes malformed stored JSON and still propagates operational storage failures", async () => {
-    const h = harness(); const run = await completed(h); const deps = rerunValuesDeps(h);
+    const h = await harness(); const run = await completed(h); const deps = rerunValuesDeps(h);
     assert.deepEqual(readRerunValues({ ...deps, reader: { read: () => { throw new SyntaxError("PRIVATE_SOURCE_TEXT"); } } }, request(run)),
       { state: "refused", code: "source-invalid" });
     const busy = new Error("SQLITE_BUSY");
@@ -447,7 +447,7 @@ describe("source-bound Rerun value read", () => {
   });
 
   it("retains earlier same-run attempts and chooses the latest execution independently of repository order", async () => {
-    const h = harness(); const source = await completed(h); const cp = firstCheckpoint(h, source);
+    const h = await harness(); const source = await completed(h); const cp = firstCheckpoint(h, source);
     // Retained completed attempt 2 still exposes checkpoints from its earlier execution.
     const run = RunRecordSchema.parse({ ...source, envelope: { ...source.envelope, attempt: 2 }, claimGeneration: 2, completion: {...source.completion, claim: {...source.completion?.claim, claimGeneration: 2}} });
     const reader = { read: () => ({ state: "present" as const, disposition: "live" as const, run }) };

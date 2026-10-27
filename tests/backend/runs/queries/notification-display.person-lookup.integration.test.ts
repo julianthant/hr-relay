@@ -15,8 +15,8 @@ import { FICTIONAL_PERSON, seedPersonLookupPresentation } from "../../../support
 const { world, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
 
-function scenario(options: Parameters<typeof seedPersonLookupPresentation>[1] = {}) {
-  const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+async function scenario(options: Parameters<typeof seedPersonLookupPresentation>[1] = {}) {
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   const { run, row } = seedPersonLookupPresentation(w, options);
   const record = NotificationRecordSchema.parse({
     ...notificationRecordOf({ seed: 1, title: "Synthetic notice", lastSeenAt: run.updatedAt }),
@@ -33,8 +33,8 @@ function scenario(options: Parameters<typeof seedPersonLookupPresentation>[1] = 
   return { w, run, row, record, deps, context: () => notificationDisplayContext(record, deps) };
 }
 
-it.each(["active", "not-found"] as const)("uses the same declared Person Lookup title as Queue for %s", state => {
-  const f = scenario({ state, protectedInput: true });
+it.each(["active", "not-found"] as const)("uses the same declared Person Lookup title as Queue for %s", async state => {
+  const f = await scenario({ state, protectedInput: true });
   const display = f.context();
   assert.ok(display.state === "available");
   const row = f.row();
@@ -46,8 +46,8 @@ it.each(["active", "not-found"] as const)("uses the same declared Person Lookup 
   assert.deepEqual(projected.context, display);
 });
 
-it("keeps canonical input-title behavior when a receipt is absent or unverified without reading a subject checkpoint", () => {
-  const f = scenario(), receipt = f.w.authority.getReceipt(f.run.envelope.runId);
+it("keeps canonical input-title behavior when a receipt is absent or unverified without reading a subject checkpoint", async () => {
+  const f = await scenario(), receipt = f.w.authority.getReceipt(f.run.envelope.runId);
   assert.ok(receipt);
   f.w.authority.receipts.delete(f.run.envelope.runId);
   assert.deepEqual(f.context(), { state: "available", workflow: personLookupDescriptor.label, subject: FICTIONAL_PERSON.eid });
@@ -55,8 +55,8 @@ it("keeps canonical input-title behavior when a receipt is absent or unverified 
   assert.deepEqual(f.context(), { state: "available", workflow: personLookupDescriptor.label, subject: FICTIONAL_PERSON.eid });
 });
 
-it("refuses each foreign receipt identity without falling back to typed input or a checkpoint", () => {
-  const f = scenario(), receipt = f.w.authority.getReceipt(f.run.envelope.runId);
+it("refuses each foreign receipt identity without falling back to typed input or a checkpoint", async () => {
+  const f = await scenario(), receipt = f.w.authority.getReceipt(f.run.envelope.runId);
   assert.ok(receipt);
   for (const replacement of [
     { runId: randomUUID() }, { traceId: traceOf(999) }, { attempt: f.run.envelope.attempt + 1 },
@@ -67,8 +67,8 @@ it("refuses each foreign receipt identity without falling back to typed input or
   }
 });
 
-it("keeps forbidden protected input unavailable even when a matching result receipt exists", () => {
-  const f = scenario({ protectedInput: true });
+it("keeps forbidden protected input unavailable even when a matching result receipt exists", async () => {
+  const f = await scenario({ protectedInput: true });
   const value = f.run.input.parsed.value;
   assert.ok(value !== null && typeof value === "object" && !Array.isArray(value));
   f.w.authority.put(RunRecordSchema.parse({ ...f.run, input: { ...f.run.input, parsed: { ...f.run.input.parsed,
@@ -78,8 +78,8 @@ it("keeps forbidden protected input unavailable even when a matching result rece
   assert.deepEqual(f.context(), { state: "unavailable" });
 });
 
-it("preserves descriptor compatibility refusal before receipt access and propagates unrelated read failures", () => {
-  const f = scenario();
+it("preserves descriptor compatibility refusal before receipt access and propagates unrelated read failures", async () => {
+  const f = await scenario();
   f.w.authority.put(RunRecordSchema.parse({ ...f.run, envelope: { ...f.run.envelope,
     descriptorVersion: f.run.envelope.descriptorVersion + 1,
   } }));
@@ -103,8 +103,8 @@ it("preserves descriptor compatibility refusal before receipt access and propaga
   assert.throws(() => notificationDisplayContext(f.record, { ...f.deps, receipt: () => { throw failure; } }), error => error === failure);
 });
 
-it.each(["failed", "verified-done"] as const)("keeps resolved-person display out of the durable %s delivery payload", trigger => {
-  const f = scenario(), record = NotificationRecordSchema.parse({
+it.each(["failed", "verified-done"] as const)("keeps resolved-person display out of the durable %s delivery payload", async trigger => {
+  const f = await scenario(), record = NotificationRecordSchema.parse({
     ...notificationRecordOf({ seed: 1, trigger, title: f.record.title, lastSeenAt: f.run.updatedAt }),
     links: f.record.links,
   });

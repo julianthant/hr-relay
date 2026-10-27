@@ -10,8 +10,8 @@ describe("session origin projection", () => {
   it.each([
     { kind: "start-plan", startPlanId: runUuidOf(71), actorId: "local-operator" },
     { kind: "intake-manifest", intakeManifestId: runUuidOf(72), actorId: "local-operator" },
-  ] as const)("round trips the $kind origin", (origin) => {
-    const w = makeWorld();
+  ] as const)("round trips the $kind origin", async (origin) => {
+    const w = await makeWorld();
     try {
       const batch = RunSessionRecordSchema.parse({ sessionId: runUuidOf(70), workflow: "person-lookup", origin,
         startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 });
@@ -25,11 +25,11 @@ describe("session origin projection", () => {
         origin,
         presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) },
       });
-    } finally { w.dispose(); }
+    } finally { await w.dispose(); }
   });
 
-  it.each(["missing", "mismatched workflow"] as const)("fails loudly for a %s session", (problem) => {
-    const w = makeWorld();
+  it.each(["missing", "mismatched workflow"] as const)("fails loudly for a %s session", async (problem) => {
+    const w = await makeWorld();
     try {
       const batch = RunSessionRecordSchema.parse({ sessionId: runUuidOf(70), workflow: "person-lookup",
         origin: { kind: "start-plan", startPlanId: runUuidOf(71), actorId: "local-operator" },
@@ -44,14 +44,14 @@ describe("session origin projection", () => {
         () => w.projection.buildDashboardDayWire(PROJECTION_DAY),
         /workflow batch .* is missing or belongs to another workflow/,
       );
-    } finally { w.dispose(); }
+    } finally { await w.dispose(); }
   });
 });
 
 
 describe("batch presentation publication", () => {
-  it.each(["command", "span"] as const)("keeps every rendered batch consistent when a %s update beats the poll", (trigger) => {
-    const w = makeWorld();
+  it.each(["command", "span"] as const)("keeps every rendered batch consistent when a %s update beats the poll", async (trigger) => {
+    const w = await makeWorld();
     try {
       const batch = RunSessionRecordSchema.parse({ sessionId: runUuidOf(70), workflow: "person-lookup",
         origin: { kind: "start-plan", startPlanId: runUuidOf(71), actorId: "local-operator" },
@@ -86,6 +86,6 @@ describe("batch presentation publication", () => {
       w.projection.refreshRun(runUuidOf(2));
       assert.equal(batchScans, 0, "ordinary row patches must not scan all retained batches");
       assert.deepEqual(w.changes.map((change) => change.kind), ["patch"], "unchanged batch presentation retains granular row updates");
-    } finally { w.dispose(); }
+    } finally { await w.dispose(); }
   });
 });

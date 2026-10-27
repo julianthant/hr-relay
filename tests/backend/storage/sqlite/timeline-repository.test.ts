@@ -57,8 +57,8 @@ it.each(["pid", "worker", "workflow", "kind"] as const)("does not pair a reused 
   } finally { f.database.close(); }
 });
 
- it.each(["done", "failed", "interrupted", "open"] as const)("pairs actual run.claimed with its %s run completion", outcome => {
-  const native = foundationFixture();
+ it.each(["done", "failed", "interrupted", "open"] as const)("pairs actual run.claimed with its %s run completion", async outcome => {
+  const native = await foundationFixture();
   terminalizeFixtureFailure(native, native.run, failure());
   const f = fixture(native.path);
   try {
@@ -70,11 +70,11 @@ it.each(["pid", "worker", "workflow", "kind"] as const)("does not pair a reused 
     const before = f.repository.page({});
     assert.equal(f.repository.pruneBefore("2026-03-01"), outcome === "done" ? 2 : 0);
     assert.deepEqual(f.repository.page({}), outcome === "done" ? [] : before);
-  } finally { f.database.close(); native.dispose(); }
+  } finally { f.database.close(); await native.dispose(); }
 });
 
-it("preserves the actual lifecycle command's claimed and failed completion pair after settlement", () => {
-  const f = foundationFixture();
+it("preserves the actual lifecycle command's claimed and failed completion pair after settlement", async () => {
+  const f = await foundationFixture();
   try {
     assert.ok(f.run.lifecycle.state === "running");
     const workerId = f.run.lifecycle.workerId;
@@ -104,5 +104,5 @@ it("preserves the actual lifecycle command's claimed and failed completion pair 
     assert.deepEqual(before.filter(row => row.payload.kind === "span").map(row => row.payload.kind === "span" ? row.payload.event.t : null), ["run.claimed", "span.ended"]);
     assert.equal(f.db.authority.timelineEvents.pruneBefore("2027-01-01"), 0);
     assert.deepEqual(f.db.authority.timelineEvents.page({ runId: current.envelope.runId }), before);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });

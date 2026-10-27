@@ -18,11 +18,11 @@ const RAW = "[ucpath/search-person-org] DUO_TERMINAL_REFUSAL: Duo refused the We
 const CATALOG = ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text;
 const UNREGISTERED = ERROR_CATALOG.ERROR_CATALOG_CODE_UNREGISTERED.text;
 const { world, runRecordOf, cleanup } = createRunQueueProjectionTestWorld();
-const trusts: ReturnType<typeof trustWorld>[] = [];
+const trusts: Awaited<ReturnType<typeof trustWorld>>[] = [];
 
-afterEach(() => {
-  cleanup();
-  for (const trust of trusts.splice(0).reverse()) trust.dispose();
+afterEach(async () => {
+  await cleanup();
+  for (const trust of trusts.splice(0).reverse()) await trust.dispose();
 });
 
 function duoFailure(seed = 4) {
@@ -77,15 +77,15 @@ function protect(run: RunRecord): RunRecord {
 }
 
 describe("operator failure text", () => {
-  it("shows the catalog sentence on the queue, in the failure section, and on the failure notification", () => {
+  it("shows the catalog sentence on the queue, in the failure section, and on the failure notification", async () => {
     const failure = duoFailure();
-    const w = world();
+    const w = await world();
     seedFailedQueue(w, failure);
     const row = queueRow(w, failure.runId);
     assert.deepEqual(row.liveMessage, { state: "present", value: CATALOG });
     assert.equal(JSON.stringify(row.liveMessage).includes("10812345"), false);
 
-    const trust = trustWorld();
+    const trust = await trustWorld();
     trusts.push(trust);
     const created = trust.create(401);
     const now = trust.world.clock.now().toISOString();
@@ -156,9 +156,9 @@ describe("operator failure text", () => {
     assert.equal(renderExplainRun(view).includes(RAW), true);
   });
 
-  it("shows no protected value for a protected-input run, and an absent catalog code uses the unregistered sentence", () => {
+  it("shows no protected value for a protected-input run, and an absent catalog code uses the unregistered sentence", async () => {
     const failure = duoFailure();
-    const w = world();
+    const w = await world();
     const run = protect(runRecordOf({
       seed: 4,
       lifecycle: { state: "terminal", outcome: "failed", endedAt: "2026-08-03T17:12:00.000Z", failureId: failure.failureId },

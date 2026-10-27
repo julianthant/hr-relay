@@ -52,7 +52,7 @@ describe("SQLite settings authority", () => {
 afterEach(_afterEachFixture0);
 
   it("database restore leaves credential revision, availability and next-use value intact", async () => {
-    const f = fixture(); const snapshot = join(f.root, "prior.sqlite");
+    const f = await fixture(); const snapshot = join(f.root, "prior.sqlite");
     await f.database.onlineBackupTo(snapshot);
     const revision = f.store.read().revision; const request = protectedCommand(revision); f.execute(request);
     f.database.close(); copyFileSync(snapshot, f.path);
@@ -149,8 +149,8 @@ const NOW_1 = "2026-09-06T12:00:00.000Z";
 const NOW_2 = "2026-09-06T12:01:00.000Z";
 const roots: string[] = [];
 
-const _afterEachFixture0 = () => {
-  releaseFixtures();
+const _afterEachFixture0 = async () => {
+  await releaseFixtures();
   vi.restoreAllMocks();
   syncBuiltinESMExports();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });

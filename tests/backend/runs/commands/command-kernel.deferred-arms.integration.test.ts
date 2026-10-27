@@ -21,8 +21,8 @@ describe("deferred arms", () => {
       actions.map((action) => `${family}/${action}`)),
   );
 
-  it("returns typed capability-unavailable for EVERY deferred arm with zero authority side effects", () => {
-    const harness = createHarness();
+  it("returns typed capability-unavailable for EVERY deferred arm with zero authority side effects", async () => {
+    const harness = await createHarness();
     const deferredFixtures = [...deferredKeys].map((key) => {
       const [family, type] = key.split("/");
       assert.ok(family !== undefined && type !== undefined);

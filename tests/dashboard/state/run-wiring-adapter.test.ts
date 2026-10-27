@@ -273,7 +273,7 @@ describe("served Logs wiring", () => {
     }
   });
   it("settles supported candidate approval only after matching readback and replays the same command", async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
@@ -309,10 +309,10 @@ describe("served Logs wiring", () => {
       matched = true; assert.ok(state?.replay);
       await act(async () => state?.replay?.());
       assert.equal(sent.length, 2); assert.deepEqual(sent[1], envelope); assert.equal(feedback.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1);
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   it("shows exact one-click target and served basis before approval, then requires matched readback", async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
@@ -351,10 +351,10 @@ describe("served Logs wiring", () => {
       const replay = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Replay exact decision"); assert.ok(replay);
       await act(async () => replay.click());
       assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1); assert.deepEqual(sent[1], envelope);
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   for (const transition of ["identical", "command-revision", "run-roundtrip", "keyed-run-roundtrip", "unmounted", "foreign-scope"] as const) it(`isolates pending command ownership and feedback through ${transition} replacement`, async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
@@ -410,10 +410,10 @@ describe("served Logs wiring", () => {
         await act(async () => release?.());
         assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1);
       }
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   it("keeps a newer run's confirmed feedback and lock when the old command settles late", async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const selected = [RUN, OTHER].map(runId => ({ ...selection(runId), row: { ...selection(runId).row, rowRevision: RowRevisionSchema.parse(3) } }));
       const gates = [RUN, OTHER].map(runId => {
@@ -451,10 +451,10 @@ describe("served Logs wiring", () => {
       resolved.add(RUN); await act(async () => releases.get(RUN)?.());
       assert.match(document.body.textContent ?? "", /Decision confirmed/); assert.equal(approve().disabled, true);
       assert.equal(outcomes.length, 1); assert.equal(outcomes[0].commandId, sent[1].commandId); assert.equal(refreshed, 1); assert.equal(sent.length, 2);
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   it("retains uncertain feedback and the exact replay envelope through identical row replacement", async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
@@ -479,10 +479,10 @@ describe("served Logs wiring", () => {
       assert.equal(sent.length, 1); assert.equal(refreshed, 0);
       const replay = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Replay exact decision"); assert.ok(replay);
       matched = true; await act(async () => replay.click()); assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(refreshed, 1);
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   for (const outcome of ["uncertain", "refused"] as const) it(`stabilizes restored ${outcome} command and replay inputs until state or scope changes`, async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
@@ -514,7 +514,7 @@ describe("served Logs wiring", () => {
       const replacement = { ...binding, scope: { ...scope, actorId: "other-operator" } };
       await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: replacement })));
       assert.equal(current?.command, undefined); assert.equal(current?.replay, undefined);
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   it("displays omitted evidence explicitly and never substitutes verified-empty actions", async () => {
     for (const supplied of [false, true]) {
@@ -532,7 +532,7 @@ describe("served Logs wiring", () => {
     }
   });
   it("retains supplied notes and locks decision controls when gate/capture authority is omitted", async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
@@ -556,10 +556,10 @@ describe("served Logs wiring", () => {
         assert.equal(submissions, 0);
         await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
       }
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   it("keeps refusal feedback and permits only an explicit corrected approval in the mounted Logs panel", async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
@@ -594,10 +594,10 @@ describe("served Logs wiring", () => {
         assert.equal(envelope.family, "gate");
         if (envelope.family === "gate") assert.deepEqual(envelope.payload.result.value, { decision: "approved", eid: gate.options[index].eid, chosenFrom: gate.options[index].chosenFrom, evidenceDigest: gate.evidenceDigest });
       }
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   it("releases a confirmed gate lock when the same run reaches its next authoritative gate", async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const firstGate = fixtures.gateDetail(fixtures.ONE_CLICK);
@@ -632,10 +632,10 @@ describe("served Logs wiring", () => {
       assert.equal(sent.length, 2); assert.equal(outcomes[1].kind, "confirmed"); assert.equal(refreshed, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
       for (const [index, envelope] of sent.entries()) { assert.equal(envelope.family, "gate"); if (envelope.family === "gate") assert.deepEqual(envelope.target,
         { runId: RUN, gateId: gates[index].gateId, expectedVersion: index === 0 ? 3 : 5 }); }
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   for (const authority of ["current", "new-revision", "new-gate", "foreign-actor", "foreign-authority"] as const) it(`projects keyed pending-to-refused recovery only for ${authority} gate authority`, async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
@@ -693,7 +693,7 @@ describe("served Logs wiring", () => {
       await act(async () => release?.()); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
       await act(async () => root?.render(panel(next, binding, "2026-08-03T12:00:03.000Z")));
       assert.doesNotMatch(document.body.textContent ?? "", /The command was refused|Pending/); assert.equal(sent.length, 2);
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   it("mounts the served LogSample producer without fictional decision events", async () => {
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : detail());
@@ -747,7 +747,7 @@ describe("served Logs wiring", () => {
     assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
   });
   for (const replacement of ["day", "epoch", "day-request", "scope"] as const) it(`revokes stale reads after ${replacement} authority replacement`, async () => {
-    const h = launchHarness();
+    const h = await launchHarness();
     try {
       const pending: { signal?: AbortSignal | null; resolve: (value: unknown) => void }[] = [];
       const client = clientFor((path, signal) => path.endsWith("/logs") ? { section: "logs", payload: page() }
@@ -768,7 +768,7 @@ describe("served Logs wiring", () => {
       await act(async () => pending[0].resolve(detail())); assert.equal(current?.state, "loading");
       await act(async () => pending[1].resolve(detail())); assert.equal(current?.state, "loaded");
       assert.equal(current?.snapshot?.detail.runId, RUN);
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
   it("revokes both stale A responses across A to B to A and client replacement", async () => {
     const pending: { path: string; signal?: AbortSignal | null; resolve: (value: unknown) => void }[] = [];

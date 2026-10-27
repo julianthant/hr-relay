@@ -150,7 +150,7 @@ describe("native logging authority", () => {
 
 describe("loopback debug reporting", () => {
   it("admits strict reports and sanitizes once while rejecting secrets in unknown fields", async () => {
-    const f = resolutionFixture();
+    const f = await resolutionFixture();
     try {
       const app = resolutionApp(f);
       const send = (body: unknown, origin = "http://localhost") => app.request("http://localhost/api/v1/debug/errors", { method: "POST", headers: { origin, host: "localhost", "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -165,7 +165,7 @@ describe("loopback debug reporting", () => {
       for (let i = 0; i < 27; i++) assert.equal((await send({ ...report, reportId: randomUUID_m0() })).status, 201);
       assert.equal((await send(report)).status, 429);
       assert.equal(JSON.stringify(f.db.authority.timelineEvents.page({})).includes("CANARY"), false);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });
 }

@@ -19,7 +19,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     "refuses an intake upload with %s before the query, the bytes or the intake service are read",
     async (_label, headers) => {
       let uploads = 0;
-      const h = harness({
+      const h = await harness({
         intake: {
           ...UNWIRED_INTAKE_SERVICE,
           upload: () => {
@@ -48,7 +48,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("admits a same-origin intake upload under the file's own media type and keeps the route's media contract", async () => {
     const seen: string[] = [];
-    const h = harness({
+    const h = await harness({
       intake: {
         ...UNWIRED_INTAKE_SERVICE,
         upload: (input) => {
@@ -69,7 +69,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(seen, ["fixture-graph|roster.csv|text/csv|13"]);
   });
   it.each(["archive", "truncated-pk", "directory", "xml", "rels", "workbook-empty", "relationships-empty"])("refuses malformed XLSX %s through the real upload/parser without creating a session", async corruption => {
-    const h = harness({ intake: { ...UNWIRED_INTAKE_SERVICE, upload: input => actual.upload(input) } });
+    const h = await harness({ intake: { ...UNWIRED_INTAKE_SERVICE, upload: input => actual.upload(input) } });
     const actual = composeIntake({ database: h.database, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
       projections: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined },
       descriptors: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined }, clock: h.clock, ids: sequentialIdFactory("c") });

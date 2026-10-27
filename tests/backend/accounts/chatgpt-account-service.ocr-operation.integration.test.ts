@@ -8,7 +8,7 @@ import { createProfileRegistry } from "../../../src/backend/profiles/registry.js
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
 
-async function advanceCredentialRevision(profile: ReturnType<typeof createBoundProfileFixture>): Promise<void> {
+async function advanceCredentialRevision(profile: Awaited<ReturnType<typeof createBoundProfileFixture>>): Promise<void> {
   const repository = credentials.createChatGptCredentialRepository({ admission: profile.admission, stateRoot: profile.stateRoot });
   await repository.withLock(async transaction => {
     const current = transaction.read(); assert.ok(current);
@@ -19,7 +19,7 @@ async function advanceCredentialRevision(profile: ReturnType<typeof createBoundP
 const image = { model: "gpt-6.1-sol", instruction: "Read the synthetic page", input: { kind: "image" as const, mediaType: "image/png" as const, base64: "YQ==" } };
 
 it("refreshes before page work, preserves its own usage transition and revokes retained OCR methods", async () => {
-  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
   try {
     await f.connected(); f.clock.advanceWall(3_600_000);
     let retained: (() => void) | undefined;
@@ -40,12 +40,12 @@ it("refreshes before page work, preserves its own usage transition and revokes r
     const state = f.service.readAccount(); assert.equal(state.state, "connected");
     if (state.state !== "connected") throw new Error("synthetic account must remain connected");
     assert.equal(state.planUsage, "enabled");
-  } finally { await f.cleanup(); profile.close(); }
+  } finally { await f.cleanup(); await profile.close(); }
 });
 
 for (const change of ["same-token-revision", "account-switch", "account-reconnect", "profile-epoch", "physical-release", "cancel"] as const)
   it(`refuses ${change} during scoped page work before transport or usage publication`, async () => {
-    const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+    const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
     const peer = createChatGptAccountService({ admission: profile.admission, stateRoot: profile.stateRoot, clock: f.clock, fetch: f.transport });
     const controller = new AbortController();
     try {
@@ -64,11 +64,11 @@ for (const change of ["same-token-revision", "account-switch", "account-reconnec
       }, controller.signal);
       await assert.rejects(pending);
       assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
-    } finally { await peer.close(); await f.cleanup(); profile.close(); }
+    } finally { await peer.close(); await f.cleanup(); await profile.close(); }
   });
 
 it("refuses a peer same-token revision during the real response stream without publishing usage", async () => {
-  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
   const peer = createChatGptAccountService({ admission: profile.admission, stateRoot: profile.stateRoot, clock: f.clock, fetch: f.transport });
   let expected: Buffer | undefined;
   try {
@@ -83,11 +83,11 @@ it("refuses a peer same-token revision during the real response stream without p
     await assert.rejects(f.service.extractText(image), { code: "CHATGPT_OCR_CANCELLED" });
     assert.ok(expected); assert.equal(readFileSync(join(profile.stateRoot, "credentials", "chatgpt-account.json")).equals(expected), true);
     assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 1);
-  } finally { await peer.close(); await f.cleanup(); profile.close(); }
+  } finally { await peer.close(); await f.cleanup(); await profile.close(); }
 });
 
 it("revalidates the issued authority inside the real usage transaction after a peer revision at its lock boundary", async () => {
-  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
   const peer = createChatGptAccountService({ admission: profile.admission, stateRoot: profile.stateRoot, clock: f.clock, fetch: f.transport });
   const createRepository = credentials.createChatGptCredentialRepository;
   let armed = false, intercepted = 0, expected: Buffer | undefined;
@@ -111,11 +111,11 @@ it("revalidates the issued authority inside the real usage transaction after a p
     await assert.rejects(account.extractText(image), { code: "CHATGPT_OCR_CANCELLED" });
     assert.equal(intercepted, 1); assert.ok(expected);
     assert.equal(readFileSync(join(profile.stateRoot, "credentials", "chatgpt-account.json")).equals(expected), true);
-  } finally { factory.mockRestore(); await account.close(); await peer.close(); await f.cleanup(); profile.close(); }
+  } finally { factory.mockRestore(); await account.close(); await peer.close(); await f.cleanup(); await profile.close(); }
 });
 
 it("account close drains an actually issued held page callback and revokes its retained methods", async () => {
-  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
   const page = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
   let settled = false, retained: (() => void) | undefined;
   try {
@@ -128,11 +128,11 @@ it("account close drains an actually issued held page callback and revokes its r
     page.resolve(); await refused; await closing;
     assert.equal(settled, true); assert.ok(retained); assert.throws(retained, { code: "CHATGPT_SERVICE_CLOSED" });
     assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
-  } finally { page.resolve(); await f.cleanup(); profile.close(); }
+  } finally { page.resolve(); await f.cleanup(); await profile.close(); }
 });
 
 it("account close waits a genuine usage transaction boundary and prevents a late usage write", async () => {
-  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
   const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
   const createRepository = credentials.createChatGptCredentialRepository;
   let armed = false, settled = false;
@@ -156,11 +156,11 @@ it("account close waits a genuine usage transaction boundary and prevents a late
     await Promise.resolve(); assert.equal(settled, false);
     gate.resolve(); await refused; await closing;
     assert.equal(settled, true); assert.equal(readFileSync(join(profile.stateRoot, "credentials", "chatgpt-account.json")).equals(before), true);
-  } finally { gate.resolve(); factory.mockRestore(); await account.close(); await f.cleanup(); profile.close(); }
+  } finally { gate.resolve(); factory.mockRestore(); await account.close(); await f.cleanup(); await profile.close(); }
 });
 
 for (const owner of ["same-service", "two-services"] as const) it(`permits legitimate concurrent first OCR operations for ${owner} on one selected account`, async () => {
-  const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
   const peer = createChatGptAccountService({ admission: profile.admission, stateRoot: profile.stateRoot, clock: f.clock, fetch: f.transport });
   const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
   let pages = 0;
@@ -178,12 +178,12 @@ for (const owner of ["same-service", "two-services"] as const) it(`permits legit
         code: result.reason instanceof ChatGptAccountError || result.reason instanceof credentials.ChatGptCredentialError ? result.reason.code : "unknown" });
     assert.deepEqual(trace, [{ state: "fulfilled" }, { state: "fulfilled" }]);
     assert.equal(pages, 2); assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 2);
-  } finally { gate.resolve(); await peer.close(); await f.cleanup(); profile.close(); }
+  } finally { gate.resolve(); await peer.close(); await f.cleanup(); await profile.close(); }
 });
 
 for (const consumer of ["ocr", "catalog"] as const) for (const cleanup of ["held", "refused"] as const)
   it(`owns the ${consumer} response before stale-authority validation with ${cleanup} cancellation`, async () => {
-    const profile = createBoundProfileFixture(), f = chatGptFixture(profile.admission);
+    const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
     const cancelled = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
     let cancelCalls = 0, releaseCalls = 0, closed = false;
     let restoreReader: (() => void) | undefined;
@@ -226,6 +226,6 @@ for (const consumer of ["ocr", "catalog"] as const) for (const cleanup of ["held
     } finally {
       release.resolve(); restoreReader?.();
       if (cleanup === "held") await f.cleanup();
-      profile.close();
+      await profile.close();
     }
   });

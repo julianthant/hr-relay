@@ -20,8 +20,8 @@ function resolveMeasuredSearchDescriptor(workflowId: string) {
 
 describe("cross-date search service", () => {
 
-  it("continues the stable order with an opaque cursor", () => {
-    const profile = createBoundProfileFixture();
+  it("continues the stable order with an opaque cursor", async () => {
+    const profile = await createBoundProfileFixture();
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-cursor-test" },
@@ -158,7 +158,7 @@ describe("cross-date search service", () => {
       );
     } finally {
       database.close();
-      profile.close();
+      await profile.close();
     }
   });
 });

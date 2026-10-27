@@ -17,7 +17,7 @@ const retainedSettingsParityOwners = new Set<object>();
 export async function startSettingsActivationServer() {
   assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
   const clock = manualClock(new Date("2026-09-09T12:00:00.000Z"));
-  const fixture = createBoundProfileFixture({ sharedMachine: true });
+  const fixture = await createBoundProfileFixture({ sharedMachine: true });
   const root = fixture.workspace;
   const held: { fixture: typeof fixture; machine?: RuntimeAdmission; profile?: ReturnType<typeof composeProfileRuntime>;
     runtime?: Awaited<ReturnType<typeof composeDashboardRuntime>>; primary?: unknown } = { fixture };
@@ -37,7 +37,7 @@ export async function startSettingsActivationServer() {
     const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
       processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot) });
     held.profile = profile;
-    const active = profile.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+    const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     if (active.state !== 'active') throw new Error('parity-profile-sign-in-refused');
     if (active.profileId !== fixture.admission.profileBinding.profileId) throw new Error('parity-profile-binding-mismatch');
     const runtime = await composeDashboardRuntime({ admission: machine, profile: { runtime: profile, token: active.token }, clock,
@@ -67,7 +67,7 @@ export async function startSettingsActivationServer() {
             await runtime.stop();
             await profile.close();
             machine.release();
-            fixture.close();
+            await fixture.close();
             retainedSettingsParityOwners.delete(held);
           } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
         })();

@@ -38,14 +38,14 @@ const _afterEachFixture0 = () => {
 
 };
 
-function openDatabase(): AuthorityDatabase_m0 {
-  const profile = createBoundProfileFixture_m0();
+async function openDatabase(): Promise<AuthorityDatabase_m0> {
+  const profile = await createBoundProfileFixture_m0();
   const database = AuthorityDatabase_m0.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
   const close = database.close.bind(database);
-  database.close = () => { close(); profile.close(); };
+  database.close = async () => { close(); await profile.close(); };
   databases.push(database);
   return database;
 }

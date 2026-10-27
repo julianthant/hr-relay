@@ -13,7 +13,7 @@ afterEach(cleanup);
 describe("person-lookup full walk", () => {
 
   it("includes crm-dates when the operator asked for it", async () => {
-    const harness = executorHarness();
+    const harness = await executorHarness();
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(
       database,

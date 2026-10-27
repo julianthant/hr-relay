@@ -19,10 +19,10 @@ import { CommandRequestSchema, CommandResultSchema } from "../../../src/rules/co
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 
 it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s authority at the genuine supervisor after awaited preflight and never redispatches a failed effect", async change => {
-  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
   const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
-  const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("active profile required");
   let release!: () => void, entered!: () => void;
   const barrier = new Promise<void>(resolve => { release = resolve; });
@@ -152,7 +152,7 @@ it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s aut
     } catch (error) { failures.push(error); }
     try { await context?.account.close(); } catch (error) { failures.push(error); }
     try { context?.database.close(); } catch (error) { failures.push(error); }
-    try { f.close(); } catch (error) { failures.push(error); }
+    try { await f.close(); } catch (error) { failures.push(error); }
   }
   if (failures.length > 0) throw new AggregateError(failures, "assistant composition assertions or cleanup failed");
 });

@@ -27,15 +27,15 @@ const AssistantTransportRequestSchema = AssistantInferenceRequestSchema.safeExte
 
 type ServedAssistantFixture = {
   context: ReturnType<ReturnType<typeof composeProfileRuntime>['selectedContext']>;
-  transport: ReturnType<typeof chatGptFixture>;
-  clock: ReturnType<typeof chatGptFixture>['clock'];
+  transport: Awaited<ReturnType<typeof chatGptFixture>>;
+  clock: Awaited<ReturnType<typeof chatGptFixture>>['clock'];
   originalFetch: typeof fetch;
   origin: string;
   post: (path: string, value: unknown) => Promise<unknown>;
 };
 type ServedAssistantOwner = {
-  profile?: ReturnType<typeof createBoundProfileFixture>;
-  transport?: ReturnType<typeof chatGptFixture>;
+  profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>;
+  transport?: Awaited<ReturnType<typeof chatGptFixture>>;
   runtime?: ReturnType<typeof composeProfileRuntime>;
   dashboard?: Awaited<ReturnType<typeof composeDashboardRuntime>>;
   fetchProbe?: { mockRestore(): void };
@@ -55,9 +55,9 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
   let ready = false;
   let primary: { error: unknown } | undefined;
   try {
-    const f = createBoundProfileFixture();
+    const f = await createBoundProfileFixture();
     owner.profile = f;
-    const transport = chatGptFixture(f.admission);
+    const transport = await chatGptFixture(f.admission);
     owner.transport = transport;
     const originalFetch = globalThis.fetch;
     const fetchProbe = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
@@ -76,7 +76,7 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, `${knowledge.bytes}\n`);
     const document = join(f.workspace, knowledge.reference.files[0].path);
     mkdirSync(dirname(document), { recursive: true }); writeFileSync(document, `${knowledge.reference.files[0].text}\n`);
-    const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+    const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("selected fixture required");
     const context = runtime.selectedContext(active.token);
     const authorization = await context.account.signIn({ usePlan: true }); await transport.callback(authorization); await authorization.completion;
@@ -106,7 +106,7 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     if (owner.dashboard !== undefined) await owner.dashboard.stop(); else await owner.runtime.close();
     await owner.transport.cleanup();
     owner.fetchProbe.mockRestore();
-    owner.profile.close();
+    await owner.profile.close();
     servedAssistantOwner = undefined;
   } catch (error) { owner.failures.push(error); owner.primary ??= { error }; }
   if (primary !== undefined || owner.failures.length > 0) throw new AggregateError(

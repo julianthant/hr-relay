@@ -38,8 +38,8 @@ describe("the queue row's served facts", () => {
     return surface;
   }
 
-  it("a failed row shows the unregistered-code sentence, not its raw summary", () => {
-    const w = world();
+  it("a failed row shows the unregistered-code sentence, not its raw summary", async () => {
+    const w = await world();
     seedFailed(w);
     const failure = failureRecordOf({ seed: 4, code: "CRM_UNAVAILABLE" });
     w.authority.failures.set(String(failure.failureId), failure);
@@ -51,8 +51,8 @@ describe("the queue row's served facts", () => {
     assert.notEqual(rowOf(w, 4).liveMessage, { state: "present", value: failure.summary });
   });
 
-  it("a failure record authority does not hold is NAMED, never replaced by a guess", () => {
-    const w = world();
+  it("a failure record authority does not hold is NAMED, never replaced by a guess", async () => {
+    const w = await world();
     // The failure id rides the lifecycle; nothing puts the record.
     seedFailed(w);
     const { liveMessage } = rowOf(w, 4);
@@ -63,8 +63,8 @@ describe("the queue row's served facts", () => {
     );
   });
 
-  it("every non-failed row states WHY it carries no sentence rather than carrying one", () => {
-    const w = world();
+  it("every non-failed row states WHY it carries no sentence rather than carrying one", async () => {
+    const w = await world();
     seedWorld(w);
     const running = rowOf(w, 2);
     const done = rowOf(w, 3);
@@ -80,16 +80,16 @@ describe("the queue row's served facts", () => {
     );
   });
 
-  it("`dryRun` comes off the run envelope and is served on every row", () => {
-    const w = world();
+  it("`dryRun` comes off the run envelope and is served on every row", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, dryRun: true });
     queuedEventOf(w, { seed: 2 });
     assert.equal(rowOf(w, 1).dryRun, true);
     assert.equal(rowOf(w, 2).dryRun, false);
   });
 
-  it("only an awaiting row dates its gate, and the instant is the GATE's own", () => {
-    const w = world();
+  it("only an awaiting row dates its gate, and the instant is the GATE's own", async () => {
+    const w = await world();
     seedWorld(w);
     const record = w.authority.getRun(uuidOf(9));
     assert.ok(record);
@@ -105,8 +105,8 @@ describe("the queue row's served facts", () => {
     }
   });
 
-  it("a parked-gate run whose gate span is missing falls back to authority's park instant", () => {
-    const w = world();
+  it("a parked-gate run whose gate span is missing falls back to authority's park instant", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     w.authority.put(runRecordOf({
       seed: 1,
@@ -119,8 +119,8 @@ describe("the queue row's served facts", () => {
     assert.deepEqual(rowOf(w, 1).gateOpenedAt, { state: "present", value: "2026-08-03T17:05:00.000Z" });
   });
 
-  it("the △ chip's count is the receipt's real warning set, titled by the first", () => {
-    const w = world();
+  it("the △ chip's count is the receipt's real warning set, titled by the first", async () => {
+    const w = await world();
     seedWorld(w);
     w.authority.receipts.set(uuidOf(3), receiptWithWarningsOf({
       seed: 3,

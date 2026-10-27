@@ -12,8 +12,8 @@ const { world, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
 
 describe("served Person Lookup declared Queue details", () => {
-  it.each(["active", "inactive", "found"] as const)("shows only the EID detail and a separate Outcome badge for %s", state => {
-    const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+  it.each(["active", "inactive", "found"] as const)("shows only the EID detail and a separate Outcome badge for %s", async state => {
+    const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
     const input = state === "found" ? PersonLookupInput.parse({ mode: "match", lastName: "quillan", firstName: "petra", dob: "2/19/2030", crmCheck: true }) : undefined;
     const { row } = seedPersonLookupPresentation(w, { state, input });
     const surface = row(); assert.ok(surface);
@@ -27,7 +27,7 @@ describe("served Person Lookup declared Queue details", () => {
   });
 });
 
-it("projects the confirmed Match person's EID from the derived terminal result", () => {
+it("projects the confirmed Match person's EID from the derived terminal result", async () => {
   const input = PersonLookupInput.parse({ mode: "match", lastName: "Quillan", firstName: "Petra", dob: "2/19/2030" });
   const hit = { emplId: EidSchema.parse("10000002"), name: FICTIONAL_PERSON.name };
   const match = { hits: [hit], confirmed: [hit], dropped: [] };
@@ -35,7 +35,7 @@ it("projects the confirmed Match person's EID from the derived terminal result",
   const outcome = derivePersonLookupOutcome({ input, identity, match });
   assert.equal(outcome.details.eid, "10000002");
   assert.equal(outcome.details.matchedEid, "10000002");
-  const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   const { row, run } = seedPersonLookupPresentation(w, { input });
   const receipt = w.authority.receipts.get(run.envelope.runId); assert.ok(receipt);
   const eid = receipt.output.find(fact => fact.id === deriveEvidenceEntryId(receipt.receiptId, "output", "activeStatus.details.eid"));
@@ -45,8 +45,8 @@ it("projects the confirmed Match person's EID from the derived terminal result",
   assert.deepEqual(row()?.outcome, { label: "Found", tone: "success" });
 });
 
-it("withholds details without terminal verification and never matches a raw leaf name", () => {
-  const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+it("withholds details without terminal verification and never matches a raw leaf name", async () => {
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   const { row, run } = seedPersonLookupPresentation(w);
   const receipt = w.authority.receipts.get(run.envelope.runId); assert.ok(receipt);
   const eid = receipt.output.find(fact => fact.id === deriveEvidenceEntryId(receipt.receiptId, "output", "activeStatus.details.eid")); assert.ok(eid);
@@ -57,8 +57,8 @@ it("withholds details without terminal verification and never matches a raw leaf
   assert.equal(row()?.facts.state, "absent");
 });
 
-it("requires each displayed output to belong to its exact verification evidence", () => {
-  const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+it("requires each displayed output to belong to its exact verification evidence", async () => {
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   const { row, run } = seedPersonLookupPresentation(w);
   const receipt = w.authority.receipts.get(run.envelope.runId); assert.ok(receipt);
   const eid = deriveEvidenceEntryId(receipt.receiptId, "output", "activeStatus.details.eid");
@@ -66,8 +66,8 @@ it("requires each displayed output to belong to its exact verification evidence"
   assert.equal(row()?.facts.state, "absent");
 });
 
-it("omits undeclared mode and termination fields even when their values are retained", () => {
-  const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+it("omits undeclared mode and termination fields even when their values are retained", async () => {
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   const { row, run } = seedPersonLookupPresentation(w);
   const receipt = w.authority.receipts.get(run.envelope.runId); assert.ok(receipt);
   for (const field of ["endDate", "terminationReason", "foundInUcpath", "matchedEid", "matchedName"]) {
@@ -79,10 +79,10 @@ it("omits undeclared mode and termination fields even when their values are reta
   assert.deepEqual(facts.value.map(fact => fact.label), ["EID"]);
 });
 
-it("reads declared node details only from this receipt's verified observation IDs", () => {
+it("reads declared node details only from this receipt's verified observation IDs", async () => {
   const descriptor = { ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined,
     details: [{ key: "name", label: "Name", source: { nodeId: "active-status", fieldPath: "details.name" }, display: "text" as const }] };
-  const w = world({ descriptors: { resolve: () => descriptor } });
+  const w = await world({ descriptors: { resolve: () => descriptor } });
   const { row, run } = seedPersonLookupPresentation(w);
   const receipt = w.authority.receipts.get(run.envelope.runId); assert.ok(receipt);
   const output = receipt.output.find(fact => fact.id === deriveEvidenceEntryId(receipt.receiptId, "output", "activeStatus.details.name"));
@@ -97,10 +97,10 @@ it("reads declared node details only from this receipt's verified observation ID
   assert.equal(row()?.facts.state, "absent");
 });
 
-it("refuses foreign receipt identity independently of outcome and subtitle projections", () => {
+it("refuses foreign receipt identity independently of outcome and subtitle projections", async () => {
   const descriptor = { ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined,
     details: [{ key: "name", label: "Name", source: { kind: "result" as const, fieldPath: "activeStatus.details.name" }, display: "text" as const }] };
-  const w = world({ descriptors: { resolve: () => descriptor } });
+  const w = await world({ descriptors: { resolve: () => descriptor } });
   const { row, run } = seedPersonLookupPresentation(w);
   const receipt = w.authority.receipts.get(run.envelope.runId); assert.ok(receipt);
   receipt.configFingerprint = run.envelope.contractFingerprint;
@@ -108,9 +108,9 @@ it("refuses foreign receipt identity independently of outcome and subtitle proje
   assert.throws(row, /detail-receipt-identity-mismatch/u);
 });
 
-it("withholds DOB and SSN from Match details while keeping only the EID", () => {
+it("withholds DOB and SSN from Match details while keeping only the EID", async () => {
   const input = PersonLookupInput.parse({ mode: "match", lastName: "Quillan", firstName: "Petra A.", dob: "2/19/2030", ssn: "000112222" });
-  const { row } = seedPersonLookupPresentation(world({ descriptors: { resolve: () => personLookupDescriptor } }), { input });
+  const { row } = seedPersonLookupPresentation(await world({ descriptors: { resolve: () => personLookupDescriptor } }), { input });
   const surface = row(); assert.ok(surface);
   assert.doesNotMatch(JSON.stringify(surface.facts), /2\/19\/2030|000112222/u);
   assert.equal(surface.facts.state, "present");
@@ -122,10 +122,10 @@ it.each([
   { empty: true, missing: true, reason: "this run's evidence receipt records no output fact" },
   { empty: false, missing: false, reason: "this workflow declares no detail fields" },
   { empty: false, missing: true, reason: "this workflow's detail declaration is unavailable" },
-])("explains absent details with empty output $empty and unavailable descriptor $missing", ({ empty, missing, reason }) => {
+])("explains absent details with empty output $empty and unavailable descriptor $missing", async ({ empty, missing, reason }) => {
   const descriptor = { ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined,
     subtitleProjection: undefined, details: [] };
-  const w = world({ descriptors: { resolve: () => missing ? undefined : descriptor } });
+  const w = await world({ descriptors: { resolve: () => missing ? undefined : descriptor } });
   const { row, run } = seedPersonLookupPresentation(w);
   const receipt = w.authority.receipts.get(run.envelope.runId); assert.ok(receipt);
   if (empty) receipt.output = [];

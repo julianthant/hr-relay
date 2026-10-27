@@ -41,7 +41,7 @@ function admittedWorkerId(stateRoot: string, clock: TestClock, poolIndex = 1) {
 describe("composed worker runtime", () => {
 
   it("builds the whole dependency graph and drains a queued run to done", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const sessions = happySessionHarness();
@@ -79,7 +79,7 @@ describe("composed worker runtime", () => {
   });
 
   it("composes distinct stable identities for members of one workflow pool", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
 
     const first = await composeWorkerRuntime(composeInput({
@@ -104,7 +104,7 @@ describe("composed worker runtime", () => {
   });
 
   it("refuses a second process answering to the same worker id", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const workerId = admittedWorkerId(stateRoot, clock, POOL_INDEX_1);
@@ -123,7 +123,7 @@ describe("composed worker runtime", () => {
   });
 
   it("reclaims a lease whose process died without settling, instead of bricking the workflow", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const workerId = admittedWorkerId(stateRoot, clock);
@@ -152,7 +152,7 @@ describe("composed worker runtime", () => {
   });
 
   it("sweeps its own orphaned claim at startup and then claims it, same workflow", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const workerId = admittedWorkerId(stateRoot, clock);
@@ -180,7 +180,7 @@ describe("composed worker runtime", () => {
   });
 
   for (const recovery of ["startup", "global"] as const) it(`${recovery} recovery publishes cancellation once without claiming or opening browsers`, async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const workerId = admittedWorkerId(stateRoot, clock, recovery === "startup" ? 1 : 2);
@@ -216,7 +216,7 @@ describe("composed worker runtime", () => {
   });
 
   it("parks — never requeues — its own orphaned claim that holds an attempting write intent", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const workerId = admittedWorkerId(stateRoot, clock);
@@ -267,7 +267,7 @@ describe("composed worker runtime", () => {
   });
 
   it("stops gracefully mid-run: the run is abandoned, never terminalized over a lost claim", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     let started: (() => void) | undefined;
@@ -307,7 +307,7 @@ describe("composed worker runtime", () => {
   });
 
   it("refuses unproved closure when worker-stop cannot prove closure, and records the lease as crashed", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const sessions = happySessionHarness(), closes: (() => Promise<unknown>)[] = [];
@@ -360,7 +360,7 @@ describe("composed worker runtime", () => {
   });
 
   it("starts a NEW lease generation over a settled one and drains normally", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const workerId = admittedWorkerId(stateRoot, clock);

@@ -12,10 +12,10 @@ const REMINDER = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const BRIDGE = "https://a5.ucsd.edu/continuing";
 const APPLICATION = "https://application.example.invalid/home";
 
-function reminderWorld(repeated: boolean, host = "a5.ucsd.edu", signal = new AbortController().signal) {
+async function reminderWorld(repeated: boolean, host = "a5.ucsd.edu", signal = new AbortController().signal) {
   const reminder = new URL(REMINDER);
   reminder.hostname = host;
-  const { context, harness } = contextFor({
+  const { context, harness } = await contextFor({
     url: reminder.href,
     elements: { ...NO_SIGN_IN_FORMS, "training-reminder": { navigatesTo: repeated ? BRIDGE : APPLICATION } },
     elementsByUrl: { [BRIDGE]: { ...NO_SIGN_IN_FORMS, "training-reminder": { count: 0 } }, [APPLICATION]: { ...NO_SIGN_IN_FORMS, "training-reminder": { count: 0 } } },
@@ -70,7 +70,7 @@ function reminderWorld(repeated: boolean, host = "a5.ucsd.edu", signal = new Abo
 }
 
 it("continues the visible UCSD training reminder once inside the original landing wait and records no value", async () => {
-  const world = reminderWorld(false);
+  const world = await reminderWorld(false);
   let actions: readonly BrowserAction[] = [];
   try {
     await withBrowserActionNotes(manualClock(new Date("2026-08-03T09:00:00Z")), world.run, captured => { actions = captured; });
@@ -85,7 +85,7 @@ it("continues the visible UCSD training reminder once inside the original landin
 });
 
 it("refuses a second UCSD training reminder appearance with its fixed stall code after one click", async () => {
-  const world = reminderWorld(true);
+  const world = await reminderWorld(true);
   try {
     await assert.rejects(world.run(), error => {
       assert.ok(error instanceof BrowserLandingStallError);
@@ -99,7 +99,7 @@ it("refuses a second UCSD training reminder appearance with its fixed stall code
 });
 
 it("does not continue a matching training control on a different host", async () => {
-  const world = reminderWorld(false, "a5.ucsd.edu.example.invalid");
+  const world = await reminderWorld(false, "a5.ucsd.edu.example.invalid");
   try {
     await assert.rejects(world.run(), error => {
       assert.ok(error instanceof BrowserLandingStallError);
@@ -113,7 +113,7 @@ it("does not continue a matching training control on a different host", async ()
 for (const settlement of ["landing", "cancellation"] as const) {
   it(`does not click a reminder that becomes visible after ${settlement} settles`, async () => {
     const controller = new AbortController();
-    const world = reminderWorld(false, "a5.ucsd.edu", controller.signal);
+    const world = await reminderWorld(false, "a5.ucsd.edu", controller.signal);
     let showReminder: (() => void) | undefined;
     let markWaiting: (() => void) | undefined;
     const waiting = new Promise<void>(resolve => { markWaiting = resolve; });
@@ -143,7 +143,7 @@ for (const settlement of ["landing", "cancellation"] as const) {
 }
 
 it("reports a training reminder click failure explicitly without a retry or action value", async () => {
-  const world = reminderWorld(false);
+  const world = await reminderWorld(false);
   const originalLocator = world.context.page.locator.bind(world.context.page);
   world.context.page.locator = (selector, options) => {
     const locator = originalLocator(selector, options);
@@ -158,7 +158,7 @@ it("reports a training reminder click failure explicitly without a retry or acti
 });
 
 it("refuses a same-URL reminder replacement even when the control never appears hidden", async () => {
-  const { context, harness } = contextFor({
+  const { context, harness } = await contextFor({
     url: REMINDER,
     elements: { ...NO_SIGN_IN_FORMS, "training-reminder": { navigatesTo: REMINDER } },
   });
@@ -188,7 +188,7 @@ it("refuses a same-URL reminder replacement even when the control never appears 
 for (const settlement of ["landing", "cancellation"] as const) {
   it(`drains an active reminder click before ${settlement} releases the action scope`, async () => {
     const controller = new AbortController();
-    const world = reminderWorld(false, "a5.ucsd.edu", controller.signal);
+    const world = await reminderWorld(false, "a5.ucsd.edu", controller.signal);
     let releaseClick: (() => void) | undefined;
     const clickSettlement = new Promise<void>(resolve => { releaseClick = resolve; });
     let markClickStarted: (() => void) | undefined;
@@ -235,7 +235,7 @@ for (const settlement of ["landing", "cancellation"] as const) {
 }
 
 it("does not retarget an initiated click to a control in a replacement document", async () => {
-  const world = reminderWorld(false);
+  const world = await reminderWorld(false);
   let releaseClick: (() => void) | undefined;
   const actionable = new Promise<void>(resolve => { releaseClick = resolve; });
   let markStarted: (() => void) | undefined;
@@ -282,7 +282,7 @@ it("does not retarget an initiated click to a control in a replacement document"
 
 it("drains a timed-out active click within its original budget and retains cancellation plus click failure", async () => {
   const controller = new AbortController();
-  const world = reminderWorld(false, "a5.ucsd.edu", controller.signal);
+  const world = await reminderWorld(false, "a5.ucsd.edu", controller.signal);
   let markStarted: (() => void) | undefined;
   const started = new Promise<void>(resolve => { markStarted = resolve; });
   const originalLocator = world.context.page.locator.bind(world.context.page);
@@ -313,7 +313,7 @@ it("drains a timed-out active click within its original budget and retains cance
 });
 
 it("retains both click and bound-element disposal failures", async () => {
-  const world = reminderWorld(false);
+  const world = await reminderWorld(false);
   const originalLocator = world.context.page.locator.bind(world.context.page);
   world.context.page.locator = (selector, options) => {
     const locator = originalLocator(selector, options);

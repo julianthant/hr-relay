@@ -15,7 +15,7 @@ Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); await disposeHttpRouteHarness(); });
 it('registers attached, updated and generated files through HTTP/SQLite, reopens exact versions and isolates chats', async () => {
-  const h = harness(), writes: string[] = [];
+  const h = await harness(), writes: string[] = [];
   const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async (url, init) => {
     if (init?.method === 'POST') writes.push(new URL(String(url)).pathname);
     return h.app.request(String(url), { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), host: 'localhost', origin: 'http://localhost' } });
