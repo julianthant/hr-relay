@@ -19,7 +19,7 @@
       - button "Ready" [disabled]
   - heading "Set up your sign-in methods" [level=1]
   - paragraph: Add your security key and Touch ID in the setup tabs.
-  - text: Security key confirmed Touch ID
+  - text: Security key Completed Touch ID Not started
   - region "Next action":
     - heading "Next, add Touch ID" [level=2]
     - paragraph: In the setup browser, follow Fast Duo’s Touch ID instructions. You can add the methods in either order.

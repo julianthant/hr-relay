@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, vi } from "vitest";
-import { createServedOnboardingPort, duoSummary, mockOnboardingPort as port, parseDuoMessage, useDuoBrowser, useMockDuoSetup, usePublicProfileSession, useServedDuoSetup } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
+import { createServedOnboardingPort, duoMethodLabels, duoMethodPresentation, duoSummary, mockOnboardingPort as port, parseDuoMessage, useDuoBrowser, useMockDuoSetup, usePublicProfileSession, useServedDuoSetup } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
 describe("HUB mock onboarding boundary", () => {
   const details = { firstName: "Alex", lastName: "Rivera", email: "alex.rivera@ucsd.edu", password: "Relay-demo-42" };
@@ -402,4 +402,20 @@ for (const recovery of ["same", "foreign-operation", "foreign-profile", "signed-
       }
     }
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
+});
+
+it("maps each Duo method state to its approved label, note and track without inventing completion", () => {
+  assert.deepEqual(duoMethodLabels, { idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Failed", unavailable: "Failed" });
+  for (const method of ["key", "touch"] as const) {
+    for (const state of ["idle", "pending", "complete", "unknown", "unavailable"] as const) {
+      const { note, track } = duoMethodPresentation(method, state);
+      const failed = state === "unknown" || state === "unavailable";
+      assert.deepEqual(track.map(step => step.label), ["Started", failed ? "Not confirmed" : "Added in Duo", "Confirmed by Relay"]);
+      assert.deepEqual(track.map(step => step.tone), state === "idle" ? ["off", "off", "off"] : state === "complete" ? ["complete", "complete", "complete"] : ["complete", failed ? "failed" : "pending", "off"]);
+      assert.equal(note, failed ? "Relay could not confirm that setup completed. Review your Duo devices; do not repeat this attempt."
+        : state === "complete" ? "This sign-in method is verified. No further enrollment is needed."
+        : state === "pending" ? method === "key" ? "Waiting for Duo security key enrollment." : "Waiting for native Touch ID."
+        : method === "key" ? "Fast Duo creates the software key only when Duo requests it." : "Uses the native Mac prompt, with software interception disabled.");
+    }
+  }
 });

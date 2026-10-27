@@ -19,7 +19,7 @@
       - button "Ready"
   - heading "Duo setup is complete" [level=1]
   - paragraph: Security key and Touch ID are confirmed. You can finish your profile.
-  - text: Security key confirmed Touch ID confirmed
+  - text: Security key Completed Touch ID Completed
   - region "Next action":
     - heading "Ready to finish" [level=2]
     - paragraph: Both methods are registered in Duo.

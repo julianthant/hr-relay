@@ -1,0 +1,48 @@
+# hub-shell-fast-both--light--1440x900
+# adapter: fixture
+# fixture: hub-mock-ports-served-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: light  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to setup":
+  - /url: "#setup-main"
+- banner:
+  - strong: Fast Duo Relay setup
+  - text: Onboarding 1 · UI mock
+- main:
+  - heading "Set up Duo for Relay" [level=1]
+  - paragraph: Confirm a security key and Touch ID in your Duo device-management tab.
+  - region "Your sign-in methods":
+    - heading "Relay sign-in methods" [level=2]
+    - text: 2 of 2 completed
+    - list:
+      - listitem:
+        - button "Security key Software key in this browser Completed Security key progress This sign-in method is verified. No further enrollment is needed." [disabled]:
+          - strong: Security key
+          - text: Software key in this browser Completed
+          - list "Security key progress":
+            - listitem: Started
+            - listitem: Added in Duo
+            - listitem: Confirmed by Relay
+          - text: This sign-in method is verified. No further enrollment is needed.
+      - listitem:
+        - button "Touch ID Built-in sensor on this Mac Completed Touch ID progress This sign-in method is verified. No further enrollment is needed." [disabled] [pressed]:
+          - strong: Touch ID
+          - text: Built-in sensor on this Mac Completed
+          - list "Touch ID progress":
+            - listitem: Started
+            - listitem: Added in Duo
+            - listitem: Confirmed by Relay
+          - text: This sign-in method is verified. No further enrollment is needed.
+    - paragraph: Same status as the Relay sign-up step. Updated every second.
+    - paragraph: Security key and Touch ID ready
+  - heading "Both methods are ready" [level=2]
+  - paragraph: Return to Relay to finish your profile.
+  - status: Security key and Touch ID ready
+  - paragraph: UI mock. No credentials are created or sent.
+  - button "Close setup tab"
+  - button "Return to Relay"
+- status: Security key and Touch ID ready
+- region "Notifications"

@@ -103,7 +103,16 @@ for (const theme of ["light", "dark"]) {
       await expect(page.getByRole("button", { name: "Finish setup", exact: true })).toHaveCount(0);
       const popup = page.waitForEvent("popup");
       await page.getByRole("button", { name: "Show setup browser", exact: true }).click();
-      const fast = await popup; await expect(fast.getByRole("button", { name: "Start capture", exact: true })).toBeEnabled();
+      const fast = await popup;
+      await fast.setViewportSize({ width: 1440, height: 900 });
+      await installFrozenMonotonic(fast); await fast.reload();
+      await expect(fast.getByRole("button", { name: "Start capture", exact: true })).toBeEnabled();
+      await capture(fast, info, "fast-idle", theme);
+      const touchCard = fast.locator(".method-card").filter({ hasText: "Touch ID" });
+      await touchCard.focus(); await fast.keyboard.press("Enter");
+      await expect(touchCard).toHaveAttribute("aria-pressed", "true");
+      await expect(fast.getByLabel("Device type", { exact: true })).toHaveValue("touch");
+      await fast.getByLabel("Device type", { exact: true }).selectOption("key");
       await capture(page, info, "duo-waiting", theme);
       const child = fast.waitForEvent("popup"); await fast.getByRole("button", { name: "Start capture", exact: true }).click();
       const duo = await child;
@@ -112,10 +121,11 @@ for (const theme of ["light", "dark"]) {
         await duo.getByRole("button", { name: label, exact: true }).click();
         await assertCentered(duo, ".hub-duo-dialog");
         await duo.getByRole("button", { name: "Confirm device added", exact: true }).click();
-        if (label === "Add security key") { await expect(page.getByText("Security key ready · Touch ID not added", { exact: true })).toBeVisible(); await capture(page, info, "duo-key", theme); }
+        if (label === "Add security key") { await expect(page.getByText("Security key ready · Touch ID not added", { exact: true })).toBeVisible(); await capture(page, info, "duo-key", theme); await capture(fast, info, "fast-key", theme); }
       }
       await expect(page.getByRole("button", { name: "Finish setup", exact: true })).toBeVisible();
       await capture(page, info, "duo-both", theme);
+      await capture(fast, info, "fast-both", theme);
       await page.getByRole("button", { name: "Finish setup", exact: true }).click();
       await capture(page, info, "ready", theme);
       await page.getByRole("button", { name: "Go to dashboard", exact: true }).click();
