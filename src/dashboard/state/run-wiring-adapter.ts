@@ -18,6 +18,8 @@ import type { LogEntry, LogScreenshot, LogStep } from "../surfaces/run-detail/lo
 import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/logs/log-timeline-model.js";
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
+import type { RerunLaunchSource } from "../surfaces/run-start/run-launch-model.js";
+import { KualiDocumentNumberSchema } from "../../models/ui/kuali-document-identity.js";
 import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
 
 class RunLogIdentityError extends Error {
@@ -326,11 +328,17 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const failure = section.payload.value;
       const resolution = resolveErrorCatalogFailure(failure, "http-response");
       const message = resolution.state === "resolved" ? resolution.text : resolution.catalogFault.text;
+      const correction = failure.rerunInput;
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
       steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
         entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
           state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, caution: `Write state: ${failure.writeState}`,
-          footer: "Resolution unavailable: this panel cannot collect a failure annotation." } }] });
+          ...(correction === undefined ? { footer: "Resolution unavailable: this panel cannot collect a failure annotation." } : {
+            footer: "Review a corrected document number in Rerun before starting new work.",
+            actions: [{ id: `${failure.failureId}:documentNumber`, label: "Enter document number", primary: true,
+              input: { kind: "text", label: "Document number", placeholder: "Kuali document number", pattern: "^\\d{3,8}$" },
+              result: { title: "Review corrected input", message: "Review the document number in Rerun." } }],
+          }) } }] });
     } else if (section.section === "identity-gate" && section.payload.state === "available") {
       const gate = section.payload.value;
       const ceremony = identityCeremonyFor(gate);
@@ -422,8 +430,9 @@ interface GateCommandOwner {
 
 /** Shows the served confirmation for a decision and calls `onConfirmed` only when the operator confirms it. */
 export type RunWiringConfirm = (pending: PendingCommand, onConfirmed: () => void) => void;
+export type RunWiringRerun = (source: RerunLaunchSource, text: string) => void;
 
-export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
+export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm, rerun?: RunWiringRerun) {
   const { row } = selection;
   const request = useMemo(() => ({ client, runId: row.runId, revision: row.rowRevision, day: binding?.authority.day, selection: { row, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
     epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state,
@@ -517,6 +526,17 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   };
   const onDecision = useCallback((id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => {
     if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) return;
+    const failed = value.snapshot.sections.find(section => section.section === "failure");
+    if (failed?.section === "failure" && failed.payload.state === "available" && failed.payload.value.failureId === id) {
+      const failure = failed.payload.value;
+      const text = KualiDocumentNumberSchema.safeParse(answer.text?.trim());
+      if (rerun !== undefined && row.status === "failed" && failure.rerunInput?.field === "documentNumber" && failure.rerunInput.expectedVersion === row.rowRevision
+        && failure.runId === row.runId && failure.traceId === row.traceId && failure.attempt === row.attempt
+        && failure.writeState === "not-attempted" && action.id === `${failure.failureId}:documentNumber` && text.success) {
+        rerun({ runId: row.runId, expectedVersion: row.rowRevision, label: row.title, traceId: String(row.traceId) }, text.data);
+      }
+      return;
+    }
     const section = value.snapshot.sections.find(section => section.section === "identity-gate");
     if (section?.section !== "identity-gate" || section.payload.state !== "available" || section.payload.value.gateId !== id) return;
     const gate = section.payload.value;
@@ -535,7 +555,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     confirm({ action: descriptor, target: { runId: row.runId, expectedVersion: gate.expectedVersion }, subject: row.title, traceId: String(row.traceId),
       workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId, requestedAt: envelope.requestedAt,
       triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null }, () => dispatchIfGateCurrent.current(envelope));
-  }, [value, binding, commandOwner, row, selection.workflowLabel, dispatch, commandApplies, confirm]);
+  }, [value, binding, commandOwner, row, selection.workflowLabel, dispatch, commandApplies, confirm, rerun]);
   const newest = binding?.executor.retainedAttempts().findLast(attempt => attempt.request.family === "gate"
     && attempt.request.target.runId === row.runId && attempt.request.requestedBy === binding.scope.actorId
     && attempt.scope.client === binding.scope.client && attempt.scope.authority === binding.scope.authority && attempt.scope.dayRequest === binding.scope.dayRequest);

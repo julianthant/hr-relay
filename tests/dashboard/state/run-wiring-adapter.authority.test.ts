@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
-import { gateLogActions, readRunLogs, useRunWiring, type RunWiringConfirm } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { gateLogActions, readRunLogs, useRunWiring, type RunWiringConfirm, type RunWiringRerun } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { PendingCommand } from "../../../src/dashboard/surfaces/shared/actions/actions.js";
@@ -19,7 +19,8 @@ import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from "
 import { ActorIdSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { IdentityApprovalResultSchema } from "../../../src/rules/separations/identity-approval.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
-import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../parity/helpers/fixture-queue.js";
+import { FIXTURE_FAILURE_SECTIONS } from "../../support/fixtures/dashboard/run-detail/receipts-failures.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
@@ -55,13 +56,13 @@ beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); vi.unstubAllGlobals(); });
 
 type Harness = { state?: ReturnType<typeof useRunWiring>; outcomes: CommandOutcome[]; refreshed: number; render: (selected: LogSelection) => Promise<void> };
-async function harness(client: DashboardClient, confirm?: RunWiringConfirm): Promise<Harness> {
+async function harness(client: DashboardClient, confirm?: RunWiringConfirm, rerun?: RunWiringRerun): Promise<Harness> {
   const h: Harness = { outcomes: [], refreshed: 0, render: async () => undefined };
   const scope = Object.freeze({ actorId: ActorIdSchema.parse("local-operator"), client, authority: {}, dayRequest: {} });
   const dayState = { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh: () => { h.refreshed++; } };
   const binding = { scope, executor: new CommandExecutor(() => scope), feedback: (outcome: CommandOutcome) => { h.outcomes.push(outcome); },
     authority: { epoch: scope.authority, catalog: [], nowIso: AT, today: "2026-08-03", day: "2026-08-03", dayState, selection: { route: { start: false }, workflowId: "separations" } } } as unknown as DashboardCommandBinding;
-  function Probe({ selected }: { selected: LogSelection }) { h.state = useRunWiring(client, selected, binding, confirm); return null; }
+  function Probe({ selected }: { selected: LogSelection }) { h.state = useRunWiring(client, selected, binding, confirm, rerun); return null; }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   h.render = async selected => { await act(async () => { root?.render(createElement(Probe, { selected })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   return h;
@@ -76,6 +77,34 @@ function gateClient(gate: ReturnType<typeof servedGate>, selected: LogSelection,
 }
 
 describe("served Logs decision authority", () => {
+  it("opens the canonical Rerun door for a validated document correction without dispatching a command", async () => {
+    const basis = selectionAt(3);
+    const selected = { ...basis, row: { ...basis.row, status: "failed" as const } };
+    const original = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;
+    assert.ok(original.section === "failure" && original.payload.state === "available");
+    if (original.section !== "failure" || original.payload.state !== "available") throw new Error("failure fixture unavailable");
+    const failure = { ...original.payload.value, native: native(2), runId: RUN, traceId: selected.row.traceId, attempt: 1,
+      workflowId: selected.row.workflowId, nodeId: "first", taskId: "kuali/read-separation-document", code: "DOCUMENT_UNAVAILABLE",
+      writeState: "not-attempted", rerunInput: { field: "documentNumber", expectedVersion: 3 } };
+    let sent = 0;
+    const client = { artifactUrl: (id: string) => `/artifacts/${id}`, runDetail: async () => detailAt(selected, 3, { availableSections: ["logs", "failure"] }),
+      runSection: async (_run: string, section: string) => section === "logs" ? logs() : RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: failure } }),
+      executeCommand: async () => { sent++; throw new Error("correction must not dispatch"); },
+    } as unknown as DashboardClient;
+    const opened: Parameters<RunWiringRerun>[] = [];
+    const h = await harness(client, undefined, (...args) => { opened.push(args); });
+    await h.render(selected);
+    assert.ok(h.state?.onDecision);
+    const action = { id: `${failure.failureId}:documentNumber`, label: "Enter document number", result: { title: "Review", message: "Review" } };
+    await act(async () => h.state?.onDecision?.(failure.failureId, action, { text: "4510; 4511" }));
+    assert.equal(opened.length, 0, "the correction accepts one valid document number only");
+    await act(async () => h.state?.onDecision?.(failure.failureId, action, { text: " 4510 " }));
+    assert.deepEqual(opened, [[{ runId: RUN, expectedVersion: 3, label: selected.row.title, traceId: String(selected.row.traceId) }, "4510"]]);
+    assert.equal(sent, 0);
+    await h.render(selectionAt(4));
+    await act(async () => h.state?.onDecision?.(failure.failureId, action, { text: "4510" }));
+    assert.equal(opened.length, 1, "stale run authority cannot seed a correction");
+  });
   it("offers a confirmation-bearing approval and dispatches its exact envelope only after the operator confirms", async () => {
     const gate = servedGate(fixtures.ONE_CLICK);
     const selected = selectionAt(3);

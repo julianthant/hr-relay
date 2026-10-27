@@ -360,7 +360,7 @@ function LoadedApp({
   const activeWorkflowId = selectedRow?.workflowId ?? route.view?.workflow ?? chosenWorkflowId;
   const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, catalog: workflowCatalog, nowIso, today, day, dayState,
     selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
-  const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
+  const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID, authorityEpoch);
   const [requestedPreview, setRailPreview] = useViewState("preview", null);
   const routeWorkflowId = requestedPreview ?? activeWorkflowId;
   const railPreview = route.run !== undefined && requestedPreview === null ? null : requestedPreview && !workflowCatalog.some(flow => flow.id === requestedPreview) ? requestedPreview
@@ -1027,7 +1027,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
               onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => completeReview(railRow.id, "discard")} onRestore={() => completeReview(railRow.id, "restore")}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
-              <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={workflowComposition.logsSources ? workflowSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
+              <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} rerun={openRerun} initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={workflowComposition.logsSources ? workflowSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}

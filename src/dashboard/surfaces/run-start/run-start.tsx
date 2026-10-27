@@ -245,6 +245,7 @@ export function RunStartDialog({
   onApplied,
   onCloseAutoFocus,
   rerunSource,
+  rerunInputText,
   previewLaunch,
   previewRuns,
   onSubmitPreview,
@@ -262,6 +263,7 @@ export function RunStartDialog({
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
+  rerunInputText?: string;
   previewLaunch?: Readonly<{ workflowId: MockWorkflowId; source?: MockRun }>;
   previewRuns?: readonly MockRun[];
   onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
@@ -378,6 +380,12 @@ export function RunStartDialog({
         const selection = defaultRerunSteps(response.snapshot, sourceWorkflow);
         setWorkflowId(sourceWorkflow.workflowId); setSelectedStepKeys(selection); setSnapshot(response.snapshot);
         setValueDrafts(initialRerunValueDrafts(response.snapshot, sourceWorkflow));
+        if (rerunInputText !== undefined) {
+          if (sourceWorkflow.inputRun.state !== "present" || sourceWorkflow.inputRun.surface.typedInput !== undefined
+            || response.snapshot.source.outcome !== "failed" || response.snapshot.transactions.length !== 0) throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text);
+          setText(rerunInputText); setValueDrafts({}); setSelectedStepKeys(sourceWorkflow.steps.map(step => step.key));
+          setCurrentStage("Values");
+        }
         if (sourceWorkflow.inputRun.state === "present" && sourceWorkflow.inputRun.surface.typedInput !== undefined) {
           if (response.snapshot.sourceInput.state === "unavailable") throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("RERUN_SOURCE_INPUT_PROTECTED", {})).text);
           const declaration = sourceWorkflow.inputRun.surface.typedInput;
@@ -396,7 +404,7 @@ export function RunStartDialog({
       });
     }
     return () => { launchInstance.current = instance + 1; };
-  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, actorId, launchService, previewLaunch, routed, setCurrentStage, setCustomizeSteps, setWorkflowId]);
+  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, previewLaunch, routed, setCurrentStage, setCustomizeSteps, setWorkflowId]);
 
   const pickWorkflow = useCallback((id: string) => {
     if (selectedWorkflowRef.current === id || sending.current) return;
@@ -800,7 +808,7 @@ export function RunStartDialog({
               {(currentStage === "Input" || currentStage === "Values") && (
                 <section aria-label={isRerun ? "Values" : "Input"} className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
                   {inputRun.state === "present" ? (
-                    !declaredInput && isRerun && snapshot?.values.some(candidate => candidate.state === "available" && candidate.targetStepKey === undefined && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) ? null : <TypedInput
+                    !declaredInput && isRerun && rerunInputText === undefined && snapshot?.values.some(candidate => candidate.state === "available" && candidate.targetStepKey === undefined && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) ? null : <TypedInput
                       surface={inputRun.surface}
                       workflowId={workflowId}
                       text={text}

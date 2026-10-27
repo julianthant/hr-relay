@@ -9,6 +9,7 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  DOCUMENT_UNAVAILABLE: catalogEntry("The Kuali separation document could not be opened. Review the document number before starting a new run.", EmptyParametersSchema),
   CREDENTIAL_CONTEXT_REQUIRED: catalogEntry("The selected profile credential authority is unavailable. Restart the runtime before continuing.", EmptyParametersSchema),
   RUNTIME_CUSTODY_UNCERTAIN: catalogEntry("Runtime resource closure is unproved. Preserve the current installation and process custody before restarting.", EmptyParametersSchema),
   PROFILE_BROWSER_ROOT_REFUSED: catalogEntry("Browser storage must stay inside the selected profile in an owned directory without links.", EmptyParametersSchema),

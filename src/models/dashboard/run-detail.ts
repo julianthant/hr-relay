@@ -573,6 +573,7 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
 /** The failure section serves CONTENT, not a pointer; every field below is one the schema itself made display-safe. */
 export const FailureDetailWireSchema = z.strictObject({
   native: NativeRunEventWireSchema.optional(),
+  rerunInput: z.strictObject({ field: z.literal("documentNumber"), expectedVersion: PositiveIntSchema }).optional(),
   display: FailureDisplaySchema.optional(),
   resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
   runId: RunIdSchema,
@@ -617,6 +618,10 @@ export const FailureDetailWireSchema = z.strictObject({
   ]),
   occurredAt: IsoInstantSchema,
 }).superRefine((failure, context) => {
+  if (failure.rerunInput !== undefined && (failure.workflowId !== "separations" || failure.code !== "DOCUMENT_UNAVAILABLE"
+    || failure.taskId !== "kuali/read-separation-document" || failure.nodeId === undefined || failure.writeState !== "not-attempted")) {
+    context.addIssue({ code: "custom", path: ["rerunInput"], message: "document correction requires an exact read failure before any write" });
+  }
   if (failure.sameFingerprintSeen < 1) {
     context.addIssue({
       code: "custom",

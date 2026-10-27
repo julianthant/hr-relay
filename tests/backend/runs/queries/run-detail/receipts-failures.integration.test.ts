@@ -13,6 +13,9 @@ import { ActorIdSchema,DiagnosticBundleIdSchema,FailureIdSchema } from "../../..
 import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
 import { HASH_A,HASH_B,NOW } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { trustWorld } from "../../../../support/helpers/backend/trust-authority-fixture.js";
+import { separationsModule } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { RunRecordSchema } from "../../../../../src/models/run/record.js";
+import { FailureRecordSchema } from "../../../../../src/models/trust/failure.js";
 
 const worlds: Awaited<ReturnType<typeof trustWorld>>[] = [];
 afterEach(async () => { for (const world of worlds.splice(0).reverse()) await world.dispose(); });
@@ -78,6 +81,32 @@ function availableFailure(response: ReturnType<typeof buildReceiptFailureSection
 }
 
 describe("run-detail failure diagnostic-bundle linkage", () => {
+  it("offers document correction only for the current descriptor's exact read failure before any write", async () => {
+    const h = await fixture();
+    const descriptor = separationsModule.descriptor;
+    const run = RunRecordSchema.parse({ ...h.run, envelope: { ...h.run.envelope, workflow: descriptor.id,
+      descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint } });
+    const existence = h.f.reader.read(h.run.envelope.runId);
+    assert.ok("run" in existence);
+    if (!("run" in existence)) throw new Error("run unavailable");
+    let failure = FailureRecordSchema.parse({ ...h.failure, workflowId: descriptor.id, nodeId: "document",
+      taskId: "kuali/read-separation-document", code: "DOCUMENT_UNAVAILABLE", writeState: "not-attempted" });
+    let current = true;
+    const reader = { ...h.f.reader, read: () => ({ ...existence, run }) };
+    const deps = { ...h.f.deps, runReader: reader,
+      canonical: { reader, database: h.f.database, descriptors: { resolve: () => current ? descriptor : undefined } },
+      trust: { ...h.f.receipts, getFailure: () => failure },
+    };
+    const read = () => availableFailure(buildReceiptFailureSection(deps, run.envelope.runId, "failure"));
+    assert.deepEqual(read().rerunInput, { field: "documentNumber", expectedVersion: run.version });
+    failure = FailureRecordSchema.parse({ ...failure, writeState: "unknown" });
+    assert.equal(read().rerunInput, undefined, "UNKNOWN is never offered a correction/retry");
+    failure = FailureRecordSchema.parse({ ...failure, writeState: "not-attempted", code: "UNEXPECTED_PAGE_STATE" });
+    assert.equal(read().rerunInput, undefined, "a different failure is not a document correction");
+    failure = FailureRecordSchema.parse({ ...failure, code: "DOCUMENT_UNAVAILABLE" });
+    current = false;
+    assert.equal(read().rerunInput, undefined, "missing current descriptor never becomes a default");
+  });
   it("retains an early terminal failure in Logs when the empty evidence fold skips timeline reads", async () => {
     const h = await fixture();
     const runId = h.run.envelope.runId;
