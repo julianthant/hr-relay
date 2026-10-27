@@ -187,7 +187,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       {route.viewInvalid ? (
         <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />
       ) : route.onboardingSetup !== undefined && profileSource === "served" && session?.state === "onboarding" ? (
-        <OnboardingSetup page={route.onboardingSetup} port={publicProfile.port} />
+        <OnboardingSetup page="fast" port={publicProfile.port} />
       ) : profileSource === "served" && (publicProfile.failure || session !== undefined && (session.state !== "active" || session.duoState !== "ready")) ? (
         <Onboarding step={session?.state === "onboarding" ? session.step : session?.state === "active" ? "duo" : route.onboarding === "signup" ? "signup" : "login"}
           authenticated={session?.state === "active"} port={publicProfile.port}

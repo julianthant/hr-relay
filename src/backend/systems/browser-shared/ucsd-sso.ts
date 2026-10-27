@@ -83,6 +83,66 @@ function passwordField(page: Page): Locator {
   return byLabels(page, page.locator(SSO_PASSWORD_SELECTOR), SSO_PASSWORD_LABELS).first();
 }
 
+export async function submitOnboardingSsoCredentials(page: Page,
+  acquire: () => Promise<Readonly<{ userId: string; password: string }>>,
+  assertCurrent: () => void, timeout: number): Promise<void> {
+  const url = page.url(), path = "/tritON/profile/SAML2/Redirect/SSO";
+  const allowed = (value: string) => {
+    const parsed = URL.parse(value);
+    return parsed?.origin === "https://a5.ucsd.edu" && parsed.username === "" && parsed.password === "" && parsed.port === "" && parsed.pathname === path;
+  };
+  const check = () => { assertCurrent(); if (page.url() !== url || !allowed(url)) throw new Error("ONBOARDING_SSO_SCOPE"); };
+  check();
+  const username = page.locator(SSO_USERNAME_SELECTOR), password = page.locator(SSO_PASSWORD_SELECTOR), submit = page.locator(SSO_SUBMIT_SELECTOR);
+  const users = await username.count(); check();
+  const passwords = await password.count(); check();
+  const buttons = await submit.count(); check();
+  if (users !== 1 || passwords !== 1 || buttons !== 1) throw new Error("ONBOARDING_SSO_FIELDS");
+  let user: Awaited<ReturnType<typeof username.elementHandle>> = null;
+  let secret: Awaited<ReturnType<typeof password.elementHandle>> = null;
+  let button: Awaited<ReturnType<typeof submit.elementHandle>> = null;
+  try {
+    user = await username.elementHandle(); check();
+    secret = await password.elementHandle(); check();
+    button = await submit.elementHandle(); check();
+    if (!user || !secret || !button) throw new Error("ONBOARDING_SSO_FIELDS");
+    const pinnedUser = user, pinnedSecret = secret, pinnedSubmit = button;
+    const controls = async () => {
+      check();
+      for (const field of [pinnedUser, pinnedSecret]) {
+        const visible = await field.isVisible(); check();
+        const editable = await field.isEditable(); check();
+        if (!visible || !editable) throw new Error("ONBOARDING_SSO_FIELDS");
+      }
+      const visible = await pinnedSubmit.isVisible(); check();
+      const enabled = await pinnedSubmit.isEnabled(); check();
+      if (!visible || !enabled) throw new Error("ONBOARDING_SSO_FIELDS");
+      const valid = await pinnedUser.evaluate((element, input) => {
+        if (!(element instanceof HTMLInputElement) || !(input.other instanceof HTMLInputElement) || !(input.submit instanceof HTMLButtonElement)) return false;
+        const form = element.form, action = form === null ? null : new URL(form.action);
+        const buttonAction = new URL(input.submit.formAction);
+        return element.isConnected && input.other.isConnected && input.submit.isConnected
+          && element.ownerDocument === document && input.other.ownerDocument === document && input.submit.ownerDocument === document
+          && form !== null && form === input.other.form && form === input.submit.form && input.other.type === "password" && input.submit.type === "submit"
+          && form.method === "post" && (input.submit.formMethod === "" || input.submit.formMethod === "post")
+          && (form.target === "" || form.target === "_self") && (input.submit.formTarget === "" || input.submit.formTarget === "_self")
+          && buttonAction.origin === "https://a5.ucsd.edu" && buttonAction.username === "" && buttonAction.password === "" && buttonAction.port === "" && buttonAction.pathname === input.path
+          && action?.origin === "https://a5.ucsd.edu" && action.username === "" && action.password === "" && action.port === "" && action.pathname === input.path;
+      }, { other: pinnedSecret, submit: pinnedSubmit, path });
+      check(); if (!valid) throw new Error("ONBOARDING_SSO_FIELDS");
+    };
+    await controls();
+    const credentials = await acquire(); check();
+    await controls();
+    await user.fill(credentials.userId, { timeout }); check();
+    await controls();
+    await secret.fill(credentials.password, { timeout }); check();
+    await controls();
+    await button.click({ timeout }); assertCurrent();
+  } finally { try { await user?.dispose(); } finally { try { await secret?.dispose(); } finally { await button?.dispose(); } } }
+}
+
+
 export function ssoSubmitButton(page: Page): Locator {
   return page.locator(SSO_SUBMIT_SELECTOR).first();
 }

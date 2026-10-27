@@ -708,6 +708,16 @@ Source snapshot removal, isolated binding/login-copy database close, authenticat
 
 ### Private onboarding custody
 
+Show setup browser opens one draft-owned full Chromium window on the Relay FastDuo extension's
+existing setup page. Open duo.ucsd.edu opens a separate tab in that same context, acquires the
+original protected Details only after verifying the exact UCSD SSO document and form controls,
+then submits that pinned POST form once. Reopening focuses the owned tab; failed initialization
+remains refused and never resubmits. Login does not prove either enrollment method or MFA completion.
+The extension UI receives public draft status and exact attempt commands, never login credentials.
+Before enrollment capture is armed, verified native Duo documents may query capability support or
+pass a sign-in request to the captured browser implementation. This path exposes no software key,
+enrollment, persisted credential, counter reservation or readiness proof.
+
 `profile-onboarding.ts` issues exact operation/generation/method attempts. Software FastDuo readiness
 requires native pending-key acknowledgement and ceremony plus either exact scoped operator CONFIRM
 or an observed exact-credential request; an unobserved portal acceptance remains false. Native Mac

@@ -1,3 +1,16 @@
+const initial = await chrome.runtime.sendMessage({ type: 'STATE' });
+if (initial?.success && initial.result?.relaySetup === true) {
+  document.getElementById('status').textContent = 'Relay Duo setup';
+  document.getElementById('detail').textContent = 'Setup belongs to your private Relay draft. Finish both methods in Duo.';
+  document.getElementById('manage').textContent = 'Show setup';
+  document.getElementById('manage').addEventListener('click', () => chrome.runtime.openOptionsPage());
+  document.getElementById('toggle').hidden = true;
+} else if (chrome.runtime.getManifest().background.service_worker === 'src/relay-background.js') {
+  document.getElementById('status').textContent = 'Setup unavailable';
+  document.getElementById('detail').textContent = 'Return to Relay to check the original draft.';
+  document.getElementById('toggle').hidden = true;
+  document.getElementById('manage').disabled = true;
+} else {
 let state;
 async function render() {
   const reply = await chrome.runtime.sendMessage({type:'STATE'});
@@ -23,3 +36,5 @@ document.getElementById('toggle').addEventListener('click',async()=>{
   catch(error){document.getElementById('error').textContent=error.message;}finally{button.disabled=false;}
 });
 await render().catch(error=>document.getElementById('error').textContent=error.message);
+
+}

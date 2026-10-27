@@ -642,6 +642,12 @@ export function createProfileSession(input: {
       if (email === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
       return email;
     },
+    credentials: operation => {
+      const entries = storeFor(operation.profileId).read().entries;
+      if (entries.ucpathUserId === undefined || entries.ucpathPassword === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+      return { userId: entries.ucpathUserId.value, password: entries.ucpathPassword.value };
+    },
+    publicState: onboardingState,
     store: operation => {
       if (operation.onboarding === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
       return createDraftDuoCredentialStore(admittedProfile(operation.profileId), admission, operation.operationId, operation.onboarding.generation, input.clock ?? systemClock);
@@ -685,6 +691,16 @@ export function createProfileSession(input: {
     },
     readOnboarding(token: string, operationId: string): ProfileOnboardingState {
       return withProfileLock(machineRoot, () => onboardingState(requireOnboarding(token, operationId, true)));
+    },
+    async showOnboardingBrowser(token: string, operationId: string): Promise<ProfileOnboardingState> {
+      requireOnboarding(token, operationId);
+      await onboarding.showBrowser(operationId);
+      return onboardingState(requireOnboarding(token, operationId));
+    },
+    async openOnboardingPortal(token: string, operationId: string): Promise<ProfileOnboardingState> {
+      requireOnboarding(token, operationId);
+      await onboarding.openPortal(operationId);
+      return onboardingState(requireOnboarding(token, operationId));
     },
     async startOnboardingDuo(token: string, operationId: string, method: ProfileOnboardingMethod): Promise<ProfileOnboardingState> {
       withProfileLock(machineRoot, () => requireOnboarding(token, operationId));

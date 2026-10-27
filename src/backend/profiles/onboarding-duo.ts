@@ -1,5 +1,18 @@
 import type { DuoEnrollmentScope } from "../../models/config/duo-credential-store.js";
-import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
+import type { ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+
+export interface DraftDuoBrowserOwner {
+  readonly operationId: string;
+  readonly profileId: string;
+  readonly accountId: string;
+  readonly generation: number;
+  assertCurrent(): void;
+  acquireCredentials(): Promise<Readonly<{ userId: string; password: string }>>;
+  readState(): ProfileOnboardingState;
+  start(method: ProfileOnboardingMethod): Promise<void>;
+  cancel(method: ProfileOnboardingMethod, attemptId: string): Promise<void>;
+  confirm(method: ProfileOnboardingMethod, attemptId: string): void;
+}
 
 export interface DraftDuoAttempt {
   readonly operationId: string;
@@ -56,6 +69,9 @@ export interface DraftDuoCapability {
 }
 
 export interface ProfileOnboardingDuoProvider {
+  showBrowser(owner: DraftDuoBrowserOwner): Promise<void>;
+  openPortal(owner: DraftDuoBrowserOwner): Promise<void>;
+  closeBrowser(owner: DraftDuoBrowserOwner): Promise<Readonly<{ state: "closed" | "uncertain" }>>;
   start(attempt: DraftDuoAttempt,
     bindObservedContext: (context: DraftDuoObservedContext) => Promise<DraftDuoCapability>,
     reportFailure: (error: Error) => Promise<void>): Promise<void>;

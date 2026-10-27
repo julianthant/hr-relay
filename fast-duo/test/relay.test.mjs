@@ -37,6 +37,48 @@ const enrollment = (attachment = 'cross-platform') => ({ type: 'DUO_AUTOPILOT_EN
   username: 'alex@example.edu', userHandle: Buffer.from('synthetic-user').toString('base64'),
   pubKeyCredParams: [{ type: 'public-key', alg: -7 }], authenticatorAttachment: attachment, residentKey: false,
 } });
+
+test('browser UI broker accepts the exact native extension tab and refuses content, foreign and stale documents', async t => {
+  const w = world();
+  let receive;
+  const root = 'chrome-extension://owned-extension/';
+  w.api.runtime.getURL = path => root + path;
+  w.api.runtime.onMessage = { addListener: listener => { receive = listener; } };
+  globalThis.chrome = w.api;
+  t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
+  await import('../src/relay-background.js?browser-ui-test');
+  const owner = globalThis.relayOnboarding;
+  await owner.browserInstall();
+  const sender = { id: w.api.runtime.id, url: root + 'src/options.html', origin: root.slice(0, -1),
+    tab: { id: 9, url: root + 'src/options.html' }, frameId: 0, documentId: DOCUMENT, documentLifecycle: 'active' };
+  const send = (message, source) => new Promise(resolve => { receive(message, source, resolve); });
+  const response = send({ type: 'STATE' }, sender);
+  const request = await owner.browserNext(); assert.equal(request.kind, 'state');
+  owner.browserReply(request.id, { ok: true, value: { state: 'onboarding' } });
+  assert.deepEqual(await response, { success: true, result: { relaySetup: true, profile: { state: 'onboarding' } } });
+  for (const source of [
+    { ...sender, id: 'another-extension' }, { ...sender, frameId: 1 },
+    { ...sender, url: ORIGIN + '/setup', origin: ORIGIN },
+    { ...sender, url: root + 'src/options.html?extra' },
+    { ...sender, origin: 'null' }, { ...sender, documentLifecycle: 'cached' },
+    { ...sender, documentId: 'forged' }, { ...sender, tab: { ...sender.tab, url: ORIGIN } },
+  ]) assert.equal((await send({ type: 'STATE' }, source)).success, false);
+  for (const message of [{ type: 'SAVE_ACCOUNT' }, { type: 'RELAY_START', method: 'key', attemptId: crypto.randomUUID() },
+    { type: 'STATE', password: 'must-not-be-accepted' }, { type: 'RELAY_CANCEL', method: 'touch', attemptId: 'forged' }]) {
+    assert.equal((await send(message, sender)).success, false);
+  }
+  for (const [type, result] of [['RELAY_CAPABILITIES', { softwareKey: false }], ['DUO_AUTOPILOT_SIGN', { passThrough: true }]]) {
+    const message = { type, request: { origin: ORIGIN, rpId: 'duosecurity.com' } };
+    assert.deepEqual(await send(message, SENDER), { success: true, result });
+    assert.equal((await send(message, { ...SENDER, id: 'foreign' })).success, false);
+    assert.equal((await send(message, { ...SENDER, frameId: 1 })).success, false);
+    assert.equal((await send(message, { ...SENDER, documentId: 'replaced' })).success, false);
+    assert.equal((await send({ ...message, request: { ...message.request, rpId: 'foreign' } }, SENDER)).success, false);
+  }
+  assert.equal((await send(enrollment(), SENDER)).success, false);
+  assert.deepEqual(w.state(), {}); assert.equal(w.localReads(), 0);
+  await owner.browserStop(); assert.equal((await send({ type: 'STATE' }, sender)).success, false);
+});
 async function acknowledge(worker, kind, value) {
   const request = await worker.next();
   assert.equal(request.kind, kind);
