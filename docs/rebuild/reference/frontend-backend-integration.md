@@ -310,3 +310,19 @@ both software FastDuo and native Mac Touch ID, proved provider closure and expli
 registry/verifier/active-session publication. Only the ordinary returned session cookie mounts
 bootstrap, Queue, Run and HR data authority. Failed or unknown publication remains a defined HOLD;
 public error codes never expose private causes or credential values.
+
+The login surface offers an explicit Claim existing data action using the existing form and
+canonical client. `/api/v1/profile/claim-existing-data` requires exact loopback mutation admission,
+validated details, a claim UUID and literal owner-claim consent. It verifies ownership before issuing
+the maintenance handoff and returns `PROFILE_OWNER_CLAIM_STARTING` without a session cookie. The
+initiating response settles before transport and profile closure, backup and stopped publication.
+After reconnection, the operator repeats the explicit claim; authenticated recovery returns the
+original private operation with its limited onboarding cookie. A fresh browser request UUID does
+not replace the retained operation or repeat its completed effects. Ordinary signup stays separate.
+
+For an adopted flat installation, the same public shell refuses ordinary signup/sign-in with
+`PROFILE_OWNER_CLAIM_REQUIRED` before constructing private profile or onboarding machinery. The
+claim's stopped handoff verifies its backup, publishes its resumable native transition and reopens
+the same loopback port. Restart may finish only that original authorized transition; a flat source
+without a claim journal stays unclaimed. The resulting authority remains the existing private draft
+until genuine current Duo methods and explicit Finish complete.

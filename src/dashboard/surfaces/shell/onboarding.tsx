@@ -1,12 +1,16 @@
+import type { ProfileOwnerClaimRequest, PublicProfileState } from "../../../models/profiles/public-profile.js";
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, CircleCheck, Fingerprint, KeyRound, Monitor, PanelTopClose, RefreshCw } from "lucide-react";
 import { duoSummary, useDuoBrowser, mockOnboardingPort, type DuoMethods, type OnboardingDetails, type OnboardingErrors, type OnboardingPort, type OnboardingStep } from "./onboarding-model.js";
 import "./onboarding.css";
 
-export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPort, authenticated = false, problem }: {
+export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPort, authenticated = false, problem, claimExistingData }: {
   step: OnboardingStep; onStep: (step: OnboardingStep) => void; onDashboard: () => void; port?: OnboardingPort; authenticated?: boolean; problem?: string;
+  claimExistingData?: (request: ProfileOwnerClaimRequest) => Promise<PublicProfileState>;
 }) {
+  const [claiming, setClaiming] = useState(false);
+  const claimId = useRef<string | undefined>(undefined);
   const [forms, setForms] = useState<Record<"login" | "signup", OnboardingDetails>>({ login: { firstName: "", lastName: "", email: "", password: "" }, signup: { firstName: "", lastName: "", email: "", password: "" } });
   const formStep = step === "login" ? "login" : "signup";
   const details = forms[formStep];
@@ -78,8 +82,8 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
       {signup && name === "password" && <p className="field-help" id="password-help">Use at least 8 characters.</p>}
       <p className="hub-auth-error" id={`auth-${name}-error`} aria-live="polite">{errors[name]}</p></div>;
   };
-  const title = step === "login" ? "Log in to Relay" : signup ? "Create your profile" : step === "ready" ? "You’re all set" : both ? "Duo setup is complete" : launching ? "Opening your setup browser…" : closed ? "Pick up where you left off" : failed ? "Reconnect to finish setup" : "Set up your sign-in methods";
-  const description = step === "login" ? "Open your workspace." : signup ? "Add your details, then set up Duo." : step === "ready" ? "Your profile and sign-in methods are ready." : both ? "Security key and Touch ID are confirmed. You can finish your profile." : launching ? "Relay is opening a browser with Fast Duo installed." : closed ? "The setup browser closed. Your confirmed methods are still ready." : failed ? "Fast Duo stopped responding. Reopen the setup browser to continue." : "Add your security key and Touch ID in the setup tabs.";
+  const title = step === "login" ? "Log in to Relay" : signup ? claiming ? "Claim your existing data" : "Create your profile" : step === "ready" ? "You’re all set" : both ? "Duo setup is complete" : launching ? "Opening your setup browser…" : closed ? "Pick up where you left off" : failed ? "Reconnect to finish setup" : "Set up your sign-in methods";
+  const description = step === "login" ? "Open your workspace." : signup ? claiming ? "Verify the existing owner's details. Relay requires a verified backup before preserving this data in your profile." : "Add your details, then set up Duo." : step === "ready" ? "Your profile and sign-in methods are ready." : both ? "Security key and Touch ID are confirmed. You can finish your profile." : launching ? "Relay is opening a browser with Fast Duo installed." : closed ? "The setup browser closed. Your confirmed methods are still ready." : failed ? "Fast Duo stopped responding. Reopen the setup browser to continue." : "Add your security key and Touch ID in the setup tabs.";
   if (inaccessible) return <div className="hub-onboarding"><div className="brand">Relay</div><main><div className="stack"><h1>Start with your details</h1><p>Complete the previous setup steps to continue.</p><button tabIndex={0} className="btn primary" onClick={() => onStep("login")}>Log in</button></div></main></div>;
   return <div className="hub-onboarding" data-source={port.source}>
     <a tabIndex={0} href="#onboarding-main" className="skip">Skip to content</a><div className="brand">Relay</div>
@@ -97,7 +101,12 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
             const request = ++submitted.current;
             setSubmitting(true); setLoginError("");
             try {
-              const result = await port.submit(signup ? "signup" : "login", details);
+              let result: PublicProfileState;
+              if (claiming) {
+                if (claimExistingData === undefined) throw new Error("OWNER_CLAIM_UNAVAILABLE");
+                claimId.current ??= crypto.randomUUID();
+                result = await claimExistingData({ ...details, claimId: claimId.current, claimExistingData: true });
+              } else result = await port.submit(signup ? "signup" : "login", details);
               if (request !== submitted.current) return;
               if (result.state === "onboarding") {
                 setForms(current => ({ ...current, [formStep]: { ...current[formStep], password: "" } }));
@@ -130,8 +139,9 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
         }}>
           {signup && <div className="name-row">{field("firstName", "First name", "text", "given-name")}{field("lastName", "Last name", "text", "family-name")}</div>}
           {field("email", "Work email", "email", "username")}{field("password", "Password", "password", signup ? "new-password" : "current-password")}
-          <div className="login-actions"><p className="form-error" role="alert">{loginError || problem}</p><button tabIndex={0} className="btn primary full" type="submit" disabled={seconds > 0 || submitting}>{signup ? "Create profile" : seconds > 0 ? `Log in in 0:${String(seconds).padStart(2, "0")}` : "Log in"}</button></div>
-        </form><div className="switch-row"><span>{signup ? "Already have a profile?" : "New to Relay?"}</span><a tabIndex={0} className="text-link" href={`?onboarding=${signup ? "login" : "signup"}`} onClick={event => { event.preventDefault(); void navigate(signup ? "login" : "signup"); }}>{signup ? "Log in" : "Sign up"}</a></div>
+          <div className="login-actions"><p className="form-error" role="alert">{loginError || problem}</p><button tabIndex={0} className="btn primary full" type="submit" disabled={seconds > 0 || submitting}>{signup ? claiming ? "Claim existing data" : "Create profile" : seconds > 0 ? `Log in in 0:${String(seconds).padStart(2, "0")}` : "Log in"}</button></div>
+        </form><div className="switch-row"><span>{signup ? "Already have a profile?" : "New to Relay?"}</span><a tabIndex={0} className="text-link" href={`?onboarding=${signup ? "login" : "signup"}`} onClick={async event => { event.preventDefault(); setClaiming(false); await navigate(signup ? "login" : "signup"); }}>{signup ? "Log in" : "Sign up"}</a></div>
+          {!signup && claimExistingData !== undefined && <div className="switch-row"><a className="text-link" href="?onboarding=signup" onClick={async event => { event.preventDefault(); setClaiming(true); await navigate("signup"); }}>Claim existing data</a></div>}
           {!signup && port.source === "mock" && <p className="field-help">Demo: alex.rivera@ucsd.edu / Relay-demo-42</p>}</> : step === "duo" ? <>
           <div className="method-summary" aria-label="Duo method status"><span className={methods.key ? "confirmed" : undefined}>{methods.key ? <Check className="icon" /> : <KeyRound className="icon" />}Security key{methods.key && " confirmed"}</span><span className={methods.touch ? "confirmed" : undefined}>{methods.touch ? <Check className="icon" /> : <Fingerprint className="icon" />}Touch ID{methods.touch && " confirmed"}</span></div>
           <section className="focus-task" aria-label="Next action">{both ? <CircleCheck className="icon" /> : launching ? <Monitor className="icon" /> : closed ? <PanelTopClose className="icon" /> : failed ? <RefreshCw className="icon" /> : methods.key ? <Fingerprint className="icon" /> : <KeyRound className="icon" />}<h2>{both ? "Ready to finish" : launching ? "Preparing Fast Duo" : closed || failed ? `${methods.key ? "Touch ID" : "Security key"} is next` : methods.key ? "Next, add Touch ID" : methods.touch ? "Next, add a security key" : "Start with a security key"}</h2><p>{both ? "Both methods are registered in Duo." : launching ? "The setup page opens in a browser with the Fast Duo extension ready." : closed || failed ? `Reopen the browser, then add ${methods.key ? "Touch ID" : "a security key"}. Your completed methods stay confirmed.` : `In the setup browser, follow Fast Duo’s ${methods.key ? "Touch ID" : "security key"} instructions. You can add the methods in either order.`}</p></section>

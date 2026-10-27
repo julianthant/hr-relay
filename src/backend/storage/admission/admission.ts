@@ -1,11 +1,11 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
-import { captureIncompleteProfileDraft, CredentialErasureHeadSchema, erasureRequestIdentity } from "../configuration/credential-store.js";
+import { captureIncompleteProfileDraft, verifyExistingDataOwner, CredentialErasureHeadSchema, erasureRequestIdentity, type ExistingDataOwnerWitness } from "../configuration/credential-store.js";
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import type { UnpublishedDraftAbortWitness, CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness, CommittedCredentialInitialization, CommittedCredentialKeyStage, CredentialKeyStagePublication } from "../configuration/credential-store.js";
 import { registerRuntimeAdmission, requireRuntimeAdmission } from "./admission-identity.js";
 import { z } from "zod";
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync, type BigIntStats } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync, type BigIntStats, type Stats } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
@@ -24,7 +24,7 @@ import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type Director
 import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, captureCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import type { ProfileRegistryDocument, ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { type IssuedDuoTransaction } from "../configuration/duo-credential-store.js";
 import { type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
@@ -136,11 +136,11 @@ export type RuntimeRelocationOperation = Readonly<{
   settleRelocation(verify: RelocationVerifier): void;
 }>;
 
-type AdmissionScope = "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "stopped-projection" | "synthetic-stopped-staged"
+type AdmissionScope = "flat-backup" | "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "stopped-projection" | "synthetic-stopped-staged"
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
   | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-repair-inventory" | "profile-pending-logout-inventory" | "stopped-control-inventory" | "stopped-incomplete-profile-inventory";
 
-type ReadyProfileUpgrade = Readonly<{ sourcePath: string; processLockRoot: string; sourceSchemaVersion: 8 | 9; copyPath?: string;
+type ReadyProfileUpgrade = Readonly<{ sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9; copyPath?: string;
   qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
@@ -158,12 +158,13 @@ export class RuntimeAdmission {
   readonly #profileParent: RuntimeAdmission | undefined;
   readonly #pendingLogout: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }> | undefined;
   readonly #readyUpgrade: ReadyProfileUpgrade | undefined;
+  readonly #flatBackup: ReadyProfileUpgrade | undefined;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
     authorityDatabasePaths: readonly string[],
     scope: AdmissionScope,
     mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator, binding?: ProfileDatabaseBinding, profileParent?: RuntimeAdmission,
-    pendingLogout?: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }>, readyUpgrade?: ReadyProfileUpgrade) {
+    pendingLogout?: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }>, readyUpgrade?: ReadyProfileUpgrade, flatBackup?: ReadyProfileUpgrade) {
     if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
     this.#authority = authority;
     this.#stateRoot = stateRoot;
@@ -174,6 +175,7 @@ export class RuntimeAdmission {
     this.#profileParent = profileParent;
     this.#pendingLogout = pendingLogout;
     this.#readyUpgrade = readyUpgrade;
+    this.#flatBackup = flatBackup;
     this.#profileBinding = binding === undefined ? undefined : Object.freeze({ ...binding });
     this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
     registerRuntimeAdmission(this);
@@ -333,7 +335,14 @@ export class RuntimeAdmission {
       return admission;
     } catch (error) { admission.release(); throw error; }
   }
+  assertStoppedAuthorityBackup(path: string, processLockRoot: string): void {
+    if (this.#flatBackup === undefined) { this.assertStoppedProfileUpgrade(path, processLockRoot); return; }
+    this.assertLive();
+    if (path !== this.#flatBackup.sourcePath || processLockRoot !== this.#flatBackup.processLockRoot) throw new Error("flat-backup-source-refused");
+  }
+  isFlatBackup(): boolean { this.assertLive(); return this.#scope === "flat-backup"; }
   assertStoppedProfileUpgrade(path: string, processLockRoot: string): void {
+    if (this.#flatBackup !== undefined) throw new Error("flat-backup-upgrade-refused");
     if (this.#readyUpgrade !== undefined) {
       this.assertLive();
       if (this.#readyUpgrade.copyPath !== undefined || path !== this.#readyUpgrade.sourcePath
@@ -363,10 +372,11 @@ export class RuntimeAdmission {
     return "setup";
   }
   assertAuthorityBackupWrite(path: string): void {
-    if (this.#readyUpgrade !== undefined) {
+    const backup = this.#flatBackup ?? this.#readyUpgrade;
+    if (backup !== undefined) {
       this.assertLive();
       const directory = join(this.#stateRoot, "backups", "authority");
-      if (this.#readyUpgrade.copyPath !== undefined || this.#readyUpgrade.qualification.current.kind !== "qualified"
+      if (backup.copyPath !== undefined || backup.qualification.current.kind !== "qualified"
         || !isAbsolute(path) || resolve(path) !== path || path !== directory && (dirname(path) !== directory
           || !/^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite(?:\.manifest\.json)?)$/u.test(path.slice(directory.length + 1)))) throw new Error("profile-stopped-upgrade-backup-refused");
       this.assertStateRoot(path);
@@ -375,20 +385,26 @@ export class RuntimeAdmission {
     this.assertWritable();
   }
   assertAuthorityBackupSource(path: string, sourceFingerprint: string): void {
+    const backup = this.#flatBackup ?? this.#readyUpgrade;
     this.assertReadOnlyAuthorityDatabase(path);
-    if (this.#readyUpgrade !== undefined) {
-      const proof = this.#readyUpgrade.qualification.current;
-      if (this.#readyUpgrade.copyPath !== undefined || path !== this.#readyUpgrade.sourcePath || proof.kind !== "qualified"
+    if (backup !== undefined) {
+      const proof = backup.qualification.current;
+      if (backup.copyPath !== undefined || path !== backup.sourcePath || proof.kind !== "qualified"
         || proof.sourceFingerprint !== sourceFingerprint) {
-        this.#readyUpgrade.qualification.current = { kind: "revoked" };
+        backup.qualification.current = { kind: "revoked" };
         throw new Error("profile-stopped-upgrade-source-changed");
       }
     }
   }
-  profileMaintenanceSchemaVersion(): 8 | 9 {
+  profileMaintenanceSchemaVersion(): 6 | 8 | 9 {
+    const backup = this.#flatBackup ?? this.#readyUpgrade;
     this.assertLive();
-    if (this.#readyUpgrade === undefined) return 9;
-    const observed = readProfileDatabaseBinding(this.#readyUpgrade.copyPath ?? this.#readyUpgrade.sourcePath);
+    if (backup === undefined) return 9;
+    const observed = readProfileDatabaseBinding(backup.copyPath ?? backup.sourcePath);
+    if (backup.sourceSchemaVersion === 6) {
+      if (observed.state !== "unbound" || observed.schemaVersion !== 6) throw new Error("existing-data-owner-source-changed");
+      return 6;
+    }
     if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9) || observed.binding.installationId !== this.profileBinding.installationId
       || observed.binding.profileId !== this.profileBinding.profileId) throw new Error("profile-stopped-upgrade-binding-changed");
     return observed.schemaVersion;
@@ -459,7 +475,7 @@ export class RuntimeAdmission {
     this.assertProfileCredentialKey(profile, join(this.#stateRoot, "machine", "credential-keys", `${profile.profileBinding.profileId}.json`));
     (this.#authority as InstallationLease).publishProfileCredentialInitialization(profile.profileBinding.profileId, witness);
   }
-  beginProfileSignUp(fields: Omit<SignUpOperation, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding">): SignUpOperation {
+  beginProfileSignUp(fields: Omit<SignUpOperation, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "ownerClaim">): SignUpOperation {
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
     return (this.#authority as InstallationLease).beginProfileSignUp(fields);
@@ -788,11 +804,13 @@ export class RuntimeAdmission {
     receipts: readonly RelocationCompletionReceipt[] }> | undefined {
     this.assertLive();
     if (this.#scope === "synthetic") return undefined;
+    if ((this.#readyUpgrade !== undefined || this.#flatBackup !== undefined) && this.#profileParent !== undefined) return this.#profileParent.readInstallationContext();
     if (this.#scope === "stopped-incomplete-profile-inventory" || this.#scope === "stopped-control-inventory" || this.#scope === "profile-restore" || this.#scope === "stopped-staged" || this.#scope === "stopped-projection" || this.#scope === "synthetic-stopped-staged") {
       if (this.#authority.readInstallationContext === undefined) throw new Error("runtime-admission: staged installation context unavailable");
       return this.#authority.readInstallationContext();
     }
-    if (this.#scope === "profile" || this.#scope === "profile-initialization") {
+    if (this.#scope === "profile" || this.#scope === "profile-initialization" || this.#scope === "profile-settlement"
+      || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") {
       if (this.#authority.readInstallationContext === undefined) throw new Error("profile-parent-context-unavailable");
       return this.#authority.readInstallationContext();
     }
@@ -840,6 +858,7 @@ export class RuntimeAdmission {
   }
   assertExclusive(): void {
     this.assertLive();
+    if (this.#flatBackup !== undefined) throw new Error("flat-backup-exclusive-refused");
     if (this.#scope === "stopped-control-inventory" || this.#scope === "stopped-incomplete-profile-inventory") throw new Error("profile-control-upgrade-write-refused");
     if (this.#readyUpgrade !== undefined) throw new Error("profile-stopped-upgrade-exclusive-refused");
     if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
@@ -847,6 +866,7 @@ export class RuntimeAdmission {
   }
   assertWritable(): void {
     this.assertLive();
+    if (this.#flatBackup !== undefined) throw new Error("flat-backup-runtime-refused");
     if (this.#scope === "stopped-control-inventory" || this.#scope === "stopped-incomplete-profile-inventory") throw new Error("profile-control-upgrade-write-refused");
     if (this.#readyUpgrade !== undefined) throw new Error("profile-stopped-upgrade-runtime-refused");
     if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory" || this.#scope === "profile-pending-logout-inventory") throw new Error("profile-settlement-runtime-refused");
@@ -870,9 +890,10 @@ export class RuntimeAdmission {
     this.assertLive();
     if (this.#scope === "stopped-incomplete-profile-inventory" && resolve(path) !== join(this.#stateRoot, "state.db")) throw new Error("profile-incomplete-inventory-path-refused");
     if (this.#scope === "stopped-control-inventory" && path === ":memory:") throw new Error("profile-control-upgrade-inspection-path-refused");
-    if (this.#readyUpgrade !== undefined) {
-      if (path === ":memory:" || this.#readyUpgrade.copyPath !== undefined && path !== this.#readyUpgrade.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
-      if (this.#readyUpgrade.copyPath === undefined && path !== this.#readyUpgrade.sourcePath
+    const backup = this.#flatBackup ?? this.#readyUpgrade;
+    if (backup !== undefined) {
+      if (path === ":memory:" || backup.copyPath !== undefined && path !== backup.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
+      if (backup.copyPath === undefined && path !== backup.sourcePath
         && (dirname(path) !== join(this.#stateRoot, "backups", "authority")
           || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite)$/u.test(path.slice(dirname(path).length + 1)))) throw new Error("profile-stopped-upgrade-path-refused");
     }
@@ -964,6 +985,7 @@ export class RuntimeAdmission {
   }
   assertArtifactRoot(path: string): void {
     this.assertLive();
+    if (this.#flatBackup !== undefined) throw new Error("flat-backup-artifact-refused");
     if (this.#scope === "stopped-control-inventory" || this.#scope === "stopped-incomplete-profile-inventory") throw new Error("profile-control-upgrade-artifact-refused");
     if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot write artifacts");
@@ -983,6 +1005,7 @@ export class RuntimeAdmission {
   }
   maintenanceRestore(): RestoreAdmissionHandle | undefined {
     this.assertLive();
+    if (this.#flatBackup !== undefined) return this.#profileParent?.maintenanceRestore();
     if (this.#scope !== "installation") return undefined;
     return stoppedMaintenanceRestores.get(this.#authority as InstallationLease);
   }
@@ -1339,6 +1362,81 @@ export class RuntimeAdmission {
     return new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => this.readInstallationContext() },
       root, join(root, "artifacts"), [join(root, "state.db")], "stopped-incomplete-profile-inventory", "exclusive", this.#locator, binding, this);
   }
+  async forStoppedFlatBackup(): Promise<RuntimeAdmission> {
+    const { lease, restore } = this.#stoppedDuoRecovery(), context = lease.readInstallationContext();
+    const root = join(context.workspace, rebuildRuntimeIsolation.stateRoot), path = join(root, "state.db");
+    const processLockRoot = join(context.workspace, rebuildRuntimeIsolation.processLockRoot);
+    const ancestry = new Map<string, DirectoryIdentity>();
+    noSymlinkAncestry(root, ancestry); noSymlinkAncestry(join(root, "artifacts"), ancestry);
+    const assertSource = () => {
+      this.assertLive(); assertStoppedMachineMaintenance(lease, restore);
+      if (!noSymlinkAncestry(root, ancestry) || !noSymlinkAncestry(join(root, "artifacts"), ancestry)) throw new Error("flat-backup-source-changed");
+      if (this.stateRoot !== root || this.artifactRoot !== join(root, "artifacts")
+        || ["machine", "profiles"].some(name => existsSync(join(root, name)))
+        || ["profile-registry.json", "profile-flat-claim.json", "profile-publication.json", "profile-owner-claims"].some(name => existsSync(join(context.workspace, ".tracker", "control", name)))) throw new Error("flat-backup-source-refused");
+    };
+    assertSource();
+    if (!this.requiresExistingDataClaim()) throw new Error("flat-backup-source-required");
+    const sources = ["", "-wal", "-shm", "-journal"].map(suffix => {
+      const sourcePath = `${path}${suffix}`;
+      const value = readPrivateFile(sourcePath, { label: "authority database", maxBytes: 512 * 1024 * 1024 });
+      const identity = (info: Stats | undefined) => info === undefined ? undefined : {
+        device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid, links: info.nlink,
+        size: info.size, modified: info.mtimeMs, changed: info.ctimeMs };
+      return { sourcePath, before: canonicalJsonStringify(identity(value?.stat) ?? null), identity };
+    });
+    const qualification: ReadyProfileUpgrade["qualification"] = { current: { kind: "inspection" } };
+    const assertHeld = () => {
+      assertSource();
+      for (const source of sources) if (canonicalJsonStringify(source.identity(lstatSync(source.sourcePath, { throwIfNoEntry: false })) ?? null) !== source.before) throw new Error("flat-backup-source-changed");
+    };
+    const child = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release: () => this.release() },
+      root, join(root, "artifacts"), [path], "flat-backup", "exclusive", this.#locator, undefined, this, undefined, undefined,
+      { sourcePath: path, processLockRoot, sourceSchemaVersion: 6, qualification });
+    try {
+      const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+      const source = AuthorityDatabase.inspectStoppedUpgrade(child, path, processLockRoot, systemClock);
+      if (source.schemaVersion !== 6 || source.installationId !== undefined || source.profileId !== undefined) throw new Error("flat-backup-schema-refused");
+      qualification.current = { kind: "qualified", sourceFingerprint: source.authorityContentFingerprint };
+      return child;
+    } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: child });
+      child.release(); throw error;
+    }
+  }
+  async forStoppedExistingDataBackup(witness: ExistingDataOwnerWitness, targetProfileId?: string): Promise<RuntimeAdmission> {
+    const { lease, restore } = this.#stoppedDuoRecovery();
+    const owner = verifyExistingDataOwner(witness, this), flat = owner.profileId === undefined;
+    if (flat && !this.requiresExistingDataClaim()) throw new Error("existing-data-flat-source-required");
+    const profileId = owner.profileId ?? z.uuid().parse(targetProfileId).toLowerCase();
+    const root = flat ? this.stateRoot : join(this.stateRoot, "profiles", profileId), path = join(root, "state.db");
+    const processLockRoot = join(lease.readInstallationContext().workspace, rebuildRuntimeIsolation.processLockRoot);
+    const registry = flat ? undefined : canonicalJsonStringify(this.readProfileRegistry()), physical = lstatSync(path);
+    const assertHeld = () => {
+      this.assertLive(); assertStoppedMachineMaintenance(lease, restore); verifyExistingDataOwner(witness, this);
+      if (flat ? !this.requiresExistingDataClaim() : canonicalJsonStringify(this.readProfileRegistry()) !== registry) throw new Error("existing-data-owner-source-changed");
+      const current = lstatSync(path);
+      if (current.dev !== physical.dev || current.ino !== physical.ino || current.size !== physical.size
+        || current.mtimeMs !== physical.mtimeMs || current.ctimeMs !== physical.ctimeMs) throw new Error("existing-data-owner-source-changed");
+      if (!flat) assertCanonicalProfileBinding(path, { installationId: this.locator.installationId, profileId });
+    };
+    assertHeld();
+    const qualification: ReadyProfileUpgrade["qualification"] = { current: { kind: "inspection" } };
+    const child = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release() {} },
+      root, join(root, "artifacts"), [path], "profile-ready-upgrade", "exclusive", this.#locator,
+      { installationId: this.locator.installationId, profileId }, this, undefined,
+      { sourcePath: path, processLockRoot, sourceSchemaVersion: flat ? 6 : 9, qualification });
+    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+    try {
+      const source = AuthorityDatabase.inspectStoppedUpgrade(child, path, processLockRoot, systemClock);
+      if (source.schemaVersion !== (flat ? 6 : 9)) throw new Error("existing-data-source-schema-refused");
+      qualification.current = { kind: "qualified", sourceFingerprint: source.authorityContentFingerprint };
+      return child;
+    } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: child });
+      child.release(); throw error;
+    }
+  }
   async reclassifyIncompleteProfileAsDraft(profileId: string): Promise<void> {
     const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
     const { lease } = this.#stoppedDuoRecovery(), admission = this.forStoppedIncompleteProfileInventory(profileId);
@@ -1349,6 +1447,68 @@ export class RuntimeAdmission {
       const witness = captureIncompleteProfileDraft(this, admission, assertEmpty);
       lease.reclassifyIncompleteProfile(witness);
     } finally { admission.release(); }
+  }
+  async claimExistingProfileData(owner: ExistingDataOwnerWitness, claimId: string, clock: Clock, flat?: { firstName: string; lastName: string; createdAt: string }): Promise<SignUpOperation> {
+    const { lease, restore } = this.#stoppedDuoRecovery();
+    const source = verifyExistingDataOwner(owner, this);
+    if ((source.profileId === undefined) !== (flat !== undefined)) throw new Error("existing-data-owner-claim-required");
+    const { backupExistingData } = await import("../maintenance/existing-data-backup.js");
+    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
+    const backupAdmission = await this.forStoppedExistingDataBackup(owner, claimId);
+    let backup: Awaited<ReturnType<typeof backupExistingData>>;
+    try { backup = await backupExistingData(this, backupAdmission, owner, claimId, clock); }
+    catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
+      backupAdmission.release(); throw error;
+    }
+    if (owner.profileId === undefined) {
+      if (flat === undefined) throw new Error("existing-data-owner-claim-required");
+      const { prepareFlatProfileClaim, completeFlatProfileClaim } = await import("../maintenance/flat-profile-claim.js");
+      let witness: Awaited<ReturnType<typeof prepareFlatProfileClaim>>;
+      try { witness = await prepareFlatProfileClaim(this, owner, backup, flat, backupAdmission); }
+      catch (error) {
+        if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
+        backupAdmission.release(); throw error;
+      }
+      let operation: SignUpOperation;
+      try { operation = lease.claimFlatProfileData(witness, restore, this); }
+      catch (error) {
+        if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
+        backupAdmission.release(); throw error;
+      }
+      backupAdmission.release();
+      await completeFlatProfileClaim(this, operation, clock);
+      return operation;
+    }
+    let inventory: RuntimeAdmission | undefined, failure: { error: unknown } | undefined;
+    try {
+      const acquired = this.forStoppedIncompleteProfileInventory(owner.profileId);
+      inventory = acquired;
+      const witness = captureIncompleteProfileDraft(this, acquired, () => assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(acquired)), { owner, backup });
+      lease.claimExistingProfileData(witness);
+    } catch (error) { failure = { error }; }
+    if (!(failure?.error instanceof AuthoritySourceClosureUnprovedError)) {
+      try { inventory?.release(); backupAdmission.release(); }
+      catch (error) { failure = { error: retainAuthoritySourceClosure(failure === undefined ? [error] : [failure.error, error], {}) }; }
+    }
+    if (failure !== undefined) {
+      if (!(failure.error instanceof AuthoritySourceClosureUnprovedError)) throw failure.error;
+      const retained = retainAuthoritySourceClosure([failure.error], { admission: backupAdmission });
+      throw inventory === undefined ? retained : retainAuthoritySourceClosure([retained], { admission: inventory });
+    }
+    const operations = join(this.stateRoot, "machine", "operations");
+    const matches = readdirSync(operations).filter(name => name.endsWith(".json")).map(name => {
+      const file = readPrivateFile(join(operations, name), { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) throw new Error("existing-data-claim-readback-unproved");
+      return z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(file.bytes.toString("utf8")));
+    }).filter((operation): operation is SignUpOperation => operation.kind === "sign-up" && operation.ownerClaim?.claimId === backup.claimId);
+    if (matches.length !== 1 || matches[0] === undefined) throw new Error("existing-data-claim-readback-unproved");
+    return matches[0];
+  }
+  recoverFlatProfileClaim(): SignUpOperation | undefined {
+    const { lease, restore } = this.#stoppedDuoRecovery();
+    return lease.recoverFlatProfileClaim(restore, this);
   }
   assertStoppedIncompleteProfileInventory(): void {
     this.assertLive();
@@ -1437,6 +1597,23 @@ export class RuntimeAdmission {
     }
     stoppedMaintenanceRestores.set(lease, restore);
     return RuntimeAdmission.fromInstallationLease(lease);
+  }
+  requiresExistingDataClaim(): boolean {
+    this.assertLive();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    return (this.#authority as InstallationLease).requiresExistingDataClaim();
+  }
+  static acquireDashboard(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
+    const canonical = realpathSync(workspace);
+    if (!existsSync(join(canonical, ".tracker", "control", "installation.json"))) return RuntimeAdmission.acquireMachine(canonical, mode);
+    const lease = mode === "exclusive" ? acquireInstallation(canonical, "exclusive") : acquireInstallation(canonical, "shared");
+    try { lease.requiresExistingDataClaim(); return RuntimeAdmission.fromInstallationLease(lease); }
+    catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: lease });
+      try { lease.release(); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: lease }); }
+      throw error;
+    }
   }
   static acquireMachine(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
     const canonical = realpathSync(workspace);

@@ -1,7 +1,7 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { fileURLToPath } from "node:url";
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
-import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
+import { acquireStorageBackupEntrypointAdmission, acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../../storage/admission/installation.js";
 import { acquireRuntimeRestoreAdmission, acquireRuntimeProcessLock, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
@@ -52,8 +52,12 @@ export async function runSecureEnvironmentBootstrap(
       || !/^[1-9]\d*$/u.test(entrypointArgs[3] ?? ""))) throw new Error("storage recover-admission usage: --pid <abandoned-owner-pid> | --empty");
     const recover = dependencies.runAdmissionRecovery ?? ((root: string, expectedPid: number | "empty") => {
       const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), pid: process.pid });
+      let retain = false;
       try { return recoverAbandonedAdmissionMutex(root, restore, expectedPid); }
-      finally { restore.release(); }
+      catch (error) {
+        if (error instanceof AuthoritySourceClosureUnprovedError) { retain = true; throw retainAuthoritySourceClosure([error], { restore }); }
+        throw error;
+      } finally { if (!retain) restore.release(); }
     });
     const result = recover(workspace, empty ? "empty" : Number(entrypointArgs[3]));
     process.stdout.write(`storage admission recovered: ${result.acquisitionId}; receipt ${result.receiptPath}\n`);
@@ -143,7 +147,9 @@ export async function runSecureEnvironmentBootstrap(
     && !["doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
   let initialWorkerCustody: RuntimeProcessLockHandle | undefined;
-  const admission = (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
+  const admission = await (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
+    : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(workspace, requested)
+    : storageCommand === "backup" ? acquireStorageBackupEntrypointAdmission(workspace)
     : acquireEntrypointAdmission(workspace, requested)))(mode);
   let shutdown: "release" | "retain" = "release";
   let runtimeFailure: unknown;

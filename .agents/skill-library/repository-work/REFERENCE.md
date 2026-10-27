@@ -56,7 +56,7 @@ npm run test:reap          # reclaim only validated inactive owned test-run root
 
 # Workflow execution uses the signed-in dashboard Run surface.
 npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr)
-npm run cli -- storage backup  # the ONLY writer of a verified SQLite backup (D322); `storage doctor` / `storage restore --from` beside it
+npm run cli -- storage backup  # explicit verified SQLite backup; stopped flat native6 includes private coupled companions
 npm run dashboard         # the dev dashboard in ONE terminal: BFF (3938) + vite (5174); Ctrl+C stops both
 npm run cli -- dashboard  # the BFF alone; `dashboard:prod` passes --prod and serves dist/dashboard from it (run web:build first)
 npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
@@ -135,8 +135,11 @@ control under `.tracker/control`.
 
 SQLite owns ordinary settings and immutable snapshots; keep them with their native database
 authority. A missing or incompatible existing database refuses startup; never discard one half to
-hide a mismatch. The independent local credential store owns protected values. Only an explicit
-`npm run cli -- storage backup` writes an authority backup; ordinary shutdown does not.
+hide a mismatch. The independent local credential store owns protected values. Explicit `npm run cli -- storage backup` and the authenticated in-app existing-data claim share the
+verified SQLite and coupled-copy writer. The CLI supports stopped adopted flat native6 data without
+login through backup-only admission; owner claim, private onboarding and Finish stay in the dashboard.
+Its private installation-bound companions remain accounted for after claim. Ordinary shutdown does
+not write a backup. The clock/config contract owns exact source and recovery restrictions.
 Run deletion requires terminal records and their `deleted_runs` tombstones. Read [clock,
 configuration, and secrets](../../../docs/rebuild/reference/clock-config-secrets.md), [workflow
 model](../../../docs/rebuild/reference/workflow-model.md), and [guards and
