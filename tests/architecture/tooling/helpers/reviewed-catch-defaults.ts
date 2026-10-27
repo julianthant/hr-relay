@@ -63,8 +63,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "02bddff973345ab7a5acb754a245c8fda5bb16b5b3c76e61cecf1ae538173602",
-    "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate."
+      "sha256": "809f4bf01e531405be519c65bc08e9defc8b9c1d27e05d0f9c975ad61b05fe62",
+    "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate. Descriptor and directory close failures retain source custody and original failures; publication cleanup aggregates failures. Abandoned-mutex recovery retains restore custody on unproved closure, and inventory disposal refuses release on failed closure."
   },
   {
     "path": "src/backend/runs/commands/ordinary-path-validator.ts",
@@ -118,8 +118,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "sha256": "14c9bdd05629c805aa7b0d9c6bd95bdd5d757d1b0e9e951ec0153c07d5bd9fa1",
-    "reason": "Failed admission releases custody only after the opened resource closes successfully; close and release failures retain custody and original errors. Descriptor-bound worker/recovery reads aggregate any read and close failures, then rethrow; receipt absence alone preserves ordinary stale-owner refusal."
+    "sha256": "6860de0292d85aa03ed5f8ec8ab3c1479e318146f31718f0ed194f87c06aa9ab",
+    "reason": "Failed admission releases custody only after the opened resource closes successfully; close and release failures retain custody and original errors. Descriptor-bound worker/recovery reads aggregate any read and close failures, then rethrow; receipt absence alone preserves ordinary stale-owner refusal. Restore-publication cleanup preserves primary failures and refuses uncertain closure; failed worker handoff marks custody uncertain before any replacement release."
   },
   {
     "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
