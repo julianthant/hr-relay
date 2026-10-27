@@ -1,4 +1,4 @@
-import { verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
+import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { readPrivateFile, writePrivateStage } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, unpublishedDraftAbortMembership, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
@@ -43,7 +43,7 @@ const ProfilePublicationSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("onboarding-finish"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
     operation: SignUpOperationSchema, priorDocument: ProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema,
     priorVerifiers: ProfileVerifierDocumentSchema, verifiers: ProfileVerifierDocumentSchema,
-    key: CredentialKeyWitnessSchema, head: CredentialErasureHeadSchema,
+    key: CredentialKeyWitnessSchema, head: CredentialErasureHeadSchema, pepper: CredentialKeyWitnessSchema.shape.file,
     protectedFile: CredentialKeyWitnessSchema.shape.file, databases: IncompleteProfileDraftCaptureSchema.shape.databases }),
   z.strictObject({ kind: z.literal("incomplete-profile-draft"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
     capture: IncompleteProfileDraftCaptureSchema, priorDocument: ProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema,
@@ -1608,6 +1608,9 @@ function settleProfileOnboardingFinish(control: string, locator: RuntimeLocator,
     || added[0].registration.writeId !== operation.writeId || canonicalJsonStringify(added[0].registration.onboardingCompletion) !== canonicalJsonStringify(profileOnboardingCompletion(operation))
     || createHash("sha256").update(canonicalJsonStringify(priorDocument)).digest("hex") !== prior.digest
     || intent.head.state !== "never-erased" || intent.key.binding.profileId !== profileId || intent.key.binding.installationId !== locator.installationId) fail("profile-onboarding-finish-invalid");
+  const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
+  if (pepper === undefined || pepper.bytes.length !== 32 || pepper.identity.device !== intent.pepper.device || pepper.identity.inode !== intent.pepper.inode
+    || createHash("sha256").update(pepper.bytes).digest("hex") !== intent.pepper.digest) fail("profile-onboarding-finish-pepper-changed");
   const root = join(locator.stateRoot, "profiles", profileId), registryPath = join(locator.stateRoot, "machine", "profiles.json");
   assertCanonicalProfileBinding(join(root, "state.db"), intent.key.binding);
   if (canonicalJsonStringify(profileAuthorityFileWitnesses(root)) !== canonicalJsonStringify(intent.databases)) fail("profile-onboarding-finish-source-changed");
@@ -2131,6 +2134,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           const intent = ProfilePublicationSchema.parse({ kind: "onboarding-finish", schemaVersion: 1, installationId: locator.installationId, prior,
             operation: registration.operation, priorDocument: before, document: next, priorVerifiers, verifiers: { ...priorVerifiers, profiles: [...priorVerifiers.profiles, verifier] },
             key: verifyCommittedCredentialKey(registration.witness), head: verifyCommittedCredentialErasureOrigin(registration.witness),
+            pepper: preparedProfileVerifierPepperWitness(registration.verifier, locator.stateRoot, registration.operation.profileId, registration.operation.emailKey),
             protectedFile: { device: protectedFile.identity.device, inode: protectedFile.identity.inode, digest: createHash("sha256").update(protectedFile.bytes).digest("hex") },
             databases: profileAuthorityFileWitnesses(root) });
           if (intent.kind !== "onboarding-finish") fail("profile-onboarding-finish-invalid");

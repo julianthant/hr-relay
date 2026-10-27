@@ -1,3 +1,8 @@
+import { execFileSync, fork, spawnSync } from "node:child_process";
+import { once } from "node:events";
+import { fileURLToPath } from "node:url";
+import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { z } from "zod";
 import nativeFs, { readdirSync, writeFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
@@ -258,14 +263,15 @@ it("limits finished publishing to value-free metadata and refuses key provisioni
   const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))), draft = operation.onboarding;
   assert.ok(draft?.finish);
   const key = draft.attempts.find(entry => entry.method === "key"); assert.ok(key?.scope); assert.ok(key.ceremony);
+  const scope = key.scope, credentialId = key.ceremony.credentialId;
   const admission = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.draft.profileId));
   const store = createDraftDuoCredentialStore(admission, f.machine, operation.operationId, draft.generation, systemClock);
-  assert.deepEqual(store.readForScope(key.scope).map(entry => entry.credentialId), [key.ceremony.credentialId]);
-  assert.throws(() => store.provision(key.ceremony.credentialId, key.scope), /duo-finished-draft-purpose-refused/u);
-  assert.throws(() => store.reserveForAttempt(key.ceremony.credentialId, randomUUID(), key.scope), /duo-finished-draft-purpose-refused/u);
-  assert.throws(() => store.confirm(key.ceremony.credentialId, key.scope), /duo-finished-draft-purpose-refused/u);
+  assert.deepEqual(store.readForScope(scope).map(entry => entry.credentialId), [credentialId]);
+  assert.throws(() => store.provision(credentialId, scope), /duo-finished-draft-purpose-refused/u);
+  assert.throws(() => store.reserveForAttempt(credentialId, randomUUID(), scope), /duo-finished-draft-purpose-refused/u);
+  assert.throws(() => store.confirm(credentialId, scope), /duo-finished-draft-purpose-refused/u);
   const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  assert.throws(() => store.enroll({ credentialId: randomUUID(), scope: key.scope,
+  assert.throws(() => store.enroll({ credentialId: randomUUID(), scope: scope,
     privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
     publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64") }), /duo-finished-draft-purpose-refused/u);
   admission.release();
@@ -273,3 +279,70 @@ it("limits finished publishing to value-free metadata and refuses key provisioni
   assert.equal(f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion?.finishId, draft.finish.finishId);
   await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
 });
+
+const retainedProcessLossFixtures = new Set<unknown>();
+for (const boundary of ["source-fsync", "protected-stage"] as const) {
+  it(`recovers actual dead-writer process loss after ${boundary} without treating owned abort source as a writer stage`, async () => {
+    const f = privateDraftFixture(); await f.profile.close(); f.machine.release();
+    const child = fork(fileURLToPath(new URL("../../../support/processes/profile-onboarding-abort-worker.ts", import.meta.url)), [f.root, boundary],
+      { execArgv: ["--disable-warning=ExperimentalWarning", "--import", "tsx"], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    const retained = { root: f.root, child }; retainedProcessLossFixtures.add(retained);
+    const closed = once(child, "close"); let stderrBytes = 0; child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; });
+    const ready = z.object({ type: z.literal("ready"), pid: z.number().int().positive() }).parse((await once(child, "message"))[0]);
+    assert.equal(ready.pid, child.pid);
+    const identity = observeProcessIdentity(ready.pid); assert.equal(identity.state, "alive");
+    if (identity.state !== "alive") throw new Error("fixture owned child identity required");
+    const processRow = execFileSync("/bin/ps", ["-p", String(ready.pid), "-o", "pid=,ppid=,pgid="], { encoding: "utf8" }).trim().split(/\s+/u).map(Number);
+    assert.deepEqual(processRow, [ready.pid, process.pid, ready.pid]);
+    child.send("cancel");
+    const [code, signal] = await closed; assert.equal(code, 97); assert.equal(signal, null); assert.equal(child.connected, false); assert.equal(stderrBytes, 0);
+    const proof = z.object({ boundary: z.literal(boundary), pid: z.number(), identity: ProcessStartIdentitySchema }).parse(JSON.parse(readFileSync(join(f.root, "onboarding-process-loss.json"), "utf8")));
+    assert.equal(proof.pid, ready.pid); assert.deepEqual(proof.identity, identity.identity); assert.equal(observeProcessIdentity(ready.pid).state, "gone");
+    const groups = execFileSync("/bin/ps", ["-axo", "pgid="], { encoding: "utf8" }).trim().split(/\s+/u);
+    assert.equal(groups.includes(String(ready.pid)), false);
+    const fds = spawnSync("/usr/sbin/lsof", ["-nP", "-a", "-p", String(ready.pid)], { encoding: "utf8" });
+    assert.equal(fds.error, undefined); assert.equal(fds.signal, null); assert.equal(fds.status, 1); assert.equal(fds.stdout.trim(), "");
+    const machine = acquireEntrypointAdmission(f.root, "exclusive"), profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot,
+      hostFacts: { primaryDisplay: null }, clock: systemClock });
+    const resumed = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
+      password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
+    if (resumed.state !== "onboarding") throw new Error("fixture actual dead-writer resume required");
+    assert.equal(resumed.operationId, f.draft.operationId);
+    assert.deepEqual(await profile.session.cancelOnboarding(resumed.token, resumed.operationId), { state: "signed-out" });
+    const credentials = join(machine.stateRoot, "profiles", f.draft.profileId, "credentials");
+    assert.equal(existsSync(join(credentials, ".protected.lock")), false); assert.equal(readdirSync(credentials).some(name => name.endsWith(".tmp")), false);
+    assert.equal(machine.readProfileRegistry().profiles.length, 0);
+    await profile.close(); machine.release(); rmSync(f.root, { recursive: true }); retainedProcessLossFixtures.delete(retained);
+  });
+}
+
+for (const change of ["same-length", "replacement"] as const) {
+  it(`holds coupled Finish when its pepper has ${change} drift and resumes only the exact original`, async () => {
+    const f = await readyFixture(), intentPath = join(f.root, ".tracker", "control", "profile-publication.json");
+    const registryPath = join(f.machine.stateRoot, "machine", "profiles.json"), verifierPath = join(f.machine.stateRoot, "machine", "profile-verifiers.json");
+    const registry = readFileSync(registryPath), verifiers = readFileSync(verifierPath), rename = nativeFs.renameSync;
+    let fired = false;
+    const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
+      rename(source, destination);
+      if (!fired && String(destination) === intentPath && (JSON.parse(readFileSync(intentPath, "utf8")) as { kind: string }).kind === "onboarding-finish") {
+        fired = true; throw new Error("fixture durable Finish before verifier publication");
+      }
+    });
+    syncBuiltinESMExports();
+    try { await assert.rejects(f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId)); }
+    finally { fault.mockRestore(); syncBuiltinESMExports(); }
+    assert.equal(fired, true);
+    const pepperPath = join(f.machine.stateRoot, "machine", "profile-pepper"), original = readFileSync(pepperPath), retained = join(f.root, "fixture-original-pepper");
+    if (change === "same-length") { const changed = Buffer.from(original); changed[0] = (changed[0] ?? 0) ^ 1; writeFileSync(pepperPath, changed, { mode: 0o600 }); }
+    else { nativeFs.renameSync(pepperPath, retained); writeFileSync(pepperPath, original, { mode: 0o600, flag: "wx" }); }
+    assert.throws(() => f.machine.readProfileRegistry(), /profile-onboarding-finish-pepper-changed/u);
+    assert.equal(readFileSync(registryPath).equals(registry), true); assert.equal(readFileSync(verifierPath).equals(verifiers), true); assert.equal(existsSync(intentPath), true);
+    if (change === "same-length") writeFileSync(pepperPath, original, { mode: 0o600 });
+    else { nativeFs.unlinkSync(pepperPath); nativeFs.renameSync(retained, pepperPath); }
+    const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), "utf8")));
+    assert.equal((await f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId)).state, "active");
+    assert.equal(f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion?.finishId, operation.onboarding?.finish?.finishId);
+    assert.equal(existsSync(intentPath), false);
+    await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
+  });
+}

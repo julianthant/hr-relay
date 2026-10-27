@@ -976,7 +976,7 @@ export function captureIncompleteProfileDraft(machine: RuntimeAdmission, admissi
     credentialInitialization: { mode: "initial", keyId: key.keyId, keyDocumentDigest: key.file.digest, keyFile: key.file, phase: "document-published" },
     onboarding: { accountId: randomUUID(), generation: 1, attempts: [], duo: { profileId: binding.profileId, state: "never-initialized", revision: 0 } }, phase: "applying" });
   const protectedFile = { device: source.identity.device, inode: source.identity.inode, digest: createHash("sha256").update(source.bytes).digest("hex") };
-  const capture = IncompleteProfileDraftCaptureSchema.parse({ operation, key, protectedFile, databases, membership });
+  const capture = deepFreeze(IncompleteProfileDraftCaptureSchema.parse({ operation, key, protectedFile, databases, membership }));
   const revalidate = () => {
     admission.assertStoppedIncompleteProfileInventory(); assertEmpty();
     if (canonicalJsonStringify(machine.readProfileRegistry()) !== canonicalJsonStringify(registry)
@@ -1367,7 +1367,10 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       CREDENTIAL_REAPER_CLAIM_NAME,
     ]);
     for (const name of companionCredentialEntries(credentialDirectory, "protected")) permitted.add(name);
-    if (ownedAbortSourcePath !== undefined) { assertOwnedAbortSource?.(); permitted.add(basename(ownedAbortSourcePath)); }
+    if (ownedAbortSourcePath !== undefined) {
+      if (assertOwnedAbortSource === undefined) throw new Error("profile-draft-abort-source-unissued");
+      assertOwnedAbortSource(); permitted.add(basename(ownedAbortSourcePath));
+    }
     for (const temporaryPath of ownTemporaryPaths) {
       permitted.add(temporaryPath.slice(credentialDirectory.length + 1));
     }
@@ -1486,8 +1489,12 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   }
 
   function recoverDeadWriterTemporary(writer: CredentialLockRecord): void {
+    if (ownedAbortSourcePath !== undefined) {
+      if (assertOwnedAbortSource === undefined) throw new Error("profile-draft-abort-source-unissued");
+      assertOwnedAbortSource();
+    }
     const temporaryNames = readdirSync(credentialDirectory).filter((name) => (
-      name.startsWith(".protected.") && name.endsWith(".tmp")
+      name.startsWith(".protected.") && name.endsWith(".tmp") && (ownedAbortSourcePath === undefined || name !== basename(ownedAbortSourcePath))
     ));
     if (temporaryNames.length === 0) return;
     if (temporaryNames.length !== 1) {
@@ -1889,7 +1896,10 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       CREDENTIAL_REAPER_CLAIM_NAME,
     ]);
     for (const name of companionCredentialEntries(credentialDirectory, "protected")) permitted.add(name);
-    if (ownedAbortSourcePath !== undefined) { assertOwnedAbortSource?.(); permitted.add(basename(ownedAbortSourcePath)); }
+    if (ownedAbortSourcePath !== undefined) {
+      if (assertOwnedAbortSource === undefined) throw new Error("profile-draft-abort-source-unissued");
+      assertOwnedAbortSource(); permitted.add(basename(ownedAbortSourcePath));
+    }
     if (beforeNames.some((name) => !permitted.has(name))) {
       throw new Error("directory-integrity: credential directory contains unsettled entries");
     }
@@ -2515,6 +2525,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
           || !sameBytes(current.bytes, original)) throw new Error("profile-draft-abort-source-changed");
       };
       ownedAbortSourcePath = sourcePath;
+      withLock(() => ({ committed: false, result: undefined }));
     }
     const before = observeCurrent();
     if (lstatSync(sourcePath, { throwIfNoEntry: false }) === undefined) {
@@ -2575,10 +2586,10 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     const head = captureCredentialErasureHead(store), key = captureKeyFile(keyPath, binding);
     const file = readPrivateFile(protectedPath, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
     if (file === undefined) throw new Error("profile-draft-abort-erasure-unproved");
-    const capture = UnpublishedDraftAbortCaptureSchema.parse({ operation, key, abortSource: sourceEvidence,
+    const capture = deepFreeze(UnpublishedDraftAbortCaptureSchema.parse({ operation, key, abortSource: sourceEvidence,
       head: verifyCredentialErasureHead(head, stateRoot, journalPath, binding),
       protectedFile: { device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") },
-      membership: unpublishedDraftAbortMembership(stateRoot) });
+      membership: unpublishedDraftAbortMembership(stateRoot) }));
     const witness = Object.freeze({ operationId: operation.operationId });
     unpublishedDraftAborts.set(witness, { machine: journalAdmission, admission, capture });
     return witness;

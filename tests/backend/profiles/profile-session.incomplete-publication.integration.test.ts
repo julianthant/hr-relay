@@ -1,3 +1,20 @@
+import { DatabaseSync } from "node:sqlite";
+import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
+import { initialSettingsFileRecord } from "../../../src/models/config/settings.js";
+import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { DeletedRunRecordSchema } from "../../../src/models/run/deleted-run.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
+import { runRecordColumns } from "../../../src/backend/storage/sqlite/run-record-row.js";
+import { insertNativeCommand, settleNativeCommand } from "../../../src/backend/storage/sqlite/command-record-row.js";
+import { inspectNativeAuthority } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { CanonicalDeleteRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
+import { RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../src/rules/commands/commands.js";
+import { sha256Hex } from "../../../src/rules/validation/sha256.js";
+import { WriteIntentRecordSchema, WriteAttemptRecordSchema, deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-safety.js";
+import { NOW as HISTORICAL_AT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { capturedInstantClock } from "../../../src/rules/time/clock.js";
+import { ledgerCommitFixture } from "../../support/fixtures/ledger-projection-fixtures.js";
+import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import nativeFs, { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -164,3 +181,76 @@ it("holds a tampered withdrawal intent and recovers only its exact sealed origin
   assert.equal(machine.readProfileRegistry().profiles.length, 0); assert.equal(existsSync(intentPath), false);
   machine.release(); rmSync(f.root, { recursive: true });
 });
+
+function seedClosedHistoricalActivity(f: Awaited<ReturnType<typeof historicalPrematureFixture>>, kind: "deleted" | "unknown") {
+  const raw = new DatabaseSync(f.databasePath), at = HISTORICAL_AT;
+  try {
+    raw.exec("PRAGMA foreign_keys=ON; BEGIN IMMEDIATE");
+    const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, capturedInstantClock(at),
+      { stateRoot: f.profileRoot, artifactRoot: join(f.profileRoot, "artifacts") });
+    const snapshot = ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: 1, fingerprint: resolved.fingerprint,
+      capturedAt: at, capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
+    raw.prepare("INSERT INTO settings_snapshots (id,revision,fingerprint,payload_json,captured_at) VALUES (?,?,?,?,?)")
+      .run(snapshot.configSnapshotId, snapshot.revision, snapshot.fingerprint, canonicalJsonStringify(snapshot), snapshot.capturedAt);
+    const runId = randomUUID(), itemId = randomUUID(), traceId = `se-120000-${String(1000 + (kind === "deleted" ? 1 : 2))}`;
+    const fixture = ledgerCommitFixture(kind === "deleted" ? 71 : 72, { runId, itemId, traceId, workflowId: separationsDescriptor.id,
+      configFingerprint: snapshot.fingerprint, instance: "test" });
+    const reason = deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", "synthetic historical unknown observation");
+    const intent = WriteIntentRecordSchema.parse({ ...fixture.intent, version: 2, status: "parked", parkedCode: "unknown", message: "Historical outcome remains unknown", authorityReason: reason });
+    const run = RunRecordSchema.parse({ envelope: { workflow: separationsDescriptor.id, runId, itemId, traceId,
+      descriptorVersion: separationsDescriptor.version, contractFingerprint: separationsDescriptor.contractFingerprint,
+      resolvedInstance: { ucpath: "test" }, configFingerprint: snapshot.fingerprint, configSnapshotId: snapshot.configSnapshotId,
+      shape: "single", priority: "interactive", dryRun: false, attempt: 1, enqueuedAt: at },
+      input: { raw: {}, parsed: { schemaHash: sha256Hex("historical fixture input"), value: {}, protectedBindings: [] }, ingressSchemaHash: sha256Hex("historical fixture input") },
+      lifecycle: kind === "deleted" ? { state: "terminal", outcome: "interrupted", endedAt: at }
+        : { state: "parked-write", writeIntentId: intent.writeIntentId, code: "unknown", message: "Historical outcome remains unknown" },
+      claimGeneration: 1, version: 5, createdAt: at, updatedAt: at });
+    const columns = runRecordColumns(run), keys = Object.keys(columns);
+    raw.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...Object.values(columns));
+    if (kind === "unknown") {
+      const attempt = WriteAttemptRecordSchema.parse({ ...fixture.attempt, outcome: { state: "parked", code: "unknown", message: "Historical outcome remains unknown", authorityReason: reason } });
+      raw.prepare("INSERT INTO write_intents (id,system,idempotency_key,idempotency_key_digest,status,generation,run_id,payload_json,publication_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,NULL,?,?)")
+        .run(intent.writeIntentId, intent.system, intent.idempotencyKey, intent.idempotencyKeyDigest, intent.status, intent.generation, intent.runId,
+          canonicalJsonStringify(intent), intent.createdAt, intent.updatedAt);
+      raw.prepare("INSERT INTO write_attempts (id,intent_id,generation,run_id,payload_json,created_at) VALUES (?,?,?,?,?,?)")
+        .run(attempt.writeAttemptId, attempt.writeIntentId, attempt.generation, attempt.runId, canonicalJsonStringify(attempt), attempt.recordedAt);
+    } else {
+      const request = CanonicalDeleteRequestSchema.parse({ commandId: randomUUID(), runId, expectedVersion: run.version });
+      const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId: request.commandId, operation: "delete",
+        requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0delete\0${canonicalJsonStringify(request)}`), request,
+        fence: { kind: "version", expectedVersion: run.version }, recordedAt: at });
+      insertNativeCommand(raw, command);
+      const receipt = DeletedRunRecordSchema.parse({ runId, workflow: run.envelope.workflow, traceId, itemId, attempt: 1, runNumber: null,
+        ordinalSource: "tombstone", origin: "queue", commandId: command.commandId, deletedAt: at, tallyVersion: 3, removed: [{ table: "runs", rows: 1 }] });
+      raw.prepare("INSERT INTO deleted_runs (run_id,workflow,item_id,attempt,run_number,trace_id,command_id,deleted_at,cleanup_state,receipt_json,files_json) VALUES (?,?,?,?,NULL,?,?,?,'complete',?,'[]')")
+        .run(runId, receipt.workflow, itemId, 1, traceId, command.commandId, at, canonicalJsonStringify(receipt));
+      raw.prepare("DELETE FROM runs WHERE id=?").run(runId);
+      const audit = RunLifecycleCommandAuditRecordSchema.parse({ kind: "run-lifecycle", auditId: randomUUID(), request: command,
+        result: { kind: "deletion", runIds: [runId] }, completedAt: at });
+      settleNativeCommand(raw, audit);
+      raw.prepare("INSERT INTO command_audits (id,command_id,code,payload_json,created_at) VALUES (?,?,NULL,?,?)")
+        .run(audit.auditId, command.commandId, canonicalJsonStringify(audit), at);
+    }
+    raw.prepare("UPDATE database_states SET authority_generation=authority_generation+1,search_generation=NULL,search_state='invalid',updated_at=? WHERE id=1").run(at);
+    raw.exec("COMMIT");
+    inspectNativeAuthority(raw);
+    raw.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  } finally { raw.close(); }
+}
+
+for (const history of ["deleted", "unknown"] as const) {
+  it(`refuses valid same-profile ${history} historical activity before withdrawal without retrying a write`, async () => {
+    const f = await historicalPrematureFixture(); seedClosedHistoricalActivity(f, history);
+    const registry = readFileSync(f.registryPath), verifiers = readFileSync(f.verifierPath), database = readFileSync(f.databasePath);
+    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root), readonly = machine.forStoppedIncompleteProfileInventory(f.profileId);
+    const inventory = AuthorityDatabase.readIncompleteOnboardingInventory(readonly); assert.equal(inventory.empty, false);
+    if (history === "deleted") { assert.equal(inventory.counts.find(row => row.table === "runs")?.count, 0); assert.equal(inventory.counts.find(row => row.table === "deleted_runs")?.count, 1); }
+    else { assert.equal(inventory.counts.find(row => row.table === "write_attempts")?.count, 1); assert.equal(inventory.counts.find(row => row.table === "write_intents")?.count, 1); }
+    readonly.release();
+    await assert.rejects(machine.reclassifyIncompleteProfileAsDraft(f.profileId), /profile-incomplete-activity-present/u);
+    assert.equal(readFileSync(f.registryPath).equals(registry), true); assert.equal(readFileSync(f.verifierPath).equals(verifiers), true);
+    assert.equal(readFileSync(f.databasePath).equals(database), true); assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true);
+    assert.equal(readFileSync(f.protectedPath).equals(f.protectedBytes), true); assert.equal(existsSync(f.operationPath), false);
+    machine.release(); rmSync(f.root, { recursive: true });
+  });
+}

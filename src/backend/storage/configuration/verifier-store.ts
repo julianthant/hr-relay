@@ -23,11 +23,17 @@ import {
 
 type VerifierDocument = z.infer<typeof ProfileVerifierDocumentSchema>;
 export interface PreparedProfileVerifier { readonly profileId: string; }
-const preparedVerifiers = new WeakMap<PreparedProfileVerifier, { root: string; row: VerifierDocument["profiles"][number]; pepper: Buffer; assertCurrent(): void }>();
+const preparedVerifiers = new WeakMap<PreparedProfileVerifier, { root: string; row: VerifierDocument["profiles"][number]; pepper: Buffer; pepperFile: Readonly<{ device: number; inode: number; digest: string }>; assertCurrent(): void }>();
 export function verifyPreparedProfileVerifier(witness: PreparedProfileVerifier, machineRoot: string, profileId: string, expectedEmailKey: string) {
   const issued = preparedVerifiers.get(witness);
   if (issued === undefined || issued.root !== machineRoot || issued.row.profileId !== profileId || issued.row.emailKey !== expectedEmailKey) throw new Error("profile-verifier-publication-unissued");
   issued.assertCurrent(); return issued.row;
+}
+export function preparedProfileVerifierPepperWitness(witness: PreparedProfileVerifier, machineRoot: string, profileId: string, expectedEmailKey: string) {
+  verifyPreparedProfileVerifier(witness, machineRoot, profileId, expectedEmailKey);
+  const issued = preparedVerifiers.get(witness);
+  if (issued === undefined) throw new Error("profile-verifier-publication-unissued");
+  return Object.freeze({ ...issued.pepperFile });
 }
 export function assertPreparedProfileVerifierInput(witness: PreparedProfileVerifier, email: string, password: string): void {
   const issued = preparedVerifiers.get(witness);
@@ -103,7 +109,8 @@ export function createProfileVerifiers(machineRoot: string) {
         }
       };
       const witness = Object.freeze({ profileId });
-      preparedVerifiers.set(witness, { root: machineRoot, row, pepper: sourcePepper.bytes, assertCurrent });
+      preparedVerifiers.set(witness, { root: machineRoot, row: Object.freeze(row), pepper: sourcePepper.bytes,
+        pepperFile: { device: sourcePepper.identity.device, inode: sourcePepper.identity.inode, digest: createHash("sha256").update(sourcePepper.bytes).digest("hex") }, assertCurrent });
       assertCurrent(); return witness;
     },
     save(profileId: string, email: string, password: string): void {

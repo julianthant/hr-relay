@@ -717,7 +717,7 @@ export function createProfileSession(input: {
           finish: { finishId: randomUUID(), finishedAt: (input.clock ?? systemClock).now().toISOString() } } });
         const published = registry.read().profiles.find(row => row.profileId === pending.profileId);
         const operation = published === undefined ? onboarding.verifyFinish(operationId) : pending;
-        if (published !== undefined) assertPublishedFinish(operation, published.registration);
+        if (published !== undefined) { assertPublishedFinish(operation, published.registration); releaseOrdinary(operation.profileId); }
         const fields = storeFor(operation.profileId).read().entries;
         const email = fields.ucpathUserId?.value, password = fields.ucpathPassword?.value;
         if (email === undefined || password === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
