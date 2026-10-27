@@ -849,6 +849,9 @@ export const IdentityGateDetailWireSchema = z.strictObject({
   /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
 }).superRefine((gate, context) => {
+  if (gate.approvalShape !== (gate.options.length > 1 ? "choose-a-candidate" : "one-click")) {
+    context.addIssue({ code: "custom", path: ["approvalShape"], message: "presentation must match the shown candidate count" });
+  }
   const eids = gate.options.map(({ eid }) => eid);
   if (new Set(eids).size !== eids.length) {
     context.addIssue({ code: "custom", path: ["options"], message: "gate options must be unique by EID" });

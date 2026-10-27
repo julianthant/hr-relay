@@ -78,8 +78,8 @@ hdh: false,
     return [
       {
         key: "resolve-gate-approved",
-        label: packet.approvalShape === "one-click" ? "Approve this person" : "Approve the chosen EID",
-        detail: packet.approvalShape === "choose-a-candidate"
+        label: packet.approvableEids.length === 1 ? "Approve this person" : "Approve the chosen EID",
+        detail: packet.approvableEids.length > 1
           ? "Choose which candidate the separation document means."
           : "Confirm the one candidate the separation document means.",
         intent: "primary",
@@ -127,7 +127,7 @@ hdh: false,
       evidenceDigest: deriveIdentityEvidenceDigest(packet),
       packet,
       options: optionsOf(packet),
-      approvalShape: packet.approvalShape,
+      approvalShape: packet.approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
       actions: fixtureIdentityGateActions(packet, input.expectedVersion),
     });
   }

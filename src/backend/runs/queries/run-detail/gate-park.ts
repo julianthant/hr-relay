@@ -388,7 +388,7 @@ function buildIdentityGatePayload(
       evidenceDigest,
       packet,
       options,
-      approvalShape: packet.approvalShape,
+      approvalShape: options.length > 1 ? "choose-a-candidate" : "one-click",
       actions: identityGateActions(authority, packet),
     }),
   };
@@ -400,8 +400,8 @@ function identityGateActions(authority: RunRecord, packet: IdentityEvidencePacke
   return [
     {
       key: "resolve-gate-approved",
-      label: packet.approvalShape === "one-click" ? "Approve this person" : "Approve the chosen EID",
-      detail: packet.approvalShape === "choose-a-candidate"
+      label: packet.approvableEids.length === 1 ? "Approve this person" : "Approve the chosen EID",
+      detail: packet.approvableEids.length > 1
         ? "Choose which candidate the separation document means."
         : "Confirm the one candidate the separation document means.",
       intent: "primary",

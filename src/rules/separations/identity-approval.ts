@@ -3,7 +3,6 @@ import { z } from "zod";
 import { EidSchema, FingerprintSchema, type Fingerprint } from "../identity/ids.js";
 import { directIdentifierDisplay } from "../redaction/redaction.js";
 import {
-  IdentityApprovalShapeSchema,
   IdentityEvidencePacketSchema,
   deriveIdentityEvidenceDigest,
 } from "./identity-evidence.js";
@@ -14,7 +13,7 @@ export const IdentityApprovalChoiceSchema = z.enum([
   "checked",
   /** The EID the document's NAME resolves to, when that is a different person. */
   "name-search",
-  /** Another EID the packet SHOWED. */
+  /** An EID the approver typed. It must still be one the packet SHOWED. */
   "manual",
 ]);
 export type IdentityApprovalChoice = z.infer<typeof IdentityApprovalChoiceSchema>;
@@ -43,7 +42,7 @@ export const ApprovedIdentitySubjectSchema = z.strictObject({
   /** The name UCPath displayed for the checked EID, carried onto the receipt. */
   ucpathName: z.string().min(1),
   nameTier: z.enum(["same", "similar", "different"]),
-  approvalShape: IdentityApprovalShapeSchema,
+  approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
 });
 export type ApprovedIdentitySubject = z.infer<typeof ApprovedIdentitySubjectSchema>;
 

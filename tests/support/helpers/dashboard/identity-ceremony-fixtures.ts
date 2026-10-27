@@ -108,7 +108,7 @@ hdh: true,
         displayName: String(eid) === String(packet.emplId) ? packet.ucpathName : `EID ${String(eid)}`,
         origin: "a UCPath search on the document's name listed this EID",
       })),
-      approvalShape: packet.approvalShape,
+      approvalShape: packet.approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
       actions: [identityApprovalAction("Approve the chosen EID")],
       ...overrides,
     });
