@@ -3,18 +3,18 @@
 export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/profiles/onboarding-duo-provider.ts",
-    "sha256": "083b5a9e4b3b15f0a7bb879aa9e1ac4004b49099aa41abbbfe67dd37cda14339",
-    "reason": "A failed UNKNOWN-retention or failure-report callback marks closure unproved and retains the original and retention errors. Closure propagates that stored failure with both causes, keeps the active attempt and browser uncertain, and refuses replacement or relaunch; it never reports successful cleanup."
+    "sha256": "9af03823e468c469cd4298c9636ce27f8b0f7e46ca7614ce0f3e2777017106ce",
+    "reason": "A failed UNKNOWN-retention or failure-report callback marks closure unproved and retains the original and retention errors. Closure propagates that stored failure with both causes, keeps the active attempt and browser uncertain, and refuses replacement or relaunch; it never reports successful cleanup. Worker stop failure remains uncertain while pump/report settlement is awaited, and the enclosing browser close retains both causes."
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "4f1581d2564a3c9f20fc840b9dd0edd7f605646118c00ff92214888338969899",
-    "reason": "A failed selected-context open marks database closure unproved for typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release; source-closure uncertainty retains it. Rejection observers leave the original lifetime failure and immediate stop promises intact: the CLI races failure, stop awaits closure, and both retain failures before dependent storage release."
+    "sha256": "18d3decd9eee3b3ada92fdab0371f8b49b3a74275e2fb8d2854af76e92ad68a5",
+    "reason": "A failed selected-context open marks database closure unproved for typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release; source-closure uncertainty retains it. Rejection observers leave the original lifetime failure and immediate stop promises intact: the CLI races failure, stop awaits closure, and both retain failures before dependent storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "ebf7584175778cb374978923ef0cf5b811f1dbeb91e517e35e93b41172048587",
-    "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure."
+    "sha256": "754a2d05d0b11d657479eb1c83aed9759cabde4c756238965ba52fc74f11252a",
+    "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure. The maintenance tick retains its first error, stops rescheduling, signals the worker stop controller, and compose surfaces it as a failed report."
   },
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
