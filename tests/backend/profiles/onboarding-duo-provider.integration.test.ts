@@ -16,7 +16,9 @@ import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const FORM = `<!doctype html><form action="${SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="username"><label for="ssopassword">Password</label><input id="ssopassword" name="password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
 
-it("real Relay UI and private draft log in once in a separate same-window Duo tab and keep method attempts separate", async () => {
+for (const pendingClose of [false, true]) it(pendingClose
+  ? "real synthetic MV3 pending software-key attempt retains UNKNOWN across whole-window closure and reopen"
+  : "real Relay UI and private draft log in once in a separate same-window Duo tab and keep method attempts separate", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-launch-")));
   const browserRoot = join(root, "browsers"); mkdirSync(browserRoot, { mode: 0o700 });
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
@@ -112,12 +114,51 @@ it("real Relay UI and private draft log in once in a separate same-window Duo ta
     assert.equal(launches, 2); assert.equal(context.pages().length, 1);
     assert.equal(acquisitions, 1); assert.equal(submissions, 1); assert.deepEqual(read().methods, methodsBeforeReopen);
     await expect(context.pages()[0].getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
-    assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });
-    assert.ok(owner); const stale = owner; assert.throws(() => stale.assertCurrent()); await assert.rejects(stale.acquireCredentials());
-    assert.equal(machine.readProfileRegistry().profiles.length, 0);
+    if (pendingClose) {
+      setup = context.pages()[0];
+      await setup.locator("#transport").selectOption("usb");
+      await setup.getByRole("button", { name: "Set up selected method", exact: true }).click();
+      await expect(setup.locator("#cancelCapture")).toBeEnabled();
+      assert.equal(read().methods.key.state, "pending");
+      await context.route("https://synthetic.duosecurity.com/**", route => route.fulfill({ contentType: "text/html",
+        body: "<!doctype html><body>Signed in as: synthetic-user@ucsd.edu</body>" }));
+      const capture = await context.newPage();
+      await capture.goto("https://synthetic.duosecurity.com/");
+      await capture.evaluate(async () => {
+        const credential = await navigator.credentials.create({ publicKey: {
+          challenge: new TextEncoder().encode("synthetic-pending-close"), rp: { id: "duosecurity.com", name: "Synthetic Duo" },
+          user: { id: new TextEncoder().encode("synthetic-user"), name: "synthetic-user@ucsd.edu", displayName: "Synthetic Operator" },
+          pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+          authenticatorSelection: { authenticatorAttachment: "cross-platform", userVerification: "discouraged" },
+        } });
+        if (!credential) throw new Error("synthetic software credential absent");
+      });
+      const captured = read().methods.key;
+      assert.equal(captured.state, "pending"); assert.equal(captured.ceremonyObserved, true);
+      assert.equal(captured.portalAccepted, false); assert.equal(captured.operatorConfirmed, false);
+      assert.equal(captured.exactCredentialRequestObserved, false);
+      await context.close();
+      await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
+      assert.equal(launches, 3); assert.equal(context.pages().length, 1);
+      const retained = read().methods.key;
+      assert.equal(retained.state, "unknown"); assert.equal(retained.attemptId, captured.attemptId);
+      assert.equal(retained.ceremonyObserved, true); assert.equal(retained.portalAccepted, false);
+      assert.equal(retained.operatorConfirmed, false); assert.equal(retained.exactCredentialRequestObserved, false);
+      assert.equal(read().methods.touch.state, "idle"); assert.equal(acquisitions, 1); assert.equal(submissions, 1);
+      await expect(context.pages()[0].locator("#accountList")).toContainText("Needs review");
+      await assert.rejects(profile.session.cancelOnboarding(draft.token, draft.operationId));
+      assert.equal(machine.readProfileRegistry().profiles.length, 0);
+    } else {
+      assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });
+      assert.ok(owner); const stale = owner; assert.throws(() => stale.assertCurrent()); await assert.rejects(stale.acquireCredentials());
+      assert.equal(machine.readProfileRegistry().profiles.length, 0);
+    }
   } catch (error) { failure = error; }
   try { await profile.close(); }
   catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "onboarding fixture and cleanup failed"); }
-  finally { try { await context?.close(); } finally { machine.release(); } }
+  try { await context?.close(); }
+  catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "onboarding browser cleanup failed"); }
+  try { machine.release(); }
+  catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "onboarding admission cleanup failed"); }
   if (failure !== undefined) throw new Error("onboarding fixture failed", { cause: failure });
 });
