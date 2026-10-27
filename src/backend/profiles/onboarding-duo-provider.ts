@@ -34,6 +34,7 @@ const BrokerRequestSchema = z.discriminatedUnion("kind", [
   }) }),
   z.strictObject({ id: z.uuid(), kind: z.literal("persist"), data: PendingSchema }),
   z.strictObject({ id: z.uuid(), kind: z.literal("reserve"), data: ReceiptSchema }),
+  z.strictObject({ id: z.uuid(), kind: z.literal("native-failed"), data: z.strictObject({ requestId: z.uuid() }) }),
   ...(["software-created", "native-created", "portal-accepted", "exact-request"] as const).map(kind =>
     z.strictObject({ id: z.uuid(), kind: z.literal(kind), data: ReceiptSchema })),
 ]);
@@ -144,6 +145,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (!Number.isSafeInteger(reservation.count) || reservation.count <= provisioned.highWater || reservation.count >= 0xffffffff) throw new ProfileOnboardingDuoProviderError("unknown", "counter");
       return reservation;
     }
+    if (request.kind === "native-failed") throw new ProfileOnboardingDuoProviderError("unknown", "provider");
     const { credentialId, requestId } = request.data;
     if (request.kind === "software-created" || request.kind === "native-created") {
       const native = request.kind === "native-created";

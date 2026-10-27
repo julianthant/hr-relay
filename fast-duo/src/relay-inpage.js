@@ -68,8 +68,14 @@
       residentKey: key.authenticatorSelection?.residentKey === 'required' || key.authenticatorSelection?.requireResidentKey === true,
     }, options.signal);
     if (result.native) {
-      const credential = await originalCreate(options);
-      if (!credential || credential.authenticatorAttachment !== 'platform') throw new DOMException('A native platform credential is required.', 'NotAllowedError');
+      let credential;
+      try {
+        credential = await originalCreate(options);
+        if (!credential || credential.authenticatorAttachment !== 'platform') throw new DOMException('A native platform credential is required.', 'NotAllowedError');
+      } catch (error) {
+        try { await request('RELAY_NATIVE_FAILED', { requestId, rpId: key.rp?.id || location.hostname }); }
+        finally { throw error; }
+      }
       await request('RELAY_NATIVE_CREATED', { requestId, rpId: key.rp?.id || location.hostname,
         credentialId: encode(credential.rawId), attachment: credential.authenticatorAttachment }, options.signal);
       return credential;

@@ -51,6 +51,11 @@ export function createRelayWorker(api) {
       return result;
     }
     if (!pending || pending.tabId !== tab.id || pending.origin !== data.origin || pending.requestId !== data.requestId) throw new Error('ONBOARDING_DUO_SCOPE');
+    if (message.type === 'RELAY_NATIVE_FAILED') {
+      if (installed.method !== 'touch') throw new Error('ONBOARDING_DUO_SCOPE');
+      await call('native-failed', { requestId: data.requestId });
+      throw new Error('ONBOARDING_DUO_NATIVE_FAILED');
+    }
     if (message.type === 'RELAY_NATIVE_CREATED') {
       if (installed.method !== 'touch' || data.attachment !== 'platform' || pending.credentialId) throw new Error('ONBOARDING_DUO_NATIVE_REQUIRED');
       await call('native-created', { credentialId: data.credentialId, requestId: data.requestId });

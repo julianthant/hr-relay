@@ -5,7 +5,7 @@
   window.addEventListener('message', async event => {
     if (event.source !== window || event.origin !== location.origin || event.data?.type !== 'RELAY_DUO_REQUEST') return;
     const message = event.data;
-    if (typeof message.id !== 'string' || !['DUO_AUTOPILOT_SIGN', 'DUO_AUTOPILOT_ENROLL', 'RELAY_NATIVE_CREATED', 'RELAY_CAPABILITIES'].includes(message.operation)) return;
+    if (typeof message.id !== 'string' || !['DUO_AUTOPILOT_SIGN', 'DUO_AUTOPILOT_ENROLL', 'RELAY_NATIVE_CREATED', 'RELAY_NATIVE_FAILED', 'RELAY_CAPABILITIES'].includes(message.operation)) return;
     try {
       if (message.operation === 'DUO_AUTOPILOT_ENROLL') priorHeadings = new Map(
         [...document.querySelectorAll('h1, h2, [role="heading"]')].map(element => [element, element.textContent.trim()]));

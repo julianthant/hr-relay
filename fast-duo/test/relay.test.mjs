@@ -213,3 +213,19 @@ test('Relay manifest import closure cannot load standalone bootstrap or persiste
   }
   assert.deepEqual([...discovered].sort(), [...allowed].sort());
 });
+
+test('native cancellation is reported without software enrollment or a fabricated success receipt', async () => {
+  const w = world(); await w.worker.install({ method: 'touch', nowMs: 1000 });
+  const message = enrollment('platform');
+  const operation = w.worker.receive(message, SENDER);
+  await acknowledge(w.worker, 'bind', { accountId: ACCOUNT });
+  await operation;
+  const failure = w.worker.receive({ type: 'RELAY_NATIVE_FAILED', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: message.request.requestId } }, SENDER);
+  const rejected = assert.rejects(failure, /ONBOARDING_DUO_REFUSED/);
+  const report = await w.worker.next();
+  assert.equal(report.kind, 'native-failed');
+  w.worker.reply(report.id, { ok: false });
+  await rejected;
+  assert.equal(w.state().autopilotV1.credentials.length, 0);
+  await w.worker.stop();
+});
