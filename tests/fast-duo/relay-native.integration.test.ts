@@ -34,9 +34,15 @@ it("real extension isolated native create uses page RP/origin and ignores forged
   await writeFile(join(extension, "background.js"), `
     globalThis.realmReceipts = [];
     globalThis.realmGuardFailures = [];
+    globalThis.realmDocumentFormats = [];
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       let parsedUrl;
       try { parsedUrl = new URL(sender.url); } catch { parsedUrl = undefined; }
+      realmDocumentFormats.push({
+        string: typeof sender.documentId === 'string',
+        compactHex32: typeof sender.documentId === 'string' && /^[0-9a-f]{32}$/i.test(sender.documentId),
+        hyphenatedHex36: typeof sender.documentId === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sender.documentId),
+      });
       const checks = {
         senderIdentity: sender.id === chrome.runtime.id,
         topFrame: sender.frameId === 0,
@@ -136,7 +142,9 @@ it("real extension isolated native create uses page RP/origin and ignores forged
     assert.ok(output);
     const guardFailures: unknown = await worker.evaluate(() => Reflect.get(globalThis, "realmGuardFailures") as unknown);
     assert.ok(Array.isArray(guardFailures));
-    assert.equal(output.success, true, JSON.stringify({ success: output.success, nativeCredentials, receiptTypes: (await receipts()).map(receipt => receipt.type), guardFailures }));
+    const documentFormats: unknown = await worker.evaluate(() => Reflect.get(globalThis, "realmDocumentFormats") as unknown);
+    assert.ok(Array.isArray(documentFormats));
+    assert.equal(output.success, true, JSON.stringify({ success: output.success, nativeCredentials, receiptTypes: (await receipts()).map(receipt => receipt.type), guardFailures, documentFormats }));
     assert.equal(output.result.native, true);
     const clientData = JSON.parse(Buffer.from(output.result.clientDataJSON, "base64").toString("utf8")) as { origin: string; challenge: string; type: string };
     assert.equal(clientData.origin, origin);
