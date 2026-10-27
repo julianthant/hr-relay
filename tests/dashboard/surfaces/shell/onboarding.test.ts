@@ -54,7 +54,8 @@ it("uses server authentication for Duo access and keeps a refused served login o
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "duo", authenticated: false })));
     assert.match(host.textContent ?? "", /Start with your details/);
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "duo", authenticated: true })));
-    assert.match(host.textContent ?? "", /Reconnect to finish setup/);
+    assert.equal(host.querySelector("h1")?.textContent, "Security key");
+    assert.match(host.textContent ?? "", /could not show the setup browser/);
     assert.doesNotMatch(host.textContent ?? "", /Start with your details/);
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "login", authenticated: false })));
     for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"]]) {
@@ -194,8 +195,10 @@ it("unknown enrollment copy never directs adding the uncertain method again", as
     showBrowser: unavailable, openPortal: unavailable, complete: unavailable, cancel: unavailable, cancelDuo: unavailable, start: unavailable, confirmDuo: unavailable, submit: unavailable };
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
-    assert.match(host.textContent ?? "", /Security key outcome unknown/);
-    assert.match(host.textContent ?? "", /Do not add this method again/);
+    assert.equal(host.querySelector("h1")?.textContent, "Security key");
+    assert.match(host.textContent ?? "", /Security key · Failed/);
+    assert.doesNotMatch(host.textContent ?? "", /outcome unknown|Needs review|may already have been added/);
+    assert.match(host.textContent ?? "", /without repeating this attempt/);
     assert.doesNotMatch(host.textContent ?? "", /Security key is next|Start with a security key|then add a security key|Security key and Touch ID not added/);
     const steps: string[] = [];
     const stalePort = { ...port, reauthenticationRequired: true, cancel: async () => { throw new Error("must not cancel stale draft"); } };
@@ -207,8 +210,37 @@ it("unknown enrollment copy never directs adding the uncertain method again", as
     for (const state of ["pending", "unavailable"] as const) {
       const currentPort = { ...port, unavailable: false, onboarding: { ...onboarding, methods: { ...onboarding.methods, key: { ...onboarding.methods.key, state } } } };
       await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: currentPort })));
-      assert.match(host.textContent ?? "", state === "pending" ? /Security key is waiting for Duo/ : /Security key is unavailable/);
+      assert.equal(host.querySelector("h1")?.textContent, "Security key");
+      assert.match(host.textContent ?? "", state === "pending" ? /Security key · Pending/ : /Security key · Failed/);
       assert.doesNotMatch(host.textContent ?? "", /Start with a security key|Next, add a security key/);
+    }
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("both served setup pages keep method outcomes visible without offering another failed capture", async () => {
+  const host = document.createElement("div"), root = createRoot(host);
+  const method = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+  const calls: string[] = [];
+  const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
+  try {
+    for (const page of ["fast", "duo"] as const) for (const [state, label] of [["idle", "Not started"], ["pending", "Pending"], ["complete", "Completed"], ["unknown", "Failed"], ["unavailable", "Failed"]] as const) {
+      const port: ServedOnboardingPort = { source: "served", validate: mockOnboardingPort.validate,
+        onboarding: { state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo",
+          methods: { key: { ...method, state, attemptId: "00000000-0000-4000-8000-000000000003" }, touch: method } },
+        showBrowser: unavailable, openPortal: unavailable, complete: unavailable, cancel: unavailable, cancelDuo: unavailable,
+        start: async () => { calls.push("start"); return unavailable(); }, confirmDuo: unavailable, submit: unavailable };
+      await act(async () => root.render(createElement(OnboardingSetup, { page, port })));
+      const row = host.querySelector(page === "fast" ? ".method-list li" : ".device-row"); assert.ok(row);
+      assert.equal(row.querySelector(page === "fast" ? "small" : "p")?.textContent, label);
+      assert.doesNotMatch(host.textContent ?? "", /Not added|Needs review|outcome unknown/);
+      assert.match(host.querySelector(".sr-only")?.textContent ?? "", new RegExp(`Security key: ${label}`));
+      if (state === "unknown" || state === "unavailable") {
+        const capture = page === "fast" ? [...host.querySelectorAll("button")].find(button => button.textContent === "Start capture") : row.querySelector("button");
+        assert.ok(capture); assert.equal(capture.disabled, true);
+        await act(async () => capture.click());
+        assert.equal(calls.length, 0);
+        if (page === "fast") assert.match(host.textContent ?? "", /without repeating this attempt/);
+      }
     }
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

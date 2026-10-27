@@ -32,13 +32,13 @@ export async function mountRelayOptions(initial) {
   $('globalDetail').textContent = 'Open Duo in this same window. Relay uses your saved profile details to sign in once; complete MFA yourself.';
   $('transport').options[1].textContent = 'Touch ID on this Mac (native)';
   const labels = { key: 'Security key', touch: 'Touch ID on this Mac' };
-  const states = { idle: 'Not started', pending: 'Waiting', complete: 'Verified', unknown: 'Needs review', unavailable: 'Unavailable' };
+  const states = { idle: 'Not started', pending: 'Pending', complete: 'Completed', unknown: 'Failed', unavailable: 'Failed' };
   function render() {
     const methods = profile.methods;
     if (methods[selected].state === 'complete' && methods.touch.state !== 'complete') selected = 'touch';
     $('transport').value = selected === 'key' ? 'usb' : 'internal';
-    $('globalStatus').textContent = unavailable ? 'Setup unavailable' : Object.values(methods).some(method => method.state === 'unknown') ? 'Sign-in method needs review' : Object.values(methods).every(method => method.state === 'complete') ? 'Both methods verified' : Object.values(methods).some(method => method.state === 'unavailable') ? 'Sign-in method unavailable' : Object.values(methods).some(method => method.state === 'pending') ? 'Waiting for Duo' : Object.values(methods).some(method => method.state === 'complete') ? 'One method verified' : 'Sign-in methods not started';
-    $('globalDetail').textContent = unavailable === 'action' ? 'Duo could not complete this setup action. Return to Relay to check setup.' : unavailable ? 'Setup authority is unavailable. Return to Relay.' : Object.values(methods).some(method => method.state === 'unknown') ? 'A method may already be added in Duo. Review it without enrolling it again.' : Object.values(methods).every(method => method.state === 'complete') ? 'Both sign-in methods are verified. Return to Relay to finish your profile.' : Object.values(methods).some(method => method.state === 'pending') ? 'Complete the selected method in Duo. Capture alone does not prove enrollment.' : 'Open Duo in this same window. Relay uses your saved profile details to sign in once; complete MFA yourself.';
+    $('globalStatus').textContent = unavailable ? 'Setup unavailable' : Object.values(methods).some(method => method.state === 'unknown') ? 'Setup failed' : Object.values(methods).every(method => method.state === 'complete') ? 'Both methods completed' : Object.values(methods).some(method => method.state === 'unavailable') ? 'Setup failed' : Object.values(methods).some(method => method.state === 'pending') ? 'Pending' : Object.values(methods).some(method => method.state === 'complete') ? 'One method completed' : 'Sign-in methods not started';
+    $('globalDetail').textContent = unavailable === 'action' ? 'Duo could not complete this setup action. Return to Relay to check setup.' : unavailable ? 'Setup authority is unavailable. Return to Relay.' : Object.values(methods).some(method => method.state === 'unknown') ? 'Relay could not confirm that setup completed. Review your Duo devices without repeating this attempt.' : Object.values(methods).every(method => method.state === 'complete') ? 'Both sign-in methods are verified. Return to Relay to finish your profile.' : Object.values(methods).some(method => method.state === 'pending') ? 'Complete the selected method in Duo. Capture alone does not prove enrollment.' : 'Open Duo in this same window. Relay uses your saved profile details to sign in once; complete MFA yourself.';
     const list = $('accountList'); list.replaceChildren(); list.setAttribute('aria-busy', 'false');
     for (const [method, label] of Object.entries(labels)) {
       const item = document.createElement('article'); item.className = 'account';
@@ -49,7 +49,7 @@ export async function mountRelayOptions(initial) {
     $('accountCount').textContent = '2 methods';
     const attempt = methods[selected], pending = attempt.state === 'pending';
     document.querySelector('#connection .fine-print').textContent = unavailable || attempt.state === 'unavailable' ? 'Setup is unavailable. Return to Relay to check your profile session.'
-      : attempt.state === 'unknown' ? 'This method may already have been added in Duo. Review your devices; do not add this method again.'
+      : attempt.state === 'unknown' ? 'Relay could not confirm that setup completed. Review your Duo devices; do not repeat this attempt.'
       : attempt.state === 'complete' ? 'This sign-in method is verified. No further enrollment is needed.'
       : selected === 'touch'
       ? 'Choose Touch ID in Duo. This method uses the native Mac prompt, with software interception disabled.'
@@ -71,7 +71,7 @@ export async function mountRelayOptions(initial) {
       pendingKeys.append(button);
     }
     $('message').hidden = !unavailable && !['unknown', 'unavailable'].includes(attempt.state);
-    $('message').textContent = unavailable === 'action' ? 'Duo could not complete this setup action. Return to Relay; do not repeat an unknown enrollment.' : unavailable ? 'Setup authority is unavailable. Return to Relay.' : attempt.state === 'unknown' ? `${labels[selected]} needs review. It may already be added in Duo; do not add this method again.` : `${labels[selected]} is unavailable. Return to Relay to check setup.`;
+    $('message').textContent = unavailable === 'action' ? 'Duo could not complete this setup action. Return to Relay; do not repeat an unconfirmed attempt.' : unavailable ? 'Setup authority is unavailable. Return to Relay.' : attempt.state === 'unknown' ? `${labels[selected]} setup failed. Relay could not confirm completion; review your Duo devices without repeating this attempt.` : `${labels[selected]} is unavailable. Return to Relay to check setup.`;
     $('message').setAttribute('role', 'alert');
   }
   async function command(type, method, attemptId) {

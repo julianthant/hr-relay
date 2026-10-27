@@ -85,7 +85,7 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
   });
 }
 
-export const duoMethodLabels = Object.freeze({ idle: "Not started", pending: "Waiting", complete: "Verified", unknown: "Needs review", unavailable: "Unavailable" });
+export const duoMethodLabels = Object.freeze({ idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Failed", unavailable: "Failed" });
 export function duoSummary(methods: DuoMethods, draft?: ProfileOnboardingState): string {
   if (draft) return `Security key: ${duoMethodLabels[draft.methods.key.state]} · Touch ID: ${duoMethodLabels[draft.methods.touch.state]}`;
   if (methods.key && methods.touch) return "Security key and Touch ID ready";
