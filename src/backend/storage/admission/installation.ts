@@ -3,8 +3,8 @@ import { FlatProfileClaimSchema, FlatProfileClaimReceiptSchema, verifyFlatProfil
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { observeFlatBackupMutexRecovery, verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
-import { readPrivateFile, writePrivateStage, fsyncPath } from "../configuration/credential-safe-file.js";
-import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, unpublishedDraftAbortMembership, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
+import { readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry } from "../configuration/credential-safe-file.js";
+import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, unpublishedDraftAbortMembership, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
 import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
@@ -16,7 +16,7 @@ import {
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
+import { acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot, inspectStoppedDeviceRecertificationCustody, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
   assertRuntimeRestoreAdmission, type ProcessStartIdentity, type RestoreAdmissionHandle, authoritySourceDatabaseIdentity, RUNTIME_PROCESS_LOCK_NAMES, runtimeProcessLockIsActive, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
@@ -89,6 +89,30 @@ const ControlUpgradeReceiptSchema = z.strictObject({ schemaVersion: z.literal(1)
   priorControl: ControlUpgradeFileSchema, priorMarker: ControlUpgradeFileSchema,
   controlBackup: ControlUpgradeFileSchema, markerBackup: ControlUpgradeFileSchema,
   controlStage: ControlUpgradeFileSchema, markerStage: ControlUpgradeFileSchema, sourceEvidence: z.string().max(16 * 1024 * 1024) });
+
+const DeviceRecertificationCaptureSchema = z.strictObject({ operationId: z.uuid(), prior: ProfileContinuitySchema,
+  current: ProfileContinuitySchema, priorControl: ControlUpgradeFileSchema, priorControlBytes: z.string(),
+  sourceEvidence: z.string().max(16 * 1024 * 1024), historicalVolumeBinding: z.literal("unproved") });
+const DeviceRecertificationAuthorizationSchema = z.strictObject({ captureDigest: DigestSchema,
+  acknowledgement: z.literal("recertify-current-files-with-unproved-historical-volume-binding") });
+const DeviceRecertificationJournalSchema = z.strictObject({ schemaVersion: z.literal(1), capture: DeviceRecertificationCaptureSchema,
+  stage: ControlUpgradeFileSchema, authorization: DeviceRecertificationAuthorizationSchema });
+const DeviceRecertificationSourceSchema = z.strictObject({
+  custody: z.strictObject({ bootStartedAt: z.number().int().positive(), singletons: z.array(RuntimeProcessLockFileSchema), workers: z.array(WorkerProcessLockFileSchema),
+    files: z.array(UnpublishedDraftAbortCaptureSchema.shape.membership.element.omit({ directory: true }).extend({ owner: z.number().int().nonnegative(), links: z.number().int().positive() })) }),
+  membership: UnpublishedDraftAbortCaptureSchema.shape.membership, machineMembership: UnpublishedDraftAbortCaptureSchema.shape.membership,
+  databases: IncompleteProfileDraftCaptureSchema.shape.databases, protectedFile: ControlUpgradeFileSchema,
+  roots: z.array(UnpublishedDraftAbortCaptureSchema.shape.membership.element.pick({ path: true, device: true, inode: true, mode: true }).extend({ owner: z.number().int().nonnegative() })).length(5),
+  metadata: UnpublishedDraftAbortCaptureSchema.shape.membership,
+  documents: z.strictObject({ installation: z.string(), locator: z.string(), stateMarker: z.string(), artifactMarker: z.string() }),
+  stateMarker: ControlUpgradeFileSchema, artifactMarker: ControlUpgradeFileSchema, installation: ControlUpgradeFileSchema,
+  locator: ControlUpgradeFileSchema, registry: ControlUpgradeFileSchema, verifiers: ControlUpgradeFileSchema, pepper: ControlUpgradeFileSchema,
+});
+export type DeviceRecertificationAuthorization = z.infer<typeof DeviceRecertificationAuthorizationSchema>;
+export interface StoppedDeviceRecertification {
+  readonly capture: Readonly<{ digest: string; priorDevice: number; currentDevice: number; historicalVolumeBinding: "unproved" }>;
+  recertify(authorization: DeviceRecertificationAuthorization): void;
+}
 
 const GenerationSchema = z.number().int().nonnegative();
 const EpochsSchema = z.strictObject({ state: GenerationSchema, artifact: GenerationSchema });
@@ -775,7 +799,7 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   privateDirectory(mutexPath);
   const mutexBefore = lstatSync(mutexPath);
   const allowedControl = new Set(["installation.json", "locator.json", "leases", "admission-mutex",
-    "admission-mutex-recovery", "profile-registry.json", "storage-backups", RECEIPTS]);
+    "admission-mutex-recovery", "profile-registry.json", "storage-backups", "device-recertification-receipt.json", RECEIPTS]);
   if (readdirSync(control).some(entry => !allowedControl.has(entry))) fail("unexpected installation control entry");
   const entries = readdirSync(mutexPath);
   const empty = expectedPid === "empty";
@@ -812,6 +836,8 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   assertLeasesStopped();
   if (lstatMaybe(join(control, "journal.json"))) fail("pending installation journal blocks mutex recovery");
   const locator = readLocator(control, workspace);
+  const recertificationPath = join(control, "device-recertification-receipt.json");
+  const recertification = completedDeviceRecertificationReceipt(control, locator);
   const storageBackups = join(control, "storage-backups");
   const flatWitness = lstatMaybe(storageBackups) === undefined ? undefined
     : observeFlatBackupMutexRecovery(workspace, locator, restore, acquisitionId);
@@ -827,6 +853,8 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   assertRestoreHeld(workspace, restore);
   privateDirectory(mutexPath);
   function assertCustody(): void {
+    if (recertification === undefined ? lstatMaybe(recertificationPath) !== undefined
+      : !sameControlUpgradeFile(recertificationPath, recertification)) fail("device-recertification-receipt-changed");
     const currentLocator = readLocator(control, workspace);
     if (canonicalJsonStringify(currentLocator) !== canonicalJsonStringify(locator)) fail("installation locator changed during recovery");
     if (flatWitness === undefined) {
@@ -1446,6 +1474,7 @@ function assertProfileCredentialKeyMembership(locator: RuntimeLocator, heads: re
 }
 
 function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPublication = true, credentialPublication?: CredentialInitializationPublication, stagedPublication?: CredentialKeyStagePublication): ProfileRegistryDocument {
+  if (lstatMaybe(join(control, "device-recertification.json"))) fail("device-recertification-pending");
   const path = join(locator.stateRoot, "machine", "profiles.json");
   if (lstatMaybe(join(control, "profile-control-upgrade.json"))) fail("profile-control-upgrade-pending");
   assertNoSymlinkComponents(path);
@@ -3119,6 +3148,114 @@ function sameControlUpgradeFile(path: string, expected: z.infer<typeof ControlUp
   return lstatMaybe(path) !== undefined && canonicalJsonStringify(controlUpgradeFile(path)) === canonicalJsonStringify(expected);
 }
 
+function completedDeviceRecertificationReceipt(control: string, locator: RuntimeLocator) {
+  const path = join(control, "device-recertification-receipt.json");
+  if (lstatMaybe(path) === undefined) return undefined;
+  const file = controlUpgradeFile(path), receipt = readProfileEvidence(path, DeviceRecertificationJournalSchema);
+  const { capture, stage, authorization } = receipt, { prior, current } = capture;
+  const head = prior.erasures[0], key = head?.credentialKey, duo = prior.duo[0];
+  if (prior.installationId !== locator.installationId || prior.erasures.length !== 1 || head === undefined || key === undefined
+    || key.binding.installationId !== prior.installationId || key.binding.profileId !== head.profileId
+    || head.head.state !== "never-erased" || prior.operations.length !== 0 || prior.duo.length !== 1 || duo === undefined
+    || duo.profileId !== head.profileId || duo.state !== "never-initialized" || duo.revision !== 0
+    || prior.device === current.device || key.file.device !== prior.device
+    || stage.device !== capture.priorControl.device) fail("device-recertification-receipt-invalid");
+  const expected = ProfileContinuitySchema.parse(prior), expectedKey = expected.erasures[0]?.credentialKey;
+  if (expectedKey === undefined) fail("device-recertification-receipt-invalid");
+  expected.device = current.device; expectedKey.file.device = current.device;
+  const bytes = Buffer.from(capture.priorControlBytes, "base64");
+  const { operationId: _operationId, ...content } = capture;
+  if (canonicalJsonStringify(expected) !== canonicalJsonStringify(current)
+    || bytes.toString("base64") !== capture.priorControlBytes
+    || createHash("sha256").update(bytes).digest("hex") !== capture.priorControl.digest
+    || canonicalJsonStringify(ProfileContinuitySchema.parse(JSON.parse(bytes.toString("utf8")))) !== canonicalJsonStringify(prior)
+    || createHash("sha256").update(canonicalJsonStringify(content)).digest("hex") !== authorization.captureDigest
+    || createHash("sha256").update(`${JSON.stringify(current)}\n`).digest("hex") !== stage.digest
+    || !sameControlUpgradeFile(path, file)) fail("device-recertification-receipt-invalid");
+  const source = DeviceRecertificationSourceSchema.parse(JSON.parse(capture.sourceEvidence));
+  if (canonicalJsonStringify(source) !== capture.sourceEvidence) fail("device-recertification-source-invalid");
+  const [workspace, capturedControl, state, artifact, profiles] = source.roots;
+  if (workspace === undefined || capturedControl === undefined || state === undefined || artifact === undefined || profiles === undefined
+    || workspace.path !== dirname(dirname(control)) || capturedControl.path !== control || profiles.path !== join(state.path, "profiles")
+    || new Set(source.roots.map(root => root.path)).size !== source.roots.length
+    || source.roots.some(root => !isAbsolute(root.path) || resolve(root.path) !== root.path
+      || (root.mode & constants.S_IFMT) !== constants.S_IFDIR || (root.mode & 0o022) !== 0
+      || root.owner !== process.getuid?.() && root.owner !== 0)
+    || (capturedControl.mode & 0o7777) !== 0o700 || (profiles.mode & 0o7777) !== 0o700
+    || capturedControl.device !== stage.device) fail("device-recertification-source-invalid");
+  validatePair(workspace.path, { stateRoot: state.path, artifactRoot: artifact.path });
+  function membership(rows: z.infer<typeof UnpublishedDraftAbortCaptureSchema>["membership"], permitted: ReadonlyMap<string, boolean>, required: readonly string[]) {
+    const entries = new Map(rows.map(entry => [entry.path, entry]));
+    if (entries.size !== rows.length || required.some(name => !entries.has(name))
+      || rows.some(entry => permitted.get(entry.path) !== entry.directory
+        || [entry.device, entry.inode, entry.size, entry.mode].some(value => !Number.isSafeInteger(value) || value < 0)
+        || (entry.mode & constants.S_IFMT) !== (entry.directory ? constants.S_IFDIR : constants.S_IFREG)
+        || (entry.directory ? (entry.mode & 0o7777) !== 0o700 : entry.path.startsWith("state.db")
+          ? (entry.mode & 0o022) !== 0 : (entry.mode & 0o7777) !== 0o600))) fail("device-recertification-source-invalid");
+    return entries;
+  }
+  const keyPath = `credential-keys/${head.profileId}.json`;
+  const machine = membership(source.machineMembership, new Map([["", true], ["credential-keys", true], [keyPath, false], ["erasures", true], ["operations", true],
+    ["profiles.json", false], ["profile-registry-version.json", false], ["profile-verifiers.json", false], ["profile-pepper", false]]),
+  ["", "credential-keys", keyPath, "profiles.json", "profile-registry-version.json", "profile-verifiers.json", "profile-pepper"]);
+  const profile = membership(source.membership, new Map([["", true], ["credentials", true], ["credentials/protected.json", false], ["artifacts", true],
+    ["state.db", false], ["state.db-wal", false], ["state.db-shm", false], ["state.db-journal", false]]), ["", "credentials", "credentials/protected.json", "state.db"]);
+  function identity(entries: ReturnType<typeof membership>, name: string, witness: z.infer<typeof ControlUpgradeFileSchema>) {
+    const entry = entries.get(name);
+    if (entry?.directory !== false || entry.device !== witness.device || entry.inode !== witness.inode) fail("device-recertification-source-invalid");
+  }
+  const metadataPaths = [join(control, "installation.json"), join(control, "locator.json"), join(state.path, MARKER), join(artifact.path, MARKER)];
+  const metadata = membership(source.metadata, new Map(metadataPaths.map(name => [name, false])), metadataPaths);
+  function document<T>(name: keyof typeof source.documents, documentPath: string, schema: z.ZodType<T>): T {
+    const bytes = Buffer.from(source.documents[name], "base64"), witness = source[name];
+    identity(metadata, documentPath, witness);
+    if (bytes.toString("base64") !== source.documents[name] || metadata.get(documentPath)?.size !== bytes.length
+      || createHash("sha256").update(bytes).digest("hex") !== witness.digest) fail("device-recertification-source-invalid");
+    return schema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
+  }
+  const historicalInstallation = document("installation", join(control, "installation.json"), InstallationSchema);
+  const historicalLocator = document("locator", join(control, "locator.json"), LocatorSchema);
+  const stateMarker = document("stateMarker", join(state.path, MARKER), MarkerSchema);
+  const artifactMarker = document("artifactMarker", join(artifact.path, MARKER), MarkerSchema);
+  const epochs = epochsOf(historicalLocator);
+  if (historicalInstallation.installationId !== prior.installationId || historicalInstallation.workspace !== workspace.path
+    || historicalLocator.installationId !== prior.installationId || historicalLocator.stateRoot !== state.path || historicalLocator.artifactRoot !== artifact.path
+    || stateMarker.installationId !== prior.installationId || stateMarker.workspace !== workspace.path || stateMarker.role !== "state" || stateMarker.generation !== epochs.state
+    || artifactMarker.installationId !== prior.installationId || artifactMarker.workspace !== workspace.path || artifactMarker.role !== "artifact" || artifactMarker.generation !== epochs.artifact
+    || source.installation.device !== capturedControl.device || source.locator.device !== capturedControl.device
+    || source.stateMarker.device !== state.device || source.artifactMarker.device !== artifact.device) fail("device-recertification-source-invalid");
+  identity(machine, "profiles.json", source.registry); identity(machine, "profile-verifiers.json", source.verifiers); identity(machine, "profile-pepper", source.pepper);
+  identity(machine, keyPath, { ...key.file, device: current.device }); identity(profile, "credentials/protected.json", source.protectedFile);
+  if (source.registry.device !== current.device || source.registry.inode !== current.inode
+    || canonicalJsonStringify(source.databases.map(database => database.suffix)) !== canonicalJsonStringify(["", "-wal", "-shm", "-journal"])) fail("device-recertification-source-invalid");
+  for (const database of source.databases) {
+    const name = `state.db${database.suffix}`;
+    if (profile.has(name) !== (database.file !== undefined)) fail("device-recertification-source-invalid");
+    if (database.file !== undefined) identity(profile, name, database.file);
+  }
+  const { custody } = source, expectedClaims = new Set<string>();
+  if (new Set(custody.singletons.map(claim => `${claim.name}/${claim.generation}`)).size !== custody.singletons.length
+    || new Set(custody.workers.map(worker => worker.acquisitionId)).size !== custody.workers.length
+    || custody.workers.some(worker => worker.releasedAt === null)) fail("device-recertification-source-invalid");
+  for (const claim of custody.singletons) {
+    expectedClaims.add(`${claim.name}-claims/${claim.generation}.claim.json`);
+    if (claim.releasedAt !== null) expectedClaims.add(`${claim.name}-claims/${claim.generation}-${claim.acquisitionId}.release.json`);
+  }
+  for (const worker of custody.workers) expectedClaims.add(`workers/${worker.acquisitionId}.lock.json`);
+  const retained = custody.singletons.filter(claim => claim.releasedAt === null);
+  if (retained.some(claim => claim.name !== "server" || claim.processIdentity.platform !== "darwin"
+    || !/^\d+$/u.test(claim.processIdentity.startToken) || Number(claim.processIdentity.startToken) * 1000 <= 0
+    || Number(claim.processIdentity.startToken) * 1000 >= custody.bootStartedAt || Date.parse(claim.acquiredAt) >= custody.bootStartedAt
+    || Date.parse(claim.acquiredAt) < Number(claim.processIdentity.startToken) * 1000)) fail("device-recertification-source-invalid");
+  const claimFiles = new Set(custody.files.map(entry => entry.path)), directories = new Set(["server-claims/", "live-smoke-claims/", "geocode-claims/", "workers/"]);
+  if (claimFiles.size !== custody.files.length || [...expectedClaims].some(name => !claimFiles.has(name))
+    || custody.files.some(entry => entry.owner !== process.getuid?.() || [entry.device, entry.inode, entry.size, entry.mode].some(value => !Number.isSafeInteger(value) || value < 0)
+      || (directories.has(entry.path) ? (entry.mode & constants.S_IFMT) !== constants.S_IFDIR || (entry.mode & 0o7777) !== 0o700
+        : !expectedClaims.has(entry.path) || !claimFiles.has(`${dirname(entry.path)}/`) || entry.links !== 1
+          || (entry.mode & constants.S_IFMT) !== constants.S_IFREG || (entry.mode & 0o7777) !== 0o600))) fail("device-recertification-source-invalid");
+  return file;
+}
+
 function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typeof PriorProfileContinuitySchema>): string {
   const machine = join(locator.stateRoot, "machine"), registryPath = join(machine, "profiles.json");
   const document = readProfileEvidence(registryPath, ProfileRegistryDocumentSchema);
@@ -3160,6 +3297,157 @@ export function readIssuedDuoContinuity(lease: InstallationLease, profileId: str
   const snapshot = DuoContinuityRowSchema.parse(row);
   if (snapshot.state !== "never-initialized") Object.freeze(snapshot.document);
   return Object.freeze(snapshot);
+}
+
+export function prepareStoppedDeviceRecertification(lease: InstallationLease, restore: RestoreAdmissionHandle,
+  verifyEmpty: (profileId: string, assertHeld: () => void) => void): StoppedDeviceRecertification {
+  const { workspace } = lease.readInstallationContext(), locator = lease.locator, control = join(workspace, CONTROL);
+  const controlPath = join(control, "profile-registry.json"), intentPath = join(control, "device-recertification.json");
+  const receiptPath = join(control, "device-recertification-receipt.json");
+  const ancestry = new Map<string, { device: number; inode: number }>();
+  function held(): void {
+    assertInstallationLease(lease); lease.assertHeld(); assertRestoreHeld(workspace, restore);
+    if (lease.mode !== "exclusive" || !equalLocator(readLocator(control, workspace), locator)
+      || !noSymlinkAncestry(control, ancestry) || !noSymlinkAncestry(locator.stateRoot, ancestry)
+      || !noSymlinkAncestry(locator.artifactRoot, ancestry)) fail("device-recertification-ownership-unproved");
+    for (const name of ["profile-publication.json", "profile-control-upgrade.json", "journal.json"]) {
+      if (lstatMaybe(join(control, name))) fail("device-recertification-pending-operation");
+    }
+  }
+  function source(prior: z.infer<typeof ProfileContinuitySchema>, current: z.infer<typeof ProfileContinuitySchema>): string {
+    held();
+    const custody = inspectStoppedDeviceRecertificationCustody(fixedLockRoot(workspace));
+    const machine = join(locator.stateRoot, "machine"), document = readProfileEvidence(join(machine, "profiles.json"), ProfileRegistryDocumentSchema);
+    const row = document.profiles[0], head = prior.erasures[0], key = current.erasures[0]?.credentialKey;
+    if (document.profiles.length !== 1 || row === undefined || document.activeProfileId !== row.profileId
+      || row.registration.onboardingCompletion !== undefined || row.migratedFromLegacy !== undefined
+      || row.lifecycle !== "ready" || row.credentialState !== "saved" || row.duoState !== "not-set-up"
+      || prior.erasures.length !== 1 || head?.profileId !== row.profileId || head.originOperationId !== row.registration.operationId
+      || head.head.state !== "never-erased" || key === undefined || prior.operations.length !== 0
+      || prior.duo.length !== 1 || prior.duo[0]?.profileId !== row.profileId || prior.duo[0].state !== "never-initialized"
+      || prior.duo[0].revision !== 0 || prior.device === current.device || prior.device !== head.credentialKey?.file.device
+      || current.device !== key.file.device) fail("device-recertification-shape-refused");
+    const expected = ProfileContinuitySchema.parse(prior);
+    expected.device = current.device;
+    const expectedKey = expected.erasures[0]?.credentialKey;
+    if (expectedKey === undefined) fail("device-recertification-shape-refused");
+    expectedKey.file.device = current.device;
+    if (canonicalJsonStringify(expected) !== canonicalJsonStringify(current)
+      || canonicalJsonStringify(profileRegistryWitness(locator.installationId, join(machine, "profiles.json"), document, current.erasures, current.duo)) !== canonicalJsonStringify(current)) fail("device-recertification-source-mismatch");
+    readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.literal(3) }));
+    const allowed = new Set(["profiles.json", "profile-registry-version.json", "profile-verifiers.json", "profile-pepper", "credential-keys", "erasures", "operations"]);
+    privateDirectory(machine);
+    if (readdirSync(machine).some(name => !allowed.has(name))) fail("device-recertification-membership-refused");
+    for (const name of ["credential-keys", "erasures", "operations"]) {
+      const directory = join(machine, name);
+      if (!lstatMaybe(directory)) continue;
+      privateDirectory(directory);
+      const entries = readdirSync(directory, { withFileTypes: true }), expectedName = name === "credential-keys" ? `${row.profileId}.json` : undefined;
+      if (entries.length !== (expectedName === undefined ? 0 : 1)
+        || entries.some(entry => entry.name !== expectedName || !entry.isFile())) fail("device-recertification-membership-refused");
+    }
+    if (profileOperationInventory(locator.stateRoot).length !== 0) fail("device-recertification-operation-present");
+    assertErasureMembership(document, current.erasures); assertDuoMembership(locator, document, current.duo);
+    assertProfileCredentialKeyMembership(locator, current.erasures);
+    assertCredentialErasureHeadFiles(erasurePath(locator, row.profileId), head.head);
+    const profiles = join(locator.stateRoot, "profiles"), root = join(profiles, row.profileId);
+    privateDirectory(profiles); privateDirectory(root);
+    if (canonicalJsonStringify(readdirSync(profiles)) !== canonicalJsonStringify([row.profileId]) || !noSymlinkAncestry(root, ancestry)) fail("device-recertification-membership-refused");
+    for (const name of ["credentials", "artifacts"]) if (lstatMaybe(join(root, name))) privateDirectory(join(root, name));
+    const membership = unpublishedDraftAbortMembership(root);
+    const permitted = new Set(["", "credentials", "credentials/protected.json", "artifacts", "state.db", "state.db-wal", "state.db-shm", "state.db-journal"]);
+    if (membership.some(entry => !permitted.has(entry.path))) fail("device-recertification-membership-refused");
+    const verifiers = readProfileEvidence(join(machine, "profile-verifiers.json"), ProfileVerifierDocumentSchema);
+    if (verifiers.profiles.length !== 1 || verifiers.profiles[0]?.profileId !== row.profileId) fail("device-recertification-verifier-membership");
+    assertCanonicalProfileBinding(join(root, "state.db"), { installationId: locator.installationId, profileId: row.profileId });
+    const protectedFile = inspectIncompleteProfileRecertification(locator.stateRoot, row, key);
+    const databases = profileAuthorityFileWitnesses(root);
+    verifyEmpty(row.profileId, held);
+    function metadataDocument(path: string) {
+      const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) fail("device-recertification-source-invalid");
+      return { witness: { device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") },
+        bytes: file.bytes.toString("base64"), entry: { path, directory: false, device: file.identity.device, inode: file.identity.inode,
+          size: file.stat.size, mode: file.stat.mode, modified: file.stat.mtimeMs, changed: file.stat.ctimeMs } };
+    }
+    const installation = metadataDocument(join(control, "installation.json")), locatorDocument = metadataDocument(join(control, "locator.json"));
+    const stateMarker = metadataDocument(join(locator.stateRoot, MARKER)), artifactMarker = metadataDocument(join(locator.artifactRoot, MARKER));
+    return canonicalJsonStringify({ custody, membership, databases, protectedFile,
+      roots: [workspace, control, locator.stateRoot, locator.artifactRoot, profiles].map(path => {
+        const info = lstatSync(path);
+        return { path, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid };
+      }),
+      machineMembership: unpublishedDraftAbortMembership(machine),
+      metadata: [installation.entry, locatorDocument.entry, stateMarker.entry, artifactMarker.entry],
+      documents: { installation: installation.bytes, locator: locatorDocument.bytes, stateMarker: stateMarker.bytes, artifactMarker: artifactMarker.bytes },
+      stateMarker: stateMarker.witness, artifactMarker: artifactMarker.witness, installation: installation.witness, locator: locatorDocument.witness,
+      registry: controlUpgradeFile(join(machine, "profiles.json")), verifiers: controlUpgradeFile(join(machine, "profile-verifiers.json")),
+      pepper: controlUpgradeFile(join(machine, "profile-pepper")) });
+  }
+  held();
+  const retainedPath = lstatMaybe(intentPath) ? intentPath : lstatMaybe(receiptPath) ? receiptPath : undefined;
+  let journal = retainedPath === undefined ? undefined : readProfileEvidence(retainedPath, DeviceRecertificationJournalSchema);
+  let capture: z.infer<typeof DeviceRecertificationCaptureSchema>;
+  if (journal !== undefined) capture = journal.capture;
+  else {
+    if (readdirSync(control).some(name => name.startsWith(".device-recertification."))) fail("device-recertification-stage-unowned");
+    const prior = readProfileEvidence(controlPath, ProfileContinuitySchema), current = ProfileContinuitySchema.parse(prior);
+    current.device = lstatSync(join(locator.stateRoot, "machine", "profiles.json")).dev;
+    const key = current.erasures[0]?.credentialKey;
+    if (key === undefined) fail("device-recertification-shape-refused");
+    key.file.device = current.device;
+    capture = DeviceRecertificationCaptureSchema.parse({ operationId: randomUUID(), prior, current,
+      priorControl: controlUpgradeFile(controlPath), priorControlBytes: readFileSync(controlPath).toString("base64"),
+      historicalVolumeBinding: "unproved", sourceEvidence: source(prior, current) });
+  }
+  const { operationId: _operationId, ...captureContent } = capture;
+  const digest = createHash("sha256").update(canonicalJsonStringify(captureContent)).digest("hex");
+  const stagePath = join(control, `.device-recertification.${capture.operationId}.stage`);
+  function unchanged(): void {
+    if (source(capture.prior, capture.current) !== capture.sourceEvidence
+      || canonicalJsonStringify(ProfileContinuitySchema.parse(JSON.parse(Buffer.from(capture.priorControlBytes, "base64").toString("utf8")))) !== canonicalJsonStringify(capture.prior)
+      || createHash("sha256").update(Buffer.from(capture.priorControlBytes, "base64")).digest("hex") !== capture.priorControl.digest) fail("device-recertification-source-changed");
+  }
+  function prefix(): "prior" | "current" {
+    unchanged();
+    if (journal !== undefined) {
+      if (journal.authorization.captureDigest !== digest) fail("device-recertification-authorization-mismatch");
+      if (lstatMaybe(receiptPath) && canonicalJsonStringify(readProfileEvidence(receiptPath, DeviceRecertificationJournalSchema)) !== canonicalJsonStringify(journal)) fail("device-recertification-receipt-changed");
+      const durable = lstatMaybe(intentPath) ? intentPath : receiptPath;
+      if (canonicalJsonStringify(readProfileEvidence(durable, DeviceRecertificationJournalSchema)) !== canonicalJsonStringify(journal)) fail("device-recertification-journal-changed");
+    }
+    if (sameControlUpgradeFile(controlPath, capture.priorControl)) return "prior";
+    if (journal === undefined || !sameControlUpgradeFile(controlPath, journal.stage)
+      || canonicalJsonStringify(readProfileEvidence(controlPath, ProfileContinuitySchema)) !== canonicalJsonStringify(capture.current)) fail("device-recertification-publication-uncertain");
+    return "current";
+  }
+  prefix();
+  return Object.freeze({ capture: Object.freeze({ digest, priorDevice: capture.prior.device, currentDevice: capture.current.device, historicalVolumeBinding: "unproved" as const }),
+    recertify(input: DeviceRecertificationAuthorization): void {
+      const authorization = DeviceRecertificationAuthorizationSchema.parse(input);
+      if (authorization.captureDigest !== digest) fail("device-recertification-authorization-mismatch");
+      let state = prefix();
+      if (journal === undefined) {
+        writePrivateStage(stagePath, Buffer.from(`${JSON.stringify(capture.current)}\n`)); syncDir(control);
+        unchanged();
+        journal = DeviceRecertificationJournalSchema.parse({ schemaVersion: 1, capture, stage: controlUpgradeFile(stagePath), authorization });
+        atomicJson(intentPath, journal);
+      }
+      if (state === "prior") {
+        state = prefix();
+        if (state !== "prior") fail("device-recertification-publication-uncertain");
+        if (!sameControlUpgradeFile(stagePath, journal.stage)
+          || canonicalJsonStringify(readProfileEvidence(stagePath, ProfileContinuitySchema)) !== canonicalJsonStringify(capture.current)) fail("device-recertification-stage-changed");
+        renameSync(stagePath, controlPath); syncDir(control);
+      }
+      if (prefix() !== "current" || lstatMaybe(stagePath)) fail("device-recertification-publication-uncertain");
+      if (lstatMaybe(receiptPath)) {
+        if (canonicalJsonStringify(readProfileEvidence(receiptPath, DeviceRecertificationJournalSchema)) !== canonicalJsonStringify(journal)) fail("device-recertification-receipt-changed");
+      } else atomicJson(receiptPath, journal);
+      unchanged();
+      if (lstatMaybe(intentPath)) { unlinkSync(intentPath); syncDir(control); }
+      readMachineRegistry(control, locator, false);
+    } });
 }
 
 export function assertStoppedMachineMaintenance(lease: InstallationLease, restore: RestoreAdmissionHandle): void {

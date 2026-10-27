@@ -5,6 +5,7 @@ import { isAbsolute, join } from "node:path";
 import { chromium } from "playwright";
 import type { BrowserContext, Worker } from "playwright";
 import { z } from "zod";
+import { BrowserDocumentIdSchema } from "../../models/config/duo-credential-store.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { deleteOwnedBrowserProfile } from "../runtime/browser/browser-session-factory.js";
@@ -30,7 +31,7 @@ const PendingSchema = z.strictObject({
 });
 const BrokerRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ id: z.uuid(), kind: z.literal("bind"), data: z.strictObject({
-    documentId: z.uuid(), tabId: z.number().int().nonnegative(), origin: z.url(), rpId: z.literal("duosecurity.com"), username: z.string().min(1).max(128),
+    documentId: BrowserDocumentIdSchema, tabId: z.number().int().nonnegative(), origin: z.url(), rpId: z.literal("duosecurity.com"), username: z.string().min(1).max(128),
   }) }),
   z.strictObject({ id: z.uuid(), kind: z.literal("persist"), data: PendingSchema }),
   z.strictObject({ id: z.uuid(), kind: z.literal("reserve"), data: ReceiptSchema }),

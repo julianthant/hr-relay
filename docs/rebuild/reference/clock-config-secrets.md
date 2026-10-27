@@ -321,6 +321,11 @@ group or world write permission beneath validated private profile ancestry. A sa
 retains its mode, bytes, and physical identity during read-only inspection and incomplete-profile
 withdrawal. These reads do not change database permissions.
 
+Duo enrollment binds the exact browser-owned `sender.documentId`: a 32-character hexadecimal token.
+The extension broker, backend broker, and stored scope retain its case and value without UUID
+conversion. Account, operation, and arm identities remain UUIDs. Missing, malformed, foreign, or
+stale document tokens refuse enrollment and signing. Unexpected stored scope formats remain held.
+
 The new-purpose Duo document is separate. `duo-credential-store.ts` stores one encrypted document per
 profile at `<machineRoot>/machine/duo-credentials/<profileId>.json`. Installation control owns its
 continuity row, physical witness, and publication. The profile credential key seals it. A count is

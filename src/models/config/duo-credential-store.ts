@@ -6,8 +6,10 @@ const Base64Schema = z.string().min(4).max(16_384).regex(/^(?:[A-Za-z0-9+/]{4})*
 const CredentialIdSchema = z.string().min(1).max(2048).regex(/^[A-Za-z0-9_-]+$/u);
 const TimestampSchema = z.iso.datetime();
 
+export const BrowserDocumentIdSchema = z.string().length(32).regex(/^[0-9a-f]{32}$/iu);
+
 export const DuoEnrollmentScopeSchema = z.strictObject({
-  armId: z.uuid(), contextId: z.uuid(), tabId: z.number().int().nonnegative(), accountId: z.uuid(),
+  armId: z.uuid(), contextId: BrowserDocumentIdSchema, tabId: z.number().int().nonnegative(), accountId: z.uuid(),
   origin: z.url().refine(value => { const url = new URL(value); return url.protocol === "https:" && url.origin === value; }),
   rpId: z.string().min(1).max(253).regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/u),
   armedAt: TimestampSchema, expiresAt: TimestampSchema,

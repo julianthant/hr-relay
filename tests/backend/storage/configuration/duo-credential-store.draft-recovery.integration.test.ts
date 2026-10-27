@@ -6,7 +6,7 @@ import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../../
 import { z } from "zod";
 import nativeFs, { readdirSync, writeFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { randomBytes, generateKeyPairSync, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -37,7 +37,7 @@ function draftFixture() {
   const base = privateDraftFixture(), { root, machine, profile, draft } = base;
   const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(draft.profileId));
   const store = createDraftDuoCredentialStore(admission, machine, draft.operationId, 1, systemClock), pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  const input = { credentialId: randomUUID(), scope: { armId: randomUUID(), contextId: randomUUID(), tabId: 1, accountId: randomUUID(),
+  const input = { credentialId: randomUUID(), scope: { armId: randomUUID(), contextId: randomBytes(16).toString("hex"), tabId: 1, accountId: randomUUID(),
     origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com", armedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 600_000).toISOString() },
     privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
     publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64") };
@@ -145,7 +145,7 @@ async function readyFixture() {
   const provider: ProfileOnboardingDuoProvider = {
     async start(attempt, bind, _reportFailure) {
       assert.equal(active, false); active = true;
-      const capability = await bind({ contextId: randomUUID(), tabId: attempt.method === "key" ? 1 : 2,
+      const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
         accountName: "draft-recovery", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
       const credentialId = randomUUID();
       if (attempt.method === "key") {

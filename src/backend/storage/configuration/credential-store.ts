@@ -951,6 +951,31 @@ function originalProfileApply(row: ProfileRegistryRow, document: CredentialDocum
     || document.retiredLegacy.valueIds.length !== 0) throw new Error("profile-incomplete-original-apply-required");
   return request;
 }
+function incompleteProfileCredentialOrigin(machineRoot: string, row: z.infer<typeof ProfileRegistryDocumentSchema>["profiles"][number], key: CredentialKeyWitness) {
+  const binding = key.binding, root = join(machineRoot, "profiles", binding.profileId);
+  const keyPath = join(machineRoot, "machine", "credential-keys", `${binding.profileId}.json`);
+  assertCredentialKeyWitness(keyPath, key, binding);
+  const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
+  if (keyFile === undefined) throw new Error("credential-key-required");
+  const source = readAuthenticatedDocument(join(root, "credentials", "protected.json"), CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes)), binding);
+  if (source?.document.latestRequest?.kind !== "apply") throw new Error("profile-incomplete-original-apply-required");
+  const request = originalProfileApply(row, source.document);
+  const verifierPath = join(machineRoot, "machine", "profile-verifiers.json");
+  const verifiers = readPrivateFile(verifierPath, { label: "lock", maxBytes: 1_048_576 });
+  if (verifiers === undefined) throw new Error("profile-incomplete-verifier-required");
+  const verifier = ProfileVerifierDocumentSchema.parse(parseCredentialJson(verifiers.bytes)).profiles.find(entry => entry.profileId === binding.profileId);
+  if (verifier === undefined) throw new Error("profile-incomplete-verifier-required");
+  const pepper = readPrivateFile(join(machineRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
+  const email = source.document.record.entries.ucpathUserId?.value, password = source.document.record.entries.ucpathPassword?.value;
+  if (pepper === undefined || pepper.bytes.length !== 32 || email === undefined || password === undefined
+    || emailKey(pepper.bytes, email) !== verifier.emailKey || !passwordMatches(password, verifier)) throw new Error("profile-incomplete-verifier-binding-mismatch");
+  assertCredentialKeyWitness(keyPath, key, binding);
+  return { source, request, verifier, verifierPath, verifiers, pepper };
+}
+export function inspectIncompleteProfileRecertification(machineRoot: string, row: z.infer<typeof ProfileRegistryDocumentSchema>["profiles"][number], key: CredentialKeyWitness) {
+  const { source } = incompleteProfileCredentialOrigin(machineRoot, row, key);
+  return { device: source.identity.device, inode: source.identity.inode, digest: createHash("sha256").update(source.bytes).digest("hex") };
+}
 export function captureIncompleteProfileDraft(machine: RuntimeAdmission, admission: RuntimeAdmission, assertEmpty: () => void,
   ownerClaim?: { owner: ExistingDataOwnerWitness; backup: ExistingDataBackup }): IncompleteProfileDraftWitness {
   admission.assertStoppedIncompleteProfileInventory();
@@ -966,20 +991,7 @@ export function captureIncompleteProfileDraft(machine: RuntimeAdmission, admissi
   } else if (membership.some(entry => !allowed.has(entry.path)) || membership.some(entry => entry.path === "artifacts" && !entry.directory)) throw new Error("profile-incomplete-copy-membership-unproved");
   assertEmpty();
   const keyPath = join(machine.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`), key = captureKeyFile(keyPath, binding);
-  const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
-  if (keyFile === undefined) throw new Error("credential-key-required");
-  const source = readAuthenticatedDocument(join(root, "credentials", "protected.json"), CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes)), binding);
-  if (source === undefined) throw new Error("profile-incomplete-original-apply-required");
-  const request = originalProfileApply(row, source.document);
-  const verifierPath = join(machine.stateRoot, "machine", "profile-verifiers.json");
-  const verifiers = readPrivateFile(verifierPath, { label: "lock", maxBytes: 1_048_576 });
-  if (verifiers === undefined) throw new Error("profile-incomplete-verifier-required");
-  const verifier = ProfileVerifierDocumentSchema.parse(parseCredentialJson(verifiers.bytes)).profiles.find(entry => entry.profileId === binding.profileId);
-  if (verifier === undefined) throw new Error("profile-incomplete-verifier-required");
-  const pepper = readPrivateFile(join(machine.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
-  const email = source.document.record.entries.ucpathUserId?.value, password = source.document.record.entries.ucpathPassword?.value;
-  if (pepper === undefined || pepper.bytes.length !== 32 || email === undefined || password === undefined
-    || emailKey(pepper.bytes, email) !== verifier.emailKey || !passwordMatches(password, verifier)) throw new Error("profile-incomplete-verifier-binding-mismatch");
+  const { source, request, verifier, verifierPath, verifiers, pepper } = incompleteProfileCredentialOrigin(machine.stateRoot, row, key);
   const operation = SignUpOperationSchema.parse({ schemaVersion: 1, kind: "sign-up", operationId: row.registration.operationId, profileId: binding.profileId,
     commandId: request.commandId, writeId: request.writeId, emailKey: verifier.emailKey, firstName: row.firstName, lastName: row.lastName,
     createdAt: request.updatedAt, commandFingerprint: request.commandFingerprint, expectedRevision: request.expectedRevision,

@@ -865,6 +865,44 @@ export function inspectRuntimeProcessOrphans(
   return Object.freeze({ staleServerRecords, staleWorkerRecords });
 }
 
+export function inspectStoppedDeviceRecertificationCustody(processLockRoot: string) {
+  if (process.platform !== "darwin") throw new Error("device-recertification-boot-unproved");
+  const boot = spawnSync("/usr/sbin/sysctl", ["-n", "kern.boottime"], { encoding: "utf8" });
+  const seconds = /^\{\s*sec = (\d+),/u.exec(boot.stdout)?.[1];
+  if (boot.error !== undefined || boot.status !== 0 || seconds === undefined) throw new Error("device-recertification-boot-unproved");
+  const bootStartedAt = Number(seconds) * 1000;
+  if (!Number.isSafeInteger(bootStartedAt) || bootStartedAt <= 0) throw new Error("device-recertification-boot-unproved");
+  const root = resolve(processLockRoot);
+  for (const role of ["server", "live-smoke", "geocode"] as const) {
+    if (existsSync(join(root, `${role}-claims`)) && readdirSync(claimDirectory(root, role)).some(name => name.startsWith(".") || name.endsWith(".tmp") || name.endsWith(".channel.json"))) throw new Error("device-recertification-process-custody-unproved");
+  }
+  const workerDirectory = join(root, WORKER_PROCESS_LOCK_DIRECTORY), workerStat = lstatSync(workerDirectory, { throwIfNoEntry: false });
+  if (workerStat !== undefined && (!workerStat.isDirectory() || workerStat.isSymbolicLink() || (workerStat.mode & 0o077) !== 0
+    || process.getuid !== undefined && workerStat.uid !== process.getuid() || readdirSync(workerDirectory).some(name => name.startsWith(".")))) throw new Error("device-recertification-worker-custody-unproved");
+  const singletons = (["server", "live-smoke", "geocode"] as const).flatMap(role => readSingletonClaims(root, role));
+  readRuntimeProcessLock(root, "workers");
+  const workers = [...iterateWorkerProcessLocks(root)];
+  if (workers.some(record => record.releasedAt === null)) throw new Error("device-recertification-worker-custody-unproved");
+  const retained = singletons.filter(record => record.releasedAt === null);
+  for (const record of retained) {
+    const startedAt = Number(record.processIdentity.startToken) * 1000;
+    if (record.name !== "server" || record.processIdentity.platform !== "darwin" || !/^\d+$/u.test(record.processIdentity.startToken)
+      || !Number.isSafeInteger(startedAt) || startedAt <= 0 || startedAt >= bootStartedAt
+      || Date.parse(record.acquiredAt) >= bootStartedAt || Date.parse(record.acquiredAt) < startedAt
+      || observeProcessIdentity(record.pid).state !== "gone") throw new Error("device-recertification-server-custody-unproved");
+  }
+  const files = ["server-claims", "live-smoke-claims", "geocode-claims", WORKER_PROCESS_LOCK_DIRECTORY].flatMap(name => {
+    const directory = join(root, name);
+    if (!existsSync(directory)) return [];
+    return ["", ...readdirSync(directory).sort()].map(child => {
+      const info = lstatSync(join(directory, child));
+      return { path: `${name}/${child}`, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid,
+        links: info.nlink, size: info.size, modified: info.mtimeMs, changed: info.ctimeMs };
+    });
+  });
+  return { bootStartedAt, singletons, workers, files };
+}
+
 export function runtimeProcessLockIsActive(processLockRoot: string, name: RuntimeProcessLockName): boolean {
   if (name !== "workers") return activeSingletonClaims(resolve(processLockRoot), name, observeProcessIdentity).active.length > 0;
   if (name === "workers") {

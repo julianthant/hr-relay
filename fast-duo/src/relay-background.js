@@ -26,7 +26,7 @@ export function createRelayWorker(api) {
     requireCurrent();
     if (sender.id !== api.runtime.id || !isDuoOrigin(sender.url) || sender.origin !== new URL(sender.url).origin
       || !Number.isInteger(sender.tab?.id) || sender.frameId !== 0 || sender.documentLifecycle !== 'active'
-      || typeof sender.documentId !== 'string' || !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(sender.documentId)) throw new Error('ONBOARDING_DUO_SCOPE');
+      || typeof sender.documentId !== 'string' || sender.documentId.length !== 32 || !/^[\da-f]{32}$/i.test(sender.documentId)) throw new Error('ONBOARDING_DUO_SCOPE');
   }
   async function documentObservation(tabId, documentId) {
     try { return await api.tabs.sendMessage(tabId, { type: 'RELAY_OBSERVE' }, { documentId }); }

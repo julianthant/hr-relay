@@ -9,7 +9,7 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpat
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
-import { acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease,
+import { acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, prepareStoppedDeviceRecertification, type StoppedDeviceRecertification, type DeviceRecertificationAuthorization, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease,
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
   type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
   type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
@@ -1514,6 +1514,59 @@ export class RuntimeAdmission {
   recoverInterruptedDuoPublication(): { revision: number } {
     const claim = this.issueStoppedDuoPublicationRecovery();
     return this.completeStoppedDuoPublicationRecovery(claim);
+  }
+  static async prepareStoppedDeviceContinuityRecertification(workspace: string): Promise<StoppedDeviceRecertification & { release(): void }> {
+    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+    const canonical = realpathSync(workspace);
+    if (canonical !== resolve(workspace)) throw new Error("device-recertification-workspace-invalid");
+    const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(canonical, rebuildRuntimeIsolation.processLockRoot), pid: process.pid });
+    let lease: InstallationLease | undefined, closed = false, retained: AuthoritySourceClosureUnprovedError | undefined;
+    const retainUnclosed = (error: unknown): void => {
+      const pending: unknown[] = [error], seen = new Set<unknown>();
+      while (pending.length > 0) {
+        const value = pending.pop();
+        if (seen.has(value)) continue;
+        seen.add(value);
+        if (value instanceof AuthoritySourceClosureUnprovedError) {
+          retained = retainAuthoritySourceClosure([error], { admission: lease, restore }); throw retained;
+        }
+        if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
+        if (value instanceof Error && value.cause !== undefined) pending.push(value.cause);
+      }
+    };
+    const release = () => {
+      if (retained !== undefined) throw retained;
+      if (closed) return;
+      try { lease?.release(); }
+      catch (error) { retained = retainAuthoritySourceClosure([error], { admission: lease, restore }); throw retained; }
+      try { restore.release(); }
+      catch (error) { retained = retainAuthoritySourceClosure([error], { restore }); throw retained; }
+      closed = true;
+    };
+    try {
+      const held = acquireInstallation(canonical, "exclusive"); lease = held;
+      const prepared = prepareStoppedDeviceRecertification(held, restore, (profileId, assertHeld) => {
+        const root = join(held.locator.stateRoot, "profiles", profileId);
+        const admission = new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => held.readInstallationContext() },
+          root, join(root, "artifacts"), [join(root, "state.db")], "stopped-incomplete-profile-inventory", "exclusive", held.locator,
+          { installationId: held.locator.installationId, profileId });
+        try {
+          if (!AuthorityDatabase.readIncompleteOnboardingInventory(admission).empty) throw new Error("profile-incomplete-activity-present");
+        } finally { admission.release(); }
+      });
+      return Object.freeze({ capture: prepared.capture, release,
+        recertify(authorization: DeviceRecertificationAuthorization) {
+          if (closed) throw new Error("device-recertification-closed");
+          if (retained !== undefined) throw retained;
+          try { prepared.recertify(authorization); }
+          catch (error) { retainUnclosed(error); throw error; }
+        } });
+    } catch (error) {
+      retainUnclosed(error);
+      try { release(); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: lease, restore }); }
+      throw error;
+    }
   }
   static acquireStoppedMachineControlMaintenance(workspace: string): RuntimeAdmission {
     const canonical = realpathSync(workspace);

@@ -98,7 +98,7 @@ function world(method: "key" | "touch" = "key") {
       rmSync(directory, { recursive: true, force: true });
     } };
 }
-const BIND = { documentId: "00000000-0000-4000-8000-000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
+const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
 
 describe("draft Duo provider", () => {
   it("binds real observed username independently of issuer account ID and keeps repeated start idempotent", async () => {
