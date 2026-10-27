@@ -15,7 +15,9 @@ function world(method: "key" | "touch" = "key") {
   const extensionDirectory = join(directory, "extension");
   mkdirSync(browserRoot, { mode: 0o700 }); mkdirSync(join(extensionDirectory, "src"), { recursive: true, mode: 0o700 });
   writeFileSync(join(extensionDirectory, "relay-manifest.json"), "{}");
-  for (const name of ["relay-background.js", "relay-content.js", "relay-inpage.js", "service.js", "crypto.js", "accounts.js", "sign-count.js", "username.js"]) writeFileSync(join(extensionDirectory, "src", name), "");
+  writeFileSync(join(extensionDirectory, "LICENSE"), "synthetic license fixture");
+  writeFileSync(join(extensionDirectory, "THIRD_PARTY_NOTICES.md"), "synthetic notices fixture");
+  for (const name of ["relay-background.js", "relay-content.js", "relay-inpage.js", "relay-native.js", "service.js", "crypto.js", "accounts.js", "sign-count.js", "username.js"]) writeFileSync(join(extensionDirectory, "src", name), "");
   writeFileSync(join(extensionDirectory, "unlisted.txt"), "synthetic unlisted source");
   const clock = manualClock(new Date("2026-10-01T00:00:00.000Z"));
   const attempt: DraftDuoAttempt = { operationId: randomUUID(), profileId: randomUUID(), accountId: randomUUID(), generation: 1,
@@ -28,6 +30,9 @@ function world(method: "key" | "touch" = "key") {
   let profile = "";
   const listeners: (() => void)[] = [];
   const calls: string[] = [];
+  let documentCurrent = true;
+  let driftAfter: string | undefined;
+  function called(name: string): void { calls.push(name); if (name === driftAfter) documentCurrent = false; }
   const failures: Error[] = [];
   const reportFailure = async (error: Error): Promise<void> => { failures.push(error); };
   let current = true;
@@ -36,6 +41,7 @@ function world(method: "key" | "touch" = "key") {
     url: () => "chrome-extension://owned-extension/src/relay-background.js",
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
       if (input.method === "install") return;
+      if (input.method === "assertContext") { if (!documentCurrent) throw new Error("synthetic document drift"); return; }
       if (input.method === "next") {
         if (requests.length) return requests.shift();
         return new Promise(resolve => { waiter = resolve; });
@@ -52,6 +58,8 @@ function world(method: "key" | "touch" = "key") {
     launcher: { launch: async input => {
       launchCount++; profile = input.profileDirectory;
       assert.equal(existsSync(join(input.extensionDirectory, "unlisted.txt")), false);
+      assert.equal(readFileSync(join(input.extensionDirectory, "LICENSE"), "utf8"), "synthetic license fixture");
+      assert.equal(readFileSync(join(input.extensionDirectory, "THIRD_PARTY_NOTICES.md"), "utf8"), "synthetic notices fixture");
       assert.equal(input.headless, false);
       const preferences = JSON.parse(readFileSync(join(profile, "Default", "Preferences"), "utf8"));
       assert.equal(preferences.credentials_enable_service, false);
@@ -65,11 +73,11 @@ function world(method: "key" | "touch" = "key") {
       attempt, scope: { armId: randomUUID(), contextId: input.contextId, accountId: attempt.accountId, tabId: input.tabId,
         origin: input.origin, rpId: input.rpId, armedAt: clock.now().toISOString(), expiresAt: attempt.expiresAt },
       assertCurrent() { if (!current) throw new Error("synthetic revoked capability"); },
-      async persistPending() { calls.push("persist"); return { revision: 1 }; },
-      async provision(credentialId) { calls.push("provision"); return { credentialId, privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic", transport: "usb", isResidentCredential: false, createdAt: clock.now().toISOString(), highWater: 4 }; },
-      async reserveSignCount() { calls.push("reserve"); return { count: 5, revision: 2 }; },
-      async recordCeremony(receipt) { calls.push(receipt.mechanism); },
-      async recordPortalAcceptance(receipt) { calls.push(receipt.acceptance); },
+      async persistPending() { called("persist"); return { revision: 1 }; },
+      async provision(credentialId) { called("provision"); return { credentialId, privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic", transport: "usb", isResidentCredential: false, createdAt: clock.now().toISOString(), highWater: 4 }; },
+      async reserveSignCount() { called("reserve"); return { count: 5, revision: 2 }; },
+      async recordCeremony(receipt) { called(receipt.mechanism); },
+      async recordPortalAcceptance(receipt) { called(receipt.acceptance); },
       async retainUnknown() { calls.push("unknown"); },
     };
   };
@@ -81,7 +89,7 @@ function world(method: "key" | "touch" = "key") {
     else requests.push(request);
     return result;
   }
-  return { provider, attempt, bind, calls, send, clock, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+  return { provider, attempt, bind, calls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
     launches: () => launchCount, profile: () => profile,
     async cleanup() {
       try { await provider.cancel(attempt); } catch (error) { assert.ok(error instanceof ProfileOnboardingDuoProviderError); }
@@ -89,7 +97,7 @@ function world(method: "key" | "touch" = "key") {
       rmSync(directory, { recursive: true, force: true });
     } };
 }
-const BIND = { tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
+const BIND = { documentId: "00000000-0000-4000-8000-000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
 
 describe("draft Duo provider", () => {
   it("binds real observed username independently of issuer account ID and keeps repeated start idempotent", async () => {
@@ -101,6 +109,7 @@ describe("draft Duo provider", () => {
       assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
       assert.equal(w.observed()?.accountName, BIND.username);
       assert.equal(w.observed()?.tabId, 7);
+      assert.equal(w.observed()?.contextId, BIND.documentId);
       const requestId = randomUUID();
       assert.deepEqual(await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() }), { ok: true, value: { revision: 1 } });
@@ -206,4 +215,41 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
+});
+
+
+describe("draft document observations around native authority awaits", () => {
+  for (const boundary of ["persist", "provision", "reserve", "fast-duo", "portal-accepted"] as const) it(`withholds ACK when document changes during ${boundary}`, async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      await w.send("bind", BIND);
+      const requestId = randomUUID();
+      const pending = { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+        transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() };
+      if (boundary !== "persist") await w.send("persist", pending);
+      if (["provision", "reserve", "portal-accepted"].includes(boundary)) await w.send("software-created", { credentialId: "public-id", requestId });
+      w.driftOn(boundary);
+      const result = boundary === "persist" ? await w.send("persist", pending)
+        : boundary === "fast-duo" ? await w.send("software-created", { credentialId: "public-id", requestId })
+        : boundary === "portal-accepted" ? await w.send("portal-accepted", { credentialId: "public-id", requestId })
+        : await w.send("reserve", { credentialId: "public-id", requestId: randomUUID() });
+      assert.deepEqual(result, { ok: false });
+      await w.provider.cancel(w.attempt);
+      assert.ok(w.calls.includes("unknown"));
+      assert.equal(w.failures.length, 1);
+      if (boundary === "provision") assert.equal(w.calls.includes("reserve"), false);
+    } finally { await w.cleanup(); }
+  });
+
+  it("retains the issued capability when document changes during binding", async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, async input => { const capability = await w.bind(input); w.drift(); return capability; }, w.reportFailure);
+      assert.deepEqual(await w.send("bind", BIND), { ok: false });
+      await w.provider.cancel(w.attempt);
+      assert.ok(w.calls.includes("unknown"));
+      assert.equal(w.failures.length, 1);
+    } finally { await w.cleanup(); }
+  });
 });

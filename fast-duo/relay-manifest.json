@@ -7,7 +7,7 @@
   "background": { "service_worker": "src/relay-background.js", "type": "module" },
   "content_scripts": [
     { "matches": ["https://*.duosecurity.com/*"], "js": ["src/relay-inpage.js"], "run_at": "document_start", "world": "MAIN" },
-    { "matches": ["https://*.duosecurity.com/*"], "js": ["src/username.js", "src/relay-content.js"], "run_at": "document_start", "world": "ISOLATED" }
+    { "matches": ["https://*.duosecurity.com/*"], "js": ["src/username.js", "src/relay-native.js", "src/relay-content.js"], "run_at": "document_start", "world": "ISOLATED" }
   ],
   "minimum_chrome_version": "140"
 }

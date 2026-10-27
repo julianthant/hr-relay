@@ -17,17 +17,17 @@
     if (event.data.success) pending.resolve(event.data.result);
     else pending.reject(new DOMException('Duo setup could not complete.', 'NotAllowedError'));
   });
-  function request(type, data, signal) {
+  function request(type, data, signal, nativeOptions) {
     if (signal?.aborted) return Promise.reject(new DOMException('Request aborted', 'AbortError'));
     return new Promise((resolve, reject) => {
       const id = crypto.randomUUID();
-      const abort = () => { waiting.delete(id); reject(new DOMException('Request aborted', 'AbortError')); };
+      const abort = () => { waiting.delete(id); window.postMessage({ type: 'RELAY_DUO_ABORT', id }, location.origin); reject(new DOMException('Request aborted', 'AbortError')); };
       waiting.set(id, {
         resolve: value => { signal?.removeEventListener('abort', abort); resolve(value); },
         reject: error => { signal?.removeEventListener('abort', abort); reject(error); },
       });
       signal?.addEventListener('abort', abort, { once: true });
-      window.postMessage({ type: 'RELAY_DUO_REQUEST', id, operation: type, request: { ...data, origin: location.origin } }, location.origin);
+      window.postMessage({ type: 'RELAY_DUO_REQUEST', id, operation: type, request: { ...data, origin: location.origin }, nativeOptions }, location.origin);
     });
   }
   if (globalThis.PublicKeyCredential) {
@@ -66,29 +66,16 @@
       pubKeyCredParams: key.pubKeyCredParams,
       authenticatorAttachment: key.authenticatorSelection?.authenticatorAttachment || null,
       residentKey: key.authenticatorSelection?.residentKey === 'required' || key.authenticatorSelection?.requireResidentKey === true,
-    }, options.signal);
-    if (result.native) {
-      let credential;
-      try {
-        credential = await originalCreate(options);
-        if (!credential || credential.authenticatorAttachment !== 'platform') throw new DOMException('A native platform credential is required.', 'NotAllowedError');
-      } catch (error) {
-        try { await request('RELAY_NATIVE_FAILED', { requestId, rpId: key.rp?.id || location.hostname }); }
-        finally { throw error; }
-      }
-      await request('RELAY_NATIVE_CREATED', { requestId, rpId: key.rp?.id || location.hostname,
-        credentialId: encode(credential.rawId), attachment: credential.authenticatorAttachment }, options.signal);
-      return credential;
-    }
+    }, options.signal, key);
     if (!result.ok) throw new DOMException('Duo setup refused enrollment.', 'NotAllowedError');
     const response = Object.assign(Object.create(AuthenticatorAttestationResponse.prototype), {
       clientDataJSON: decode(result.clientDataJSON), attestationObject: decode(result.attestationObject),
-      getTransports: () => [result.transport], getAuthenticatorData: () => decode(result.authData),
-      getPublicKey: () => decode(result.publicKeySpki), getPublicKeyAlgorithm: () => -7,
+      getTransports: () => result.native ? result.transports : [result.transport], getAuthenticatorData: () => decode(result.authData),
+      getPublicKey: () => result.publicKeySpki === null ? null : decode(result.publicKeySpki), getPublicKeyAlgorithm: () => result.native ? result.publicKeyAlgorithm : -7,
     });
     return Object.assign(Object.create(PublicKeyCredential.prototype), {
       id: urlId(result.credentialId), rawId: decode(result.credentialId), type: 'public-key',
-      authenticatorAttachment: 'cross-platform', response, getClientExtensionResults: () => ({}),
+      authenticatorAttachment: result.native ? 'platform' : 'cross-platform', response, getClientExtensionResults: () => ({}),
     });
   };
 })();

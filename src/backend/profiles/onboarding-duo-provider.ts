@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, readFileSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, realpathSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -30,11 +30,11 @@ const PendingSchema = z.strictObject({
 });
 const BrokerRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ id: z.uuid(), kind: z.literal("bind"), data: z.strictObject({
-    tabId: z.number().int().nonnegative(), origin: z.url(), rpId: z.literal("duosecurity.com"), username: z.string().min(1).max(128),
+    documentId: z.uuid(), tabId: z.number().int().nonnegative(), origin: z.url(), rpId: z.literal("duosecurity.com"), username: z.string().min(1).max(128),
   }) }),
   z.strictObject({ id: z.uuid(), kind: z.literal("persist"), data: PendingSchema }),
   z.strictObject({ id: z.uuid(), kind: z.literal("reserve"), data: ReceiptSchema }),
-  z.strictObject({ id: z.uuid(), kind: z.literal("native-failed"), data: z.strictObject({ requestId: z.uuid() }) }),
+  z.strictObject({ id: z.uuid(), kind: z.enum(["native-failed", "scope-lost"]), data: z.strictObject({ requestId: z.uuid() }) }),
   ...(["software-created", "native-created", "portal-accepted", "exact-request"] as const).map(kind =>
     z.strictObject({ id: z.uuid(), kind: z.literal(kind), data: ReceiptSchema })),
 ]);
@@ -58,7 +58,7 @@ const launcher: PersistentContextLauncher = {
   },
 };
 
-async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop", args: readonly unknown[] = []): Promise<unknown> {
+async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop" | "assertContext", args: readonly unknown[] = []): Promise<unknown> {
   return worker.evaluate(async input => {
     const owner: unknown = Reflect.get(globalThis, "relayOnboarding");
     if (typeof owner !== "object" || owner === null) throw new Error("ONBOARDING_DUO_WORKER_UNAVAILABLE");
@@ -78,7 +78,7 @@ function observeOwnedProcess(profileDirectory: string, pid?: number) {
   return { pid: observedPid, observation: observeProcessIdentity(observedPid) };
 }
 
-const RELAY_EXTENSION_FILES = ["relay-manifest.json", "src/relay-background.js", "src/relay-content.js", "src/relay-inpage.js",
+const RELAY_EXTENSION_FILES = ["relay-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src/relay-background.js", "src/relay-content.js", "src/relay-inpage.js", "src/relay-native.js",
   "src/service.js", "src/crypto.js", "src/accounts.js", "src/sign-count.js", "src/username.js"] as const;
 
 function stageRelayExtension(sourceRoot: string, destination: string): void {
@@ -112,7 +112,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
   const browserLauncher = options.launcher ?? launcher;
   const observe = browserLauncher.observeProcess ?? observeOwnedProcess;
   let active: {
-    attempt: DraftDuoAttempt; profileDirectory: string; contextId: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
+    attempt: DraftDuoAttempt; profileDirectory: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
     capability?: DraftDuoCapability; credentialId?: string; requestId?: string; accepted: boolean; revoked: boolean;
     contextClosed: boolean; launchStarted: boolean; process?: ReturnType<typeof observe>; startup?: Promise<void>; pump?: Promise<void>;
     reportFailure: (error: Error) => Promise<void>; reporting?: Promise<void>; failure?: ProfileOnboardingDuoProviderError; retentionFailed?: boolean; expiry?: ReturnType<typeof setTimeout>; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
@@ -123,6 +123,20 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     session.capability?.assertCurrent();
   }
 
+  async function observedCurrent(session: NonNullable<typeof active>): Promise<void> {
+    current(session);
+    if (!session.worker) throw new ProfileOnboardingDuoProviderError("unknown", "scope");
+    await workerCall(session.worker, "assertContext");
+    current(session);
+  }
+
+  async function scoped<T>(session: NonNullable<typeof active>, operation: () => Promise<T>): Promise<T> {
+    await observedCurrent(session);
+    const result = await operation();
+    await observedCurrent(session);
+    return result;
+  }
+
   async function dispatch(session: NonNullable<typeof active>, request: BrokerRequest): Promise<unknown> {
     current(session);
     if (request.kind === "bind") throw new ProfileOnboardingDuoProviderError("refused", "scope");
@@ -130,35 +144,36 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if (!capability) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     if (request.kind === "persist") {
       if (session.attempt.method !== "key" || session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      const result = await capability.persistPending(request.data);
+      const result = await scoped(session, () => capability.persistPending(request.data));
       current(session);
       session.credentialId = request.data.credentialId;
       return result;
     }
     if (request.kind === "reserve") {
       if (session.attempt.method !== "key" || request.data.credentialId !== session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      const provisioned = await capability.provision(request.data.credentialId);
+      const provisioned = await scoped(session, () => capability.provision(request.data.credentialId));
       current(session);
       if (provisioned.credentialId !== session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      const reservation = await capability.reserveSignCount({ credentialId: request.data.credentialId, attemptId: request.data.requestId });
+      const reservation = await scoped(session, () => capability.reserveSignCount({ credentialId: request.data.credentialId, attemptId: request.data.requestId }));
       current(session);
       if (!Number.isSafeInteger(reservation.count) || reservation.count <= provisioned.highWater || reservation.count >= 0xffffffff) throw new ProfileOnboardingDuoProviderError("unknown", "counter");
       return reservation;
     }
-    if (request.kind === "native-failed") throw new ProfileOnboardingDuoProviderError("unknown", "provider");
+    if (request.kind === "native-failed" || request.kind === "scope-lost") throw new ProfileOnboardingDuoProviderError("unknown", "provider");
     const { credentialId, requestId } = request.data;
     if (request.kind === "software-created" || request.kind === "native-created") {
       const native = request.kind === "native-created";
       if (native !== (session.attempt.method === "touch") || session.requestId || !native && credentialId !== session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      await capability.recordCeremony({ credentialId, requestId, mechanism: native ? "native-platform" : "fast-duo", softwareInterceptionDisabled: native });
+      await scoped(session, () => capability.recordCeremony({ credentialId, requestId, mechanism: native ? "native-platform" : "fast-duo", softwareInterceptionDisabled: native }));
       current(session);
       session.credentialId = credentialId; session.requestId = requestId;
       return { observed: true };
     }
     if (credentialId !== session.credentialId || !session.requestId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     if (request.kind === "portal-accepted" && requestId !== session.requestId || request.kind === "exact-request" && session.attempt.method !== "key") throw new ProfileOnboardingDuoProviderError("refused", "scope");
-    await capability.recordPortalAcceptance({ credentialId, requestId: session.requestId,
-      acceptance: request.kind === "portal-accepted" ? "portal-accepted" : "exact-credential-request" });
+    const enrollmentRequestId = session.requestId;
+    await scoped(session, () => capability.recordPortalAcceptance({ credentialId, requestId: enrollmentRequestId,
+      acceptance: request.kind === "portal-accepted" ? "portal-accepted" : "exact-credential-request" }));
     current(session); session.accepted = true;
     return { observed: true };
   }
@@ -240,7 +255,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         if (!root.isDirectory() || root.isSymbolicLink() || root.uid !== process.getuid?.() || (root.mode & 0o077) !== 0) throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root");
       } catch (error) { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root", error); }
       const session: NonNullable<typeof active> = { attempt, profileDirectory: mkdtempSync(join(options.browserRoot, "onboarding-")),
-        contextId: randomUUID(), reportFailure: onFailure, accepted: false, revoked: false, contextClosed: false, launchStarted: false };
+        reportFailure: onFailure, accepted: false, revoked: false, contextClosed: false, launchStarted: false };
       active = session;
       session.startup = (async () => {
         mkdirSync(join(session.profileDirectory, "Default"), { mode: 0o700 });
@@ -280,22 +295,25 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
                 if (session.capability) throw new ProfileOnboardingDuoProviderError("refused", "scope");
                 const url = new URL(request.data.origin);
                 if (url.protocol !== "https:" || url.port || url.username || url.password || url.origin !== request.data.origin || !(url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"))) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-                const capability = await bindObservedContext({ contextId: session.contextId, tabId: request.data.tabId, accountName: request.data.username,
+                await observedCurrent(session);
+                const capability = await bindObservedContext({ contextId: request.data.documentId, tabId: request.data.tabId, accountName: request.data.username,
                   origin: request.data.origin, rpId: request.data.rpId });
-                current(session);
+                session.capability = capability;
+                await observedCurrent(session);
                 if (canonicalJsonStringify(capability.attempt) !== canonicalJsonStringify(attempt)
-                  || capability.scope.contextId !== session.contextId || capability.scope.tabId !== request.data.tabId
+                  || capability.scope.contextId !== request.data.documentId || capability.scope.tabId !== request.data.tabId
                   || capability.scope.accountId !== attempt.accountId || capability.scope.origin !== request.data.origin
                   || capability.scope.rpId !== request.data.rpId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
                 capability.assertCurrent();
-                session.capability = capability;
                 result = { accountId: attempt.accountId };
               } else result = await dispatch(session, request);
-              current(session);
+              await observedCurrent(session);
               await workerCall(worker, "reply", [request.id, { ok: true, value: result }]);
             } catch (error) {
-              await workerCall(worker, "reply", [request.id, { ok: false }]);
-              throw error;
+              await reportFailure(session, error);
+              try { await workerCall(worker, "reply", [request.id, { ok: false }]); }
+              finally { queueMicrotask(() => { void close(session); }); }
+              return;
             }
           }
         })().catch(async error => {

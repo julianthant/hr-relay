@@ -1,12 +1,15 @@
 import { createService } from './service.js';
-import { isDuoOrigin } from './accounts.js';
+import { isDuoOrigin, normalizeUsername } from './accounts.js';
 
+const accountKey = name => normalizeUsername(name).replace(/^([^@]+)@ucsd\.edu$/, '$1');
 export function createRelayWorker(api) {
   let installed;
   let service;
   let pending;
   let waiter;
   let stopped = false;
+  let invalidated = false;
+  let failureReport;
   const requests = [];
   const replies = new Map();
   const call = (kind, data) => new Promise((resolve, reject) => {
@@ -17,55 +20,109 @@ export function createRelayWorker(api) {
     else requests.push(request);
   });
   const requireCurrent = () => {
-    if (!installed || stopped) throw new Error('ONBOARDING_DUO_REVOKED');
+    if (!installed || stopped || invalidated) throw new Error('ONBOARDING_DUO_REVOKED');
   };
-  async function receive(message, sender) {
+  function requireSender(sender) {
     requireCurrent();
-    if (sender.id !== api.runtime.id || !isDuoOrigin(sender.url) || !Number.isInteger(sender.tab?.id) || sender.frameId !== 0) throw new Error('ONBOARDING_DUO_SCOPE');
+    if (sender.id !== api.runtime.id || !isDuoOrigin(sender.url) || sender.origin !== new URL(sender.url).origin
+      || !Number.isInteger(sender.tab?.id) || sender.frameId !== 0 || sender.documentLifecycle !== 'active'
+      || typeof sender.documentId !== 'string' || !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(sender.documentId)) throw new Error('ONBOARDING_DUO_SCOPE');
+  }
+  async function documentObservation(tabId, documentId) {
+    try { return await api.tabs.sendMessage(tabId, { type: 'RELAY_OBSERVE' }, { documentId }); }
+    catch (cause) { throw new Error('ONBOARDING_DUO_SCOPE', { cause }); }
+  }
+  async function observe(sender) {
+    requireSender(sender);
     const tab = await api.tabs.get(sender.tab.id);
-    if (tab.id !== sender.tab.id || new URL(tab.url).origin !== new URL(sender.url).origin) throw new Error('ONBOARDING_DUO_SCOPE');
-    const data = message.request;
-    if (!data || data.origin !== new URL(sender.url).origin || data.rpId !== 'duosecurity.com') throw new Error('ONBOARDING_DUO_SCOPE');
-    if (message.type === 'RELAY_CAPABILITIES') return { softwareKey: installed.method === 'key' };
-    if (message.type === 'DUO_SETTINGS') return { enabled: false, trustClick: false, toast: false };
-    if (message.type === 'DUO_AUTOPILOT_SIGN') {
-      if (installed.method === 'touch' || !pending) return { passThrough: true };
-      if (tab.id !== pending.tabId || data.origin !== pending.origin) throw new Error('ONBOARDING_DUO_SCOPE');
-      return service.run('SIGN', data, sender);
+    requireCurrent();
+    if (tab.id !== sender.tab.id || tab.url !== sender.url) throw new Error('ONBOARDING_DUO_SCOPE');
+    const observed = await documentObservation(tab.id, sender.documentId);
+    requireCurrent();
+    const after = await api.tabs.get(tab.id);
+    if (after.url !== tab.url || observed?.url !== tab.url || observed.origin !== sender.origin
+      || observed.documentActive !== true || !Number.isSafeInteger(observed.accountRevision) || observed.accountRevision < 0
+      || !Array.isArray(observed.accountNames) || observed.accountNames.length !== 1
+      || typeof observed.accountNames[0] !== 'string' || !/^[a-z0-9][a-z0-9._@+-]{0,127}$/i.test(observed.accountNames[0])) throw new Error('ONBOARDING_DUO_SCOPE');
+    const confirmed = await documentObservation(tab.id, sender.documentId);
+    requireCurrent();
+    if (JSON.stringify(confirmed) !== JSON.stringify(observed)) throw new Error('ONBOARDING_DUO_SCOPE');
+    return { documentId: sender.documentId, tabId: tab.id, url: tab.url, origin: observed.origin,
+      accountName: normalizeUsername(observed.accountNames[0]), accountRevision: observed.accountRevision };
+  }
+  async function assertScope() {
+    if (!pending) throw new Error('ONBOARDING_DUO_SCOPE');
+    const actual = await observe(pending.sender);
+    for (const key of ['documentId', 'tabId', 'url', 'origin', 'accountName', 'accountRevision']) {
+      if (actual[key] !== pending.scope[key]) throw new Error('ONBOARDING_DUO_SCOPE');
     }
+    requireCurrent();
+  }
+  async function checked(operation) {
+    try {
+      await assertScope();
+      const result = await operation();
+      await assertScope();
+      return result;
+    } catch (error) {
+      if (!stopped && pending) {
+        failureReport ||= call('scope-lost', { requestId: pending.requestId });
+        try { await failureReport; } catch { /* A refused failure ACK remains unknown. */ }
+        invalidated = true;
+      }
+      throw error;
+    }
+  }
+  async function receive(message, sender) {
+    requireSender(sender);
+    const data = message.request;
+    if (!data || data.origin !== sender.origin || data.rpId !== 'duosecurity.com') throw new Error('ONBOARDING_DUO_SCOPE');
+    if (message.type === 'RELAY_CAPABILITIES') return { softwareKey: installed.method === 'key' };
+    if (message.type === 'DUO_AUTOPILOT_SIGN' && (installed.method === 'touch' || !pending)) return { passThrough: true };
     if (message.type === 'DUO_AUTOPILOT_ENROLL') {
       if (pending) throw new Error('ONBOARDING_DUO_ALREADY_STARTED');
-      const binding = await call('bind', { tabId: tab.id, origin: data.origin, rpId: data.rpId, username: data.username });
-      requireCurrent();
-      pending = { tabId: tab.id, origin: data.origin, requestId: data.requestId };
+      const scope = await observe(sender);
+      if (typeof data.username !== 'string' || accountKey(data.username) !== accountKey(scope.accountName)) throw new Error('ONBOARDING_DUO_SCOPE');
+      pending = { scope, sender, requestId: data.requestId };
+      const binding = await checked(() => call('bind', { documentId: scope.documentId, tabId: scope.tabId,
+        origin: scope.origin, rpId: data.rpId, username: scope.accountName }));
       if (installed.method === 'touch') {
         if (data.authenticatorAttachment !== 'platform') throw new Error('ONBOARDING_DUO_NATIVE_REQUIRED');
+        await assertScope();
         return { native: true, requestId: data.requestId };
       }
       if (data.authenticatorAttachment === 'platform') throw new Error('ONBOARDING_DUO_KEY_REQUIRED');
-      await service.run('SAVE_ACCOUNT', { id: binding.accountId, username: data.username, enabled: true });
-      await service.run('ARM', { accountId: binding.accountId, tabId: tab.id, tabUrl: tab.url, transport: 'usb' });
-      const result = await service.run('ENROLL', data, sender);
+      const aliases = data.username === scope.accountName ? [] : [data.username];
+      await checked(() => service.run('SAVE_ACCOUNT', { id: binding.accountId, username: scope.accountName, aliases, enabled: true }));
+      await checked(() => service.run('ARM', { accountId: binding.accountId, tabId: scope.tabId, tabUrl: scope.url, transport: 'usb' }));
+      const result = await checked(() => service.run('ENROLL', data, sender));
       if (!result.ok) throw new Error('ONBOARDING_DUO_ENROLL_REFUSED');
       pending.credentialId = result.credentialId;
+      await assertScope();
       return result;
     }
-    if (!pending || pending.tabId !== tab.id || pending.origin !== data.origin || pending.requestId !== data.requestId) throw new Error('ONBOARDING_DUO_SCOPE');
+    if (!pending || sender.tab.id !== pending.scope.tabId || sender.documentId !== pending.scope.documentId) throw new Error('ONBOARDING_DUO_SCOPE');
+    if (message.type === 'DUO_AUTOPILOT_SIGN') return checked(() => service.run('SIGN', { ...data, usernames: [pending.scope.accountName] }, sender));
+    if (message.type === 'RELAY_SCOPE_LOST') {
+      failureReport ||= call('scope-lost', { requestId: pending.requestId });
+      try { await failureReport; } finally { invalidated = true; }
+      throw new Error('ONBOARDING_DUO_SCOPE');
+    }
+    if (data.requestId !== pending.requestId) throw new Error('ONBOARDING_DUO_SCOPE');
     if (message.type === 'RELAY_NATIVE_FAILED') {
       if (installed.method !== 'touch') throw new Error('ONBOARDING_DUO_SCOPE');
-      await call('native-failed', { requestId: data.requestId });
+      await checked(() => call('native-failed', { requestId: data.requestId }));
       throw new Error('ONBOARDING_DUO_NATIVE_FAILED');
     }
     if (message.type === 'RELAY_NATIVE_CREATED') {
       if (installed.method !== 'touch' || data.attachment !== 'platform' || pending.credentialId) throw new Error('ONBOARDING_DUO_NATIVE_REQUIRED');
-      await call('native-created', { credentialId: data.credentialId, requestId: data.requestId });
+      await checked(() => call('native-created', { credentialId: data.credentialId, requestId: data.requestId }));
       pending.credentialId = data.credentialId;
       return { observed: true };
     }
     if (message.type === 'RELAY_PORTAL_ACCEPTED') {
-      if (pending.accepted) return { observed: true };
       if (!pending.credentialId) throw new Error('ONBOARDING_DUO_SCOPE');
-      await call('portal-accepted', { credentialId: pending.credentialId, requestId: pending.requestId });
+      if (!pending.accepted) await checked(() => call('portal-accepted', { credentialId: pending.credentialId, requestId: pending.requestId }));
       pending.accepted = true;
       return { observed: true };
     }
@@ -89,13 +146,14 @@ export function createRelayWorker(api) {
         remove: keys => session.remove(keys),
       };
       service = createService(verifiedSession, () => input.nowMs + (performance.now() - started), {
-        reserveSignCount: (credentialId, requestId) => call('reserve', { credentialId, requestId }).then(result => result.count),
-        persistPending: credential => call('persist', credential),
-        recordCeremony: (credentialId, requestId) => call('software-created', { credentialId, requestId }),
-        exactCredentialRequested: (credentialId, requestId) => call('exact-request', { credentialId, requestId }),
+        reserveSignCount: (credentialId, requestId) => checked(() => call('reserve', { credentialId, requestId })).then(result => result.count),
+        persistPending: credential => checked(() => call('persist', credential)),
+        recordCeremony: (credentialId, requestId) => checked(() => call('software-created', { credentialId, requestId })),
+        exactCredentialRequested: (credentialId, requestId) => checked(() => call('exact-request', { credentialId, requestId })),
       });
       await service.initialize({});
     },
+    assertContext: assertScope,
     next() {
       requireCurrent();
       if (requests.length) return Promise.resolve(requests.shift());
