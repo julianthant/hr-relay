@@ -23,6 +23,10 @@ class RunLogIdentityError extends Error {
   readonly code = "LOGS_IDENTITY_REFUSED";
 }
 
+class RunLogSelectionBehindError extends RunLogIdentityError {
+  override name = "RunLogSelectionBehindError";
+}
+
 function requireNative(value: NativeRunEventWire | undefined): NativeRunEventWire {
   if (value === undefined) throw new RunLogIdentityError("RUN_LOG_NATIVE_IDENTITY_MISSING");
   return value;
@@ -41,8 +45,9 @@ export interface RunLogSnapshot {
 export async function readRunLogs(client: RunReads, selection: LogSelection, signal: AbortSignal): Promise<RunLogSnapshot> {
   const { row } = selection;
   const detail = await client.runDetail(row.runId, signal);
-  if (detail.runId !== row.runId || detail.rowRevision !== row.rowRevision || detail.header.traceId !== row.traceId
+  if (detail.runId !== row.runId || detail.rowRevision < row.rowRevision || detail.header.traceId !== row.traceId
     || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
+  if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError("RUN_DETAIL_REVISION_AHEAD");
   signal.throwIfAborted();
   if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
   const section = await client.runSection(row.runId, "logs", undefined, signal);
@@ -417,7 +422,8 @@ interface GateCommandOwner {
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined) {
   const { row } = selection;
   const request = useMemo(() => ({ client, runId: row.runId, revision: row.rowRevision, day: binding?.authority.day, selection: { row, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
-    epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request }), [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.request]);
+    epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
+  [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
   [client, row.runId, binding?.authority.day, binding?.authority.epoch, binding?.authority.dayState.request, binding?.scope]);
@@ -432,6 +438,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   commandRef.current = command;
   const active = useRef(request);
   active.current = request;
+  const refreshedBehind = useRef<string | undefined>(undefined);
   const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>({ request, value: { state: "loading" } });
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
     && settled.request.epoch === request.epoch;
@@ -443,6 +450,12 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       if (active.current === request && !controller.signal.aborted) setSettled({ request, value: { state: "loaded", snapshot } });
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
+      const behind = `${request.runId}:${String(request.revision)}`;
+      if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && refreshedBehind.current !== behind) {
+        refreshedBehind.current = behind;
+        request.refreshDay();
+        return;
+      }
       const error = cause instanceof RunLogIdentityError || (cause instanceof DashboardClientError && cause.code === "LOGS_IDENTITY_REFUSED")
         ? formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text
         : cause instanceof DashboardClientError && cause.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED"
