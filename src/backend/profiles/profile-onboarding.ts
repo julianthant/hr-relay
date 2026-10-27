@@ -18,7 +18,7 @@ export function duoAccountMatches(email: string, observed: string): boolean {
 export function createProfileOnboarding(input: {
   readonly clock: Clock;
   readonly provider?: ProfileOnboardingDuoProvider;
-  readonly failureKind?: (error: Error) => "unavailable" | "refused" | "unknown";
+  readonly failureKind: (error: Error) => "unavailable" | "refused" | "unknown";
   readonly read: (operationId: string) => SignUpOperation;
   readonly update: <T>(operationId: string, change: (operation: SignUpOperation) => Readonly<{ operation: SignUpOperation; result: T }>) => T;
   readonly email: (operation: SignUpOperation) => string;
@@ -72,7 +72,7 @@ export function createProfileOnboarding(input: {
     updateAttempt(attempt, (_operation, latest) => ({ receipt: completeIfProved(latest), result: undefined }));
   }
   async function reportFailure(attempt: DraftDuoAttempt, error: Error): Promise<void> {
-    const kind = input.failureKind?.(error) ?? "unknown";
+    const kind = input.failureKind(error);
     if (kind === "unknown" && !retainedFailures.includes(error)) retainedFailures.push(error);
     try {
       input.update(attempt.operationId, operation => {
@@ -175,8 +175,13 @@ export function createProfileOnboarding(input: {
       catch (error) {
         if (error instanceof Error) await reportFailure(attempt, error);
         else { retainedFailures.push(error); await reportFailure(attempt, new Error("profile-onboarding-provider-failure", { cause: error })); }
-        if (error instanceof Error && input.failureKind?.(error) === "unavailable") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-        if (error instanceof Error && input.failureKind?.(error) === "refused") throw new ProfileSessionRefusedError("PROFILE_SIGN_IN_REFUSED");
+        try { await owner.cancelAttempt(operationId, method, attempt.attemptId); }
+        catch (cleanup) {
+          retainedFailures.push(error, cleanup);
+          throw new AggregateError([error, cleanup], "profile-onboarding-provider-closure-unproved");
+        }
+        if (error instanceof Error && input.failureKind(error) === "unavailable") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+        if (error instanceof Error && input.failureKind(error) === "refused") throw new ProfileSessionRefusedError("PROFILE_SIGN_IN_REFUSED");
         throw error;
       }
     },

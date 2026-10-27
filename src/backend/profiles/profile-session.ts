@@ -1,3 +1,4 @@
+import { ProfileOnboardingDuoProviderError } from "./onboarding-duo-provider.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
@@ -617,7 +618,8 @@ export function createProfileSession(input: {
     return { state: "wiped", inventory };
   }
 
-  const onboarding = createProfileOnboarding({ clock: input.clock ?? systemClock,
+  const onboarding = createProfileOnboarding({
+    failureKind: error => error instanceof ProfileOnboardingDuoProviderError ? error.kind : "unknown", clock: input.clock ?? systemClock,
     ...(input.onboardingDuo === undefined ? {} : { provider: input.onboardingDuo }),
     read: operationId => {
       const operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operationId);

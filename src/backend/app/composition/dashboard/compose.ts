@@ -17,6 +17,9 @@ import { Hono } from "hono";
 import { ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfileOnboardingStateSchema, CompleteProfileOnboardingRequestSchema,
   CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema,
   CancelProfileOnboardingDuoRequestSchema, PublicProfileStateSchema, type PublicProfileState } from "../../../../models/profiles/public-profile.js";
+import { ConfigSchema } from "../../../../models/config/schema.js";
+import { ensureChildDirectory } from "../../../storage/configuration/credential-safe-file.js";
+import { createProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo-provider.js";
 import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
 import { consumeAuthenticatedProfileUpgrade, type ActiveProfileSession, type AuthenticatedProfileUpgrade, type ProfileUpgradeRequired } from "../../../profiles/profile-session.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
@@ -61,7 +64,7 @@ import { ActorIdSchema } from "../../../../rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 
 import { spawn as spawnChildProcess } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { z } from "zod";
@@ -1107,8 +1110,15 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   const { profile, facts } = (() => {
     try {
       const facts = hostConfigFacts(env);
-      return { profile: composeProfileRuntime({ admission: machine, clock, hostFacts: facts, processLockRoot,
-        ...(input.onboardingDuo === undefined ? {} : { onboardingDuo: input.onboardingDuo }) }), facts };
+      let onboardingDuo = input.onboardingDuo;
+      if (onboardingDuo === undefined) {
+        const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, "onboarding");
+        ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);
+        ensureChildDirectory(browsers, browserRoot, "onboarding browsers", 0o700, 0o700);
+        onboardingDuo = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
+          clock, closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
+      }
+      return { profile: composeProfileRuntime({ admission: machine, clock, hostFacts: facts, processLockRoot, onboardingDuo }), facts };
     } catch (error) {
       try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       throw error;
