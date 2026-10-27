@@ -753,10 +753,16 @@ claim and target identities across interrupted copying and fresh browser request
 copies and SQLite backups are verified and reused. A proved empty allocation is an unfinished
 allocation, never a completed backup.
 
-The explicit `npm run cli -- storage backup [--json]` command also accepts that stopped adopted
-native6 flat source without login. A separate internal `flat-backup` admission permits source
+The explicit `npm run cli -- storage backup [--json]` command backs up exactly the selected READY
+profile through its canonical registered child under the exclusive machine admission. Selection,
+session generation and saved credentials are checked before and after the existing stopped backup
+writer; absent, unfinished, foreign or changed selection refuses. A fresh machine has no authority
+database to back up: complete profile setup and select that profile first. The command neither
+signs in nor creates a profile. Failed source closure retains the child and parent custody.
+
+The command also accepts that stopped adopted native6 flat source without login. A separate internal `flat-backup` admission permits source
 inspection and the existing verified SQLite writer, with no profile binding, owner witness,
-ready-upgrade, claim, account or migration authority. Bound-profile backup behavior stays unchanged.
+ready-upgrade, claim, account or migration authority.
 The command uses the same coupled-copy writer as the owner claim. Raw copies complement the
 verified SQLite backup and never replace it.
 

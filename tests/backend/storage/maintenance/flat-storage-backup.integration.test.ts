@@ -197,7 +197,13 @@ for (const change of ["database-identity", "artifact-root-identity", "sidecar-me
     const f = createHistoricalFlatProfileFixture(), admission = await acquireStorageBackupEntrypointAdmission(f.workspace);
     try {
       if (change === "database-identity") { const path = `${f.databasePath}.new`; writeFileSync(path, readFileSync(f.databasePath), { mode: statSync(f.databasePath).mode & 0o7777 }); renameSync(path, f.databasePath); }
-      if (change === "artifact-root-identity") { renameSync(f.artifactRoot, `${f.artifactRoot}.held`); mkdirSync(f.artifactRoot, { mode: 0o700 }); }
+      if (change === "artifact-root-identity") {
+        const before = statSync(f.artifactRoot), marker = readFileSync(join(f.artifactRoot, ".runtime-owner.json"));
+        renameSync(f.artifactRoot, `${f.artifactRoot}.held`); mkdirSync(f.artifactRoot, { mode: 0o700 });
+        writeFileSync(join(f.artifactRoot, ".runtime-owner.json"), marker, { mode: 0o600 });
+        assert.notEqual(statSync(f.artifactRoot).ino, before.ino);
+        assert.deepEqual(readFileSync(join(f.artifactRoot, ".runtime-owner.json")), marker);
+      }
       if (change === "sidecar-membership") writeFileSync(`${f.databasePath}-journal`, "unexpected", { mode: 0o600 });
       assert.throws(() => admission.assertLive(), /identity changed|flat-backup-source-changed/u);
       assert.equal(existsSync(join(f.stateRoot, "backups")), false); untouched(f);
