@@ -1262,6 +1262,14 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     if (admitted.upgrade !== undefined) scheduleUpgrade(admitted.upgrade, listener.committedResponse(response));
     return response;
   });
+  app.post("/api/v1/profile/onboarding/duo/browser", async c => {
+    const request = CompleteProfileOnboardingRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId);
+    return c.json(await profile.session.showOnboardingBrowser(draft.token, request.operationId));
+  });
+  app.post("/api/v1/profile/onboarding/duo/portal", async c => {
+    const request = CompleteProfileOnboardingRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId);
+    return c.json(await profile.session.openOnboardingPortal(draft.token, request.operationId));
+  });
   app.post("/api/v1/profile/onboarding/duo/start", async c => {
     const request = StartProfileOnboardingDuoRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId);
     return c.json(await profile.session.startOnboardingDuo(draft.token, request.operationId, request.method));
