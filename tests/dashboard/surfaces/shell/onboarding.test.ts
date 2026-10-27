@@ -54,7 +54,8 @@ it("uses server authentication for Duo access and keeps a refused served login o
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "duo", authenticated: false })));
     assert.match(host.textContent ?? "", /Start with your details/);
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "duo", authenticated: true })));
-    assert.match(host.textContent ?? "", /Reconnect to finish setup/);
+    assert.equal(host.querySelector("h1")?.textContent, "Security key");
+    assert.match(host.textContent ?? "", /could not show the setup browser/);
     assert.doesNotMatch(host.textContent ?? "", /Start with your details/);
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "login", authenticated: false })));
     for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"]]) {
@@ -194,8 +195,10 @@ it("unknown enrollment copy never directs adding the uncertain method again", as
     showBrowser: unavailable, openPortal: unavailable, complete: unavailable, cancel: unavailable, cancelDuo: unavailable, start: unavailable, confirmDuo: unavailable, submit: unavailable };
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
-    assert.match(host.textContent ?? "", /Security key outcome unknown/);
-    assert.match(host.textContent ?? "", /Do not add this method again/);
+    assert.equal(host.querySelector("h1")?.textContent, "Security key");
+    assert.match(host.textContent ?? "", /Security key · Failed/);
+    assert.doesNotMatch(host.textContent ?? "", /outcome unknown|Needs review|may already have been added/);
+    assert.match(host.textContent ?? "", /without repeating this attempt/);
     assert.doesNotMatch(host.textContent ?? "", /Security key is next|Start with a security key|then add a security key|Security key and Touch ID not added/);
     const steps: string[] = [];
     const stalePort = { ...port, reauthenticationRequired: true, cancel: async () => { throw new Error("must not cancel stale draft"); } };
@@ -207,7 +210,8 @@ it("unknown enrollment copy never directs adding the uncertain method again", as
     for (const state of ["pending", "unavailable"] as const) {
       const currentPort = { ...port, unavailable: false, onboarding: { ...onboarding, methods: { ...onboarding.methods, key: { ...onboarding.methods.key, state } } } };
       await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: currentPort })));
-      assert.match(host.textContent ?? "", state === "pending" ? /Security key is waiting for Duo/ : /Security key is unavailable/);
+      assert.equal(host.querySelector("h1")?.textContent, "Security key");
+      assert.match(host.textContent ?? "", state === "pending" ? /Security key · Pending/ : /Security key · Failed/);
       assert.doesNotMatch(host.textContent ?? "", /Start with a security key|Next, add a security key/);
     }
   } finally { await act(async () => root.unmount()); host.remove(); }
