@@ -4,6 +4,7 @@ import type { ProfileOnboardingMethod } from "../../models/profiles/public-profi
 export interface DraftDuoAttempt {
   readonly operationId: string;
   readonly profileId: string;
+  readonly accountId: string;
   readonly generation: number;
   readonly attemptId: string;
   readonly method: ProfileOnboardingMethod;
@@ -13,7 +14,7 @@ export interface DraftDuoAttempt {
 export interface DraftDuoObservedContext {
   readonly contextId: string;
   readonly tabId: number;
-  readonly accountId: string;
+  readonly accountName: string;
   readonly origin: string;
   readonly rpId: string;
 }
