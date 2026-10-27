@@ -114,7 +114,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
     await flush();
     // Just inside the budget: still waiting.
     await advance(clock, scheduler, BUDGET_MS - POLL_MS);
-    assert.equal(await Promise.race([refusal.then(() => "settled"), (await flush()).then(() => "pending")]), "pending");
+    assert.equal(await Promise.race([refusal.then(() => "settled"), flush().then(() => "pending")]), "pending");
     // At the budget: refused — 20 s before the 60 s envelope would have fired.
     await advance(clock, scheduler, POLL_MS);
     const error = await refusal;
