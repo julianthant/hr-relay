@@ -282,6 +282,38 @@ describe("draft Duo provider", () => {
     } finally { w.releaseStop(); await w.closeBrowser(); await w.cleanup(); }
   });
 
+  it("retains broker and unknown-retention failures while fencing attempt and browser custody", async () => {
+    const w = world();
+    const original = new Error("synthetic broker failure"), retention = new Error("synthetic unknown-retention failure");
+    try {
+      await w.provider.start(w.attempt, async input => ({ ...await w.bind(input),
+        async persistPending() { throw original; },
+        async retainUnknown() { throw retention; },
+      }), w.reportFailure);
+      assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
+      assert.deepEqual(await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+        transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() }), { ok: false });
+      await assert.rejects(w.provider.cancel(w.attempt), error => {
+        assert.ok(error instanceof ProfileOnboardingDuoProviderError);
+        assert.equal(error.kind, "unknown");
+        let cause: unknown = error;
+        while (cause instanceof Error && !(cause instanceof AggregateError)) cause = cause.cause;
+        assert.ok(cause instanceof AggregateError);
+        assert.equal(cause.errors.length, 2);
+        assert.equal(cause.errors[0], original);
+        assert.equal(cause.errors[1], retention);
+        return true;
+      });
+      assert.deepEqual(w.failures, []);
+      await assert.rejects(w.provider.start({ ...w.attempt, attemptId: randomUUID() }, w.bind, w.reportFailure),
+        error => error instanceof ProfileOnboardingDuoProviderError && error.reason === "busy");
+      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "uncertain" });
+      await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
+      assert.equal(w.launches(), 1);
+      assert.ok(existsSync(w.profile()));
+    } finally { await w.closeBrowser(); await w.cleanup(); }
+  });
+
   it("binds real observed username independently of issuer account ID and keeps repeated start idempotent", async () => {
     const w = world();
     try {

@@ -2,14 +2,19 @@
  * New code and direct negative controls remain unexcepted. */
 export const REVIEWED_CATCH_DEFAULTS = [
   {
+    "path": "src/backend/profiles/onboarding-duo-provider.ts",
+    "sha256": "9af03823e468c469cd4298c9636ce27f8b0f7e46ca7614ce0f3e2777017106ce",
+    "reason": "A failed UNKNOWN-retention or failure-report callback marks closure unproved and retains the original and retention errors. Closure propagates that stored failure with both causes, keeps the active attempt and browser uncertain, and refuses replacement or relaunch; it never reports successful cleanup. Worker stop failure remains uncertain while pump/report settlement is awaited, and the enclosing browser close retains both causes."
+  },
+  {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "8ac58147e0764e0eda8555a553d22b9d03c4968c10352ae88bd18c9988c9fbe1",
-    "reason": "A failed selected-context open marks database closure unproved only for typed custody uncertainty and immediately rethrows; process release remains fenced. Startup and stop cleanup retain every failed required producer closure and original cause before dependent storage release."
+    "sha256": "18d3decd9eee3b3ada92fdab0371f8b49b3a74275e2fb8d2854af76e92ad68a5",
+    "reason": "A failed selected-context open marks database closure unproved for typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release; source-closure uncertainty retains it. Rejection observers leave the original lifetime failure and immediate stop promises intact: the CLI races failure, stop awaits closure, and both retain failures before dependent storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "ebf7584175778cb374978923ef0cf5b811f1dbeb91e517e35e93b41172048587",
-    "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure."
+    "sha256": "754a2d05d0b11d657479eb1c83aed9759cabde4c756238965ba52fc74f11252a",
+    "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure. The maintenance tick retains its first error, stops rescheduling, signals the worker stop controller, and compose surfaces it as a failed report."
   },
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
@@ -103,13 +108,13 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "125d0f7314956929086dbfc750a56e69189596a05f2da985a57a81d68b8b0271",
-    "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success. Claimed-profile configuration rebase rolls back and rethrows; failed rollback or database close retains custody and the original cause."
+    "sha256": "017ed71d7d3b3daf051bbb24dbd2a59f8ce4cea399cfef5603cc435fc5e9aba7",
+    "reason": "The empty rollback-failure accumulator cannot settle migration success: rollback failure retains database custody with the original error, and successful rollback rethrows that error. Failed external validation clears only its admission cache and throws the mutation error or run-search-index-rebuild-required. Malformed diagnostics remain explicit; stopped inspection, upgrade and claimed-profile rebase retain failed source closure and original causes."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-    "sha256": "53ea2fb8be0e70f8e928d788d8aae3ae40d2336cf2e439802fa6806941caebbf",
-    "reason": "Only ENOENT denotes an absent optional sidecar; a missing main database throws, unsafe or changed inputs throw, and failed construction disposes only its private snapshot before rethrowing."
+    "sha256": "bfec50d0f6b3dbea8525b721950a29723cb981552066f56360be5ede97d5d79b",
+    "reason": "Only ENOENT returns absent source metadata; the caller rejects a missing main database and permits absent optional sidecars. Unsafe or changed sources throw. Construction and read failures rethrow after private cleanup; failed database close or snapshot disposal retains the resource owners and original causes as source-closure uncertainty, never a read result."
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
@@ -118,8 +123,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
-    "sha256": "839a651d275ebd4ddb441b4bc624c8aaaf1fa124f0d7216a9f36b7ae0ebbf03a",
-    "reason": "Stall probes report explicit unknown codes (landing-probe-unavailable, duo-refusal-unproven); every stalled landing still throws BrowserLandingStallError or DuoTerminalRefusalError, the refusal, stale-request, and training-reminder observers leave observation timeout and diagnosis to the landing wait, and training-reminder click failures remain explicit BrowserLoginError failures. Initiated bound-element clicks drain before landing or cancellation settles; compound click, disposal, and landing failures retain their original causes."
+    "sha256": "5a62f900a16060d06abe7166c0a3fa9b3469d8c5aec775e8eb5d159bc6b57bc6",
+    "reason": "The navigation rejection observer preserves the original promise raced by the training-reminder wait; the landing wait owns timeout and diagnosis. An empty diagnostic title accompanies LANDING_PROBE_UNAVAILABLE and a thrown BrowserLandingStallError with the original landing cause, never authenticated success. Probe uncertainty stays explicit; initiated clicks drain before settlement, and compound click, disposal and landing failures retain their causes."
   },
   {
     "path": "src/dashboard/state/activity-wiring-adapter.ts",
@@ -143,8 +148,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/configuration/duo-credential-store.ts",
-    "sha256": "5bab6b8375f13223a87e0f4694407f003d4aceaf5b247c424720c487b7a3cd07",
-    "reason": "A file that does not parse as a Duo publication envelope stays unread; only a matching digest or embedded canonical credential keeps it in the unauthorized or backup set."
+    "sha256": "cb38c1ffaf96d9e4537c61d87a7b1ea2d63226da4792858ab6668f73adb31f99",
+    "reason": "The census clears only parsed envelope metadata when arbitrary file bytes fail UTF-8, JSON or envelope validation; filesystem failures propagate. Matching canonical bytes or digest still classify the file unauthorized, and valid same-profile envelopes distinguish managed backups. Restore and erase refuse unauthorized copies; no canonical credential read or publication failure becomes success."
   },
   {
     "path": "src/backend/storage/sqlite/backup-inspection.ts",
