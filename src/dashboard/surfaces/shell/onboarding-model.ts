@@ -1,5 +1,5 @@
 import type { DashboardClient } from "../../client/index.js";
-import type { PublicProfileState } from "../../../models/profiles/public-profile.js";
+import type { ProfileOnboardingState, ProfileOnboardingMethod, PublicProfileState } from "../../../models/profiles/public-profile.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type OnboardingStep = "login" | "signup" | "duo" | "ready";
@@ -15,6 +15,13 @@ export interface MockOnboardingPort {
 
 export interface ServedOnboardingPort {
   readonly source: "served";
+  readonly onboarding?: ProfileOnboardingState;
+  readonly unavailable?: boolean;
+  complete(): Promise<PublicProfileState>;
+  cancel(): Promise<PublicProfileState>;
+  cancelDuo(method: ProfileOnboardingMethod, attemptId: string): Promise<PublicProfileState>;
+  start(method: ProfileOnboardingMethod): Promise<PublicProfileState>;
+  confirmDuo(method: ProfileOnboardingMethod, attemptId: string): Promise<PublicProfileState>;
   validate(step: "login" | "signup", details: OnboardingDetails): OnboardingErrors;
   submit(step: "login" | "signup", details: OnboardingDetails): Promise<PublicProfileState>;
 }
@@ -43,11 +50,23 @@ export const mockOnboardingPort: MockOnboardingPort = Object.freeze<MockOnboardi
   confirm(method, current) { return { ...current, [method]: true }; },
 });
 
-export function createServedOnboardingPort(client: DashboardClient, settled: (state: PublicProfileState) => void): ServedOnboardingPort {
-  return Object.freeze<ServedOnboardingPort>({ source: "served", validate: validateOnboarding,
+export function createServedOnboardingPort(client: DashboardClient, settled: (state: PublicProfileState) => void, onboarding?: ProfileOnboardingState): ServedOnboardingPort {
+  const accept = (result: PublicProfileState, allowActive = false) => {
+    if (result.state === "active" && !allowActive) throw new Error("ONBOARDING_DRAFT_REQUIRED");
+    if (onboarding && (result.state === "onboarding" && (result.operationId !== onboarding.operationId || result.profileId !== onboarding.profileId)
+      || result.state === "active" && (result.profileId !== onboarding.profileId || result.duoState !== "ready"))) throw new Error("ONBOARDING_SCOPE_REPLACED");
+    settled(result); return result;
+  };
+  return Object.freeze<ServedOnboardingPort>({ source: "served", validate: validateOnboarding, onboarding,
+    async complete() { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); const result = await client.completeProfileOnboarding({ operationId: onboarding.operationId }); return accept(result, true); },
+    async cancel() { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); const result = await client.cancelProfileOnboarding({ operationId: onboarding.operationId }); return accept(result); },
+    async cancelDuo(method, attemptId) { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); return accept(await client.cancelProfileOnboardingDuo({ operationId: onboarding.operationId, method, attemptId })); },
+    async start(method) { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); const result = await client.startProfileOnboardingDuo({ operationId: onboarding.operationId, method }); return accept(result); },
+    async confirmDuo(method, attemptId) { if (!onboarding) throw new Error("ONBOARDING_DRAFT_REQUIRED"); const result = await client.confirmProfileOnboardingDuo({ operationId: onboarding.operationId, method, attemptId, operatorConfirmed: true }); return accept(result); },
     async submit(step, details) {
       const result = step === "signup" ? await client.signUpProfile(details) : await client.signInProfile({ email: details.email, password: details.password });
-      settled(result); return result;
+      if (step === "signup" && result.state !== "onboarding" && result.state !== "refused" && result.state !== "error") throw new Error("ONBOARDING_DRAFT_REQUIRED");
+      return accept(result, step === "login");
     },
   });
 }
@@ -70,9 +89,8 @@ export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMetho
   latest.current = methods;
   const receive = useRef(onMethods);
   receive.current = onMethods;
-  const [status, setStatus] = useState<DuoBrowserStatus>(source === "served" ? "error" : "launching");
+  const [status, setStatus] = useState<DuoBrowserStatus>("launching");
   useEffect(() => {
-    if (source === "served") return;
     const message = (event: MessageEvent<unknown>) => {
       if (!child.current || event.origin !== location.origin || event.source !== child.current) return;
       if (typeof event.data === "object" && event.data !== null && "type" in event.data && event.data.type === "hub-duo-ready") {
@@ -87,19 +105,18 @@ export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMetho
     }, 500);
     const close = () => child.current?.close();
     window.addEventListener("pagehide", close);
-    window.addEventListener("message", message);
+    if (source === "mock") window.addEventListener("message", message);
     return () => { window.clearInterval(timer); window.removeEventListener("message", message); window.removeEventListener("pagehide", close); close(); };
   }, [source]);
   return { status, open() {
-    if (source === "served") { setStatus("error"); return; }
     if (child.current && !child.current.closed) { child.current.focus(); return; }
     child.current = window.open(`${location.pathname}?onboardingSetup=fast`, "hub-duo-setup", "popup,width=1200,height=900");
     setStatus(child.current ? "launching" : "error");
   } };
 }
 
-export function useMockDuoSetup() {
-  const parent = window.opener as Window | null;
+export function useMockDuoSetup(enabled = true) {
+  const parent = enabled ? window.opener as Window | null : null;
   const [methods, setMethods] = useState<DuoMethods>({ key: false, touch: false });
   const [connected, setConnected] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
@@ -109,6 +126,7 @@ export function useMockDuoSetup() {
   const latest = useRef(methods);
   latest.current = methods;
   useEffect(() => {
+    if (!enabled) return;
     const message = (event: MessageEvent<unknown>) => {
       if (event.origin !== location.origin) return;
       if (parent && event.source === parent) {
@@ -131,7 +149,7 @@ export function useMockDuoSetup() {
     parent?.postMessage({ type: "hub-duo-ready" }, location.origin);
     const timer = window.setInterval(() => { if (child.current?.closed) { child.current = null; setUnavailable(true); setListening(false); } }, 500);
     return () => { window.removeEventListener("message", message); window.removeEventListener("pagehide", close); window.clearInterval(timer); close(); };
-  }, [parent]);
+  }, [enabled, parent]);
   return { methods, connected, unavailable, listening, method, setMethod,
     returnToParent(this: void) { parent?.focus(); },
     cancel() { setListening(false); },
@@ -156,32 +174,92 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
   const failure = enabled && settlement?.client === client && settlement.failure;
   const generation = useRef(0);
   const live = useRef(false);
-  const invalidate = useCallback(() => { live.current = false; generation.current++; }, []);
+  const busy = useRef(false);
+  const settle = useCallback((value: PublicProfileState) => {
+    setSettlement(current => ({ client, state: value.state === "refused" || value.state === "error"
+      ? current?.client === client && current.state?.state === "onboarding" ? current.state : value : value, failure: current?.client === client && current.state?.state === "onboarding" && (value.state === "refused" || value.state === "error") }));
+  }, [client]);
   useEffect(() => {
-    live.current = enabled;
+    live.current = enabled; busy.current = false;
     if (!enabled) return;
     const request = ++generation.current;
     void client.readProfileSession().then(value => {
-      if (live.current && generation.current === request) { setSettlement({ client, state: value, failure: false }); }
+      if (live.current && generation.current === request) settle(value);
     }, () => { if (live.current && generation.current === request) setSettlement({ client, failure: true }); });
-    return invalidate;
-  }, [client, enabled, invalidate]);
-  const port = useMemo<ServedOnboardingPort>(() => ({
-    source: "served", validate: validateOnboarding,
-    async submit(step, details) {
+    return () => { live.current = false; generation.current++; };
+  }, [client, enabled, settle]);
+  const onboarding = state?.state === "onboarding" ? state : undefined;
+  useEffect(() => {
+    if (!enabled || !onboarding) return;
+    let reading = false;
+    const timer = window.setInterval(() => {
+      if (busy.current || reading) return;
+      reading = true;
       const request = ++generation.current;
-      return createServedOnboardingPort(client, value => {
-        if (live.current && generation.current === request) { setSettlement({ client, state: value, failure: false }); }
-      }).submit(step, details);
-    },
-  }), [client]);
+      void client.readProfileSession().then(value => {
+        if (live.current && generation.current === request) {
+          if (value.state === "onboarding" && (value.operationId !== onboarding.operationId || value.profileId !== onboarding.profileId)
+            || value.state === "active" && value.profileId !== onboarding.profileId) {
+            setSettlement(current => current?.client === client ? { ...current, failure: true } : current); return;
+          }
+          settle(value);
+        }
+      }, () => { if (live.current && generation.current === request) setSettlement(current => current?.client === client ? { ...current, failure: true } : current); }).finally(() => { reading = false; });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [client, enabled, onboarding, settle]);
+  const scope = useMemo(() => ({ client, operationId: onboarding?.operationId, failure }), [client, onboarding?.operationId, failure]);
+  const currentScope = useRef(scope); currentScope.current = scope;
+  const port = useMemo<ServedOnboardingPort>(() => {
+    const run = async (action: (port: ServedOnboardingPort) => Promise<PublicProfileState>) => {
+      if (!live.current || currentScope.current !== scope || failure && onboarding !== undefined) throw new Error("ONBOARDING_SCOPE_REPLACED");
+      const request = ++generation.current;
+      busy.current = true;
+      try {
+        const result = await action(createServedOnboardingPort(client, value => {
+          if (live.current && generation.current === request && currentScope.current === scope) settle(value);
+        }, onboarding));
+        if (!live.current || generation.current !== request) throw new Error("ONBOARDING_SCOPE_REPLACED");
+        return result;
+      } finally { if (generation.current === request) busy.current = false; }
+    };
+    return { source: "served", validate: validateOnboarding, onboarding, unavailable: Boolean(failure),
+      submit: (step, details) => run(port => port.submit(step, details)),
+      complete: () => run(port => port.complete()), cancel: () => run(port => port.cancel()),
+      cancelDuo: (method, attemptId) => run(port => port.cancelDuo(method, attemptId)),
+      start: method => run(port => port.start(method)), confirmDuo: (method, attemptId) => run(port => port.confirmDuo(method, attemptId)),
+    };
+  }, [client, onboarding, scope, settle, failure]);
   return { state, failure, port,
     logout: async (): Promise<void> => {
-      const request = ++generation.current;
-      try {
-        const value = await client.logOutProfile();
-        if (live.current && generation.current === request) { setSettlement({ client, state: value, failure: false }); }
-      } catch { if (live.current && generation.current === request) setSettlement({ client, failure: true }); }
+      const request = ++generation.current; busy.current = true;
+      try { const value = await client.logOutProfile(); if (live.current && generation.current === request) settle(value); }
+      catch { if (live.current && generation.current === request) setSettlement({ client, failure: true }); }
+      finally { if (generation.current === request) busy.current = false; }
     },
+  };
+}
+
+export function useServedDuoSetup(port?: ServedOnboardingPort) {
+  const [method, setMethod] = useState<ProfileOnboardingMethod>("key");
+  const [pending, setPending] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const generation = useRef(0);
+  const draft = port?.onboarding;
+  useEffect(() => { generation.current++; setPending(false); setUnavailable(false); return () => { generation.current++; }; }, [draft?.operationId]);
+  const run = async (action: () => Promise<PublicProfileState>) => {
+    if (pending || !port) return;
+    const request = ++generation.current; setPending(true); setUnavailable(false);
+    try { const result = await action(); if (request === generation.current) setUnavailable(result.state !== "onboarding"); }
+    catch { if (request === generation.current) setUnavailable(true); }
+    finally { if (request === generation.current) setPending(false); }
+  };
+  return { methods: { key: draft?.methods.key.state === "complete", touch: draft?.methods.touch.state === "complete" },
+    connected: draft !== undefined && !port?.unavailable, unavailable: unavailable || port?.unavailable || draft?.methods[method].state === "unknown" || draft?.methods[method].state === "unavailable", listening: pending || draft?.methods[method].state === "pending", method, setMethod,
+    returnToParent() { window.opener?.focus(); },
+    cancel() { const attemptId = draft?.methods[method].attemptId; if (port && attemptId) void run(() => port.cancelDuo(method, attemptId)); },
+    open(_capture: boolean) { if (port && draft?.methods[method].state === "idle") void run(() => port.start(method)); },
+    start(selected: ProfileOnboardingMethod) { if (port && draft?.methods[selected].state === "idle") void run(() => port.start(selected)); },
+    confirm() { const attemptId = draft?.methods[method].attemptId; if (attemptId && port) void run(() => port.confirmDuo(method, attemptId)); else setUnavailable(true); },
   };
 }

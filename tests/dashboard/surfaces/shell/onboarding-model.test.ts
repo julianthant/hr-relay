@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, vi } from "vitest";
-import { createServedOnboardingPort, duoSummary, mockOnboardingPort as port, parseDuoMessage, useDuoBrowser, useMockDuoSetup, usePublicProfileSession } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
+import { createServedOnboardingPort, duoSummary, mockOnboardingPort as port, parseDuoMessage, useDuoBrowser, useMockDuoSetup, usePublicProfileSession, useServedDuoSetup } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
 describe("HUB mock onboarding boundary", () => {
   const details = { firstName: "Alex", lastName: "Rivera", email: "alex.rivera@ucsd.edu", password: "Relay-demo-42" };
@@ -83,16 +83,16 @@ it("uses the served profile client without accepting demo credentials or mock Du
   assert.equal("confirm" in served, false);
 });
 
-it("never opens a mock setup popup or accepts mock method messages on the served path", async () => {
+it("opens the served setup while refusing forged mock Duo readiness", async () => {
   const host = document.createElement("div"); document.body.append(host);
-  const root = createRoot(host), open = vi.spyOn(window, "open");
+  const root = createRoot(host), open = vi.spyOn(window, "open").mockReturnValue(null);
   let browser!: ReturnType<typeof useDuoBrowser>, methods = { key: false, touch: false };
   function Probe() { const [value, change] = useState(methods); methods = value; browser = useDuoBrowser(value, change, "served"); return null; }
   try {
     await act(async () => root.render(createElement(Probe)));
     await act(async () => { browser.open(); window.dispatchEvent(new MessageEvent("message", { origin: location.origin,
       source: window, data: { type: "hub-duo-mock", key: true, touch: true } })); });
-    assert.equal(open.mock.calls.length, 0); assert.equal(browser.status, "error");
+    assert.equal(open.mock.calls.length, 1); assert.equal(browser.status, "error");
     assert.deepEqual(methods, { key: false, touch: false });
   } finally { await act(async () => root.unmount()); open.mockRestore(); host.remove(); }
 });
@@ -111,12 +111,12 @@ it("ignores superseded session reads and login settlements after logout or unmou
     await act(async () => { login = session.port.submit("login", details); });
     await act(async () => { logout = session.logout(); });
     await act(async () => { replies[2](Response.json({ state: "signed-out" })); await logout; });
-    await act(async () => { replies[1](Response.json({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" })); await login;
+    await act(async () => { replies[1](Response.json({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" })); await assert.rejects(login);
       replies[0](Response.json({ state: "cancelling", operationId: "00000000-0000-4000-8000-000000000001" })); });
     assert.deepEqual(session.state, { state: "signed-out" });
     await act(async () => { login = session.port.submit("login", details); });
     await act(async () => root.unmount());
-    await act(async () => { replies[3](Response.json({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" })); await login; });
+    await act(async () => { replies[3](Response.json({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" })); await assert.rejects(login); });
     assert.deepEqual(session.state, { state: "signed-out" });
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
@@ -138,4 +138,75 @@ it("never carries selected public-session authority into a replacement client", 
     await act(async () => { response.resolve(Response.json({ state: "signed-out" })); });
     assert.deepEqual(seen.at(-1), { state: "signed-out" });
   } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+
+const draftMethod = (state: "idle" | "pending" | "complete" | "unknown" = "idle") => ({ state,
+  ceremonyObserved: state === "complete", portalAccepted: state === "complete", operatorConfirmed: state === "complete", exactCredentialRequestObserved: false });
+const onboardingDraft = () => ({ state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
+  profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: draftMethod(), touch: draftMethod() } });
+
+it("signup can only settle a draft, never a premature active session", async () => {
+  const settled: unknown[] = [];
+  let value: unknown = onboardingDraft();
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async () => Response.json(value) });
+  const served = createServedOnboardingPort(client, state => settled.push(state));
+  const details = { firstName: "Test", lastName: "Operator", email: "test@example.invalid", password: "synthetic-test-password" };
+  assert.equal((await served.submit("signup", details)).state, "onboarding");
+  value = { state: "active", profileId: onboardingDraft().profileId, epoch: 1, duoState: "ready" };
+  await assert.rejects(served.submit("signup", details));
+  assert.equal(settled.length, 1);
+});
+
+it("served Duo keeps partial completion and unknown custody under server authority", async () => {
+  const host = document.createElement("div"), root = createRoot(host);
+  let draft = onboardingDraft(), calls = 0;
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async () => { calls++; return Response.json(draft); } });
+  let setup!: ReturnType<typeof useServedDuoSetup>;
+  function Probe() { setup = useServedDuoSetup(createServedOnboardingPort(client, () => {}, draft)); return null; }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => setup.start("key"));
+    assert.equal(calls, 1); assert.deepEqual(setup.methods, { key: false, touch: false });
+    draft = { ...draft, methods: { key: draftMethod("complete"), touch: draftMethod("unknown") } };
+    await act(async () => root.render(createElement(Probe)));
+    assert.deepEqual(setup.methods, { key: true, touch: false });
+    await act(async () => { setup.start("touch"); window.dispatchEvent(new MessageEvent("message", { data: { type: "duo-methods", key: true, touch: true } })); });
+    assert.equal(calls, 1); assert.equal(setup.methods.touch, false);
+  } finally { await act(async () => root.unmount()); }
+});
+
+it("draft commands reject foreign operation settlements and cancel through the scoped port", async () => {
+  const draft = onboardingDraft(), settled: unknown[] = [], calls: string[] = [];
+  let foreign = true;
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async url => {
+    calls.push(new URL(url).pathname);
+    return Response.json(foreign ? { ...draft, operationId: "00000000-0000-4000-8000-000000000003" } : { state: "signed-out" });
+  } });
+  const served = createServedOnboardingPort(client, value => settled.push(value), draft);
+  await assert.rejects(served.start("key")); assert.equal(settled.length, 0);
+  foreign = false;
+  assert.deepEqual(await served.cancel(), { state: "signed-out" });
+  assert.deepEqual(calls, ["/api/v1/profile/onboarding/duo/start", "/api/v1/profile/onboarding/cancel"]);
+});
+
+
+it("exact-attempt cancellation preserves the other method and rejects premature activation", async () => {
+  const attemptId = "00000000-0000-4000-8000-000000000003";
+  const draft = { ...onboardingDraft(), methods: { key: draftMethod("complete"), touch: { ...draftMethod("pending"), attemptId } } };
+  let activate = false;
+  const requests: unknown[] = [];
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async (_url, init) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return Response.json(activate ? { state: "active", profileId: draft.profileId, epoch: 1, duoState: "ready" }
+      : { ...draft, methods: { ...draft.methods, touch: draftMethod("unknown") } });
+  } });
+  const settled: unknown[] = [], served = createServedOnboardingPort(client, state => settled.push(state), draft);
+  const result = await served.cancelDuo("touch", attemptId);
+  assert.equal(result.state, "onboarding");
+  if (result.state === "onboarding") { assert.equal(result.methods.key.state, "complete"); assert.equal(result.methods.touch.state, "unknown"); }
+  assert.deepEqual(requests, [{ operationId: draft.operationId, method: "touch", attemptId }]);
+  activate = true;
+  await assert.rejects(served.confirmDuo("touch", attemptId));
+  assert.equal(settled.length, 1);
 });

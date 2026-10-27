@@ -12,12 +12,16 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
   const details = forms[formStep];
   const previousStep = useRef(step);
   const [errors, setErrors] = useState<OnboardingErrors>({});
-  const [methods, setMethods] = useState<DuoMethods>({ key: false, touch: false });
+  const [mockMethods, setMethods] = useState<DuoMethods>({ key: false, touch: false });
+  const draft = port.source === "served" ? port.onboarding : undefined;
+  const currentDraft = useRef(draft?.operationId); currentDraft.current = draft?.operationId;
+  const methods = port.source === "served" ? { key: draft?.methods.key.state === "complete", touch: draft?.methods.touch.state === "complete" } : mockMethods;
   const [detailsAccepted, setDetailsDone] = useState(false);
-  const detailsDone = port.source === "served" ? authenticated : detailsAccepted;
+  const detailsDone = port.source === "served" ? draft !== undefined || authenticated : detailsAccepted;
   const [submitting, setSubmitting] = useState(false);
+  const [completionUnknown, setCompletionUnknown] = useState(false);
   const submitted = useRef(0);
-  useEffect(() => () => { submitted.current++; }, []);
+  useEffect(() => { submitted.current++; setSubmitting(false); setCompletionUnknown(false); return () => { submitted.current++; }; }, [draft?.operationId]);
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [attempts, setAttempts] = useState(0);
@@ -44,7 +48,19 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
     if (step === "login" || step === "signup") setSeconds(0);
     setErrors({}); setLoginError(""); setShowPassword(false);
   }, [step]);
-  const navigate = (next: OnboardingStep) => {
+  const navigate = async (next: OnboardingStep) => {
+    if (port.source === "served" && draft && (next === "signup" || next === "login")) {
+      if (submitting) return;
+      const request = ++submitted.current; setSubmitting(true); setLoginError("");
+      try {
+        const result = await port.cancel();
+        if (request !== submitted.current && currentDraft.current !== undefined) return;
+        if (result.state === "signed-out") onStep(next);
+        else setLoginError(operatorFailureSentence(result.state === "refused" || result.state === "error" ? result.code : "PROFILE_TRANSITION_BLOCKED"));
+      } catch { if (request === submitted.current) setLoginError(operatorFailureSentence("COMMAND_OUTCOME_UNCERTAIN")); }
+      finally { if (request === submitted.current) setSubmitting(false); }
+      return;
+    }
     if (next === "duo" && !detailsDone || next === "ready" && !both) return;
     onStep(next);
   };
@@ -83,11 +99,15 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
             try {
               const result = await port.submit(signup ? "signup" : "login", details);
               if (request !== submitted.current) return;
+              if (result.state === "onboarding") {
+                setForms(current => ({ ...current, [formStep]: { ...current[formStep], password: "" } }));
+                onStep(result.step); return;
+              }
               if (result.state === "signed-out") {
                 setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "" } } : current);
                 onStep("login"); return;
               }
-              if (result.state !== "active") {
+              if (signup || result.state !== "active") {
                 setLoginError(operatorFailureSentence(result.state === "refused" || result.state === "error" ? result.code : "PROFILE_LOGOUT_BLOCKED"));
                 return;
               }
@@ -115,8 +135,19 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
           {!signup && port.source === "mock" && <p className="field-help">Demo: alex.rivera@ucsd.edu / Relay-demo-42</p>}</> : step === "duo" ? <>
           <div className="method-summary" aria-label="Duo method status"><span className={methods.key ? "confirmed" : undefined}>{methods.key ? <Check className="icon" /> : <KeyRound className="icon" />}Security key{methods.key && " confirmed"}</span><span className={methods.touch ? "confirmed" : undefined}>{methods.touch ? <Check className="icon" /> : <Fingerprint className="icon" />}Touch ID{methods.touch && " confirmed"}</span></div>
           <section className="focus-task" aria-label="Next action">{both ? <CircleCheck className="icon" /> : launching ? <Monitor className="icon" /> : closed ? <PanelTopClose className="icon" /> : failed ? <RefreshCw className="icon" /> : methods.key ? <Fingerprint className="icon" /> : <KeyRound className="icon" />}<h2>{both ? "Ready to finish" : launching ? "Preparing Fast Duo" : closed || failed ? `${methods.key ? "Touch ID" : "Security key"} is next` : methods.key ? "Next, add Touch ID" : methods.touch ? "Next, add a security key" : "Start with a security key"}</h2><p>{both ? "Both methods are registered in Duo." : launching ? "The setup page opens in a browser with the Fast Duo extension ready." : closed || failed ? `Reopen the browser, then add ${methods.key ? "Touch ID" : "a security key"}. Your completed methods stay confirmed.` : `In the setup browser, follow Fast Duo’s ${methods.key ? "Touch ID" : "security key"} instructions. You can add the methods in either order.`}</p></section>
-          <p className="readiness" role="status">{duoSummary(methods)}</p><footer className="actions"><div className="buttons"><button tabIndex={0} className="btn primary" type="button" onClick={() => both ? navigate("ready") : browser.open()}>{both ? "Finish setup" : closed || failed ? "Reopen browser" : "Show setup browser"}</button></div></footer>
-        </> : <><ul className="ready-list">{["Your details saved", "Security key confirmed", "Touch ID confirmed"].map(text => <li key={text}><Check className="icon" />{text}</li>)}</ul><button tabIndex={0} className="btn primary" type="button" disabled={!detailsDone || !both} onClick={onDashboard}>Go to dashboard</button></>}
+          <p className="readiness" role="status">{port.source === "served" && (loginError || problem) || duoSummary(methods)}</p><footer className="actions"><div className="buttons"><button tabIndex={0} className="btn primary" type="button" onClick={() => both ? navigate("ready") : browser.open()}>{both ? "Finish setup" : closed || failed ? "Reopen browser" : "Show setup browser"}</button></div></footer>
+        </> : <>{port.source === "served" && (loginError || problem) && <p className="form-error" role="alert">{loginError || problem}</p>}<ul className="ready-list">{["Your details saved", "Security key confirmed", "Touch ID confirmed"].map(text => <li key={text}><Check className="icon" />{text}</li>)}</ul><button tabIndex={0} className="btn primary" type="button" disabled={!detailsDone || !both || submitting || completionUnknown || port.source === "served" && port.unavailable} onClick={async () => {
+          if (port.source === "mock") { onDashboard(); return; }
+          if (submitting || completionUnknown || draft?.step !== "ready") return;
+          const request = ++submitted.current; setSubmitting(true); setLoginError("");
+          try {
+            const result = await port.complete();
+            if (request !== submitted.current) return;
+            if (result.state === "active" && result.duoState === "ready") onDashboard();
+            else setLoginError(operatorFailureSentence(result.state === "refused" || result.state === "error" ? result.code : "PROFILE_LOGOUT_BLOCKED"));
+          } catch { if (request === submitted.current) { setCompletionUnknown(true); setLoginError(operatorFailureSentence("COMMAND_OUTCOME_UNCERTAIN")); } }
+          finally { if (request === submitted.current) setSubmitting(false); }
+        }}>Go to dashboard</button></>}
       </div></div></main>
     {port.source === "mock" && <p className="sr-only">UI mock. Browser handoff and Duo results are simulated. No details are sent or saved.</p>}
   </div>;

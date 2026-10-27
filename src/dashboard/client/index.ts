@@ -1,4 +1,4 @@
-import { ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+import { CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 import { DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /** The ONE typed dashboard client (ref frontend-backend-integration) */
@@ -29,6 +29,11 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   signInProfile(request: ProfileLoginRequest): Promise<PublicProfileState>;
   signUpProfile(request: ProfileSignUpRequest): Promise<PublicProfileState>;
   logOutProfile(): Promise<PublicProfileState>;
+  completeProfileOnboarding(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
+  cancelProfileOnboardingDuo(request: CancelProfileOnboardingDuoRequest): Promise<PublicProfileState>;
+  cancelProfileOnboarding(request: CancelProfileOnboardingRequest): Promise<PublicProfileState>;
+  startProfileOnboardingDuo(request: StartProfileOnboardingDuoRequest): Promise<PublicProfileState>;
+  confirmProfileOnboardingDuo(request: ConfirmProfileOnboardingDuoRequest): Promise<PublicProfileState>;
   reportError(report: DashboardErrorReport): Promise<void>;
   subscribeDay(
     input: Omit<DashboardDaySubscriptionDeps, "transport">,
@@ -58,6 +63,31 @@ export function createDashboardClient(input: Readonly<{
     },
     async logOutProfile() {
       return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/logout", { method: "POST", body: "{}" })).body);
+    },
+    async completeProfileOnboarding(request) {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/complete", {
+        method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
+    async cancelProfileOnboardingDuo(request) {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/cancel", {
+        method: "POST", body: JSON.stringify(CancelProfileOnboardingDuoRequestSchema.parse(request)),
+      })).body);
+    },
+    async cancelProfileOnboarding(request) {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/cancel", {
+        method: "POST", body: JSON.stringify(CancelProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
+    async startProfileOnboardingDuo(request) {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/start", {
+        method: "POST", body: JSON.stringify(StartProfileOnboardingDuoRequestSchema.parse(request)),
+      })).body);
+    },
+    async confirmProfileOnboardingDuo(request) {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/confirm", {
+        method: "POST", body: JSON.stringify(ConfirmProfileOnboardingDuoRequestSchema.parse(request)),
+      })).body);
     },
     async reportError(report: DashboardErrorReport) {
       await transport.requestJson("/api/v1/debug/errors", { method: "POST", body: JSON.stringify(DashboardErrorReportSchema.parse(report)) });

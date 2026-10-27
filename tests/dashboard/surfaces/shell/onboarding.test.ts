@@ -45,6 +45,8 @@ it("uses server authentication for Duo access and keeps a refused served login o
   const root = createRoot(host);
   const transitions: string[] = [];
   const port: ServedOnboardingPort = { source: "served", validate: (step, details) => mockOnboardingPort.validate(step, details),
+    async complete() { throw new Error("not called"); }, async cancel() { throw new Error("not called"); }, async cancelDuo() { throw new Error("not called"); },
+    async start() { throw new Error("not called"); }, async confirmDuo() { throw new Error("not called"); },
     async submit() { return { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" }; } };
   const props = { port, onStep: (step: OnboardingStep) => { transitions.push(step); }, onDashboard() { transitions.push("dashboard"); } };
   try {
@@ -64,5 +66,95 @@ it("uses server authentication for Duo access and keeps a refused served login o
     assert.ok(host.querySelector('[role="alert"]')?.textContent);
     assert.deepEqual(transitions, []);
     assert.doesNotMatch(host.textContent ?? "", /Demo:/);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+
+it("Ready only dispatches Finish and does not navigate on refusal or uncertain completion", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
+  const onboarding = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
+    profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
+  let completed = 0, navigated = 0, uncertain = false;
+  const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
+  const port: ServedOnboardingPort = { source: "served", onboarding, validate: mockOnboardingPort.validate,
+    submit: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused,
+    async complete() { completed++; if (uncertain) throw new Error("lost response"); return { state: "refused", code: "PROFILE_TRANSITION_BLOCKED" }; },
+  };
+  const props = { port, step: "ready" as const, onStep() {}, onDashboard() { navigated++; } };
+  const finish = () => { const button = host.querySelector<HTMLButtonElement>("main button:not(ol button)"); assert.ok(button); return button; };
+  try {
+    await act(async () => root.render(createElement(Onboarding, props)));
+    assert.equal(completed, 0); assert.equal(navigated, 0); assert.equal(finish().disabled, false);
+    await act(async () => finish().click());
+    assert.equal(completed, 1); assert.equal(navigated, 0); assert.ok(host.querySelector('[role="alert"]')?.textContent);
+    uncertain = true;
+    await act(async () => finish().click());
+    assert.equal(completed, 2); assert.equal(navigated, 0); assert.equal(finish().disabled, true);
+    await act(async () => finish().click()); assert.equal(completed, 2);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("Finish navigates only after the matching active completion settles", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
+  const onboarding = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
+    profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
+  const reply = Promise.withResolvers<import("../../../../src/models/profiles/public-profile.js").PublicProfileState>();
+  const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
+  const port: ServedOnboardingPort = { source: "served", onboarding, validate: mockOnboardingPort.validate,
+    submit: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, complete: () => reply.promise };
+  let navigated = 0;
+  try {
+    await act(async () => root.render(createElement(Onboarding, { port, step: "ready", onStep() {}, onDashboard() { navigated++; } })));
+    await act(async () => host.querySelector<HTMLButtonElement>("main button:not(ol button)")!.click());
+    assert.equal(navigated, 0);
+    await act(async () => { reply.resolve({ state: "active", profileId: onboarding.profileId, epoch: 1, duoState: "ready" }); });
+    assert.equal(navigated, 1);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+
+it("a late Finish result cannot navigate a replacement draft", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
+  const draft = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
+    profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
+  const reply = Promise.withResolvers<import("../../../../src/models/profiles/public-profile.js").PublicProfileState>();
+  const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
+  const port: ServedOnboardingPort = { source: "served", onboarding: draft, validate: mockOnboardingPort.validate,
+    submit: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, complete: () => reply.promise };
+  let navigated = 0;
+  const props = { step: "ready" as const, onStep() {}, onDashboard() { navigated++; } };
+  try {
+    await act(async () => root.render(createElement(Onboarding, { ...props, port })));
+    await act(async () => host.querySelector<HTMLButtonElement>("main button:not(ol button)")!.click());
+    await act(async () => root.render(createElement(Onboarding, { ...props, port: { ...port, onboarding: { ...draft, operationId: "00000000-0000-4000-8000-000000000003" } } })));
+    await act(async () => { reply.resolve({ state: "active", profileId: draft.profileId, epoch: 1, duoState: "ready" }); });
+    assert.equal(navigated, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+
+it("returning to Details requires confirmed draft cancellation", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const method = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+  const onboarding = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
+    profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: method, touch: method } };
+  const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
+  let allow = false, cancelled = 0;
+  const port: ServedOnboardingPort = { source: "served", onboarding, validate: mockOnboardingPort.validate,
+    submit: unused, complete: unused, cancelDuo: unused, start: unused, confirmDuo: unused,
+    async cancel() { cancelled++; return allow ? { state: "signed-out" } : { state: "refused", code: "PROFILE_TRANSITION_BLOCKED" }; } };
+  const transitions: OnboardingStep[] = [];
+  const props = { port, step: "duo" as const, onStep(step: OnboardingStep) { transitions.push(step); }, onDashboard() { throw new Error("early dashboard"); } };
+  const details = () => { const buttons = host.querySelectorAll<HTMLButtonElement>("ol button"); assert.equal(buttons.length, 3); return buttons[0]!; };
+  try {
+    await act(async () => root.render(createElement(Onboarding, props)));
+    await act(async () => details().click());
+    assert.equal(cancelled, 1); assert.deepEqual(transitions, []);
+    allow = true;
+    await act(async () => details().click());
+    assert.equal(cancelled, 2); assert.deepEqual(transitions, ["signup"]);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

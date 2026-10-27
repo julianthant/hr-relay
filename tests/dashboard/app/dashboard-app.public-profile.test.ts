@@ -30,3 +30,24 @@ for (const route of ["/", "/?onboarding=ready", "/?onboardingSetup=duo"]) it(`ke
     assert.equal(host.querySelector('[data-source="served"]') !== null, true);
   } finally { await act(async () => root.unmount()); host.remove(); window.history.replaceState(null, "", previous); }
 });
+
+
+for (const ready of [false, true]) it(`resumes the server draft stage without ordinary authority (ready=${ready})`, async () => {
+  const previous = window.location.href; window.history.replaceState(null, "", "/");
+  const method = (complete: boolean) => ({ state: complete ? "complete" : "idle", ceremonyObserved: complete,
+    portalAccepted: complete, operatorConfirmed: complete, exactCredentialRequestObserved: false });
+  const calls: string[] = [];
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async url => {
+    const path = new URL(url).pathname; calls.push(path); assert.equal(path, "/api/v1/profile/state");
+    return Response.json({ state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
+      profileId: "00000000-0000-4000-8000-000000000002", step: ready ? "ready" : "duo", methods: { key: method(ready), touch: method(ready) } });
+  } });
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  try {
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "served" }) })));
+    assert.equal(host.querySelector('[data-source="served"]') !== null, true);
+    assert.equal(host.querySelector('form'), null);
+    assert.ok(calls.length > 0); assert.ok(calls.every(path => path === "/api/v1/profile/state"));
+    if (ready) assert.equal(host.querySelector<HTMLButtonElement>("main button:not(ol button)")?.disabled, false);
+  } finally { await act(async () => root.unmount()); host.remove(); window.history.replaceState(null, "", previous); }
+});
