@@ -2,7 +2,7 @@ import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } fro
 import { CredentialErasureHeadSchema, erasureRequestIdentity } from "../configuration/credential-store.js";
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
-import type { CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness, CommittedCredentialInitialization, CommittedCredentialKeyStage, CredentialKeyStagePublication } from "../configuration/credential-store.js";
+import type { UnpublishedDraftAbortWitness, CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness, CommittedCredentialInitialization, CommittedCredentialKeyStage, CredentialKeyStagePublication } from "../configuration/credential-store.js";
 import { registerRuntimeAdmission, requireRuntimeAdmission } from "./admission-identity.js";
 import { z } from "zod";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync, type BigIntStats } from "node:fs";
@@ -191,6 +191,10 @@ export class RuntimeAdmission {
   assertProfileInitialization(): void {
     this.assertLive();
     if (this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade") throw new Error("profile-initialization-authority-required");
+  }
+  assertReleasedProfileInitialization(machine: RuntimeAdmission): void {
+    machine.assertWritable();
+    if (!this.#released || this.#scope !== "profile-initialization" || this.#profileParent !== machine) throw new Error("profile-draft-closure-unproved");
   }
   assertProfileUpgradeCredentialSource(claim: RegisteredProfileStorageClaim): void {
     this.assertLive();
@@ -407,6 +411,11 @@ export class RuntimeAdmission {
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
     (this.#authority as InstallationLease).commitProfileDuo(transaction);
   }
+  abortUnpublishedProfile(witness: UnpublishedDraftAbortWitness): void {
+    this.assertWritable();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    (this.#authority as InstallationLease).abortUnpublishedProfile(witness);
+  }
   commitProfileDuoIntent(transaction: IssuedDuoTransaction): void {
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
@@ -523,7 +532,8 @@ export class RuntimeAdmission {
             return z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
           }) : [];
           if (currentOperations.some(operation => operation.kind === "logout" ? operation.phase !== "complete" : phase === "runtime" && operation.credentialInitialization !== undefined)
-            || (phase === "setup" ? current.activeProfileId !== null && current.activeProfileId !== id : registered?.lifecycle !== "ready" || registered.credentialState !== "saved")) {
+            || (phase === "setup" ? current.activeProfileId !== null && current.activeProfileId !== id
+              : registered?.lifecycle !== "ready" || registered.credentialState !== "saved" || registered.registration.onboardingCompletion === undefined)) {
             throw new Error("profile-storage-claim-unavailable");
           }
         }
@@ -1222,6 +1232,41 @@ export class RuntimeAdmission {
       assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
       readDuoContinuity();
     } });
+  }
+  captureDraftDuoCredentialCustody(profile: RuntimeAdmission, operationId: string, generation: number) {
+    this.assertWritable();
+    profile.assertProfileInitialization();
+    const binding = profile.profileBinding;
+    this.assertProfileCredentialKey(profile, join(this.#stateRoot, "machine", "credential-keys", `${binding.profileId}.json`));
+    const path = join(this.#stateRoot, "machine", "operations", `${z.uuid().parse(operationId)}.json`);
+    const readOperation = () => {
+      this.assertWritable();
+      profile.assertProfileInitialization();
+      if (profile.#profileParent !== this) throw new Error("duo-draft-owner-mismatch");
+      const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) throw new Error("duo-draft-operation-required");
+      const operation = SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+      if (operation.operationId !== operationId || operation.profileId !== binding.profileId || operation.phase !== "applying"
+        || operation.onboarding?.generation !== generation || operation.onboarding.duo.profileId !== binding.profileId
+        || this.readProfileRegistry().profiles.some(row => row.profileId === binding.profileId)) throw new Error("duo-draft-authority-changed");
+      return operation;
+    };
+    const original = readOperation();
+    const stable = (operation: typeof original) => canonicalJsonStringify({ operationId: operation.operationId, profileId: operation.profileId,
+      commandId: operation.commandId, writeId: operation.writeId, emailKey: operation.emailKey, firstName: operation.firstName,
+      lastName: operation.lastName, createdAt: operation.createdAt, commandFingerprint: operation.commandFingerprint });
+    const identity = stable(original), ancestry = new Map<string, DirectoryIdentity>();
+    if (!noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-profile-root-required");
+    const assertHeld = () => {
+      const current = readOperation();
+      if (stable(current) !== identity || !noSymlinkAncestry(profile.#stateRoot, ancestry)) throw new Error("duo-draft-authority-changed");
+      assertLiveProfileDatabaseBinding(join(profile.#stateRoot, "state.db"), binding);
+    };
+    return Object.freeze({ binding, generation, draftOperationId: operationId, assertHeld,
+      readDuoContinuity: () => { assertHeld(); const operation = readOperation();
+        if (operation.onboarding === undefined) throw new Error("duo-draft-operation-required");
+        return operation.onboarding.duo;
+      } });
   }
   static forStoppedControlInventory(value: StoppedControlProfileInventory): RuntimeAdmission {
     const issued = requireStoppedControlProfileInventory(value);

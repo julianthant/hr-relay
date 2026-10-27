@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { KualiTimekeeperNameSchema } from "../ui/kuali-document-identity.js";
+import { DuoContinuityRowSchema, DuoEnrollmentScopeSchema } from "../config/duo-credential-store.js";
+import { CredentialEraseInputSchema } from "../config/credential-store.js";
 
 const NameSchema = z.string().min(1).max(64).refine((value) => value === value.trim(), "profile name may not be whitespace-padded");
 
@@ -12,10 +14,16 @@ export class ProfileNameValidationError extends Error {
 }
 
 export const ProfileIdSchema = z.uuid();
+export const ProfileOnboardingCompletionSchema = z.strictObject({
+  generation: z.number().int().safe().positive(), finishId: z.uuid(), finishedAt: IsoInstantSchema,
+  key: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), confirmation: z.enum(["operator", "exact-credential-request"]) }),
+  touch: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: IsoInstantSchema }),
+});
 
 export const ProfileRegistryRowSchema = z.strictObject({
   profileId: ProfileIdSchema,
-  registration: z.strictObject({ operationId: z.uuid(), commandId: z.uuid(), writeId: z.uuid(), credentialRevision: z.number().int().positive() }),
+  registration: z.strictObject({ operationId: z.uuid(), commandId: z.uuid(), writeId: z.uuid(), credentialRevision: z.number().int().positive(),
+    onboardingCompletion: ProfileOnboardingCompletionSchema.optional() }),
   firstName: NameSchema,
   lastName: NameSchema,
   initials: z.string().regex(/^[A-Z]{2}$/u),
@@ -124,6 +132,27 @@ export const CredentialInitializationSchema = z.discriminatedUnion("mode", [
   z.strictObject({ mode: z.literal("replace-v3"), keyId: z.uuid(), ...CredentialKeyPublicationFields, phase: z.enum(["admitted", "key-published", "document-published"]), source: CredentialInitializationSourceSchema.extend({ schemaVersion: z.literal(3) }) }),
 ]);
 
+export const SignUpDuoAttemptSchema = z.strictObject({
+  attemptId: z.uuid(), generation: z.number().int().safe().positive(), method: z.enum(["key", "touch"]),
+  expiresAt: IsoInstantSchema, state: z.enum(["pending", "complete", "unknown", "closed"]),
+  scope: DuoEnrollmentScopeSchema.optional(),
+  ceremony: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1),
+    mechanism: z.enum(["fast-duo", "native-platform"]), softwareInterceptionDisabled: z.boolean() }).optional(),
+  portal: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1),
+    acceptance: z.enum(["portal-accepted", "exact-credential-request"]) }).optional(),
+  operatorConfirmedAt: IsoInstantSchema.optional(),
+  providerClosedAt: IsoInstantSchema.optional(),
+});
+export const SignUpOnboardingSchema = z.strictObject({
+  accountId: z.uuid(),
+  generation: z.number().int().safe().positive(),
+  attempts: z.array(SignUpDuoAttemptSchema),
+  duo: DuoContinuityRowSchema,
+  finish: z.strictObject({ finishId: z.uuid(), finishedAt: IsoInstantSchema }).optional(),
+  abort: CredentialEraseInputSchema.optional(),
+});
+export type SignUpDuoAttempt = z.infer<typeof SignUpDuoAttemptSchema>;
+
 export const SignUpOperationSchema = z.strictObject({
   schemaVersion: z.literal(1),
   kind: z.literal("sign-up"),
@@ -138,6 +167,7 @@ export const SignUpOperationSchema = z.strictObject({
   commandFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
   expectedRevision: z.number().int().safe().positive().optional(),
   credentialInitialization: CredentialInitializationSchema.optional(),
+  onboarding: SignUpOnboardingSchema.optional(),
   phase: z.enum(["applying", "publishing"]),
 });
 
@@ -154,6 +184,20 @@ export const LogoutOperationSchema = z.strictObject({
 });
 
 export type SignUpOperation = z.infer<typeof SignUpOperationSchema>;
+
+export function assertFinishedProfileOnboarding(operation: SignUpOperation): void {
+  const draft = operation.onboarding;
+  if (draft === undefined || draft.duo.state !== "registered" || draft.finish === undefined || draft.abort !== undefined) throw new Error("profile-onboarding-incomplete");
+  for (const method of ["key", "touch"] as const) {
+    const attempt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
+    if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined
+      || attempt.ceremony === undefined || attempt.portal !== undefined && attempt.ceremony.credentialId !== attempt.portal.credentialId
+      || (method === "key" ? attempt.ceremony.mechanism !== "fast-duo" || attempt.operatorConfirmedAt === undefined && attempt.portal?.acceptance !== "exact-credential-request"
+        : attempt.portal === undefined || attempt.ceremony.mechanism !== "native-platform" || !attempt.ceremony.softwareInterceptionDisabled || attempt.operatorConfirmedAt === undefined)) {
+      throw new Error("profile-onboarding-incomplete");
+    }
+  }
+}
 export type LogoutOperation = z.infer<typeof LogoutOperationSchema>;
 export type ProfileOperation = SignUpOperation | LogoutOperation;
 

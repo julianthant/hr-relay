@@ -4,12 +4,12 @@ import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 import { DuoContinuityRowSchema, DuoCredentialDocumentSchema, DuoDocumentEnvelopeSchema, DuoEnrollmentScopeSchema, DuoStoredCredentialSchema,
   type DuoContinuityRow, type DuoCredentialDocument, type DuoEnrollmentScope } from "../../../models/config/duo-credential-store.js";
-import type { ProfileRegistryDocument } from "../../../models/profiles/profile.js";
+import type { ProfileRegistryDocument, SignUpOperation } from "../../../models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { duoCredentialPurposeBinding, issueDuoCredentialPurpose, openDuoCredentialDocument, sealDuoCredentialDocument,
+import { duoCredentialPurposeBinding, issueDuoCredentialPurpose, issueDraftDuoCredentialPurpose, openDuoCredentialDocument, sealDuoCredentialDocument,
   type DuoCredentialPurpose } from "./credential-store.js";
 import { ensureChildDirectory, fsyncPath, noSymlinkAncestry, readPrivateFile, writePrivateStage, type DirectoryIdentity } from "./credential-safe-file.js";
 
@@ -48,12 +48,16 @@ export function assertDuoPublishedFile(path: string, capture: DuoPublicationCapt
 }
 
 export function prepareIssuedDuoTransaction(transaction: IssuedDuoTransaction, machineRoot: string,
-  registry: ProfileRegistryDocument, prior: DuoContinuityRow): DuoPublicationCapture | undefined {
+  registry: ProfileRegistryDocument, prior: DuoContinuityRow, draft?: SignUpOperation): DuoPublicationCapture | undefined {
   const issued = transactions.get(transaction);
   if (issued === undefined || issued.used || issued.machineRoot !== machineRoot || prior.profileId !== transaction.profileId) throw new Error("duo-transaction-unissued");
-  const { binding, generation } = duoCredentialPurposeBinding(issued.purpose);
+  const { binding, generation, draftOperationId } = duoCredentialPurposeBinding(issued.purpose);
   const profile = registry.profiles.find(row => row.profileId === binding.profileId);
-  if (registry.sessionGeneration !== generation || profile?.lifecycle !== "ready" || profile.credentialState !== "saved") throw new Error("duo-profile-authority-changed");
+  if (draftOperationId !== undefined) {
+    if (draft?.operationId !== draftOperationId || draft.profileId !== binding.profileId || draft.phase !== "applying"
+      || draft.onboarding?.generation !== generation || profile !== undefined
+      || canonicalJsonStringify(draft.onboarding.duo) !== canonicalJsonStringify(prior)) throw new Error("duo-draft-authority-changed");
+  } else if (draft !== undefined || registry.sessionGeneration !== generation || profile?.lifecycle !== "ready" || profile.credentialState !== "saved") throw new Error("duo-profile-authority-changed");
   issued.used = true;
   const directory = join(machineRoot, "machine", "duo-credentials");
   if (!noSymlinkAncestry(directory, issued.ancestry) && prior.state !== "never-initialized") throw new Error("duo-document-required");
@@ -77,6 +81,11 @@ export function prepareIssuedDuoTransaction(transaction: IssuedDuoTransaction, m
   const capture = DuoPublicationCaptureSchema.parse({ publicationId, profileId: prior.profileId, prior, next });
   issued.capture = capture;
   return capture;
+}
+export function issuedDuoDraftOperation(transaction: IssuedDuoTransaction): string | undefined {
+  const issued = transactions.get(transaction);
+  if (issued === undefined) throw new Error("duo-transaction-unissued");
+  return duoCredentialPurposeBinding(issued.purpose).draftOperationId;
 }
 export function verifyIssuedDuoTransaction(transaction: IssuedDuoTransaction, capture: DuoPublicationCapture | undefined): void {
   const issued = transactions.get(transaction);
@@ -153,12 +162,19 @@ export function censusDuoPurposeCopies(machineRoot: string, profileRoot: string,
 }
 
 export function createDuoCredentialStore(profile: RuntimeAdmission, machine: RuntimeAdmission, clock: Clock = systemClock) {
-  const purpose = issueDuoCredentialPurpose(profile, machine), { binding } = duoCredentialPurposeBinding(purpose);
+  return createDuoStore(profile, machine, issueDuoCredentialPurpose(profile, machine), clock);
+}
+export function createDraftDuoCredentialStore(profile: RuntimeAdmission, machine: RuntimeAdmission, operationId: string, generation: number, clock: Clock = systemClock) {
+  return createDuoStore(profile, machine, issueDraftDuoCredentialPurpose(profile, machine, operationId, generation), clock);
+}
+function createDuoStore(profile: RuntimeAdmission, machine: RuntimeAdmission, purpose: DuoCredentialPurpose, clock: Clock) {
+  const { binding, draftOperationId } = duoCredentialPurposeBinding(purpose);
   const machineRoot = machine.stateRoot, ancestry = new Map<string, DirectoryIdentity>();
   noSymlinkAncestry(join(machineRoot, "machine", "duo-credentials"), ancestry);
   let uncertain: IssuedDuoTransaction | undefined;
   function transact<Result>(mutation: (document: DuoCredentialDocument | undefined) => Readonly<{ document?: DuoCredentialDocument; result: Result }>, phase: "settle" | "durable-intent" = "settle"): Result {
-    profile.assertProfileRuntime();
+    if (draftOperationId === undefined) profile.assertProfileRuntime();
+    else profile.assertProfileInitialization();
     const transaction = Object.freeze({ profileId: binding.profileId });
     let outcome: Readonly<{ result: Result }> | undefined;
     const issued = { purpose, machineRoot, mutation: (document: DuoCredentialDocument | undefined) => {
@@ -188,7 +204,13 @@ export function createDuoCredentialStore(profile: RuntimeAdmission, machine: Run
       return transact(document => ({ result: { state: document === undefined ? "never-initialized" : document.credentials.length === 0 ? "erased" : "registered",
         revision: document?.revision ?? 0, credentials: document?.credentials.map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })) ?? [] } }));
     },
-    enroll(input: { credentialId: string; scope: DuoEnrollmentScope; privateKeyPkcs8: string; publicKeySpki: string }): Readonly<{ credentialId: string; revision: number }> {
+    readForScope(scope: DuoEnrollmentScope): readonly PublicCredential[] {
+      const parsed = DuoEnrollmentScopeSchema.parse(scope);
+      return transact(document => ({ result: document?.credentials.filter(row => canonicalJsonStringify(row.scope) === canonicalJsonStringify(parsed))
+        .map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })) ?? [] }));
+    },
+    enroll(input: { credentialId: string; scope: DuoEnrollmentScope; privateKeyPkcs8: string; publicKeySpki: string;
+      authenticator?: { readonly userHandle?: string; readonly transport: "internal" | "usb"; readonly isResidentCredential: boolean } }): Readonly<{ credentialId: string; revision: number }> {
       const credential = DuoStoredCredentialSchema.parse({ ...input, state: "pending", createdAt: clock.now().toISOString(), highWater: 0 });
       assertScope(credential.scope);
       for (const value of [credential.privateKeyPkcs8, credential.publicKeySpki]) if (Buffer.from(value, "base64").toString("base64") !== value) throw new Error("duo-key-encoding-invalid");
@@ -213,6 +235,32 @@ export function createDuoCredentialStore(profile: RuntimeAdmission, machine: Run
         const updated = next(document);
         updated.credentials = updated.credentials.map(row => row.credentialId === credentialId ? { ...row, state: "ready", confirmedAt: clock.now().toISOString() } : row);
         return { document: updated, result: { revision: updated.revision } };
+      });
+    },
+    provision(credentialId: string, scope: DuoEnrollmentScope) {
+      assertScope(scope);
+      return transact(document => {
+        const credential = document?.credentials.find(row => row.credentialId === credentialId);
+        if (credential === undefined || credential.authenticator === undefined
+          || canonicalJsonStringify(credential.scope) !== canonicalJsonStringify(scope)) throw new Error("duo-provision-scope-mismatch");
+        return { result: { credentialId, privateKeyPkcs8: credential.privateKeyPkcs8, publicKeySpki: credential.publicKeySpki,
+          createdAt: credential.createdAt, highWater: credential.highWater, ...credential.authenticator } };
+      });
+    },
+    reserveForAttempt(credentialId: string, attemptId: string, scope: DuoEnrollmentScope): Readonly<{ count: number; revision: number }> {
+      z.uuid().parse(attemptId); assertScope(scope);
+      return transact(document => {
+        const credential = document?.credentials.find(row => row.credentialId === credentialId);
+        if (document === undefined || credential?.state !== "ready"
+          || canonicalJsonStringify(credential.scope) !== canonicalJsonStringify(scope)) throw new Error("duo-ready-credential-required");
+        const previous = document.reservations.find(row => row.attemptId === attemptId);
+        if (previous !== undefined) throw new Error("duo-attempt-reused");
+        const count = Math.max(credential.highWater + 1, Math.floor(clock.nowMs() / 1000));
+        if (!Number.isInteger(count) || count < 1 || count > 0xffff_ffff) throw new Error("duo-counter-exhausted");
+        const updated = next(document);
+        updated.credentials = updated.credentials.map(row => row.credentialId === credentialId ? { ...row, highWater: count } : row);
+        updated.reservations.push({ attemptId, credentialId, count, reservedAt: clock.now().toISOString() });
+        return { document: updated, result: { count, revision: updated.revision } };
       });
     },
     reserve(credentialId: string): Readonly<{ attemptId: string; count: number; revision: number }> {

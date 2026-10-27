@@ -9,7 +9,7 @@ import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases
 import { CredentialInitializationSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, LogoutOperationSchema, type LogoutOperation, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { linkSync, lstatSync, mkdirSync, readdirSync, renameSync, unlinkSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type {
@@ -165,11 +165,21 @@ function decryptCredentialDocument(input: unknown, key: CredentialKeyDocument, b
 export interface DuoCredentialPurpose { readonly profileId: string }
 
 const duoPurposes = new WeakMap<DuoCredentialPurpose, {
-  custody: ReturnType<RuntimeAdmission["captureDuoCredentialCustody"]>; keyPath: string; witness: CredentialKeyWitness; ancestry: Map<string, DirectoryIdentity>; documentPath: string; assertReadable(): void;
+  custody: ReturnType<RuntimeAdmission["captureDuoCredentialCustody"]> & { readonly draftOperationId?: string }; keyPath: string; witness: CredentialKeyWitness; ancestry: Map<string, DirectoryIdentity>; documentPath: string; assertReadable(): void;
 }>();
 
 export function issueDuoCredentialPurpose(profile: RuntimeAdmission, machine: RuntimeAdmission): DuoCredentialPurpose {
-  const custody = machine.captureDuoCredentialCustody(profile), binding = custody.binding;
+  return issueDuoPurpose(profile, machine, machine.captureDuoCredentialCustody(profile), () => profile.assertProfileRuntime());
+}
+
+export function issueDraftDuoCredentialPurpose(profile: RuntimeAdmission, machine: RuntimeAdmission, operationId: string, generation: number): DuoCredentialPurpose {
+  const custody = machine.captureDraftDuoCredentialCustody(profile, operationId, generation);
+  return issueDuoPurpose(profile, machine, custody, () => custody.assertHeld());
+}
+
+function issueDuoPurpose(profile: RuntimeAdmission, machine: RuntimeAdmission,
+  custody: ReturnType<RuntimeAdmission["captureDuoCredentialCustody"]> & { readonly draftOperationId?: string }, assertReadable: () => void): DuoCredentialPurpose {
+  const binding = custody.binding;
   const keyPath = join(machine.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`);
   const witness = captureKeyFile(keyPath, binding);
   machine.assertProfileCredentialKeyAnchor(profile, witness.keyId);
@@ -177,7 +187,7 @@ export function issueDuoCredentialPurpose(profile: RuntimeAdmission, machine: Ru
   if (!noSymlinkAncestry(dirname(keyPath), ancestry)) throw new Error("credential-key-required");
   duoPurposes.set(purpose, { custody, keyPath, witness, ancestry,
     documentPath: join(machine.stateRoot, 'machine', 'duo-credentials', `${binding.profileId}.json`),
-    assertReadable: () => profile.assertProfileRuntime() });
+    assertReadable });
   return purpose;
 }
 
@@ -195,9 +205,10 @@ function duoPurposeKey(purpose: DuoCredentialPurpose) {
   return { ...issued, key };
 }
 
-export function duoCredentialPurposeBinding(purpose: DuoCredentialPurpose): Readonly<{ binding: ProfileDatabaseBinding; generation: number }> {
+export function duoCredentialPurposeBinding(purpose: DuoCredentialPurpose): Readonly<{ binding: ProfileDatabaseBinding; generation: number; draftOperationId?: string }> {
   const issued = duoPurposeKey(purpose);
-  return { binding: issued.custody.binding, generation: issued.custody.generation };
+  return { binding: issued.custody.binding, generation: issued.custody.generation,
+    ...(issued.custody.draftOperationId === undefined ? {} : { draftOperationId: issued.custody.draftOperationId }) };
 }
 
 function duoAad(metadata: Omit<z.infer<typeof DuoDocumentEnvelopeSchema>, "tag" | "ciphertext">): Buffer {
@@ -887,8 +898,46 @@ function assertInitializationInventoryProof(proof: CredentialInitializationInven
 }
 
 export interface CommittedCredentialWitness { readonly revision: number; }
+export const UnpublishedDraftAbortCaptureSchema = z.strictObject({
+  operation: SignUpOperationSchema, key: CredentialKeyWitnessSchema, head: CredentialErasureHeadSchema,
+  protectedFile: ErasureFileEvidenceSchema,
+  membership: z.array(z.strictObject({ path: z.string(), directory: z.boolean(), device: z.number(), inode: z.number(), size: z.number(),
+    mode: z.number(), modified: z.number(), changed: z.number() })),
+});
+export interface UnpublishedDraftAbortWitness { readonly operationId: string; }
+const unpublishedDraftAborts = new WeakMap<UnpublishedDraftAbortWitness, {
+  machine: RuntimeAdmission; admission: RuntimeAdmission; capture: z.infer<typeof UnpublishedDraftAbortCaptureSchema>;
+}>();
+export function unpublishedDraftAbortMembership(root: string) {
+  const entries: z.infer<typeof UnpublishedDraftAbortCaptureSchema>["membership"] = [];
+  const visit = (path: string): void => {
+    const info = lstatSync(path);
+    if (info.isSymbolicLink() || !info.isFile() && !info.isDirectory() || info.isFile() && info.nlink !== 1
+      || process.getuid !== undefined && info.uid !== process.getuid() || (info.mode & 0o022) !== 0) throw new Error("profile-draft-abort-membership-unsafe");
+    entries.push({ path: relative(root, path), directory: info.isDirectory(), device: info.dev, inode: info.ino, size: info.size,
+      mode: info.mode, modified: info.mtimeMs, changed: info.ctimeMs });
+    if (info.isDirectory()) for (const name of readdirSync(path).sort()) visit(join(path, name));
+  };
+  visit(root); return entries;
+}
+export function prepareUnpublishedDraftAbort(store: CredentialStore, operation: SignUpOperation): UnpublishedDraftAbortWitness {
+  const owner = committedStores.get(store);
+  if (owner === undefined) throw new Error("profile-draft-abort-store-unissued");
+  return owner.prepareDraftAbort(operation);
+}
+export function verifyUnpublishedDraftAbort(witness: UnpublishedDraftAbortWitness, machineRoot: string) {
+  const issued = unpublishedDraftAborts.get(witness);
+  if (issued === undefined || issued.machine.stateRoot !== machineRoot) throw new Error("profile-draft-abort-unissued");
+  issued.admission.assertReleasedProfileInitialization(issued.machine);
+  const { capture } = issued, root = join(machineRoot, "profiles", capture.operation.profileId);
+  assertCredentialKeyWitness(join(machineRoot, "machine", "credential-keys", `${capture.operation.profileId}.json`), capture.key, capture.key.binding);
+  assertCredentialErasureHeadFiles(join(machineRoot, "machine", "erasures", `${capture.operation.profileId}.json`), capture.head);
+  if (canonicalJsonStringify(unpublishedDraftAbortMembership(root)) !== canonicalJsonStringify(capture.membership)) throw new Error("profile-draft-abort-membership-changed");
+  return capture;
+}
 const committedStores = new WeakMap<CredentialStore, { readonly pendingLogoutInventory: (operation: LogoutOperation) => Readonly<{ assessment: CredentialInventory; revalidate(): void; dispose(): void }>; readonly admission: RuntimeAdmission; readonly stateRoot: string;
-  readonly presence: () => readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[]; readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly keyPath: string; readonly containsKey: (value: unknown) => boolean; readonly inspectCopy: (path: string, capturedSecrets: readonly string[]) => Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> ; readonly migrationSource: () => CredentialMigrationSource; readonly readForErasure: (operationId: string) => ProtectedStoreRecord; readonly captureErasureHead: () => VerifiedCredentialErasureHead }>();
+  readonly presence: () => readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[]; readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly keyPath: string; readonly containsKey: (value: unknown) => boolean; readonly inspectCopy: (path: string, capturedSecrets: readonly string[]) => Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> ; readonly migrationSource: () => CredentialMigrationSource; readonly readForErasure: (operationId: string) => ProtectedStoreRecord; readonly captureErasureHead: () => VerifiedCredentialErasureHead;
+  readonly prepareDraftAbort: (operation: SignUpOperation) => UnpublishedDraftAbortWitness }>();
 
 export function observeCredentialPresence(store: CredentialStore, admission: RuntimeAdmission): readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[] {
   assertCredentialStoreOwner(store, admission);
@@ -2305,6 +2354,47 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     if (!Number.isSafeInteger(legacy.record.revision + 1)) throw new Error("credential-migration-revision-invalid");
     return { state: "legacy", schemaVersion: legacy.schemaVersion, revision: legacy.record.revision,
       device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") };
+  }, prepareDraftAbort: input => {
+    const operation = journalAdmission.assertProfileCredentialInitialization(admission, SignUpOperationSchema.parse(input));
+    const draft = operation.onboarding;
+    if (operation.credentialInitialization?.mode !== "initial" || draft?.abort === undefined || draft.finish !== undefined
+      || draft.duo.state !== "never-initialized" || draft.attempts.some(attempt => attempt.scope !== undefined || attempt.ceremony !== undefined
+        || attempt.portal !== undefined || attempt.state === "unknown" || attempt.providerClosedAt === undefined)) throw new Error("profile-draft-abort-custody-unproved");
+    const before = observeCurrent();
+    if (before.document.latestRequest?.kind !== "apply" || before.document.latestRequest.request.commandId !== operation.commandId
+      || before.document.latestRequest.request.writeId !== operation.writeId) throw new Error("profile-draft-abort-source-required");
+    const capturedSecrets = Object.values(before.document.record.entries).flatMap(entry => credentialValueStrings(entry.value));
+    const proveCopies = (writer: CredentialLockRecord) => {
+      const inventory = options.initializationInventory?.(operation, writer, { capturedSecrets, capturedSecretsComplete: true,
+        containsKey, keyScanOverlap: 4095, inspectEncrypted: path => {
+          const copy = readPrivateDocument(path);
+          if (copy === undefined) throw new Error("credential-copy-required");
+          const inspected = inspectAuthenticatedCredentialPayload(copy.document, capturedSecrets);
+          return { ...inspected, containsCaptured: inspected.containsCaptured || containsKey(copy.document) };
+        } });
+      if (inventory === undefined) throw new Error("credential-initialization-inventory-required");
+      inventory.revalidateBeforeKeyIntent(); inventory.revalidate(operation); inventory.revalidateBeforeKeyIntent();
+    };
+    withLock(writer => { proveCopies(writer); return { committed: false, result: undefined }; });
+    const outcome = store.erase(draft.abort);
+    if (outcome.state !== "applied") throw new Error("profile-draft-abort-erasure-unproved");
+    withLock(writer => {
+      const current = readCurrentUnderLock();
+      if (SECRET_NAMES.some(name => current.document.record.entries[name] !== undefined)
+        || current.document.latestRequest?.kind !== "erase" || !privateEqual(current.document.latestRequest.request, draft.abort)) throw new Error("profile-draft-abort-erasure-unproved");
+      proveCopies(writer);
+      return { committed: false, result: undefined };
+    });
+    const head = captureCredentialErasureHead(store), key = captureKeyFile(keyPath, binding);
+    const file = readPrivateFile(protectedPath, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
+    if (file === undefined) throw new Error("profile-draft-abort-erasure-unproved");
+    const capture = UnpublishedDraftAbortCaptureSchema.parse({ operation, key,
+      head: verifyCredentialErasureHead(head, stateRoot, journalPath, binding),
+      protectedFile: { device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") },
+      membership: unpublishedDraftAbortMembership(stateRoot) });
+    const witness = Object.freeze({ operationId: operation.operationId });
+    unpublishedDraftAborts.set(witness, { machine: journalAdmission, admission, capture });
+    return witness;
   }, captureErasureHead: () => {
     admission.assertCredentialRead();
     const before = observeCurrent();

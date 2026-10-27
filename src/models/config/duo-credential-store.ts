@@ -18,6 +18,7 @@ const CredentialFields = {
   credentialId: CredentialIdSchema, scope: DuoEnrollmentScopeSchema,
   privateKeyPkcs8: Base64Schema, publicKeySpki: Base64Schema,
   createdAt: TimestampSchema, highWater: CountSchema,
+  authenticator: z.strictObject({ userHandle: z.string().optional(), transport: z.enum(["internal", "usb"]), isResidentCredential: z.boolean() }).optional(),
 };
 export const DuoStoredCredentialSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("pending"), ...CredentialFields }),
