@@ -1,3 +1,4 @@
+import { authoritySourceDatabaseIdentity } from "../sqlite/database-identity.js";
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -5,7 +6,7 @@ import { z } from "zod";
 import { acquireInstallation, inspectFlatOfflineRunMaintenance, type InstallationLease } from "../admission/installation.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { acquireRuntimeRestoreAdmission, assertWorkerProcessRecoveryRuntimeStopped, observeProcessIdentity,
-  observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity, readProcessCustodyFile, processCustodyDigest,
+  observeRuntimeLockSnapshot, readProcessCustodyFile, processCustodyDigest,
   WorkerProcessLockFileSchema, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 import { readPrivateFile } from "../configuration/credential-safe-file.js";
 import { proveProfileRootsUnused } from "./process-closure.js";

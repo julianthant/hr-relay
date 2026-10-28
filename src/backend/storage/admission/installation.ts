@@ -1,3 +1,4 @@
+import { authoritySourceDatabaseIdentity } from "../sqlite/database-identity.js";
 import { credentialKeyCustody, CredentialKeyCustodyError, type CredentialKeyMigrationAdmission } from "../configuration/credential-key-custody.js";
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { retainedStorageBackup, SourceRecordSchema, StorageBackupSchema, inventory as backupFileInventory, file as backupFile } from "../maintenance/existing-data-backup-files.js";
@@ -15,7 +16,7 @@ import {
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { observeRuntimeLockSnapshot, inspectStoppedDeviceRecertificationCustody, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, readProcessCustodyFile, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle, authoritySourceDatabaseIdentity, RUNTIME_PROCESS_LOCK_NAMES, runtimeProcessLockIsActive, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
+import { observeRuntimeLockSnapshot, inspectStoppedDeviceRecertificationCustody, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, readProcessCustodyFile, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle, RUNTIME_PROCESS_LOCK_NAMES, runtimeProcessLockIsActive, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
 import { NonNegativeIntSchema } from "../../../rules/identity/ids.js";

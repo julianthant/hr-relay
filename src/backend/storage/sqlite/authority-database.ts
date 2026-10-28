@@ -1,3 +1,4 @@
+import { authoritySourceDatabaseIdentity } from "./database-identity.js";
 import { RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import { CanonicalCrashRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema } from "./run-store-contracts.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
@@ -11,7 +12,7 @@ import { terminalDelegationDependencyRecord } from "../../../models/run/result.j
 import { delegationJoinDisposition } from "../../../rules/workflow/dependencies.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
-import { type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
+import { type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "./runtime-process-locks.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { authenticateParkedWriteRecheck, authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
