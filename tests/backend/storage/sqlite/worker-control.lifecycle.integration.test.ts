@@ -10,8 +10,8 @@ import { seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fi
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { CONFIG_SNAPSHOT, ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { dirname, join } from "node:path";
-import { realpathSync } from "node:fs";
+
+
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -32,7 +32,6 @@ import { admitWorkerReset, admitWorkerLifecycle } from "../../../../src/backend/
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
-import { boundFixtureProcessLock } from "../../../support/helpers/synthetic-database-admission.js";
 
 const world = createWorkerDirectiveTestWorld();
 afterEach(world.cleanup);
@@ -89,9 +88,7 @@ async function owned(h: Awaited<ReturnType<typeof fixture>>, workerId: string, e
       const command = h.database.authority.workerControls.lifecycleForWorker(workerId);
       const request = { workerId, workflow: member.workflowId, commandId: command?.commandId,
         browserSystems: command?.lifecycle?.operation.kind === "retry" ? command.lifecycle.operation.systems : ["ucpath", "crm"], processId: child.pid, requestedBy: "local-operator" as const, now: h.authority.clock.now().toISOString() };
-      const started = executeInProcess
-        ? h.database.startOwnedWorker(request, boundFixtureProcessLock(h.database, h.authority.path, workerId))
-        : h.database.authority.workerLeases.start(request);
+      const started = h.database.authority.workerLeases.start(request);
       if (started.state !== "started") throw new Error("controlled child birth refused");
       return child;
     },
@@ -368,11 +365,11 @@ describe("exact lifecycle reservation", () => {
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, h.authority.path, 2);
     fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     const slot = database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-      commandId: randomUUID(), workflow: WRITE_INTENT_ATTEMPTING.workflowId, poolIndex: 1,
-      expectedPoolVersion: repositories.workerPools.get(WRITE_INTENT_ATTEMPTING.workflowId)?.version ?? 0,
-      processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: realpathSync(h.authority.path),
-      processLockRoot: join(dirname(realpathSync(h.authority.path)), "locks"), now: h.authority.clock.now().toISOString(),
-    }, randomUUID()));
+    commandId: randomUUID(), workflow: WRITE_INTENT_ATTEMPTING.workflowId, poolIndex: 1,
+    expectedPoolVersion: repositories.workerPools.get(WRITE_INTENT_ATTEMPTING.workflowId)?.version ?? 0,
+    processId: process.pid,
+    now: h.authority.clock.now().toISOString()
+}, randomUUID()));
     const run = database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId), before = database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId);
     if (run === undefined) throw new Error("missing write owner");
     const claim = runClaim(run); if (claim === undefined) throw new Error("missing current claim");

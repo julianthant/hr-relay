@@ -66,18 +66,19 @@ const bound = bindWorkerProcessAdmission({
   open: () => AuthorityDatabase.open(admission, { path: dbPath, busyTimeoutMs: 5_000,
     migrationOwner: "worker-stub-cli" }, systemClock, undefined, undefined, undefined, credentials),
   close: database => database.close(),
-  admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
+  admit: (database) => database.withAuthorityTransaction(repositories => {
     const now = systemClock.now().toISOString();
-    if (launch !== undefined) return admitSupervisedWorker(repositories, { ...launch, now });
+    if (launch !== undefined)
+        return admitSupervisedWorker(repositories, { ...launch, now });
     return admitDirectWorker(repositories, { commandId: randomUUID(), workflow: workflowId, poolIndex,
-      expectedPoolVersion: repositories.workerPools.get(workflowId)?.version ?? 0,
-      processId: process.pid, processAcquisitionId: acquisitionId, authorityPath: dbPath,
-      processLockRoot: lockRoot, now }, randomUUID()).workerId;
-  }),
+        expectedPoolVersion: repositories.workerPools.get(workflowId)?.version ?? 0,
+        processId: process.pid,
+        now }, randomUUID()).workerId;
+}),
 });
 const { value: database, workerId, processLock: lock } = bound;
 
-const started = database.startOwnedWorker({
+const started = database.authority.workerLeases.start({
   workerId,
   workflow: workflowId,
   // This supervision-only stub loads no workflow descriptor and opens no browser.
@@ -85,7 +86,7 @@ const started = database.startOwnedWorker({
   processId: process.pid,
   requestedBy: "local-operator",
   now: systemClock.now().toISOString(),
-}, lock);
+});
 if (started.state !== "started") {
   throw new Error(`worker-stub-cli ${workerId} could not start its lease: ${JSON.stringify(started)}`);
 }

@@ -2,15 +2,15 @@ import type { RunRecord } from "../../../../src/models/run/record.js";
 import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { writeFenceFixtureInput } from "../write-fence-fixture.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+
 import { z } from "zod";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bindWorkerProcessAdmission, type RuntimeProcessLockHandle } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
+
+
 import type { createRunRecordServiceTestWorld } from "./run-record-service-world.js";
 
 const ownerLines = new WeakMap<ChildProcess, () => Promise<string>>();
@@ -50,12 +50,8 @@ async function stop(child: ChildProcess) {
   child.kill("SIGTERM");
   await exited;
 }
-export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof createRunRecordServiceTestWorld>, options?: { fenceInOwner?: boolean; installationLocks?: boolean }) {
-  const h = await world.fixture(), children: ChildProcess[] = [], handles: RuntimeProcessLockHandle[] = [];
-  const installation = h.machine.readInstallationContext();
-  if (options?.installationLocks === true && installation === undefined) throw new Error("fixture-installation-missing");
-  const processLockRoot = options?.installationLocks === true && installation !== undefined
-    ? join(installation.workspace, rebuildRuntimeIsolation.processLockRoot) : join(h.root, "locks");
+export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof createRunRecordServiceTestWorld>, options?: { fenceInOwner?: boolean }) {
+  const h = await world.fixture(), children: ChildProcess[] = [];
   const slot = h.database.authority.workerSlots.list()[0];
   if (slot === undefined) throw new Error("missing member");
   const lease = h.database.authority.workerLeases.get(slot.workerId);
@@ -72,14 +68,11 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
     await once(child, "spawn");
     if (options?.fenceInOwner === true) await readOwnerLine(child);
     if (child.pid === undefined) throw new Error("missing actual child pid");
-    const bound = bindWorkerProcessAdmission({ processLockRoot, authorityPath, workerId: slot.workerId,
-      pid: child.pid, clock: h.clock, open: () => h.database, admit: () => WorkerIdSchema.parse(slot.workerId), close: () => undefined });
-    handles.push(bound.processLock);
-    return { child, pid: child.pid, handle: bound.processLock };
+    return { child, pid: child.pid };
   };
   const old = await owner();
-  const started = h.database.startOwnedWorker({ workerId: slot.workerId, workflow: slot.workflow,
-    browserSystems: ["ucpath", "crm"], processId: old.pid, requestedBy: "local-operator", now }, old.handle);
+  const started = h.database.authority.workerLeases.start({ workerId: slot.workerId, workflow: slot.workflow,
+    browserSystems: ["ucpath", "crm"], processId: old.pid, requestedBy: "local-operator", now });
   if (started.state !== "started") throw new Error("old birth failed");
   const observe = (state: "idle" | "paused" | "starting" | "waiting" | "busy") => {
     const common = { startedAt: started.lease.lifecycle.startedAt, heartbeatAt: now };
@@ -98,7 +91,6 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
       leaseGeneration: current.leaseGeneration, now, lifecycle: state === "stopped" ? { state, startedAt: current.lifecycle.startedAt,
         stoppedAt: now, reason } : { state, startedAt: current.lifecycle.startedAt, heartbeatAt: now } });
     await stop(old.child);
-    old.handle.release();
   };
   return { ...h, slot, old, started: started.lease, now, owner, observe, shutdown,
     fence: async (input: unknown) => {
@@ -114,7 +106,7 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
       if (parsed.state === "refused") throw new Error(`fixture fence refused: ${parsed.refusal?.reason ?? "unknown"}`);
       return parsed;
     },
-    dispose: async () => { for (const child of children) await stop(child); for (const handle of handles) handle.release(); } };
+    dispose: async () => { for (const child of children) await stop(child); } };
 }
 
 

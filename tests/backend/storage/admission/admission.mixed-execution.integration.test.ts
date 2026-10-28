@@ -31,10 +31,9 @@ it("browser launch forwards retained display and mode through a headless custody
   const next = f.create();
   const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
   const held = bindWorkerProcessAdmission({ processLockRoot: join(f.root, "locks"), authorityPath: f.path, pid: process.pid, clock: f.clock,
-    open: () => f.database, close: () => {}, admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories =>
-      admitDirectWorker(repositories, { commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
-        expectedPoolVersion: repositories.workerPools.get(personLookupDescriptor.id)?.version ?? 0, processId: process.pid,
-        processAcquisitionId: acquisitionId, authorityPath: f.path, processLockRoot: join(f.root, "locks"), now: f.clock.now().toISOString() }, randomUUID()).workerId) });
+    open: () => f.database, close: () => {}, admit: (database) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, { commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
+    expectedPoolVersion: repositories.workerPools.get(personLookupDescriptor.id)?.version ?? 0, processId: process.pid,
+    now: f.clock.now().toISOString() }, randomUUID()).workerId) });
   cleanups.push(() => held.processLock.release());
   assert.ok(held.processLock.acquisitionId);
   const acquisitionId = held.processLock.acquisitionId;

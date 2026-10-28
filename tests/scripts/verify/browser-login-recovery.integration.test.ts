@@ -1,280 +1,172 @@
 import { DatabaseSync } from "node:sqlite";
-import { WorkerControlRecordSchema } from "../../../src/models/run/worker-control.js";
+import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { runRecordColumns } from "../../../src/backend/storage/sqlite/run-record-row.js";
+import { attemptingOwnedWrite } from "../../support/helpers/backend/worker-lifetime-world.js";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { credentialKeychainTestEnvironment } from "../../support/helpers/credential-keychain-fake.js";
+import { stopSyntheticDatabaseWorkers } from "../../support/helpers/synthetic-database-admission.js";
+import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import * as childProcess from "node:child_process";
-import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { proveSmokeProfileUnused, recoverOwnedSmokeSlot, SmokeSlotRecoveryRefusedError } from "../../../scripts/verify/browser-login-recovery.js";
-import { recordSmokeSlot, retireOwnedSmokeSlots, SmokeSlotOwnershipUnavailableError } from "../../../scripts/verify/browser-login.js";
-import * as processLocks from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { admitWorkerVerification } from "../../../src/backend/storage/sqlite/worker-slots.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
-import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
-import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
-import { sha256Hex } from "../../../src/rules/validation/sha256.js";
-import { manualClock } from "../../../src/rules/time/clock.js";
-import { WorkerVerificationRecoveryProofSchema, WorkerVerificationClaimSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
+import { afterEach, it } from "vitest";
+import { createRunRecordServiceTestWorld } from "../../support/helpers/backend/run-record-service-world.js";
+import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
+import { reconcileStartupCrash } from "../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 
-vi.mock("node:child_process", async importOriginal => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
-  return { ...actual, spawnSync: vi.fn(actual.spawnSync) };
-});
+const world = createRunRecordServiceTestWorld();
+afterEach(() => world.cleanup());
 
-const nativeChildProcess = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-beforeEach(() => { vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync); });
-const fixtures: (() => void)[] = [];
-afterEach(() => { vi.restoreAllMocks(); for (const cleanup of fixtures.splice(0)) cleanup(); });
-const credentialKey = FingerprintSchema.parse("ab".repeat(32));
-
-function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "relay-recovery-"));
-  const clock = manualClock(new Date("2026-10-16T10:00:00.000Z"));
-  const database = AuthorityDatabase.open({ path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "recovery-test" }, clock);
-  const processLockRoot = join(root, "locks");
-  const original = processLocks.acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
-  database.authority.workerPools.plan({ workflow: "person-lookup", expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: clock.now().toISOString() });
-  const peer = database.authority.workerSlots.allocate({ workflow: "person-lookup", poolIndex: 1, commandId: null, now: clock.now().toISOString() });
-  const slot = database.withAuthorityTransaction(repositories => admitWorkerVerification(repositories, {
-    commandId: randomUUID(), workflow: "person-lookup", expectedPoolVersion: repositories.workerPools.get("person-lookup")?.version,
-    processLockRoot, stateRoot: root, owner: processLocks.readRuntimeProcessLock(processLockRoot, "live-smoke"), now: clock.now().toISOString(),
-  }, randomUUID()));
-  const profileRunId = z.uuid().parse(original.acquisitionId);
-  recordSmokeSlot({ database, processLockRoot, slot, profileRunId, system: "ucpath", credentialKey });
-  const acquisitionId = z.uuid().parse(original.acquisitionId);
-  const claimRoot = join(processLockRoot, "live-smoke-slots");
-  const claimName = `${original.acquisitionId}.slot.json`;
-  const claimPath = join(claimRoot, "live-smoke-claims", claimName);
-  const claim = WorkerVerificationClaimSchema.parse(JSON.parse(processLocks.readLiveSmokeRuntimeFile(claimRoot, claimName).text));
-  const profile = join(root, "scratch", "live-smoke", profileRunId, "browsers", `w${slot.ordinal}`, "ucpath");
-  const neighbor = join(root, "scratch", "live-smoke", profileRunId, "browsers", `w${slot.ordinal}`, "crm");
-  mkdirSync(profile, { recursive: true, mode: 0o700 });
-  mkdirSync(neighbor, { mode: 0o700 });
-  writeFileSync(join(neighbor, "retain"), "peer");
-  const lease = database.authority.duoCeremonyLeases.acquire({ credentialKey, workerId: slot.workerId, system: "ucpath", now: clock.now().toISOString(), ttlMs: 60000 });
-  if (lease.state !== "acquired") throw new Error("fixture lease unavailable");
-  database.authority.duoCeremonyLeases.release({ token: lease.token, now: clock.now().toISOString() });
-  original.release();
-  const recovery = processLocks.acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
-  const actual = processLocks.observeProcessIdentity(process.pid);
-  const processSpy = vi.spyOn(processLocks, "observeProcessIdentity");
-  const absentOwner = () => processSpy.mockReset().mockReturnValueOnce(actual).mockReturnValueOnce({ state: "gone" }).mockReturnValueOnce({ state: "gone" }).mockReturnValue(actual);
-  const realSpawn = nativeChildProcess.spawnSync;
-  const query = vi.spyOn(childProcess, "spawnSync").mockImplementation((...args: Parameters<typeof childProcess.spawnSync>) => {
-    if (args[0] === "/bin/ps" && Array.isArray(args[1]) && args[1][0] === "-axo") return { pid: 0, output: [null, `${process.pid} node\n`, ""], stdout: `${process.pid} node\n`, stderr: "", status: 0, signal: null };
-    if (args[0] === "/usr/sbin/lsof") {
-      const exists = Array.isArray(args[1]) && args[1].includes("+D");
-      return { pid: 0, output: [null, "", ""], stdout: exists ? "" : `p${process.pid}\nn/usr/fixture\n`, stderr: "", status: exists ? 1 : 0, signal: null };
-    }
-    return realSpawn(...args);
-  });
-  const recover = () => { absentOwner(); return recoverOwnedSmokeSlot({ database, processLockRoot, stateRoot: root, acquisitionId, clock }); };
-  fixtures.push(() => { recovery.release(); database.close(); rmSync(root, { recursive: true, force: true }); });
-  return { root, database, clock, processLockRoot, original, recovery, acquisitionId, slot: claim.slot, peer, profile, neighbor, claimPath, claim, claimRoot, recover, processSpy, actual, absentOwner, query };
+async function fixture() {
+  const f = await world.fixture(), lock = await runtimeLifetimeLock(), now = f.clock.now().toISOString();
+  stopSyntheticDatabaseWorkers({ database: f.database, path: join(f.root, "state.db") });
+  const profileRunId = randomUUID(), credentialKey = "ab".repeat(32);
+  const slot = f.database.admitVerificationWorker({ ...f.admission.profileBinding, lockPort: lock.port,
+    commandId: randomUUID(), workflow: "person-lookup", expectedPoolVersion: f.database.authority.workerPools.get("person-lookup")?.version ?? 0, profileRunId,
+    system: "ucpath", credentialKey, leaseGeneration: 1, now }, lock);
+  const hold = f.database.authority.workerSlots.verification(slot.workerId);
+  assert.ok(hold);
+  const request = { ...f.admission.profileBinding, commandId: randomUUID(), grantCommandId: hold.command.commandId,
+    workerId: slot.workerId, expectedRevision: slot.membershipRevision,
+    expectedPoolVersion: f.database.authority.workerPools.get(slot.workflow)?.version, now, cleanup: "interrupted" };
+  const reconcile = () => reconcileStartupCrash({ ...f, lifecycle: f.service, lock });
+  return { ...f, lock, slot, hold, request, reconcile, credentialKey, profileRunId, now };
 }
 
-describe("targeted missing closure proof recovery", () => {
-  it("retires exactly its native reservation, leaves peer and historical residue, and never creates closed proof", () => {
-    const f = fixture();
-    const unrelated = join(f.claimRoot, "live-smoke-claims", "old-process-only.txt");
-    writeFileSync(unrelated, "retain");
-    f.recover();
-    const raw = new DatabaseSync(join(f.root, "authority.sqlite"));
-    try {
-      expect(raw.prepare("SELECT count(*) AS count FROM write_intents").get()).toEqual({ count: 0 });
-      expect(raw.prepare("SELECT count(*) AS count FROM write_attempts").get()).toEqual({ count: 0 });
-    } finally { raw.close(); }
-    expect(f.database.authority.workerSlots.get(f.slot.workerId)?.retiredAt).toBe(f.clock.now().toISOString());
-    expect(f.database.authority.workerSlots.get(f.peer.workerId)).toEqual(f.peer);
-    expect(f.database.authority.workerPools.get("person-lookup")?.desiredWorkers).toBe(1);
-    expect(f.database.authority.workerSlots.verification(f.slot.workerId)).toBeUndefined();
-    expect(f.database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("released");
-    expect(existsSync(f.profile)).toBe(false);
-    expect(readFileSync(join(f.neighbor, "retain"), "utf8")).toBe("peer");
-    expect(readFileSync(unrelated, "utf8")).toBe("retain");
-    expect(readdirSync(join(f.claimRoot, "live-smoke-claims"))).toEqual(["old-process-only.txt"]);
-    expect(() => retireOwnedSmokeSlots({ database: f.database, processLockRoot: f.processLockRoot, stateRoot: f.root })).toThrow(SmokeSlotOwnershipUnavailableError);
-    expect(f.database.authority.lifecycleJournal.getCommand(String(f.database.authority.workerSlots.get(f.slot.workerId)?.retirementCommandId))).toMatchObject({ request: { cleanup: { evidence: "recovered", recoveryAcquisitionId: f.recovery.acquisitionId } } });
-  });
-
-  it("refuses a retargeted profile claim while the original profile has an open file", () => {
-    const f = fixture();
-    const fd = openSync(join(f.profile, "open"), "w");
-    try {
-      f.query.mockImplementation(nativeChildProcess.spawnSync);
-      expect(() => proveSmokeProfileUnused(f.profile)).toThrow(SmokeSlotRecoveryRefusedError);
-      writeFileSync(f.claimPath, JSON.stringify({ ...f.claim, profileRunId: randomUUID() }));
-      expect(f.recover).toThrow(SmokeSlotRecoveryRefusedError);
-      expect(existsSync(f.profile)).toBe(true);
-      expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
-    } finally { closeSync(fd); }
-  });
-
-  it("native retirement refuses a retargeted claim and matching proof while the original profile is open", () => {
-    const f = fixture();
-    const transact = f.database.withAuthorityTransaction.bind(f.database);
-    let fd: number | undefined;
-    vi.spyOn(f.database, "withAuthorityTransaction").mockImplementationOnce(work => {
-      mkdirSync(f.profile, { recursive: true, mode: 0o700 });
-      fd = openSync(join(f.profile, "open"), "w");
-      const claim = { ...f.claim, profileRunId: randomUUID() };
-      const name = `${f.acquisitionId}-${f.recovery.acquisitionId}.recovered.json`;
-      const proof = WorkerVerificationRecoveryProofSchema.parse(JSON.parse(processLocks.readLiveSmokeRuntimeFile(f.claimRoot, name).text));
-      writeFileSync(f.claimPath, JSON.stringify(claim));
-      writeFileSync(join(f.claimRoot, "live-smoke-claims", name), JSON.stringify({ ...proof,
-        claimFingerprint: sha256Hex(canonicalJsonStringify(claim)),
-        profileDirectory: join(f.root, "scratch", "live-smoke", claim.profileRunId, "browsers", `w${f.slot.ordinal}`, "ucpath") }));
-      return transact(work);
-    });
-    try {
-      let failure: unknown;
-      try { f.recover(); } catch (error) { failure = error; }
-      expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
-      expect(failure).toMatchObject({ message: "worker-verification-cleanup-unproved" });
-      expect(existsSync(f.profile)).toBe(true);
-    } finally { if (fd !== undefined) closeSync(fd); }
-  });
-
-  it("refuses an unresolved native control before profile deletion", () => {
-    const f = fixture();
-    const commandId = randomUUID();
-    const pending = WorkerControlRecordSchema.parse({ commandId, request: { commandId, family: "worker-browser",
-      type: "spawn-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(),
-      target: { workflowId: f.slot.workflow, expectedVersion: f.database.authority.workerPools.get(f.slot.workflow)?.version },
-      payload: { workerId: f.slot.workerId } }, scope: `worker-pool:${f.slot.workflow}`, executorId: randomUUID(),
-      admittedAt: f.clock.now().toISOString(), expiresAt: "2026-10-16T10:03:00.000Z",
-      basisVersion: f.database.authority.workerPools.get(f.slot.workflow)?.version, phase: { state: "admitted" } });
-    f.database.authority.commands.insert(pending.request);
-    const raw = new DatabaseSync(join(f.root, "authority.sqlite"));
-    try { raw.prepare("INSERT INTO worker_controls(command_id,scope,worker_id,phase,audited_at,payload_json,created_at) VALUES(?,?,?,'admitted',NULL,?,?)")
-      .run(commandId, pending.scope, f.slot.workerId, JSON.stringify(pending), f.clock.now().toISOString()); }
-    finally { raw.close(); }
-    expect(f.recover).toThrow(SmokeSlotRecoveryRefusedError);
-    expect(existsSync(f.profile)).toBe(true);
-    expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
-  });
-
-  it.each(["alive", "unknown"] as const)("refuses a %s original owner before probing or removing profiles", state => {
-    const f = fixture();
-    if (state === "alive") f.processSpy.mockReset().mockReturnValue(f.actual);
-    else f.processSpy.mockReset().mockImplementation(() => { throw new Error("fixture identity query failed"); });
-    expect(() => recoverOwnedSmokeSlot({ database: f.database, processLockRoot: f.processLockRoot, stateRoot: f.root, acquisitionId: f.acquisitionId, clock: f.clock })).toThrow(SmokeSlotRecoveryRefusedError);
-    expect(existsSync(f.profile)).toBe(true);
-    expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
-  });
-
-  it.each(["slot", "root", "system", "profileRunId"])("refuses mismatched %s binding", field => {
-    const f = fixture();
-    if (field !== "root") writeFileSync(f.claimPath, JSON.stringify({ ...f.claim,
-      ...(field === "slot" ? { slot: { ...f.claim.slot, membershipRevision: 2 } } : field === "profileRunId" ? { profileRunId: randomUUID() } : { system: "crm" }) }));
-    f.absentOwner();
-    expect(() => recoverOwnedSmokeSlot({ database: f.database, processLockRoot: f.processLockRoot, stateRoot: field === "root" ? join(f.root, "foreign") : f.root, acquisitionId: f.acquisitionId, clock: f.clock })).toThrow();
-    expect(existsSync(f.profile)).toBe(true);
-    expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
-  });
-
-  it.each(["missing", "held", "foreign"])("requires its exact released Duo lease: %s refuses", mode => {
-    const f = fixture();
-    if (mode === "missing") writeFileSync(f.claimPath, JSON.stringify({ ...f.claim, credentialKey: "cd".repeat(32) }));
-    else {
-      const lease = f.database.authority.duoCeremonyLeases.acquire({ credentialKey, workerId: mode === "foreign" ? f.peer.workerId : f.slot.workerId, system: "ucpath", now: f.clock.now().toISOString(), ttlMs: 60000 });
-      if (lease.state !== "acquired") throw new Error("fixture lease unavailable");
-      if (mode === "foreign") f.database.authority.duoCeremonyLeases.release({ token: lease.token, now: f.clock.now().toISOString() });
-    }
-    expect(f.recover).toThrow(SmokeSlotRecoveryRefusedError);
-    expect(existsSync(f.profile)).toBe(true);
-    expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
-  });
-
-  it.each(["symlink", "permissions", "singleton"])("preserves unsafe %s profiles", mode => {
-    const f = fixture();
-    if (mode === "symlink") { rmSync(f.profile, { recursive: true }); symlinkSync(f.neighbor, f.profile); }
-    if (mode === "permissions") chmodSync(f.profile, 0o777);
-    if (mode === "singleton") writeFileSync(join(f.profile, "SingletonLock"), "retain");
-    expect(f.recover).toThrow();
-    expect(existsSync(f.profile)).toBe(true);
-    expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
-  });
-
-  it.each(["process", "open-file", "query"])("refuses fresh %s evidence without retirement", mode => {
-    const f = fixture();
-    f.query.mockImplementation((...args: Parameters<typeof childProcess.spawnSync>) => {
-      if (args[0] === "/bin/ps" && Array.isArray(args[1]) && args[1][0] === "-axo") return { pid: 0, output: [], stdout: mode === "process" ? `${process.pid} browser --user-data-dir=${f.profile}\n` : `${process.pid} node\n`, stderr: mode === "query" ? "fixture query failure" : "", status: 0, signal: null };
-      if (args[0] === "/usr/sbin/lsof") return { pid: 0, output: [], stdout: `p${process.pid}\nn${f.profile}/open\n`, stderr: "", status: 0, signal: null };
-      return nativeChildProcess.spawnSync(...args);
-    });
-    expect(f.recover).toThrow(SmokeSlotRecoveryRefusedError);
-    expect(existsSync(f.profile)).toBe(true);
-    expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
-  });
-
-  it.each(["fingerprint", "profile", "recovery-owner", "time", "revision"])("native retirement rejects a changed recovery proof %s", field => {
-    const f = fixture();
-    const transact = f.database.withAuthorityTransaction.bind(f.database);
-    vi.spyOn(f.database, "withAuthorityTransaction").mockImplementationOnce(work => {
-      const name = `${f.acquisitionId}-${f.recovery.acquisitionId}.recovered.json`;
-      const proof = WorkerVerificationRecoveryProofSchema.parse(JSON.parse(processLocks.readLiveSmokeRuntimeFile(f.claimRoot, name).text));
-      const changed = field === "fingerprint" ? { ...proof, claimFingerprint: "cd".repeat(32) }
-        : field === "profile" ? { ...proof, profileDirectory: f.neighbor }
-        : field === "recovery-owner" ? { ...proof, recoveryOwner: { ...proof.recoveryOwner, acquisitionId: randomUUID() } }
-        : field === "time" ? { ...proof, checkedAt: "2026-10-15T10:00:00.000Z" }
-        : { ...proof, membershipRevision: proof.membershipRevision + 1 };
-      writeFileSync(join(f.claimRoot, "live-smoke-claims", name), JSON.stringify(changed));
-      return transact(work);
-    });
-    expect(f.recover).toThrow("worker-verification-cleanup-unproved");
-    expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
-    expect(existsSync(f.claimPath)).toBe(true);
-  });
-
-  it("retains fresh recovery evidence after transaction failure", () => {
-    const f = fixture();
-    vi.spyOn(f.database, "withAuthorityTransaction").mockImplementationOnce(() => { throw new Error("fixture transaction failure"); });
-    expect(f.recover).toThrow("fixture transaction failure");
-    expect(existsSync(f.profile)).toBe(false);
-    expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
-    const files = readdirSync(join(f.claimRoot, "live-smoke-claims"));
-    expect(files).toContain(`${f.original.acquisitionId}-${f.recovery.acquisitionId}.recovered.json`);
-    expect(files.some(name => name.endsWith(".closed.json"))).toBe(false);
-    const proof = WorkerVerificationRecoveryProofSchema.parse(JSON.parse(processLocks.readLiveSmokeRuntimeFile(f.claimRoot, `${f.original.acquisitionId}-${f.recovery.acquisitionId}.recovered.json`).text));
-    expect(proof).toMatchObject({ acquisitionId: f.acquisitionId, recoveryOwner: { acquisitionId: f.recovery.acquisitionId }, profileDirectory: f.profile });
-    f.recovery.release();
-    const next = processLocks.acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "live-smoke", pid: process.pid }, f.clock);
-    try {
-      f.recover();
-      expect(f.database.authority.workerSlots.get(f.slot.workerId)?.retiredAt).toBe(f.clock.now().toISOString());
-      expect(readdirSync(join(f.claimRoot, "live-smoke-claims"))).toEqual([`${f.original.acquisitionId}-${f.recovery.acquisitionId}.recovered.json`]);
-    } finally { next.release(); }
-  });
+it("retires an abandoned verification reservation without a worker lease and records cleanup once", async () => {
+  const f = await fixture();
+  assert.equal(f.database.authority.workerLeases.get(f.slot.workerId), undefined);
+  const browser = { workerId: f.slot.workerId, leaseGeneration: 1, sessionId: randomUUID(), system: "ucpath",
+    configFingerprint: "a".repeat(64), signInFingerprint: "b".repeat(64), browserMode: "headless",
+    acceptDownloads: false, exclusive: true, health: "unknown", observedAt: f.now, openedAt: f.now, profileRevision: 1,
+    profileDirectory: join(f.admission.stateRoot, "scratch", "live-smoke", f.profileRunId, "browsers", `w${f.slot.ordinal}`, "ucpath") };
+  f.database.authority.workerControls.observe(browser);
+  const acquired = f.database.authority.duoCeremonyLeases.acquire({ credentialKey: f.credentialKey, workerId: f.slot.workerId,
+    system: "ucpath", now: f.now, ttlMs: 60000 });
+  assert.equal(acquired.state, "acquired");
+  const duo = f.database.authority.duoCeremonyLeases.get(f.credentialKey); assert.ok(duo);
+  f.reconcile();
+  assert.deepEqual(f.database.authority.workerControls.browsers(f.slot.workerId), [{ ...browser, health: "closed" }]);
+  const released = f.database.authority.duoCeremonyLeases.get(f.credentialKey); assert.ok(released);
+  assert.deepEqual(released, { ...duo, state: "released", releasedAt: f.now, version: duo.version + 1, updatedAt: f.now });
+  const retired = f.database.authority.workerSlots.get(f.slot.workerId); assert.ok(retired);
+  assert.equal(retired.membershipRevision, f.slot.membershipRevision + 1);
+  assert.equal(retired.retiredAt, f.now);
+  const notifications = f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID);
+  assert.equal(notifications.filter(note => note.title === "RUN_CRASH_RESOURCES_RELEASED").length, 3);
+  const generation = f.database.getMeta().authorityGeneration;
+  f.reconcile();
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), notifications);
 });
 
-describe("local Darwin process and open-file observations", () => {
-  it("rejects a live process whose arguments name the exact profile", async () => {
-    const root = mkdtempSync(join(tmpdir(), "relay-process-probe-"));
-    const child = nativeChildProcess.spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", root], { stdio: "ignore" });
-    try {
-      await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
-      expect(() => proveSmokeProfileUnused(root)).toThrow(SmokeSlotRecoveryRefusedError);
-    } finally {
-      const closed = new Promise<void>(resolve => { child.once("close", () => resolve()); });
-      child.kill();
-      await closed;
-      rmSync(root, { recursive: true, force: true });
-    }
+for (const field of ["controller", "member", "revision", "reservation", "installation", "pool"] as const) {
+  it(`refuses changed verification ${field} with zero effects`, async () => {
+    const f = await fixture(), other = await runtimeLifetimeLock();
+    const request = { ...f.request,
+      ...(field === "member" ? { workerId: "person-lookup-worker-999" } : {}),
+      ...(field === "revision" ? { expectedRevision: f.slot.membershipRevision + 1 } : {}),
+      ...(field === "reservation" ? { grantCommandId: randomUUID() } : {}),
+      ...(field === "installation" ? { installationId: randomUUID() } : {}),
+      ...(field === "pool" ? { expectedPoolVersion: 999 } : {}) };
+    const before = f.database.readProfileResourceCustody(), generation = f.database.getMeta().authorityGeneration;
+    assert.throws(() => f.database.retireVerificationWorker(request, field === "controller" ? other : f.lock));
+    assert.deepEqual(f.database.readProfileResourceCustody(), before);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);
   });
+}
 
-  it("accepts an unused profile and rejects an actually open file", () => {
-    const root = mkdtempSync(join(tmpdir(), "relay-profile-probe-"));
-    try {
-      proveSmokeProfileUnused(root);
-      const fd = openSync(join(root, "open"), "w");
-      try { expect(() => proveSmokeProfileUnused(root)).toThrow(SmokeSlotRecoveryRefusedError); }
-      finally { closeSync(fd); }
-      proveSmokeProfileUnused(root);
-      rmSync(root, { recursive: true });
-      proveSmokeProfileUnused(root);
-    } finally { rmSync(root, { recursive: true, force: true }); }
-  });
+it("refuses an unbound browser observation without closing rows or retiring its reservation", async () => {
+  const f = await fixture();
+  f.database.authority.workerControls.observe({ workerId: f.slot.workerId, leaseGeneration: 2, sessionId: randomUUID(),
+    system: "ucpath", configFingerprint: "a".repeat(64), signInFingerprint: "b".repeat(64), browserMode: "headless",
+    acceptDownloads: false, exclusive: true, health: "unknown", observedAt: f.now, openedAt: f.now, profileRevision: 1 });
+  const before = f.database.readProfileResourceCustody();
+  assert.throws(f.reconcile);
+  assert.deepEqual(f.database.readProfileResourceCustody(), before);
+  assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);
+});
+
+it("recovers an actual hard-crashed standalone reservation with no worker lease before admitting another", async () => {
+  const f = await world.fixture();
+  stopSyntheticDatabaseWorkers({ database: f.database, path: join(f.root, "state.db") });
+  const portOwner = await RuntimeLifetimeLock.acquire(0), port = portOwner.port;
+  await portOwner.close();
+  const installation = f.machine.readInstallationContext(); assert.ok(installation);
+  const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"),
+    fileURLToPath(new URL("../../support/processes/verification-reservation-owner.ts", import.meta.url)),
+    installation.workspace, String(port), f.clock.now().toISOString()],
+  { env: credentialKeychainTestEnvironment({}), stdio: ["ignore", "ignore", "pipe", "ipc"] });
+  const exited = once(child, "close");
+  child.stderr?.resume();
+  let lock: RuntimeLifetimeLock | undefined;
+  try {
+    const received = await Promise.race([once(child, "message"), exited.then(() => { throw new Error("verification-owner-exited-before-reservation"); })]);
+    const member = z.strictObject({ workerId: z.string(), revision: z.number().int().positive() }).parse(received[0]);
+    assert.equal(f.database.authority.workerLeases.get(member.workerId), undefined);
+    await assert.rejects(RuntimeLifetimeLock.acquire(port), RuntimeAlreadyRunningError);
+    assert.equal(child.kill("SIGKILL"), true);
+    assert.deepEqual(await exited, [null, "SIGKILL"]);
+    lock = await RuntimeLifetimeLock.acquire(port);
+    reconcileStartupCrash({ ...f, lifecycle: f.service, lock });
+    assert.equal(f.database.authority.workerSlots.get(member.workerId)?.retiredAt, f.clock.now().toISOString());
+    assert.equal(f.database.authority.workerSlots.get(member.workerId)?.membershipRevision, member.revision + 1);
+    assert.equal(f.database.authority.workerLeases.get(member.workerId), undefined);
+    assert.equal(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID)
+      .filter(note => note.title === "RUN_CRASH_RESOURCES_RELEASED").length, 1);
+    const next = f.database.admitVerificationWorker({ ...f.admission.profileBinding, lockPort: port, commandId: randomUUID(),
+      workflow: "person-lookup", expectedPoolVersion: f.database.authority.workerPools.get("person-lookup")?.version,
+      profileRunId: randomUUID(), system: "ucpath", credentialKey: "ab".repeat(32), leaseGeneration: 1,
+      now: f.clock.now().toISOString() }, lock);
+    assert.notEqual(next.workerId, member.workerId);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) { child.kill("SIGKILL"); await exited; }
+    await lock?.close();
+  }
+});
+
+it("refuses unexpected run ownership in a verification-only member without retiring or closing resources", async () => {
+  const f = await fixture(), queued = world.created(f.service, f.request);
+  const claimed = RunRecordSchema.parse({ ...queued, claimGeneration: 1, version: queued.version + 1,
+    lifecycle: { state: "claimed", workerId: f.slot.workerId, workerLifetime: { leaseGeneration: 1,
+      membershipRevision: f.slot.membershipRevision }, claimedAt: f.now, heartbeatAt: f.now } });
+  const columns = runRecordColumns(claimed), raw = new DatabaseSync(join(f.root, "state.db"));
+  try {
+    assert.equal(raw.prepare("UPDATE runs SET state=?,owner_worker_id=?,claim_generation=?,heartbeat_at=?,version=?,lifecycle_json=? WHERE id=?")
+      .run(columns.state, columns.owner_worker_id, columns.claim_generation, columns.heartbeat_at, columns.version,
+        columns.lifecycle_json, columns.id).changes, 1);
+  } finally { raw.close(); }
+  const before = f.database.readProfileResourceCustody(), generation = f.database.getMeta().authorityGeneration;
+  assert.throws(() => f.database.retireVerificationWorker(f.request, f.lock), /worker-verification-unexpected-run-owner/u);
+  assert.deepEqual(f.database.readProfileResourceCustody(), before);
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);
+});
+
+it("refuses unproved write ownership and rolls back startup cleanup without settling or retrying UNKNOWN", async () => {
+  const f = await world.interruptedFixture();
+  const intent = await attemptingOwnedWrite({ database: f.database,
+    fence: async input => f.database.authority.writeIntents.fenceAttempt(input) }, f.run);
+  const slot = f.database.admitVerificationWorker({ ...f.admission.profileBinding, lockPort: f.lock.port,
+    commandId: randomUUID(), workflow: "person-lookup", expectedPoolVersion: f.database.authority.workerPools.get("person-lookup")?.version,
+    profileRunId: randomUUID(), system: "ucpath", credentialKey: "ab".repeat(32), leaseGeneration: 1,
+    now: f.clock.now().toISOString() }, f.lock);
+  const raw = new DatabaseSync(join(f.root, "state.db"));
+  try { assert.equal(raw.prepare("DELETE FROM timeline_events WHERE kind='run.claimed' AND run_id=?").run(f.run.envelope.runId).changes, 1); }
+  finally { raw.close(); }
+  const before = f.database.readProfileResourceCustody(), generation = f.database.getMeta().authorityGeneration;
+  const attempts = f.database.authority.writeAttempts.listByIntent(intent.writeIntentId);
+  assert.throws(() => reconcileStartupCrash({ ...f, lifecycle: f.service }));
+  assert.deepEqual(f.database.readProfileResourceCustody(), before);
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(f.database.authority.writeIntents.get(intent.writeIntentId), intent);
+  assert.deepEqual(f.database.authority.writeAttempts.listByIntent(intent.writeIntentId), attempts);
+  assert.deepEqual(f.database.authority.runs.get(f.run.envelope.runId), f.run);
+  assert.equal(f.database.authority.workerSlots.get(slot.workerId)?.retiredAt, null);
+  assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);
 });

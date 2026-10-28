@@ -279,7 +279,7 @@ describe("worker lifecycle service capability", () => {
     assert.throws(() => database.authority.writeIntents.listAttemptingByItem({
       workflowId: run.envelope.workflow, itemId: run.envelope.itemId, extra: true }));
     const result = service.requeue({ commandId: lifecycleCommandId("recovery", run.envelope.runId),
-      runId: run.envelope.runId, expectedVersion: requested.version, cause: "recovery", staleBefore: LATER });
+      runId: run.envelope.runId, expectedVersion: requested.version, cause: "recovery", claim: { workerId: WORKER_ID, claimGeneration: requested.claimGeneration } });
     assert.equal(result.state, "recovery-required");
     if (result.state !== "recovery-required") throw new Error("Unfinished write intent did not refuse release");
     assert.equal(result.parked, false);
@@ -353,8 +353,9 @@ for (const finishingGeneration of [2, 3]) {
     let running = runningRun(f.service, f.request, f.runtimeConfig);
     const stale = failureTerminalRequest(running, id());
     for (let generation = 2; generation <= finishingGeneration; generation++) {
+      const held = runClaim(running); assert.ok(held);
       assert.equal(f.service.requeue({ commandId: id(), runId: running.envelope.runId,
-        expectedVersion: running.version, cause: "recovery", staleBefore: LATER }).state, "applied");
+        expectedVersion: running.version, cause: "recovery", claim: { workerId: held.workerId, claimGeneration: held.claimGeneration } }).state, "applied");
       const workerId = generation === 2 ? "person-lookup-worker-2" : WORKER_ID;
       const claimed = requireLifecycleApplied(f.service.claimNext({ commandId: id(), workflow: WORKFLOW_ID, workerId, runtimeConfig: f.runtimeConfig,
         workerLifetime: testWorkerLifetime(f.database, WORKFLOW_ID, generation === 2 ? 2 : 1).workerLifetime }));

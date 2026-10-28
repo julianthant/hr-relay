@@ -1,4 +1,4 @@
-import { dashboardLifetimeLock } from "../../../support/helpers/backend/dashboard-lifetime.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
@@ -289,7 +289,7 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
  const credentials = createOwnedCredentialStore({ admission: currentAdmission, stateRoot,
    erasureJournalAdmission: owner.machine,
    erasureJournalPath: join(owner.machine.stateRoot, 'machine', 'erasures', `${active.profileId}.json`) });
- const dashboard = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission: owner.machine, profile: { runtime: profile, token: active.token },
+ const dashboard = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: owner.machine, profile: { runtime: profile, token: active.token },
    isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
  try {
   const database = reopen(currentAdmission, credentials, clock);

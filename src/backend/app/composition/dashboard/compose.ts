@@ -30,7 +30,6 @@ import { createWorkbookLibraryService } from "../../../workbooks/workbook-librar
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
 import { withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
-import { assertWorkerProcessStopped } from "../../../storage/sqlite/runtime-process-locks.js";
 import { WorkerRetirementProofSchema, workerPoolMember } from "../../../../models/run/worker-slot.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { deleteOwnedBrowserProfile, workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
@@ -194,7 +193,6 @@ const WORKER_BIRTH_TIMEOUT_MS = 60_000;
 export interface WorkerProcessControlInput {
   readonly onExit: DashboardWorkerSupervisorDependencies["onExit"];
   readonly profileRoot: string;
-  readonly processLockRoot: string;
   readonly database: AuthorityDatabase;
   readonly clock: Clock;
   readonly scheduler: MonotonicDeadlineScheduler;
@@ -242,7 +240,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
           || lease.leaseGeneration !== binding.lifetime.leaseGeneration || lease.controlRevision !== binding.reservedControlRevision
           || lease.controlCommandId !== request.commandId || binding.operation.kind !== "retry"
           || active?.configSnapshotId !== binding.operation.configSnapshotId || active.configFingerprint !== binding.operation.configFingerprint) throw new WorkerControlRefusal("worker-standing-recovery-admission-changed");
-        input.database.assertRetainedWorkerDeath(binding.member, binding.lifetime, binding.birthCommandId);
+        input.database.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
         return;
       }
       const record = repositories.workerControls.get(request.commandId);
@@ -257,8 +255,8 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       }
       if (request.command === "spawn-worker") {
         const lease = repositories.workerLeases.get(request.member.workerId);
-        if (lease !== undefined) input.database.assertRetainedWorkerDeath(request.member,
-          { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt }, lease.birthCommandId);
+        if (lease !== undefined) input.database.assertStoppedWorkerLifetime(request.member,
+          { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt });
       }
       if (input.clock.nowMs() >= Date.parse(record.expiresAt)) throw new WorkerControlRefusal("worker-control-expired-before-effect");
       if ("workerId" in record.request.target) {
@@ -329,9 +327,8 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       const audit = input.database.authority.lifecycleJournal.findAuditByCommand(commandId);
       return audit !== undefined && "kind" in audit && audit.kind === "run-lifecycle" && audit.result.kind === "worker-recovery";
     },
-    assertRetainedOwnerDeath: (member, lifetime, birthCommandId) => { input.database.assertRetainedWorkerDeath(member, lifetime, birthCommandId); },
+    assertStoppedLifetime: (member, lifetime) => { input.database.assertStoppedWorkerLifetime(member, lifetime); },
     proveRetirement: member => {
-      assertWorkerProcessStopped(input.processLockRoot, member.workerId);
       return input.database.withAuthorityTransaction(repositories => {
         const slot = repositories.workerSlots.get(member.workerId);
         const lease = repositories.workerLeases.get(member.workerId);
@@ -751,7 +748,6 @@ async function composeDashboardRuntimeStartup(
         workerId: member.workerId, leaseGeneration: lease.leaseGeneration, lock: input.lifetimeLock });
     },
     profileRoot: resolved.config.paths.browserProfileRoot,
-    processLockRoot,
     database,
     clock,
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),

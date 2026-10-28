@@ -316,7 +316,6 @@ it("maps unavailable served authority/catalog to fixed text while retaining diag
   assert.equal(missing.reason, ERROR_CATALOG.SESSIONS_UNAVAILABLE.text);
   assert.deepEqual(missing.diagnostic, { code: "SESSION_WORKFLOW_UNREGISTERED", workflowId: "person-lookup" });
   assert.equal(WORKER_STOP_REASON_LABEL.crashed, ERROR_CATALOG.WORKER_CRASHED.text);
-  assert.equal(WORKER_STOP_REASON_LABEL["lease-expired"], ERROR_CATALOG.WORKER_LEASE_EXPIRED.text);
   assert.equal(WORKER_STOP_REASON_LABEL.operator, "stopped by you"); assert.equal(WORKER_STOP_REASON_LABEL.shutdown, "shut down");
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);

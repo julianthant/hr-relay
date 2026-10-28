@@ -31,7 +31,9 @@ function closeListener(server: Server): Promise<void> {
 export class RuntimeLifetimeLock {
   readonly #server: Server;
   #closing: Promise<void> | undefined;
-  private constructor(server: Server, readonly port: number) { this.#server = server; }
+  readonly #port: number;
+  private constructor(server: Server, port: number) { this.#server = server; this.#port = port; }
+  get port(): number { return this.#port; }
 
   static async acquire(this: void, port: number): Promise<RuntimeLifetimeLock> {
     z.number().int().nonnegative().max(65535).parse(port);
@@ -71,7 +73,9 @@ export class RuntimeLifetimeLock {
 export class WorkerRuntimeLifetimeLock {
   readonly #server: Server;
   #closing: Promise<void> | undefined;
-  private constructor(server: Server, readonly port: number) { this.#server = server; }
+  readonly #port: number;
+  private constructor(server: Server, port: number) { this.#server = server; this.#port = port; }
+  get port(): number { return this.#port; }
 
   static receive(this: void, port: number, onDisconnect: () => void): Promise<WorkerRuntimeLifetimeLock> {
     LockMessageSchema.parse({ kind: "runtime-lifetime-lock", port });

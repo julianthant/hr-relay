@@ -1,3 +1,4 @@
+import { receiveRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { runClaim } from '../../../src/models/run/record.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +16,7 @@ import { fenceWriteFixture } from '../helpers/write-fence-fixture.js';
 import { ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, CONFIG_SNAPSHOT, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from '../fixtures/phase1c-contract-fixtures.js';
 import { manualClock } from '../../../src/rules/time/clock.js';
 
+const lifetimeLock = await receiveRuntimeLifetimeLock(Number(process.argv[2]), () => { process.exitCode = 1; });
 const clock = manualClock(new Date(NOW));
 const profile = await createBoundProfileFixture();
 const authorityPath = realpathSync(profile.path);
@@ -22,29 +24,27 @@ const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processL
 const workflow = WRITE_INTENT_ATTEMPTING.workflowId;
 const bound = bindWorkerProcessAdmission({ authorityPath, processLockRoot, pid: process.pid, clock,
   open: () => AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 250, migrationOwner: 'storage-restore-attempt-worker' }, clock),
-  admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
+  admit: (database) => database.withAuthorityTransaction(repositories => {
     const active = repositories.runtimeConfig.get() ?? repositories.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     assert.equal(active.configSnapshotId, CONFIG_SNAPSHOT.configSnapshotId);
     assert.equal(active.configFingerprint, CONFIG_SNAPSHOT.fingerprint);
     return WorkerIdSchema.parse(admitDirectWorker(repositories, { commandId: randomUUID(), workflow,
-      poolIndex: 1, expectedPoolVersion: repositories.workerPools.get(workflow)?.version ?? 0,
-      processId: process.pid, processAcquisitionId: acquisitionId, authorityPath, processLockRoot,
-      now: NOW }, randomUUID()).workerId);
-  }), close: database => database.close() });
+        poolIndex: 1, expectedPoolVersion: repositories.workerPools.get(workflow)?.version ?? 0,
+        processId: process.pid,
+        now: NOW }, randomUUID()).workerId);
+}), close: database => database.close() });
 const database = bound.value;
-assert.equal(database.startOwnedWorker({ workerId: bound.workerId, workflow,
+assert.equal(database.authority.workerLeases.start({ workerId: bound.workerId, workflow,
   browserSystems: [WRITE_INTENT_ATTEMPTING.system], processId: process.pid,
-  requestedBy: 'storage-restore-attempt-worker', now: NOW }, bound.processLock).state, "started");
+  requestedBy: 'storage-restore-attempt-worker', now: NOW }).state, "started");
 database.authority.commands.insert(COMMAND_FIXTURES[0]);
 seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, authorityPath);
 const run = database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
 assert.ok(run);
 const fenced = fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
 assert.equal(fenced.state, "fenced");
-const custody = database.workerLifetimeCustody(bound.workerId);
-assert.equal(custody.state, "alive");
-assert.equal(custody.birth.owner.pid, process.pid);
-assert.equal(custody.birth.owner.acquisitionId, bound.processLock.acquisitionId);
+lifetimeLock.assertHeld();
+assert.equal(database.authority.workerLeases.get(bound.workerId)?.processId, process.pid);
 const source = database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId);
 assert.ok(source);
 assert.equal(source.status, 'attempting');
@@ -70,7 +70,6 @@ assert.ok(process.send !== undefined);
 process.on('disconnect', () => { process.exitCode = 1; });
 process.send({ state: 'attempting', workspace: profile.workspace, stateRoot: profile.stateRoot,
   authorityPath, profileId: profile.admission.profileBinding.profileId, workerId: bound.workerId,
-  acquisitionId: bound.processLock.acquisitionId, processLockRoot, pid: process.pid,
-  processIdentity: custody.birth.owner.processIdentity,
+  processLockRoot, pid: process.pid,
   claimGeneration: current.claimGeneration, runId: current.envelope.runId, databaseClosed: true,
   retained: true });

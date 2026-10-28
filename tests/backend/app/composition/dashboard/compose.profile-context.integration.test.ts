@@ -1,4 +1,4 @@
-import { dashboardLifetimeLock } from "../../../../support/helpers/backend/dashboard-lifetime.js";
+import { runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import * as filesystem from "node:fs/promises";
 import * as artifactReaders from "../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import * as explorerComposition from "../../../../../src/backend/app/composition/dashboard/explorer.js";
@@ -35,7 +35,7 @@ async function fixture() {
   const signIn = () => runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   const active = signIn(); assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("synthetic active profile required");
-  const input = { lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace, clock,
+  const input = { lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace, clock,
     isolation: rebuildRuntimeIsolation, backendPortOverride: 0 as const, frontendPortOverride: 0 as const, env: {},
     preflightRunnerFactory: healthyRuntimePreflightRunners };
   return { ...f, clock, runtime, active, signIn, input };

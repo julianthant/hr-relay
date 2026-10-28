@@ -39,7 +39,6 @@ import {
   CanonicalCrashRecoveryRequestSchema,
   CanonicalCancellationTerminalizeRequestSchema,
   CanonicalWriteResolutionTransitionRequestSchema,
-  RunClaimSweepRequestSchema,
   CanonicalClaimNextRequestSchema,
   CanonicalCreateRunRequestSchema,
   CanonicalDeleteRequestSchema,
@@ -124,28 +123,6 @@ export type RunRecoveryOutcome = RunMutationOutcome | RunExistence | Readonly<{
   state: "recovery-required"; run: RunRecord; writeIntentId: string; intentGeneration: number;
   parked: boolean; message: string;
 }>;
-
-/** Both sweep predicates feed the same service requeue admission. */
-export function sweepWorkerClaims(database: AuthorityDatabase, lifecycle: WorkerRunLifecyclePort, input: unknown) {
-  const request = RunClaimSweepRequestSchema.parse(input);
-  return database.withAuthorityTransaction((repositories) => {
-    return repositories.runs.listClaimRecoveryCandidates(request).map((run) => {
-      const held = runClaim(run);
-      if (held === undefined) throw new Error("sweep selected an unclaimed run");
-      const outcome = lifecycle.requeue({
-        commandId: lifecycleCommandId("recovery", { runId: run.envelope.runId, version: run.version }),
-        runId: run.envelope.runId, expectedVersion: run.version, cause: "recovery",
-        ...(request.staleBefore === undefined
-          ? { claim: { workerId: held.workerId, claimGeneration: held.claimGeneration } }
-          : { staleBefore: request.staleBefore }),
-      });
-      if (outcome.state !== "recovery-required") {
-        requireLifecycleApplied(outcome);
-      }
-      return outcome;
-    });
-  });
-}
 
 type LifecycleOperation = z.infer<typeof RunLifecycleCommandOperationSchema>;
 type LifecycleFence = z.input<typeof RunLifecycleCommandFenceSchema>;
@@ -853,24 +830,21 @@ export class RunRecordService {
             || request.claim.claimGeneration !== held.claimGeneration)) {
           return refused({ reason: "lost" });
         }
-        if (request.claim === undefined && request.staleBefore === undefined) {
+        if (request.claim === undefined) {
           return refused({
             reason: "illegal-transition",
             from: run.lifecycle.state,
             to: "queued",
-            message: "a claimed run requires its claim fence or an expired-heartbeat recovery admission",
+            message: "a claimed run requires its claim fence",
           });
         }
-        if (request.staleBefore !== undefined
-          && Date.parse(held.heartbeatAt) >= Date.parse(request.staleBefore)) {
-          return refused({ reason: "heartbeat-live" });
-        }
+
       } else if (!(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "interrupted")) {
         return refused({
           reason: "illegal-transition",
           from: run.lifecycle.state,
           to: "queued",
-          message: "only an owned, expired, or terminal interrupted run may be requeued",
+          message: "only an owned or terminal interrupted run may be requeued",
         });
       }
       const now = this.dependencies.clock.now().toISOString();

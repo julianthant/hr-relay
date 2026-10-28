@@ -68,6 +68,18 @@ function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLoc
           notify("RUN_STALE_QUEUE_CANCELLED", run.envelope.runId, run.envelope.runId);
         }
       }
+      if (worker === undefined) for (const slot of facts.slots) {
+        if (slot.retiredAt !== null) continue;
+        const hold = database.authority.workerSlots.verification(slot.workerId);
+        if (hold === undefined) continue;
+        const pool = database.authority.workerPools.get(slot.workflow);
+        if (pool === undefined) throw new Error("worker-verification-pool-unavailable");
+        const retired = database.retireVerificationWorker({ ...admission.profileBinding, commandId: lifecycleCommandId("startup-verification", {
+          workerId: slot.workerId, revision: slot.membershipRevision, reservation: hold.command.commandId }),
+          grantCommandId: hold.command.commandId, workerId: slot.workerId, expectedRevision: slot.membershipRevision,
+          expectedPoolVersion: pool.version, now: clock.now().toISOString(), cleanup: "interrupted" }, lock);
+        for (const released of retired.released) notify("RUN_CRASH_RESOURCES_RELEASED", released);
+      }
       for (const lease of facts.leases) {
         if (worker !== undefined && lease.workerId !== worker.workerId) continue;
         for (const released of database.settleInterruptedWorker(lock, lease.workerId,

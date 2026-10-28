@@ -84,7 +84,7 @@ describe("the exact current worker authority card", () => {
   });
 
   it("serves a stopped member as failed with its actual terminal time and no live resources", () => {
-    for (const reason of ["operator", "shutdown", "crashed", "lease-expired"] as const) {
+    for (const reason of ["operator", "shutdown", "crashed"] as const) {
       const value = card({ ownerAlive: false, lease: leaseOf({ lifecycle: { state: "stopped", startedAt: STARTED,
         stoppedAt: "2026-08-20T16:05:00.000Z", reason }, control: { directive: "stop", requestedAt: STARTED, requestedBy: "local-operator" } }) });
       assert.equal(value.state, "failed");

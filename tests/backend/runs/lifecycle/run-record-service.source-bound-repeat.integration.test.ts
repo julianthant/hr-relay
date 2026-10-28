@@ -1,3 +1,4 @@
+import { runClaim } from "../../../../src/models/run/record.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
@@ -280,10 +281,11 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     const repeat = h.start(h.proposal(source, warning.rerun.warningDigest));
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
     h.world.onCommitClick = () => {
-      const running = h.fresh(repeat);
+      const running = h.fresh(repeat), claim = runClaim(running);
+      assert.ok(claim);
       h.clock.advanceWall(1000);
       const routed = h.lifecycle.requeue({ commandId: h.ids.uuid(), runId: repeat.envelope.runId,
-        expectedVersion: running.version, cause: "recovery", staleBefore: h.clock.now().toISOString() });
+        expectedVersion: running.version, cause: "recovery", claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration } });
       assert.equal(routed.state, "recovery-required");
       throw new Error("synthetic process loss after fencing");
     };

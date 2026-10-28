@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import * as storageDoctor from "../../../../src/backend/storage/sqlite/storage-doctor.js";
@@ -53,7 +54,7 @@ for (const kind of ["missing-task", "foreign-task-provenance", "foreign-workflow
       workflows: kind === "foreign-workflow-provenance" ? childExecutionBuildManifest.workflows.map(entry => entry.id === childExecutionRoot.descriptor.id
         ? { ...entry, fingerprint: foreignWorkflow.fingerprint, sources: foreignWorkflow.sources } : entry) : childExecutionBuildManifest.workflows,
     };
-    await assert.rejects(composeWorkerRuntime({ isolation: rebuildRuntimeIsolation, env: {},
+    await assert.rejects(composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, env: {},
       args: [childExecutionRoot.descriptor.id, "--pool-index", "1", "--drain"],
       get admission(): never { authorityReads++; throw new Error("unrequested-fixture-authority"); },
       executionRegistry: { resolve: id => childExecutionModules.find(module => module.descriptor.id === id), stores: childExecutionStores, manifest },
@@ -64,7 +65,7 @@ for (const kind of ["missing-task", "foreign-task-provenance", "foreign-workflow
 
 it("keeps a synthetic compiled workflow unavailable through the ordinary production registry", async () => {
   let authorityReads = 0;
-  await assert.rejects(composeWorkerRuntime({ isolation: rebuildRuntimeIsolation, env: {},
+  await assert.rejects(composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, env: {},
     args: [childExecutionRoot.descriptor.id, "--pool-index", "1", "--drain"],
     get admission(): never { authorityReads++; throw new Error("unrequested-fixture-authority"); },
     write: () => undefined }), /not registered/u);
@@ -152,7 +153,7 @@ it("executes two real children and a nested child with one actual home process a
   });
   cleanup.push(() => observer.mockRestore());
   runtimeAttempted = true;
-  const report = await composeWorkerRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation,
+  const report = await composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: profile.machine, isolation: rebuildRuntimeIsolation,
     repoRoot: profile.workspace, args: [childExecutionRoot.descriptor.id, "--pool-index", "1", "--drain"], env: {},
     executionRegistry: { resolve: id => childExecutionModules.find(module => module.descriptor.id === id), stores: childExecutionStores,
       manifest: childExecutionBuildManifest },

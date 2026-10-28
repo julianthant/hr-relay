@@ -1,3 +1,5 @@
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -9,16 +11,16 @@ import { TimelineEventRecordSchema } from "../../../../src/models/events/timelin
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { randomUUID, createHash } from "node:crypto";
-import { copyFileSync, existsSync, realpathSync } from "node:fs";
+import { copyFileSync, existsSync } from "node:fs";
 import { once } from "node:events";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { it } from "vitest";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { createCommandKernel, executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { RunRecordService, sweepWorkerClaims, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -109,10 +111,11 @@ async function prepare(arm: "read" | "write" = "read") {
   }
 }
 
-function launch(workspace: string, mode: "checkpoint" | "resume" | "attempting") {
+async function launch(workspace: string, mode: "checkpoint" | "resume" | "attempting", lock: RuntimeLifetimeLock) {
   const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"),
-    fileURLToPath(new URL("../../../support/processes/child-execution-crash-worker.ts", import.meta.url)), workspace, mode],
+    fileURLToPath(new URL("../../../support/processes/child-execution-crash-worker.ts", import.meta.url)), workspace, mode, String(lock.port)],
   { env: credentialKeychainTestEnvironment({}), stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  await lock.share(child);
   assert.ok(child.stdout && child.stderr);
   child.stdout.resume();
   const stderrHash = createHash("sha256"); let stderrBytes = 0, closed = false;
@@ -122,7 +125,7 @@ function launch(workspace: string, mode: "checkpoint" | "resume" | "attempting")
 
 }
 
-async function next(owned: ReturnType<typeof launch>): Promise<z.output<typeof Message>> {
+async function next(owned: Awaited<ReturnType<typeof launch>>): Promise<z.output<typeof Message>> {
   const { child } = owned;
   const exited = (code: number | null, signal: NodeJS.Signals | null) => new Error(JSON.stringify({
     code: "OWNED_CHILD_EXITED_BEFORE_MESSAGE", exit: code,
@@ -151,7 +154,7 @@ async function next(owned: ReturnType<typeof launch>): Promise<z.output<typeof M
   });
 }
 
-async function killOwned(owned: ReturnType<typeof launch>): Promise<void> {
+async function killOwned(owned: Awaited<ReturnType<typeof launch>>): Promise<void> {
   const { child } = owned;
   if (child.exitCode !== null || child.signalCode !== null) {
     if (!owned.closed()) await once(child, "close");
@@ -165,11 +168,12 @@ async function killOwned(owned: ReturnType<typeof launch>): Promise<void> {
 }
 
 it("reconciles an actual child OS crash after its committed read checkpoint without repeating it", async () => {
-  const f = await prepare(), children: ReturnType<typeof launch>[] = [];
+  const f = await prepare(), children: Awaited<ReturnType<typeof launch>>[] = [];
   let closureProved = false;
   let primary: { error: unknown } | undefined;
   try {
-    const child = launch(f.profile.workspace, "checkpoint"); children.push(child);
+    const lifetimeLock = await runtimeLifetimeLock();
+    const child = await launch(f.profile.workspace, "checkpoint", lifetimeLock); children.push(child);
     const message = await next(child);
     assert.equal(message.kind, "checkpoint"); assert.ok(message.kind === "checkpoint");
     assert.equal(message.pid, child.child.pid);
@@ -180,25 +184,33 @@ it("reconciles an actual child OS crash after its committed read checkpoint with
       const checkpoints = observed.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId);
       assert.ok(checkpoints.length > 0);
       retained = canonicalJsonStringify(checkpoints);
-      const custody = observed.workerLifetimeCustody(message.workerId);
-      assert.equal(custody.state, "alive"); assert.equal(custody.birth.owner.pid, child.child.pid);
+      assert.equal(observed.authority.workerLeases.get(message.workerId)?.processId, child.child.pid);
+      assert.equal(child.child.exitCode, null); assert.equal(child.child.signalCode, null);
       assert.equal(observed.authority.runResults.get(run.envelope.runId), undefined);
     } finally { observed.close(); }
     await killOwned(child);
     const database = f.open();
     try {
-      assert.equal(database.workerLifetimeCustody(message.workerId).state, "dead");
+      assert.equal(child.child.signalCode, "SIGKILL");
       const lifecycle = new RunRecordService({ database, clock: systemClock, ids: { uuid: randomUUID },
         resolveDescriptor: f.descriptors.resolve, publishQueued: () => { throw new Error("recovery-must-not-publish-new-run"); } });
-      const recovered = sweepWorkerClaims(database, workerRunLifecyclePort(lifecycle), { workerId: message.workerId, now: systemClock.now().toISOString() });
-      assert.equal(recovered.length, 1); assert.equal(recovered[0]?.state, "applied");
+      const interrupted = database.authority.runs.get(message.runId); assert.ok(interrupted);
+      const claim = runClaim(interrupted); assert.ok(claim);
+      const request = { commandId: lifecycleCommandId("crash", { runId: message.runId, version: interrupted.version }),
+        runId: message.runId, expectedVersion: interrupted.version,
+        claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
+        ...database.crashRunRecoveryIdentity(message.runId), now: systemClock.now().toISOString() };
+      const lock = lifetimeLock;
+      assert.equal(lifecycle.recoverCrash(request, lock).state, "applied");
       const run = database.authority.runs.get(message.runId); assert.ok(run);
-      assert.equal(run.lifecycle.state, "queued");
+      assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
+      assert.equal(database.authority.failures.listByRun(message.runId)[0]?.code, "RUN_INTERRUPTED_BY_CRASH");
       assert.equal(canonicalJsonStringify(database.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId)), retained);
-      assert.equal(sweepWorkerClaims(database, workerRunLifecyclePort(lifecycle), { workerId: message.workerId, now: systemClock.now().toISOString() }).length, 0);
-      assert.equal(database.settleDeadWorkerLifetime(message.workerId, systemClock.now().toISOString())?.lifecycle.state, "stopped");
+      assert.equal(lifecycle.recoverCrash(request, lock).state, "applied-already");
+      database.settleInterruptedWorker(lock, message.workerId, request.workerLifetime.leaseGeneration, systemClock.now().toISOString());
+      assert.equal(database.authority.workerLeases.get(message.workerId)?.lifecycle.state, "stopped");
     } finally { database.close(); }
-    const resumed = launch(f.profile.workspace, "resume"); children.push(resumed);
+    const resumed = await launch(f.profile.workspace, "resume", lifetimeLock); children.push(resumed);
     const terminal = await next(resumed);
     assert.equal(terminal.kind, "terminal"); assert.ok(terminal.kind === "terminal");
     assert.equal(terminal.closure, "proved");
@@ -207,7 +219,7 @@ it("reconciles an actual child OS crash after its committed read checkpoint with
     const result = f.open();
     try {
       const root = result.authority.runs.get(f.rootRunId); assert.ok(root);
-      assert.ok(root.lifecycle.state === "terminal" && root.lifecycle.outcome === "done");
+      assert.ok(root.lifecycle.state === "terminal" && root.lifecycle.outcome === "failed");
       const childRun = result.authority.runs.get(message.runId); assert.ok(childRun);
       assert.equal(canonicalJsonStringify(result.authority.runCheckpoints.listByItem(childRun.envelope.workflow, childRun.envelope.itemId)), retained);
       const value = result.authority.runResults.get(message.runId); assert.ok(value);
@@ -229,11 +241,12 @@ it("reconciles an actual child OS crash after its committed read checkpoint with
 });
 
 it("parks a real attempting child after its owned OS process dies without retry or manufactured settlement", async () => {
-  const f = await prepare("write"), children: ReturnType<typeof launch>[] = [];
+  const f = await prepare("write"), children: Awaited<ReturnType<typeof launch>>[] = [];
   let retainedUnknownProved = false;
   let primary: { error: unknown } | undefined;
   try {
-    const child = launch(f.profile.workspace, "attempting"); children.push(child);
+    const lifetimeLock = await runtimeLifetimeLock();
+    const child = await launch(f.profile.workspace, "attempting", lifetimeLock); children.push(child);
     const message = await next(child);
     assert.equal(message.kind, "attempting"); assert.ok(message.kind === "attempting");
     assert.equal(message.pid, child.child.pid); assert.equal(message.clicks, 1);
@@ -247,28 +260,31 @@ it("parks a real attempting child after its owned OS process dies without retry 
       const attempts = observed.authority.writeAttempts.listByIntent(intent.writeIntentId);
       assert.equal(attempts.length, 1);
       intentBytes = canonicalJsonStringify(intent); attemptBytes = canonicalJsonStringify(attempts); version = run.version;
-      const custody = observed.workerLifetimeCustody(message.workerId);
-      assert.equal(custody.state, "alive"); assert.equal(custody.birth.owner.pid, child.child.pid);
+      assert.equal(observed.authority.workerLeases.get(message.workerId)?.processId, child.child.pid);
+      assert.equal(child.child.exitCode, null); assert.equal(child.child.signalCode, null);
       assert.equal(observed.authority.runResults.get(message.runId), undefined);
     } finally { observed.close(); }
     await killOwned(child);
     const database = f.open();
     try {
-      assert.equal(database.workerLifetimeCustody(message.workerId).state, "dead");
+      assert.equal(child.child.signalCode, "SIGKILL");
       const { lifecycle, kernel } = commands(database, f.descriptors);
-      const recovered = sweepWorkerClaims(database, workerRunLifecyclePort(lifecycle), { workerId: message.workerId,
-        now: systemClock.now().toISOString() });
-      assert.equal(recovered.length, 1); assert.equal(recovered[0]?.state, "recovery-required");
+      const interrupted = database.authority.runs.get(message.runId); assert.ok(interrupted);
+      const claim = runClaim(interrupted); assert.ok(claim);
+      const commandId = lifecycleCommandId("crash", { runId: message.runId, version });
+      const request = { commandId, runId: message.runId, expectedVersion: version,
+        claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
+        ...database.crashRunRecoveryIdentity(message.runId), now: systemClock.now().toISOString() };
+      const lock = lifetimeLock;
+      assert.equal(lifecycle.recoverCrash(request, lock).state, "applied");
       const parked = database.authority.runs.get(message.runId); assert.ok(parked?.lifecycle.state === "parked-write");
       assert.equal(parked.lifecycle.code, "unknown"); assert.equal(parked.lifecycle.writeIntentId, message.writeIntentId);
       assert.equal(runClaim(parked), undefined);
       assert.equal(canonicalJsonStringify(database.authority.writeIntents.get(message.writeIntentId)), intentBytes);
       assert.equal(canonicalJsonStringify(database.authority.writeAttempts.listByIntent(message.writeIntentId)), attemptBytes);
-      const commandId = lifecycleCommandId("recovery", { runId: message.runId, version });
       const audit = database.authority.lifecycleJournal.findAuditByCommand(commandId); assert.ok(audit);
       const generation = database.getMeta().authorityGeneration;
-      assert.equal(sweepWorkerClaims(database, workerRunLifecyclePort(lifecycle), { workerId: message.workerId,
-        now: systemClock.now().toISOString() }).length, 0);
+      assert.equal(lifecycle.recoverCrash(request, lock).state, "applied-already");
       assert.equal(database.getMeta().authorityGeneration, generation);
       assert.deepEqual(database.authority.lifecycleJournal.findAuditByCommand(commandId), audit);
       const root = database.authority.runs.get(f.rootRunId); assert.ok(root?.lifecycle.state === "queued");
@@ -285,14 +301,13 @@ it("parks a real attempting child after its owned OS process dies without retry 
       assert.deepEqual(database.authority.runs.get(message.runId), parked);
       assert.equal(database.authority.dependencies.listByParentRun(f.rootRunId).length, 1);
       assert.throws(() => database.assertWorkerLifecycleRelease(message.workerId), /worker-lifecycle-write-custody-unavailable/u);
-      assert.throws(() => database.settleDeadWorkerLifetime(message.workerId, systemClock.now().toISOString()), /worker-lifecycle-write-custody-unavailable/u);
+      assert.throws(() => database.assertWorkerLifecycleRelease(message.workerId), /worker-lifecycle-write-custody-unavailable/u);
       for (const workflow of [root.envelope.workflow, childExecutionRoot.descriptor.id]) {
         const otherMember = database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-          workflow, poolIndex: 2, commandId: randomUUID(), now: systemClock.now().toISOString(),
-          expectedPoolVersion: repositories.workerPools.get(workflow)?.version ?? 0,
-          processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: realpathSync(f.profile.path),
-          processLockRoot: join(dirname(realpathSync(f.profile.path)), "locks"),
-        }, randomUUID()));
+    workflow, poolIndex: 2, commandId: randomUUID(), now: systemClock.now().toISOString(),
+    expectedPoolVersion: repositories.workerPools.get(workflow)?.version ?? 0,
+    processId: process.pid
+}, randomUUID()));
         assert.notEqual(otherMember.workerId, message.workerId);
         assert.doesNotThrow(() => database.assertWorkerLifecycleRelease(otherMember.workerId));
       }
@@ -465,7 +480,7 @@ it("parks a real attempting child after its owned OS process dies without retry 
       assert.throws(() => database.assertWorkerLifecycleRelease(message.workerId), /worker-lifecycle-write-custody-unavailable/u);
 
       assert.ok(database.authority.workerControls.browsers(message.workerId).some(browser => browser.health !== "closed"));
-      assert.equal(database.workerLifetimeCustody(message.workerId).state, "dead");
+      assert.equal(child.child.signalCode, "SIGKILL");
       const unresolvedIntent = database.authority.writeIntents.get(message.writeIntentId);
       assert.ok(unresolvedIntent?.status === "attempting");
       const durableParked = database.authority.writeIntents.parkAttempt({ writeIntentId: unresolvedIntent.writeIntentId,

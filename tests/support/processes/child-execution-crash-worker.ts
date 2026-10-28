@@ -1,3 +1,4 @@
+import { receiveRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { catalogCodeForThrown } from "../../../src/models/failures/error-catalog.js";
@@ -17,7 +18,9 @@ import { systemClock } from "../../../src/rules/time/clock.js";
 
 let stage: "arguments" | "machine" | "profile" | "graph" | "compose" | "terminal" = "arguments";
 try {
-const [repoRoot, mode] = z.tuple([z.string().min(1), z.enum(["checkpoint", "resume", "attempting"])]).parse(process.argv.slice(2));
+const [repoRoot, mode, port] = z.tuple([z.string().min(1), z.enum(["checkpoint", "resume", "attempting"]), z.coerce.number().int().positive()]).parse(process.argv.slice(2));
+const controller = new AbortController();
+const lifetimeLock = await receiveRuntimeLifetimeLock(port, () => controller.abort(new Error("fixture-parent-disconnected")));
 stage = "machine";
 const machine = acquireEntrypointAdmission(repoRoot, "shared");
 stage = "profile";
@@ -42,8 +45,8 @@ if (mode === "attempting") {
     assert.equal(intents.length, 1);
     const intent = intents[0]; assert.ok(intent);
     const run = database.authority.runs.get(intent.runId); assert.ok(run && "workerId" in run.lifecycle);
-    const custody = database.workerLifetimeCustody(run.lifecycle.workerId);
-    assert.equal(custody.state, "alive"); assert.equal(custody.birth.owner.pid, process.pid);
+    lifetimeLock.assertHeld();
+    assert.equal(database.authority.workerLeases.get(run.lifecycle.workerId)?.processId, process.pid);
     const clicks = driver.events.filter(event => event.startsWith("commit-click:")).length;
     assert.equal(clicks, 1);
     assert.ok(typeof process.send === "function");
@@ -54,7 +57,7 @@ if (mode === "attempting") {
 }
 
 stage = "compose";
-  const report = await composeWorkerRuntime({ admission: machine, isolation: rebuildRuntimeIsolation, repoRoot,
+  const report = await composeWorkerRuntime({ lifetimeLock, stopSignal: controller.signal, admission: machine, isolation: rebuildRuntimeIsolation, repoRoot,
     args: [root.descriptor.id, "--pool-index", "1", "--drain"], env: {},
     ...(mode === "attempting" ? { sessionFactory: writeFixtureSessions(driver).factory } : {}),
     executionRegistry: { resolve: id => modules.find(module => module.descriptor.id === id), stores,
@@ -72,9 +75,8 @@ stage = "compose";
           assert.ok(run && "workerId" in run.lifecycle);
           const checkpoints = database.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId);
           assert.ok(checkpoints.length > 0);
-          const custody = database.workerLifetimeCustody(run.lifecycle.workerId);
-          assert.equal(custody.state, "alive");
-          assert.equal(custody.birth.owner.pid, process.pid);
+          lifetimeLock.assertHeld();
+          assert.equal(database.authority.workerLeases.get(run.lifecycle.workerId)?.processId, process.pid);
           observed = true;
           assert.ok(typeof process.send === "function");
           process.send({ kind: "checkpoint", workerId: run.lifecycle.workerId, runId: run.envelope.runId, pid: process.pid });
@@ -88,6 +90,7 @@ stage = "compose";
   assert.equal(report.closure, "proved");
   admission.release();
   machine.release();
+  await lifetimeLock.close();
   process.send?.({ kind: "terminal", closure: report.closure, done: report.outcomes.filter(outcome => outcome.state === "done").length },
     () => { process.disconnect?.(); });
 } catch (error) {

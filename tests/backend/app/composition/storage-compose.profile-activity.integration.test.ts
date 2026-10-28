@@ -1,4 +1,4 @@
-import { dashboardLifetimeLock } from "../../../support/helpers/backend/dashboard-lifetime.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { WireErrorSchema } from "../../../../src/models/dashboard/primitives.js";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { isDeepStrictEqual } from "node:util";
@@ -112,13 +112,13 @@ it("includes an idle owned lifetime and refuses absent supervisor acknowledgemen
     assert.equal(composeProfileActivity(f.input).hasUnquiescedWork(profileId), false);
     worker = bindWorkerProcessAdmission({ processLockRoot: f.input.processLockRoot, authorityPath: f.path, pid: process.pid, clock: f.input.clock,
       open: () => f.context.database, close: () => undefined,
-      admit: (_database, acquisitionId) => f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-        commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
-        processAcquisitionId: acquisitionId, authorityPath: f.path, processLockRoot: f.input.processLockRoot, now: f.input.clock.now().toISOString(),
-      }, randomUUID()).workerId),
+      admit: () => f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+    commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
+    now: f.input.clock.now().toISOString()
+}, randomUUID()).workerId),
     });
-    const started = f.context.database.startOwnedWorker({ workerId: worker.workerId, workflow: "person-lookup", browserSystems: ["crm"],
-      processId: process.pid, requestedBy: "local-operator", now: f.input.clock.now().toISOString() }, worker.processLock);
+    const started = f.context.database.authority.workerLeases.start({ workerId: worker.workerId, workflow: "person-lookup", browserSystems: ["crm"],
+      processId: process.pid, requestedBy: "local-operator", now: f.input.clock.now().toISOString() });
     assert.equal(started.state, "started");
     const custody = f.context.database.readProfileResourceCustody();
     assert.equal(custody.slots.length, 1);
@@ -161,20 +161,21 @@ async function stoppedPlanFixture(mode: "plan" | "direct" = "plan") {
   try {
     await once(child.stdout, "data"); assert.ok(child.pid);
     held = bindWorkerProcessAdmission({ processLockRoot: f.input.processLockRoot, authorityPath: f.path, pid: child.pid, clock: f.input.clock,
-      open: () => f.context.database, close: () => undefined, admit: (_database, acquisitionId) => {
-        if (planned !== undefined) return planned.slot.workerId;
-        assert.ok(child.pid);
-        const commandId = randomUUID();
-        const slot = f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-          commandId, workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: child.pid,
-          processAcquisitionId: acquisitionId, authorityPath: f.path, processLockRoot: f.input.processLockRoot, now: f.input.clock.now().toISOString(),
-        }, randomUUID()));
-        planned = { slot, request: { commandId } };
-        return slot.workerId;
-      } });
+      open: () => f.context.database, close: () => undefined, admit: () => {
+    if (planned !== undefined)
+        return planned.slot.workerId;
+    assert.ok(child.pid);
+    const commandId = randomUUID();
+    const slot = f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+        commandId, workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: child.pid,
+        now: f.input.clock.now().toISOString()
+    }, randomUUID()));
+    planned = { slot, request: { commandId } };
+    return slot.workerId;
+} });
     const now = f.input.clock.now().toISOString();
-    assert.equal(f.context.database.startOwnedWorker({ workerId: held.workerId, workflow: "person-lookup", browserSystems: [], processId: child.pid,
-      requestedBy: "local-operator", now }, held.processLock).state, "started");
+    assert.equal(f.context.database.authority.workerLeases.start({ workerId: held.workerId, workflow: "person-lookup", browserSystems: [], processId: child.pid,
+      requestedBy: "local-operator", now }).state, "started");
     assert.equal(f.context.database.authority.workerLeases.reportLifecycle({ workerId: held.workerId, leaseGeneration: 1,
       lifecycle: { state: "stopped", startedAt: now, stoppedAt: now, reason: "operator" }, now }).state, "applied");
     held.processLock.release(); held = undefined;
@@ -298,7 +299,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
     const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
     assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("retirement-fixture-sign-in-required");
-    dashboard = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, profile: { runtime: profile, token: active.token },
+    dashboard = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, profile: { runtime: profile, token: active.token },
       clock, isolation: rebuildRuntimeIsolation, repoRoot: f.workspace, env: {}, backendPortOverride: 0, frontendPortOverride: 0,
       preflightRunnerFactory: healthyRuntimePreflightRunners, workerProcess: {
         launch: { command: process.execPath, prefixArgs: ["--import", "tsx", join(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), f.workspace],

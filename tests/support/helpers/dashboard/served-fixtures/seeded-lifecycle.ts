@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { dirname, join } from "node:path";
-import { bindWorkerProcessAdmission, type RuntimeProcessLockHandle } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+
+
 import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/worker-slots.js";
 import type { Clock } from "../../../../../src/rules/time/clock.js";
 import { testWorkerLifetime } from "../../../fixtures/run-lifecycle-fixtures.js";
@@ -63,7 +63,7 @@ interface SeedWorld {
   readonly database: AuthorityDatabase;
   readonly authorityPath: string;
   readonly clock: Clock;
-  readonly retainWorker: (handle: RuntimeProcessLockHandle) => void;
+  readonly workers: Set<string>;
   readonly spans: ReturnType<typeof createTimelineEmitter>;
   readonly notes: ReturnType<typeof createNoteTimelineWriter>;
 }
@@ -143,18 +143,14 @@ function enqueueRun(world: SeedWorld, spec: SeedSpec): RunRecord {
 /** Enqueue → claim → validating → running, through production transitions only. */
 function startRunning(world: SeedWorld, spec: SeedSpec, poolIndex: number, nodeId: string): RunRecord {
   if (!world.database.authority.workerSlots.list(WORKFLOW_ID).some(member => member.poolIndex === poolIndex && member.retiredAt === null)) {
-    const processLockRoot = join(dirname(world.authorityPath), "locks");
-    const bound = bindWorkerProcessAdmission({ processLockRoot, authorityPath: world.authorityPath,
-      pid: process.pid, clock: world.clock, open: () => world.database, close: () => {},
-      admit: (database, processAcquisitionId) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-        commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
-        expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
-        processId: process.pid, processAcquisitionId, authorityPath: world.authorityPath, processLockRoot, now: SEEDED_NOW,
-      }, randomUUID()).workerId),
-    });
-    world.retainWorker(bound.processLock);
-    const started = world.database.startOwnedWorker({ workerId: bound.workerId, workflow: WORKFLOW_ID,
-      browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: SEEDED_NOW }, bound.processLock);
+    const slot = world.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+      commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
+      expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
+      processId: process.pid, now: SEEDED_NOW,
+    }, randomUUID()));
+    const started = world.database.authority.workerLeases.start({ workerId: slot.workerId, workflow: WORKFLOW_ID,
+      browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: SEEDED_NOW });
+    world.workers.add(slot.workerId);
     if (started.state !== "started") throw new Error("seeded worker lifetime did not start");
   }
   const { workerId, workerLifetime } = testWorkerLifetime(world.database, WORKFLOW_ID, poolIndex);

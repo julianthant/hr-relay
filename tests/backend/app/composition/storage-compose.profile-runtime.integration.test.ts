@@ -1,6 +1,6 @@
 import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
-import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+
+
 import assert from "node:assert/strict";
 import * as accounts from "../../../../src/backend/accounts/chatgpt-account-service.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -12,9 +12,9 @@ import { copyFileSync, readFileSync, readdirSync, statSync, mkdirSync, mkdtempSy
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
-import { composeProfileRuntime, composeProfileActivity, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { acquireRuntimeRestoreAdmission, bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -275,43 +275,4 @@ it("admits only the exact held stopped projection capability before opening stag
     restore.release();
     assert.throws(() => AuthorityDatabase.openStoppedRestoreProjection(capability!, options, clock));
   } finally { capability?.release(); restore.release(); await f.close(); }
-});
-
-
-for (const state of ['held', 'released-running', 'missing-birth'] as const) it(`missing supervisor evidence refuses a stopped ${state} lifetime`, async () => {
-  const f = await createBoundProfileFixture(), clock = manualClock(new Date('2025-01-01T00:00:00.000Z'));
-  const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
-    credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
-  const processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
-  const lifecycle = new RunRecordService({ database: context.database, clock, ids: { uuid: randomUUID },
-    publishQueued: () => { throw new Error('unexpected-queued-run'); } });
-  let owned: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
-  try {
-    const now = clock.now().toISOString();
-    owned = bindWorkerProcessAdmission({ processLockRoot, authorityPath: f.path, pid: process.pid, clock,
-      open: () => context.database, close: database => database.close(),
-      admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories,
-        { commandId: randomUUID(), workflow: 'person-lookup', poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
-          processAcquisitionId: acquisitionId, authorityPath: f.path, processLockRoot, now }, randomUUID()).workerId),
-    });
-    const request = { workerId: owned.workerId, workflow: 'person-lookup', browserSystems: [], processId: process.pid,
-      requestedBy: 'local-operator', now };
-    const started = state === 'missing-birth' ? context.database.authority.workerLeases.start(request)
-      : context.database.startOwnedWorker(request, owned.processLock);
-    assert.equal(started.state, 'started');
-    assert.equal(context.database.authority.workerLeases.reportLifecycle({ workerId: owned.workerId, leaseGeneration: 1,
-      lifecycle: { state: 'stopped', startedAt: now, stoppedAt: now, reason: 'shutdown' }, now }).state, 'applied');
-    if (state !== 'held') owned.processLock.release();
-    if (state === 'held') assert.equal(context.database.workerLifetimeCustody(owned.workerId).state, 'alive');
-    if (state === 'released-running') assert.equal(context.database.workerLifetimeCustody(owned.workerId).state, 'released-alive');
-    const before = context.database.readProfileResourceCustody();
-    const activity = composeProfileActivity({ admission: f.admission, database: context.database, processLockRoot, clock, lifecycle,
-      supervisor: { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined } });
-    assert.throws(() => activity.hasUnquiescedWork(f.admission.profileBinding.profileId), error => error instanceof Error
-      && error.message === (state === 'missing-birth' ? 'worker-birth-authority-unavailable' : 'profile-worker-supervisor-custody-unavailable'));
-    assert.deepEqual(context.database.readProfileResourceCustody(), before);
-    f.machine.assertLive(); f.admission.assertLive();
-  } finally {
-    await context.account.close(); context.database.close(); owned?.processLock.release(); await f.close();
-  }
 });

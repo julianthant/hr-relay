@@ -1,4 +1,4 @@
-import { dashboardLifetimeLock } from "../../../../support/helpers/backend/dashboard-lifetime.js";
+import { runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import { composeProfileCredentialInventory } from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
 import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { createProfileRegistry } from "../../../../../src/backend/profiles/registry.js";
@@ -131,7 +131,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const baseClock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const clock = { ...baseClock, monotonicMs: () => { throw primary; } };
 
-    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(),
       isolation: rebuildRuntimeIsolation,
       env: {},
       clock,
@@ -154,7 +154,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     copyRuntimePackageFixture(repoRoot);
     const primary = new Error("injected HTTP listen failure");
 
-    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(),
       isolation: rebuildRuntimeIsolation,
       env: {},
       repoRoot,
@@ -178,7 +178,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const stateRoot = profileStateRoot(repoRoot);
     mkdirSync(stateRoot, { recursive: true });
     const path = join(stateRoot, "state.db");
-    const initial = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot });
+    const initial = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot });
     await initial.stop();
     restartSelectedProfile(repoRoot);
     const raw = new DatabaseSync(path);
@@ -188,7 +188,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       raw.close();
     }
 
-    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(),
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -207,7 +207,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
     try {
       vi.mocked(readFileSync).mockClear();
-      application = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: machine, isolation: rebuildRuntimeIsolation,
+      application = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission: machine, isolation: rebuildRuntimeIsolation,
         repoRoot, backendPortOverride: 0, frontendPortOverride: 0, env: {} });
       assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
       assert.equal(machine.readProfileRegistry().profiles.length, 0);
@@ -239,7 +239,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
 
     const acquisitionStart = vi.mocked(processLocks.acquireRuntimeProcessLock).mock.calls.length;
     assert.equal(existsSync(lockPath), false);
-    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(),
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -265,7 +265,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const before = storageTree(stateRoot);
     assert.equal(readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server"), undefined);
     const acquisitionStart = vi.mocked(processLocks.acquireRuntimeProcessLock).mock.calls.length;
-    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot }),
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot }),
       error => error instanceof Error && error.message === "profile-database-binding-required");
     assertReleasedServerClaim(repoRoot, acquisitionStart);
     assert.equal(existsSync(join(stateRoot, "state.db")), false);
@@ -280,7 +280,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     mkdirSync(legacyPath, { mode: 0o700 });
     const planted = statSync(legacyPath), before = storageTree(stateRoot);
     const acquisitionStart = vi.mocked(processLocks.acquireRuntimeProcessLock).mock.calls.length;
-    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot }),
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot }),
       error => error instanceof Error && error.message === "profile-database-binding-required");
     assertReleasedServerClaim(repoRoot, acquisitionStart);
     assert.equal(existsSync(join(stateRoot, "state.db")), false);
@@ -344,7 +344,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       return { record, claim, bytes: readFileSync(claim) };
     };
     const crashed = abandon(false);
-    const recovered = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), isolation: rebuildRuntimeIsolation, env: {}, clock, repoRoot });
+    const recovered = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, env: {}, clock, repoRoot });
     assert.deepEqual(readFileSync(crashed.claim), crashed.bytes);
     await recovered.stop();
     const stopped = readRuntimeProcessLock(processLockRoot, "server");
@@ -374,7 +374,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       supervisor = actualSupervisors.createDashboardWorkerProcessSupervisor(input);
       return supervisor;
     });
-    const second = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), isolation: rebuildRuntimeIsolation, env: {}, clock, repoRoot });
+    const second = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, env: {}, clock, repoRoot });
     try {
       const readiness = await createDashboardClient({ baseUrl: `http://127.0.0.1:${String(second.port)}` }).readiness();
       assert.equal(readiness.state, "present");
@@ -472,7 +472,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       vi.mocked(openSync).mockClear();
       vi.mocked(mkdirSync).mockClear();
       try {
-        await assert.rejects(composeCurrentBuild({ lifetimeLock: await dashboardLifetimeLock(), admission, profile: { runtime: selected.runtime, token: selected.token },
+        await assert.rejects(composeCurrentBuild({ lifetimeLock: await runtimeLifetimeLock(), admission, profile: { runtime: selected.runtime, token: selected.token },
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
         }), error => error instanceof AuthoritySchemaVersionError && error.code === "authority-schema-mismatch"
@@ -511,7 +511,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const before = readFileSync(path);
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const acquisitionStart = vi.mocked(processLocks.acquireRuntimeProcessLock).mock.calls.length;
-    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), isolation: rebuildRuntimeIsolation, env: {}, repoRoot, clock }),
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, env: {}, repoRoot, clock }),
       error => error instanceof AuthoritySchemaVersionError && error.code === "authority-schema-mismatch" && error.schemaVersion === version);
     assertReleasedServerClaim(repoRoot, acquisitionStart);
     assert.deepEqual(readFileSync(path), before);
@@ -522,7 +522,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("serves the exact editable settings command schema hash", async () => {
     const repoRoot = await readyRoot();
     copyRuntimePackageFixture(repoRoot);
-    const runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
+    const runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(),
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -545,7 +545,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     openFixtureDatabase({ path: authorityPath, busyTimeoutMs: 250, migrationOwner: "retired-settings-fixture" }).close();
     const path = join(repoRoot, ".tracker", "settings", "settings.json");
     mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, "retired malformed file");
-    const runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot });
+    const runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot });
     try {
       const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
       const editor = await client.editableSettings();
@@ -584,7 +584,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       });
 
       await assert.rejects(async () => {
-        const runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
+        const runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(),
           admission: owner.machine, profile: { runtime: profile, token: signedIn.token },
           isolation: rebuildRuntimeIsolation,
           backendPortOverride: 0,

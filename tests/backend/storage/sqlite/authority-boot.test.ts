@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -197,7 +198,7 @@ afterEach(_afterEachFixture0);
       expect(()=>boot.requireWritable("claim")).toThrow(/unavailable/u);
     }finally{boot.close();}
     expect(effects.credentials).toBe(0);
-    await expect(composeWorkerRuntime({admission:f.admission,isolation:rebuildRuntimeIsolation,args:["person-lookup","--pool-index","1","--drain"],
+    await expect(composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(),admission:f.admission,isolation:rebuildRuntimeIsolation,args:["person-lookup","--pool-index","1","--drain"],
       repoRoot:f.root,clock:f.clock,env:{},sessionFactory:{open:async()=>{effects.browsers+=1;throw new Error("unrequested browser effect");}}})).rejects.toThrow(/config-snapshot-fingerprint-mismatch/u);
     expect(effects).toEqual({credentials:0,browsers:0});
     const read=new DatabaseSync(f.path,{readOnly:true});try {

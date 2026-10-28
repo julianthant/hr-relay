@@ -1,4 +1,4 @@
-import { dashboardLifetimeLock } from "../../../support/helpers/backend/dashboard-lifetime.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { writePrivateStage } from '../../../../src/backend/storage/configuration/credential-safe-file.js';
 import { workerProfileDirectory } from '../../../../src/backend/runtime/browser/browser-session-factory.js';
@@ -141,7 +141,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
   };
   try {
-    runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
+    runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
       workerProcess: { launch: { environment: {}, command: process.execPath, prefixArgs: ["--import", "tsx", join_m1(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), root], cwd: process.cwd() }, spawn: spawnWorker, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => output.push(line) } });
     const duoDirectory = join_m1(root, `physical-duo-${randomUUID()}`);
     mkdirSync(duoDirectory, { mode: 0o700 });

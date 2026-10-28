@@ -1,3 +1,4 @@
+
 import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
 import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
@@ -12,10 +13,10 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { composeWorkerRuntime, parseWorkerArguments } from "../../../../src/backend/app/composition/worker-compose.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { type GateSourcePort } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
-import { observeProcessIdentity, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+
 import { AppSettingsSchema } from "../../../../src/models/config/app-settings.js";
 import { SETTINGS_SCHEMA_HASH, derivePersistedSettingsFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
@@ -108,16 +109,14 @@ function journalWorkerSettings(
   assert.equal(result.state, "applied");
 }
 
-function assertStoppedWorkerProcessRecord(repoRoot: string, clock: TestClock, generation = 3): void {
-  const snapshot = observeRuntimeLockSnapshot({
-    processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(stateRootFor(repoRoot), "state.db")),
-  }, clock, {
-    // Re-read through the exact identity observer that wrote this fixture
-    // record. An unreleased record is therefore active, not a PID-reuse arm.
-    observeProcessIdentity,
-  });
-  assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation });
+function assertStoppedWorkerLifetimes(repoRoot: string, clock: TestClock): void {
+  const database = reopen(stateRootFor(repoRoot), clock);
+  for (const slot of database.authority.workerSlots.list()) {
+    const lease = database.authority.workerLeases.get(slot.workerId); assert.ok(lease);
+    assert.equal(lease.lifecycle.state, "stopped");
+    database.assertWorkerLifecycleRelease(slot.workerId);
+    assert.ok(database.authority.workerControls.browsers(slot.workerId).every(browser => browser.health === "closed"));
+  }
 }
 
 describe("worker CLI argument parsing", () => {
@@ -261,7 +260,7 @@ describe("composed worker runtime", () => {
     const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 }));
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
     assert.equal(readFileSync(path, "utf8"), "retired invalid authority");
-    assertStoppedWorkerProcessRecord(repoRoot, clock);
+    assertStoppedWorkerLifetimes(repoRoot, clock);
   });
 
   it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
@@ -295,7 +294,7 @@ describe("composed worker runtime", () => {
       assert.deepEqual(readFileSync(join(stateRoot, "state.db")), before);
       assert.equal(sessions.opens("ucpath"), 0);
       assert.equal(sessions.opens("crm"), 0);
-      assertStoppedWorkerProcessRecord(repoRoot, clock, 2);
+      assertStoppedWorkerLifetimes(repoRoot, clock);
     },
   );
 
@@ -434,7 +433,7 @@ describe("composed worker runtime", () => {
     assert.deepEqual(database.authority.settingsCurrent.get(), admissionCurrentRecord);
   });
 
-  it("releases its process record when authority open fails without masking that error", async () => {
+  it("releases worker admission when authority open fails without masking that error", async () => {
     const { repoRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     const openFailure = new Error("injected authority open failure");
@@ -445,7 +444,7 @@ describe("composed worker runtime", () => {
           clock,
           sessions: happySessionHarness(),
           poolIndex: POOL_INDEX_1,
-          processId: process.pid,
+
         }),
         openDatabase: () => {
           throw openFailure;
@@ -453,14 +452,11 @@ describe("composed worker runtime", () => {
       }),
       (error: unknown) => error === openFailure,
     );
-    const snapshot = observeRuntimeLockSnapshot({
-      processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-      sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(stateRootFor(repoRoot), "state.db")),
-    }, clock);
-    assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+    const database = reopen(stateRootFor(repoRoot), clock);
+    assert.deepEqual(database.authority.workerSlots.list(), []);
   });
 
-  it("keeps its process record active when database closure cannot be proven", async () => {
+  it("retains controller and database custody when database closure cannot be proven", async () => {
     const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     const closeFailure = new Error("injected database close failure");
@@ -481,11 +477,7 @@ describe("composed worker runtime", () => {
       const retainedDatabase = stillOpen;
       assert.doesNotThrow(() => retainedDatabase.getMeta(), "the injected close failure left the handle usable");
       assert.equal(databaseDescriptors(stateRoot).length > 0, true);
-      const snapshot = observeRuntimeLockSnapshot({ processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-        sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(stateRoot, "state.db")) }, clock);
-      assert.equal(snapshot.processLocks.workers.state, "active");
-      if (snapshot.processLocks.workers.state !== "active") throw new Error("missing retained fixture process");
-      assert.equal(snapshot.processLocks.workers.pid, process.pid);
+      input.lifetimeLock.assertHeld();
       assert.ok(captured.report);
       assert.deepEqual(captured.report.outcomes, []);
       captured.assertHeld();

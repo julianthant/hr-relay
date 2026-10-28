@@ -1,4 +1,4 @@
-import { dashboardLifetimeLock } from "../../../../support/helpers/backend/dashboard-lifetime.js";
+import { runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync } from "node:fs";
@@ -26,7 +26,7 @@ async function fixture() {
   if (active.state !== "active") throw new Error("profile activation required");
   let spawns = 0;
   try {
-    const dashboard = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token },
+    const dashboard = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token },
       repoRoot: profile.workspace, clock, isolation: rebuildRuntimeIsolation, env: {}, backendPortOverride: 0, frontendPortOverride: 0,
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       workerProcess: { spawn: () => { spawns += 1; throw new Error("refused start must not spawn a worker"); } } });

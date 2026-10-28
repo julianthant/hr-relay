@@ -1,6 +1,6 @@
 import { createBoundProfileFixture } from '../../admission-fixture.js';
 import { retainAuthoritySourceClosure } from '../../../../../src/backend/storage/source-closure.js';
-import type { RuntimeProcessLockHandle } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+
 import { sqliteRunReader } from "../../canonical-run-reader.js";
 import { personLookupDescriptor } from "../../registered-workflows.js";
 import { AuthorityDatabase } from "../../synthetic-storage-admission.js";
@@ -103,7 +103,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
     assertServedBundle(input.distDir, input.bundle);
-    const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; server?: Server; services?: ReturnType<typeof composeFixtureServices>; workerHandles?: RuntimeProcessLockHandle[]; primary?: unknown } = {};
+    const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; server?: Server; services?: ReturnType<typeof composeFixtureServices>; workers?: Set<string>; primary?: unknown } = {};
     retainedSeededFixtureOwners.add(held);
     const profile = await createBoundProfileFixture();
     held.profile = profile;
@@ -114,19 +114,18 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
     held.database = database;
 
-    const workerHandles: RuntimeProcessLockHandle[] = [];
-    held.workerHandles = workerHandles;
+    const workers = new Set<string>();
+    held.workers = workers;
     let cleanupAttempted = false, cleanupFailure: Error | undefined;
     const cleanupAuthority = async (): Promise<void> => {
       if (cleanupAttempted) { if (cleanupFailure !== undefined) throw cleanupFailure; return; }
       cleanupAttempted = true;
       try {
-        for (const handle of workerHandles.toReversed()) handle.release();
         database.close();
         await profile.close();
         retainedSeededFixtureOwners.delete(held);
       } catch (error) {
-        cleanupFailure = retainAuthoritySourceClosure([error], { admission: { held, workerHandles } });
+        cleanupFailure = retainAuthoritySourceClosure([error], { admission: { held, workers } });
         retainedSeededFixtureOwners.add(held);
         throw cleanupFailure;
       }
@@ -151,7 +150,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
         listGateResults: runId => database.authority.gateResults.listByRun(runId),
         listWorkerSlots: () => database.authority.workerSlots.list(),
         listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
-        workerOwnerAlive: lease => database.workerLifetimeCustody(lease.workerId).state === "alive",
+        workerOwnerAlive: lease => workers.has(lease.workerId) && lease.processId === process.pid && lease.lifecycle.state !== "stopped",
         workerControls: () => database.authority.workerControls.list(),
         workerBrowsers: workerId => database.authority.workerControls.browsers(workerId),
         listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
@@ -182,7 +181,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
 
     const runIds = seed({ database, spans, notes, clock, authorityPath: join(stateRoot, "state.db"),
-      retainWorker: handle => workerHandles.push(handle) });
+      workers });
     if (input.dateNavigation === true) {
       const source = runIds.runningRun;
       if (source === undefined) throw new Error("date-proof-source-run-missing");
@@ -244,7 +243,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
           closeRunLogs();
         } catch (error) {
           held.primary = error;
-          throw retainAuthoritySourceClosure([error], { admission: { held, workerHandles } });
+          throw retainAuthoritySourceClosure([error], { admission: { held, workers } });
         }
         await cleanupAuthority();
         })();
@@ -253,7 +252,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     });
     } catch (error) {
       held.primary = error;
-      throw retainAuthoritySourceClosure([error], { admission: { held, workerHandles } });
+      throw retainAuthoritySourceClosure([error], { admission: { held, workers } });
     }
   }
 

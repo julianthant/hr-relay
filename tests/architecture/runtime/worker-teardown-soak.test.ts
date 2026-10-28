@@ -1,3 +1,4 @@
+import { recoverInterruptedTestRun } from "../../support/helpers/backend/run-record-service-world.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { createWorkerLoopHarness as workerHarness } from "../../support/helpers/backend/worker-loop-world.js";
 
@@ -33,7 +34,6 @@ type AuthorityHarness
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 
 const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);
-const CLAIM_STALE_AFTER_MS = 60_000;
 
 /** The measured soak shape, restated in ref execution-and-sessions's as-built paragraph. */
 const SOAK_WORKERS = 3;
@@ -118,26 +118,21 @@ describe("graceful teardown with a run in flight", () => {
     assert.ok(ACTIVE_STATES.has(stranded.lifecycle.state), `expected an active row, got ${stranded.lifecycle.state}`);
     assert.equal("workerId" in stranded.lifecycle ? stranded.lifecycle.workerId : undefined, "person-lookup-worker-1");
 
-    // Recovery is the ONLY release path, and it works: the heartbeat went
-    // stale with the process, the sweep requeues, and a fresh worker drains it.
     clock.advanceWall(90_000);
-    const swept = database.authority.runs.sweepExpiredClaims({
-      workflow: WORKFLOW_ID,
-      staleBefore: new Date(clock.nowMs() - CLAIM_STALE_AFTER_MS).toISOString(),
-      now: clock.now().toISOString(),
-    });
-    assert.deepEqual(swept.map(({ state }) => state), ["requeued"]);
+    const recoveredRun = await recoverInterruptedTestRun(database, clock, runId);
+    assert.ok(recoveredRun.lifecycle.state === "terminal" && recoveredRun.lifecycle.outcome === "failed");
+    assert.equal(database.authority.failures.listByRun(runId)[0]?.code, "RUN_INTERRUPTED_BY_CRASH");
 
     const successor = await workerHarness(authority, "2", "b");
     const recovered = await runWorkerLoop(successor.deps);
-    assert.deepEqual(recovered.outcomes.map(({ state }) => state), ["done"]);
+    assert.deepEqual(recovered.outcomes.map(({ state }) => state), []);
     assert.deepEqual([...activeClaimsByWorker(database).keys()], []);
     const settled = database.authority.runs.get(runId);
     assert.ok(settled !== undefined && settled.lifecycle.state === "terminal");
-    assert.equal("outcome" in settled.lifecycle ? settled.lifecycle.outcome : undefined, "done");
+    assert.equal("outcome" in settled.lifecycle ? settled.lifecycle.outcome : undefined, "failed");
     assert.equal(settled.envelope.attempt, 1);
     assert.deepEqual(settled.envelope, stranded.envelope);
-    assert.equal(settled.claimGeneration, stranded.claimGeneration + 1);
+    assert.equal(settled.claimGeneration, stranded.claimGeneration);
   });
 });
 

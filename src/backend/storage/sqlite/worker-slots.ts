@@ -1,13 +1,14 @@
+import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 import type { WorkerControlRecord } from "../../../models/run/worker-control.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { type Clock } from "../../../rules/time/clock.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremony-lease.js";
-import { lstatSync } from "node:fs";
-import { join } from "node:path";
+
+
+
 import { commandFromRow } from "./command-record-row.js";
-import { RuntimeProcessLockFileSchema, readLiveSmokeRuntimeFile, readRuntimeProcessLock, observeProcessIdentity } from "./runtime-process-locks.js";
-import { WorkerStandingRecoveryRequestSchema, WorkerVerificationClaimSchema, WorkerVerificationClosureProofSchema, WorkerVerificationRecoveryProofSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema } from "./run-store-contracts.js";
+
+import { WorkerStandingRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema } from "./run-store-contracts.js";
 import { AuthorityCommandAuditRecordSchema, RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../rules/commands/commands.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -36,6 +37,11 @@ export function workerSlotFromRow(input: unknown) {
   }
   return record;
 }
+function assertVerificationProfileBinding(database: DatabaseSync, binding: z.infer<typeof ProfileDatabaseBindingSchema>): void {
+  const current = ProfileDatabaseBindingSchema.parse(database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get());
+  if (binding.installationId !== current.installationId || binding.profileId !== current.profileId) throw new Error("worker-verification-profile-mismatch");
+}
+
 export function verificationFromSlot(database: DatabaseSync, slot: WorkerSlotRecord) {
   if (slot.retiredAt !== null || slot.reservationCommandId === null) return undefined;
   const commandRow = database.prepare("SELECT * FROM commands WHERE id=?").get(slot.reservationCommandId);
@@ -43,6 +49,7 @@ export function verificationFromSlot(database: DatabaseSync, slot: WorkerSlotRec
   const command = commandFromRow(commandRow);
   if (!("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "worker-verification-admission") return undefined;
   const request = WorkerVerificationAdmissionRequestSchema.parse(command.request);
+  assertVerificationProfileBinding(database, request);
   const rows = database.prepare("SELECT payload_json FROM command_audits WHERE command_id=?").all(command.commandId);
   if (rows.length !== 1) throw new Error("worker-verification-authority-unavailable");
   const audit = RunLifecycleCommandAuditRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(rows[0]).payload_json));
@@ -54,57 +61,12 @@ export function verificationFromSlot(database: DatabaseSync, slot: WorkerSlotRec
   return { command, request, slot };
 }
 
-function requireVerificationCleanup(database: DatabaseSync, hold: NonNullable<ReturnType<typeof verificationFromSlot>>, request: z.infer<typeof WorkerVerificationRetirementRequestSchema>) {
-  const { owner, processLockRoot, stateRoot } = hold.request;
-  if (request.cleanup.mode === "live") {
-    const current = readRuntimeProcessLock(processLockRoot, "live-smoke");
-    const observed = observeProcessIdentity(owner.pid);
-    if (current?.pid !== process.pid || canonicalJsonStringify(current) !== canonicalJsonStringify(owner)
-      || observed.state !== "alive" || canonicalJsonStringify(observed.identity) !== canonicalJsonStringify(owner.processIdentity)) throw new Error("worker-verification-owner-unavailable");
-  } else {
-    const original = RuntimeProcessLockFileSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(processLockRoot, `${owner.generation}.claim.json`).text));
-    const released = z.strictObject({ generation: z.number().int().positive(), acquisitionId: z.uuid(), releasedAt: IsoInstantSchema })
-      .parse(JSON.parse(readLiveSmokeRuntimeFile(processLockRoot, `${owner.generation}-${owner.acquisitionId}.release.json`).text));
-    if (canonicalJsonStringify(original) !== canonicalJsonStringify(owner) || released.acquisitionId !== owner.acquisitionId
-      || released.generation !== owner.generation || observeProcessIdentity(owner.pid).state !== "gone") throw new Error("worker-verification-owner-unavailable");
-  }
-  const root = join(processLockRoot, "live-smoke-slots");
-  if (request.cleanup.evidence === "browserless") {
-    if (hold.slot.phase !== "starting" || request.cleanup.mode !== "live"
-      || lstatSync(join(root, "live-smoke-claims", `${owner.acquisitionId}.slot.json`), { throwIfNoEntry: false }) !== undefined) throw new Error("worker-verification-cleanup-unproved");
-    return;
-  }
-  const claim = WorkerVerificationClaimSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(root, `${owner.acquisitionId}.slot.json`).text));
-  const profileDirectory = join(stateRoot, "scratch", "live-smoke", claim.profileRunId, "browsers", `w${hold.slot.ordinal}`, claim.system);
-  if (request.cleanup.evidence === "recovered") {
-    const proof = WorkerVerificationRecoveryProofSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(root,
-      `${owner.acquisitionId}-${request.cleanup.recoveryAcquisitionId}.recovered.json`).text));
-    const current = readRuntimeProcessLock(processLockRoot, "live-smoke");
-    const observed = current === undefined ? undefined : observeProcessIdentity(current.pid);
-    const row = database.prepare("SELECT payload_json FROM auth_leases WHERE credential_key=?").get(claim.credentialKey);
-    const lease = row === undefined ? undefined : DuoCeremonyLeaseRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json));
-    if (claim.profileRunId !== owner.acquisitionId
-      || request.cleanup.mode !== "recovery" || current?.pid !== process.pid || current.releasedAt !== null
-      || observed?.state !== "alive" || canonicalJsonStringify(observed.identity) !== canonicalJsonStringify(current.processIdentity)
-      || canonicalJsonStringify(proof.recoveryOwner) !== canonicalJsonStringify(current)
-      || proof.recoveryOwner.acquisitionId !== request.cleanup.recoveryAcquisitionId
-      || proof.acquisitionId !== owner.acquisitionId || proof.workerId !== hold.slot.workerId
-      || proof.membershipRevision !== hold.slot.membershipRevision || proof.checkedAt !== request.now
-      || Date.parse(proof.checkedAt) < Date.parse(hold.request.now) || Date.parse(proof.checkedAt) < Date.parse(current.acquiredAt)
-      || proof.claimFingerprint !== sha256Hex(canonicalJsonStringify(claim)) || proof.profileDirectory !== profileDirectory
-      || canonicalJsonStringify(claim.process) !== canonicalJsonStringify(owner)
-      || canonicalJsonStringify(claim.slot) !== canonicalJsonStringify(hold.slot)
-      || lease?.state !== "released" || lease.holder.workerId !== hold.slot.workerId || lease.holder.system !== claim.system
-      || lstatSync(profileDirectory, { throwIfNoEntry: false }) !== undefined
-      || lstatSync(join(root, "live-smoke-claims", `${owner.acquisitionId}.closed.json`), { throwIfNoEntry: false }) !== undefined) throw new Error("worker-verification-cleanup-unproved");
-    return;
-  }
-  const proof = WorkerVerificationClosureProofSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(root, `${owner.acquisitionId}.closed.json`).text));
-  if (canonicalJsonStringify(claim.process) !== canonicalJsonStringify(owner)
-    || canonicalJsonStringify(claim.slot) !== canonicalJsonStringify(hold.slot)
-    || proof.acquisitionId !== owner.acquisitionId || proof.workerId !== hold.slot.workerId
-    || proof.membershipRevision !== hold.slot.membershipRevision || Date.parse(proof.checkedAt) < Date.parse(hold.request.now)
-    || lstatSync(join(stateRoot, "scratch", "live-smoke", claim.profileRunId, "browsers", `w${hold.slot.ordinal}`, claim.system), { throwIfNoEntry: false }) !== undefined) throw new Error("worker-verification-cleanup-unproved");
+function requireVerificationCleanup(database: DatabaseSync, hold: NonNullable<ReturnType<typeof verificationFromSlot>>) {
+  if (database.prepare("SELECT 1 FROM runs WHERE owner_worker_id=? LIMIT 1").get(hold.slot.workerId) !== undefined
+    || database.prepare("SELECT 1 FROM commands WHERE family='run-lifecycle' AND json_extract(request_json,'$.operation')='claim-next' AND json_extract(request_json,'$.request.workerId')=? LIMIT 1").get(hold.slot.workerId) !== undefined
+    || database.prepare("SELECT 1 FROM worker_leases WHERE worker_id=? LIMIT 1").get(hold.slot.workerId) !== undefined
+    || database.prepare("SELECT 1 FROM browser_sessions WHERE worker_id=? AND state<>'closed' LIMIT 1").get(hold.slot.workerId) !== undefined
+    || database.prepare("SELECT 1 FROM auth_leases WHERE holder_worker_id=? AND state='held' LIMIT 1").get(hold.slot.workerId) !== undefined) throw new Error("worker-verification-cleanup-unproved");
 }
 
 export function recoveryFromSlot(database: DatabaseSync, slot: WorkerSlotRecord) {
@@ -128,7 +90,7 @@ export function requireVerificationRetirements(database: DatabaseSync, workflow:
     const grant = commandFromRow(grantRow);
     if (!("kind" in grant) || grant.kind !== "run-lifecycle" || grant.operation !== "worker-verification-admission") continue;
     const admissionRequest = WorkerVerificationAdmissionRequestSchema.parse(grant.request);
-    const owner = admissionRequest.owner;
+    assertVerificationProfileBinding(database, admissionRequest);
     const rows = database.prepare("SELECT payload_json FROM command_audits WHERE command_id=?").all(slot.retirementCommandId);
     if (rows.length !== 1) throw new Error("worker-verification-retirement-unproved");
     const audit = RunLifecycleCommandAuditRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(rows[0]).payload_json));
@@ -137,7 +99,8 @@ export function requireVerificationRetirements(database: DatabaseSync, workflow:
     const retirement = WorkerVerificationRetirementRequestSchema.parse(audit.request.request);
     if (audit.request.operation !== "worker-verification-retirement" || audit.request.commandId !== slot.retirementCommandId
       || retirement.grantCommandId !== grant.commandId || retirement.workerId !== slot.workerId
-      || retirement.expectedRevision + 1 !== slot.membershipRevision || retirement.cleanup.acquisitionId !== owner.acquisitionId
+      || retirement.expectedRevision + 1 !== slot.membershipRevision
+      || retirement.installationId !== admissionRequest.installationId || retirement.profileId !== admissionRequest.profileId
       || audit.result.kind !== "worker" || canonicalJsonStringify(audit.result.slot) !== canonicalJsonStringify(slot)
       || audit.result.beforePoolVersion !== retirement.expectedPoolVersion
       || audit.result.afterPoolVersion !== retirement.expectedPoolVersion + 1) throw new Error("worker-verification-retirement-unproved");
@@ -290,12 +253,11 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
           if (!("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "worker-verification-retirement") throw new Error("worker-verification-reserved");
           const retirement = WorkerVerificationRetirementRequestSchema.parse(command.request);
           if (retirement.grantCommandId !== hold.command.commandId || retirement.workerId !== current.workerId
-            || retirement.expectedRevision !== current.membershipRevision || retirement.cleanup.acquisitionId !== hold.request.owner.acquisitionId
-            || retirement.cleanup.evidence === "browserless" && current.phase !== "starting") throw new Error("worker-verification-retirement-binding-mismatch");
+            || retirement.expectedRevision !== current.membershipRevision) throw new Error("worker-verification-retirement-binding-mismatch");
           const pool = z.object({ version: z.number() }).parse(database.prepare("SELECT version FROM worker_pools WHERE workflow=?").get(current.workflow));
           if (retirement.now !== request.now || Number(pool.version) !== retirement.expectedPoolVersion
             || database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL").get(`worker-pool:${current.workflow}`) !== undefined) throw new Error("worker-verification-retirement-binding-mismatch");
-          requireVerificationCleanup(database, hold, retirement);
+          requireVerificationCleanup(database, hold);
           if (database.prepare("SELECT 1 FROM auth_leases WHERE holder_worker_id=? AND state='held'").get(current.workerId) !== undefined) throw new Error("worker-verification-duo-held");
         }
         if (current.membershipRevision !== request.expectedRevision) throw new Error("worker-slot-revision-conflict");
@@ -435,10 +397,6 @@ export function admitWorkerVerification(
   if (repositories.workerControls.pending(`worker-pool:${request.workflow}`).length !== 0
     || repositories.workerSlots.verifications(request.workflow).length !== 0) throw new Error("worker-control-unresolved-effect");
   requireWorkerPoolRoster(repositories, request.workflow);
-  const owner = readRuntimeProcessLock(request.processLockRoot, "live-smoke");
-  const observedProcess = observeProcessIdentity(request.owner.pid);
-  if (owner?.pid !== process.pid || canonicalJsonStringify(owner) !== canonicalJsonStringify(request.owner)
-    || observedProcess.state !== "alive" || canonicalJsonStringify(observedProcess.identity) !== canonicalJsonStringify(request.owner.processIdentity)) throw new Error("worker-verification-owner-unavailable");
   const pool = repositories.workerPools.get(request.workflow);
   if ((pool?.version ?? 0) !== request.expectedPoolVersion) throw new Error("worker-pool-version-conflict");
   repositories.lifecycleJournal.insertCommand(command);
@@ -472,7 +430,8 @@ export function retireWorkerVerification(
 
   const hold = repositories.workerSlots.verification(request.workerId);
   if (hold === undefined || hold.command.commandId !== request.grantCommandId
-    || hold.slot.membershipRevision !== request.expectedRevision || hold.request.owner.acquisitionId !== request.cleanup.acquisitionId) throw new Error("worker-verification-authority-unavailable");
+    || hold.slot.membershipRevision !== request.expectedRevision
+    || hold.request.installationId !== request.installationId || hold.request.profileId !== request.profileId) throw new Error("worker-verification-authority-unavailable");
   if (repositories.workerControls.pending(`worker-pool:${hold.slot.workflow}`).length !== 0) throw new Error("worker-control-unresolved-effect");
   requireWorkerPoolRoster(repositories, hold.slot.workflow);
   const pool = repositories.workerPools.get(hold.slot.workflow);

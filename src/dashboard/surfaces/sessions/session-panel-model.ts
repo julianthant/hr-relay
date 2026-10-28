@@ -358,7 +358,6 @@ export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopRe
   operator: "stopped by you",
   shutdown: "shut down",
   crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
-  "lease-expired": formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_LEASE_EXPIRED", {})).text,
 };
 
 

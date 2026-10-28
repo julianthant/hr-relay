@@ -223,7 +223,7 @@ export const RunRecordRefusalSchema = z.discriminatedUnion("reason", [
   z.strictObject({ reason: z.literal("schema-mismatch"), digest: FingerprintSchema }),
   z.strictObject({ reason: z.enum([
     "parent-missing", "retry-of-missing", "tombstoned", "runtime-stale", "cursor-stale",
-    "owned-by-worker", "lost", "replay-divergent", "heartbeat-live", "invalid-state",
+    "owned-by-worker", "lost", "replay-divergent", "invalid-state",
     "source-deleted", "not-terminal", "already-archived", "workflow-unregistered",
     "is-member", "use-archive-door", "retention-not-due", "policy-refused", "shared-checkpoint", "unresolved-write",
   ]) }),

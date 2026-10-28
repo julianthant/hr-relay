@@ -235,7 +235,7 @@ describe("canonical run-record service", () => {
     assert.equal(renewed.state, "applied");
   });
 
-  it("#6/#7 requeues only an expired claim, preserves its attempt/fence, and rejects the zombie", async () => {
+  it("#6/#7 requires the claim fence, preserves its attempt, and rejects the released owner", async () => {
     const { service, request, runtimeConfig, database } = await fixture();
     const run = created(service, request);
     const claim = service.claimNext({
@@ -252,18 +252,17 @@ describe("canonical run-record service", () => {
       runId: run.envelope.runId,
       expectedVersion: claim.run.version,
       cause: "recovery",
-      staleBefore: NOW,
-    }), { state: "refused", refusal: { reason: "heartbeat-live" } });
+    }), { state: "refused", refusal: { reason: "illegal-transition", from: "claimed", to: "queued", message: "a claimed run requires its claim fence" } });
     assert.equal(database.getMeta().authorityGeneration, beforeLive);
     const requeued = service.requeue({
       commandId: "83000000-0000-4000-8000-000000000003",
       runId: run.envelope.runId,
       expectedVersion: claim.run.version,
       cause: "recovery",
-      staleBefore: LATER,
+      claim: { workerId: WORKER_ID, claimGeneration: claim.run.claimGeneration },
     });
     assert.equal(requeued.state, "applied");
-    if (requeued.state !== "applied") throw new Error("expired claim did not requeue");
+    if (requeued.state !== "applied") throw new Error("owned claim did not requeue");
     assert.equal(requeued.run.lifecycle.state, "queued");
     assert.equal(requeued.run.envelope.attempt, run.envelope.attempt);
     assert.equal(requeued.run.claimGeneration, claim.run.claimGeneration);

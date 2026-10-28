@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "./runtime-lifetime.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
@@ -6,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { acquireEntrypointAdmission } from '../../../../src/backend/storage/admission/bootstrap-admission.js';
 import { createProfileRegistry } from '../../../../src/backend/profiles/registry.js';
-import { assertWorkerProcessCustody, observeProcessIdentity, ProcessStartIdentitySchema } from '../../../../src/backend/storage/sqlite/runtime-process-locks.js';
+
 import { registerBoundProfile, unregisterBoundProfile } from '../admission-fixture.js';
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT, COMMAND_FIXTURES, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
@@ -71,7 +72,8 @@ export function createStorageRestoreTestWorld() {
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'relay-restore-attempt-')));
     retainedAttemptScratch.add(scratch);
     const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
-    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url))], {
+    const lifetimeLock = await runtimeLifetimeLock();
+    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(lifetimeLock.port)], {
       cwd: sourceRoot, env: { ...process.env, TMPDIR: scratch }, detached: true,
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -94,13 +96,15 @@ export function createStorageRestoreTestWorld() {
     let registered = false;
     let workspace: string | undefined;
     try {
-      const message: unknown = (await Promise.race([once(child, 'message'), ending.then(() => {
+      const awaitingReceipt = Promise.race([once(child, 'message'), ending.then(() => {
         throw new Error('storage-restore-attempt-worker-exited-before-checkpoint');
-      })]))[0];
+      })]);
+      await lifetimeLock.share(child);
+      const message: unknown = (await awaitingReceipt)[0];
       const receipt = z.strictObject({ state: z.literal('attempting'), workspace: z.string().min(1),
         stateRoot: z.string().min(1), authorityPath: z.string().min(1), profileId: z.string().min(1),
-        workerId: z.string().min(1), acquisitionId: z.uuid(), processLockRoot: z.string().min(1),
-        pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema,
+        workerId: z.string().min(1), processLockRoot: z.string().min(1),
+        pid: z.number().int().positive(),
         claimGeneration: z.number().int().positive(), runId: z.string().min(1),
         databaseClosed: z.literal(true), retained: z.literal(true) }).parse(message);
       assert.equal(receipt.pid, child.pid);
@@ -108,12 +112,8 @@ export function createStorageRestoreTestWorld() {
       assert.equal(dirname(receipt.workspace), scratch);
       assert.equal(receipt.processLockRoot, join(receipt.workspace, rebuildRuntimeIsolation.processLockRoot));
       assert.equal(receipt.authorityPath, join(receipt.stateRoot, "state.db"));
-      const live = observeProcessIdentity(receipt.pid);
-      assert.equal(live.state, 'alive');
-      if (live.state !== 'alive') throw new Error('storage-restore-attempt-worker-not-alive');
-      assert.deepEqual(live.identity, receipt.processIdentity);
-      assertWorkerProcessCustody({ processLockRoot: receipt.processLockRoot, acquisitionId: receipt.acquisitionId,
-        pid: receipt.pid, workerId: receipt.workerId, authorityPath: receipt.authorityPath });
+      lifetimeLock.assertHeld();
+      assert.equal(child.exitCode, null); assert.equal(child.signalCode, null);
       process.kill(-receipt.pid, 0);
       assert.equal(child.kill('SIGKILL'), true);
       const ended = await ending;
@@ -156,7 +156,8 @@ export function createStorageRestoreTestWorld() {
         } };
       database = open(paths);
       attemptDatabases.set(receipt.workspace, { database, closeDatabase });
-      assert.equal(database.workerLifetimeCustody(receipt.workerId).state, 'dead');
+      assert.equal(child.signalCode, 'SIGKILL');
+      assert.equal(database.authority.workerLeases.get(receipt.workerId)?.processId, receipt.pid);
       const run = database.authority.runs.get(receipt.runId);
       assert.ok(run);
       assert.equal(run.claimGeneration, receipt.claimGeneration);

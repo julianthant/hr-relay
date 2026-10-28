@@ -154,7 +154,7 @@ describe("real processes: two children supervised concurrently through the compo
       const spawn = realStubSpawner(owner.records);
       const control = composeWorkerProcessControl({
     onExit: () => undefined,
-        profileRoot: resolved.config.paths.browserProfileRoot, processLockRoot: lockRoot,
+        profileRoot: resolved.config.paths.browserProfileRoot,
         database, clock: systemClock, scheduler: createTimeoutDeadlineScheduler(systemClock),
         launch: stubLaunch(dbPath, lockRoot, 'installed', launchCommandOverride ?? process.execPath),
         spawn: request => {

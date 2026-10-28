@@ -65,7 +65,6 @@ export const WorkerResetBindingSchema = z.strictObject({
 export type WorkerResetBinding = z.infer<typeof WorkerResetBindingSchema>;
 
 export const WorkerLifecycleBindingSchema = z.strictObject({
-  birthCommandId: CommandIdSchema.optional(),
   commandId: CommandIdSchema, member: WorkerPoolMemberSchema,
   lifetime: WorkerResetBindingSchema.shape.lifetime,
   basis: WorkerControlBasisSchema, reservedControlRevision: PositiveIntSchema,
@@ -93,8 +92,7 @@ export const WorkerControlRecordSchema = z.strictObject({
   control: z.strictObject({ member: WorkerPoolMemberSchema, lifetime: WorkerResetBindingSchema.shape.lifetime }).optional(),
   reset: WorkerResetBindingSchema.optional(),
   lifecycle: WorkerLifecycleBindingSchema.optional(),
-  effect: z.strictObject({ observedAt: IsoInstantSchema, observation: WorkerSupervisorEffectObservationSchema,
-    oldBirthCommandId: CommandIdSchema.optional(), newBirthCommandId: CommandIdSchema.optional() }).optional(),
+  effect: z.strictObject({ observedAt: IsoInstantSchema, observation: WorkerSupervisorEffectObservationSchema }).optional(),
   readiness: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("initializing"), leaseGeneration: PositiveIntSchema }), z.strictObject({ state: z.enum(["ready", "cancelled"]), leaseGeneration: PositiveIntSchema, observedAt: IsoInstantSchema })]).optional(),
   closure: z.strictObject({ observedAt: IsoInstantSchema, closedSessionIds: z.array(BrowserSessionIdSchema) }).optional(),
   auditedAt: IsoInstantSchema.optional(),
@@ -131,8 +129,7 @@ export const WorkerControlRecordSchema = z.strictObject({
   } else if (record.lifecycle !== undefined || record.closure !== undefined) context.addIssue({ code: "custom", message: "worker-lifecycle-binding-unexpected" });
   if (record.effect !== undefined && (record.lifecycle === undefined
     || record.effect.observation.kind !== record.lifecycle.operation.kind
-    || !["executing", "uncertain", "succeeded"].includes(record.phase.state)
-    || record.effect.oldBirthCommandId !== record.lifecycle.birthCommandId)) context.addIssue({ code: "custom", message: "worker-lifecycle-effect-binding-invalid" });
+    || !["executing", "uncertain", "succeeded"].includes(record.phase.state))) context.addIssue({ code: "custom", message: "worker-lifecycle-effect-binding-invalid" });
   if (record.readiness !== undefined && (record.lifecycle?.operation.kind !== "retry" || record.phase.state !== "succeeded"
     || record.readiness.leaseGeneration !== record.lifecycle.lifetime.leaseGeneration + 1)) context.addIssue({ code: "custom", message: "worker-initialization-binding-invalid" });
   if (record.closure !== undefined && (record.lifecycle?.operation.kind !== "remove"

@@ -1,4 +1,4 @@
-import { dashboardLifetimeLock } from "../../../../support/helpers/backend/dashboard-lifetime.js";
+import { runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import assert from "node:assert/strict";
 import { copyFileSync } from "node:fs";
@@ -37,7 +37,7 @@ for (const startupFailure of [false, true]) it(`drains a pending HTTP completion
   assert.equal(active.state, "active");
   const primary = new Error("synthetic post-listen failure");
   try {
-    const composed = composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token }, clock, repoRoot, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
+    const composed = composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token }, clock, repoRoot, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       httpServerStarter: async input => {
         const { app } = input;
@@ -108,7 +108,7 @@ it("retains actual account, database and process custody when cleanup refuses af
   const protectedPath = join(profile.stateRoot, "credentials", "protected.json"), protectedBefore = readFileSync(protectedPath);
   let retentionProved = false;
   try {
-    const dashboard = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token }, clock, repoRoot,
+    const dashboard = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token }, clock, repoRoot,
       isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       httpServerStarter: async input => {
         const started = ChatGptSignInStartSchema.parse(await (await input.app.request("http://127.0.0.1/api/v1/settings/chatgpt-account/sign-in", {

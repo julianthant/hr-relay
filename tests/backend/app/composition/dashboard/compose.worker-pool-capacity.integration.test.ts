@@ -1,4 +1,4 @@
-import { dashboardLifetimeLock } from "../../../../support/helpers/backend/dashboard-lifetime.js";
+import { runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
@@ -338,7 +338,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
       lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: h.clock.now().toISOString() }, now: h.clock.now().toISOString() });
     h.children[0]?.emitExit(1, null);
     h.clock.advanceWall(1000);
-    h.database.authority.workerLeases.sweepExpired({ now: h.clock.now().toISOString(), staleBefore: h.clock.now().toISOString() });
+    h.database.settleInterruptedWorker(await runtimeLifetimeLock(), WORKER_1, 1, h.clock.now().toISOString());
     assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.lifecycle.state, "stopped");
     assert.equal((await launchCommands(h).submit(request)).state, "already-applied");
     assert.equal(h.children.length, 1);
@@ -600,7 +600,8 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
         if (poolIndex === 1) assert.equal(seededWorkerId, WORKER_1);
         const lease = started.authority.workerLeases.get(seededWorkerId); assert.ok(lease);
         assert.equal(lease.lifecycle.state, 'starting');
-        assert.equal(started.workerLifetimeCustody(seededWorkerId).state, 'alive');
+        assert.equal(lease.processId, seed.pid);
+        assert.equal(seed.exitCode, null); assert.equal(seed.signalCode, null);
         const readyAt = new Date().toISOString();
         assert.equal(started.authority.workerLeases.reportLifecycle({ workerId: seededWorkerId, leaseGeneration: lease.leaseGeneration,
           lifecycle: { state: 'idle', startedAt: lease.lifecycle.startedAt, heartbeatAt: readyAt }, now: readyAt }).state, 'applied');
@@ -615,7 +616,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
         clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
       try {
         assert.equal(stopped.authority.workerLeases.get(seededWorkerId)?.lifecycle.state, 'stopped');
-        assert.equal(stopped.workerLifetimeCustody(seededWorkerId).state, 'released');
+        assert.equal(seed.exitCode, 0); assert.equal(seed.signalCode, null);
         stopped.assertWorkerLifecycleRelease(seededWorkerId);
         assert.equal(stopped.authority.workerPools.get(WORKFLOW)?.desiredWorkers, poolIndex);
         assert.equal(stopped.authority.workerSlots.list(WORKFLOW).filter(slot => slot.retiredAt === null).length, poolIndex);
@@ -628,7 +629,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     const children: FakeWorkerChild[] = [];
     let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
     try {
-      runtime = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      runtime = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
         isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, clock, repoRoot,
         workerProcess: { scheduler: new ManualScheduler(clock, 0), spawn: () => {
           const child = new FakeWorkerChild(7002); children.push(child); return child;
@@ -669,7 +670,7 @@ const retainedCapacityCustody: {
       assert.ok(record); return record;
     };
     // Port 0 asks the OS for an ephemeral port, isolating this proof from a running dashboard.
-    const runtime = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
+    const runtime = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       frontendPortOverride: 0,
@@ -777,14 +778,6 @@ const retainedCapacityCustody: {
             control: { directive: "pause", requestedAt: NOW, requestedBy: "local-operator" }, now: NOW });
         }
       } finally { blocked.close(); }
-      const descriptor = Object.getOwnPropertyDescriptor(AdmittedAuthorityDatabase.prototype, "settleDeadWorkerLifetime") as TypedPropertyDescriptor<AdmittedAuthorityDatabase["settleDeadWorkerLifetime"]>;
-      const nativeReconcile = descriptor.value; assert.ok(nativeReconcile);
-      const reconcile = vi.spyOn(AdmittedAuthorityDatabase.prototype, "settleDeadWorkerLifetime").mockImplementation(function (this: AdmittedAuthorityDatabase, workerId, now) {
-        const lease = this.authority.workerLeases.get(workerId);
-        if (lease?.birthCommandId === undefined && lease?.lifecycle.state === "starting" && lease.control.directive === "pause") return lease;
-        return nativeReconcile.call(this, workerId, now);
-      });
-      cleanups.push(() => reconcile.mockRestore());
       const nextPlanResponse = await fetch(`${origin}/api/v1/start-plans`, { method: "POST",
         headers: { "content-type": "application/json", origin, cookie },
         body: JSON.stringify({ workflowId: WORKFLOW, submissions: [{ emplId: "10203373" }], dryRun: false }) });

@@ -71,7 +71,7 @@ between complete runs. Pause claims nothing and keeps the process alive. Stop en
 the current run settles. An unreadable or malformed directive fails the loop.
 
 SIGINT, SIGTERM, or an injected stop aborts the active run. The executor abandons interrupted
-ownership rather than inventing a terminal result. The claim sweeper owns subsequent recovery.
+ownership rather than inventing a terminal result. The controller recovers that claim on child exit or the next startup.
 
 One heartbeat renews the exact worker and `claimGeneration`; lost renewal aborts execution.
 `RunRecordService` re-reads authority versions before lifecycle mutation.
@@ -82,9 +82,9 @@ current item; exact-worker reset, lifecycle and recovery reservations still fenc
 delegation edge stops ancestor cancellation propagation, without bypassing the child's own home-worker
 or profile lifetime.
 
-Worker composition uses `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`,
-`WORKER_CLAIM_STALE_AFTER_MS = 60_000`, and `WORKER_SWEEP_INTERVAL_MS = 30_000`.
-Maintenance renews the worker lease and runs claim, write, and expired-worker recovery.
+Worker composition renews its own lease every `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`.
+Heartbeat age never proves death or transfers a claim. Recovery follows actual child exit or
+exclusive startup; workers do not reclaim each other's runs or leases.
 `runWorkerLoop` creates one confirmed-action publisher with a fresh stream id and capacity 256.
 It assigns sequence numbers within that incarnation. On exit it closes the publisher before
 browser teardown and warns about pending events. Publication health does not settle a run or an
@@ -115,7 +115,7 @@ queues are preserved. Each cleanup publishes a durable notification; lifecycle e
 failure/park messages feed Logs and Queue. Repeated reconciliation preserves settled runs, writes
 and notification identities.
 
-Periodic claim maintenance still uses `sweepWorkerClaims` with `staleBefore`, preserving write checks.
+
 
 ### 3.1 Dispatch and fairness
 
@@ -534,13 +534,20 @@ closure report `waiting`; failed closure remains unavailable until actual closur
 retains exact native command outcomes, including retired members and confirmations preceding later
 work, without exposing native lock custody snapshots.
 
-Production lease birth atomically records a native `worker-lifetime-birth` journal reference from the
-actual bound process-lock handle. It binds authority path, lock root, acquisition, OS process-start
-identity, member and generation. Generic lease start cannot supply this proof. Missing, changed or
-reused identity never proves death; an exact recorded release still requires the old OS owner to be
-dead. Historical leases without proof remain unavailable for restart recovery.
+Workers receive the controller's listening handle over IPC before authority admission. Lease start
+records the admitted command as `startCommandId` for replacement and standing recovery. It retains
+exact member, lease-generation, control, settings and reservation fences. The actual supervisor's
+child exit event triggers interrupted-run recovery; heartbeat age does not authorize reassignment.
 
-Native `worker-standing-recovery` reserves an existing idle or paused member after exact old-owner,
+Standalone browser verification holds the exclusive runtime listener throughout its admitted lifetime.
+Its reservation binds the installation/profile, lock port, fresh scratch profile, browser system and
+Duo credential. Startup retires an interrupted verification-only reservation before new admission,
+including reservations without a worker lease. One transaction checks exact reservation/member/pool
+revisions, refuses unexpected run or write ownership, closes bound browser observations, releases
+exact held Duo versions, and records retirement and durable cleanup notifications. It inspects no
+PID or Chromium marker and deletes no browser root.
+
+Native `worker-standing-recovery` reserves an existing idle or paused member after its exact stopped lifetime,
 browser, Duo, write and profile release. The lease retains its last observed healthy phase and pause
 intent through internal shutdown. A fresh replacement completes the original grant before any
 acquisition, authentication or claim, atomically recording browserless idle or paused and the audit.

@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
 import { acquireStorageBackupEntrypointAdmission, acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus } from "../../storage/admission/installation.js";
-import { acquireRuntimeProcessLock, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { join } from "node:path";
@@ -22,7 +21,7 @@ export interface RuntimeLifetime {
 
 export interface SecureEnvironmentBootstrapDependencies {
   readonly assertEnvironment?: () => void;
-  readonly runCli?: (admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void, lifetime?: RuntimeLifetime) => Promise<void>;
+  readonly runCli?: (admission: RuntimeAdmission, acceptDashboardAdmission: (() => void) | undefined, lifetime: RuntimeLifetime) => Promise<void>;
   readonly acquireLifetimeLock?: (port: number) => Promise<RuntimeLifetimeLock>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
@@ -39,11 +38,6 @@ export function secureEnvironmentEntrypoint(
   throw new Error(
     "secure environment entrypoint must be cli or test-target-document-number",
   );
-}
-
-function releaseUnboundWorkerCustody(custody: RuntimeProcessLockHandle | undefined, failure: unknown): void {
-  try { custody?.release(); }
-  catch (error) { throw new RuntimeCustodyUncertainError(failure === undefined ? [error] : [failure, error]); }
 }
 
 export async function runSecureEnvironmentBootstrap(
@@ -160,23 +154,14 @@ async function runAdmittedEnvironmentBootstrap(
   const mode = bootDiagnostics || entrypoint === "cli" && entrypointArgs[0] === "storage"
     && !["doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
-  let initialWorkerCustody: RuntimeProcessLockHandle | undefined;
   const admission = await (dependencies.acquireAdmission ?? ((requested) => entrypoint === "cli" && entrypointArgs[0] === "worker"
     ? RuntimeAdmission.acquireWorker(workspace) : bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
     : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(workspace, requested)
     : storageCommand === "backup" ? acquireStorageBackupEntrypointAdmission(workspace)
     : acquireEntrypointAdmission(workspace, requested)))(mode);
   let shutdown: "release" | "retain" = "release";
-  let runtimeFailure: unknown;
   let dashboardOwnsAdmission = false;
   try {
-  if (entrypoint === "cli" && entrypointArgs[0] === "worker") {
-    const { captureSelectedProfileStorage } = await import("../composition/storage-compose.js");
-    const selected = captureSelectedProfileStorage(admission);
-    initialWorkerCustody = acquireRuntimeProcessLock({ processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot),
-      name: "workers", pid: process.pid, admission: { kind: "unbound-worker", authorityPath: selected.authorityPath } });
-    selected.assertCurrent();
-  }
   if (!bootDiagnostics && !(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
 
@@ -192,10 +177,6 @@ async function runAdmittedEnvironmentBootstrap(
     const runCli = dependencies.runCli ?? (await import("../../../cli.js")).runCli;
     // Await shutdown so a rejection reaches the process exit.
     await runCli(admission, () => {
-      const custody = initialWorkerCustody;
-      initialWorkerCustody = undefined;
-      return custody;
-    }, () => {
       if (entrypointArgs[0] !== "dashboard" || dashboardOwnsAdmission) throw new Error("dashboard admission ownership unavailable");
       dashboardOwnsAdmission = true;
     }, lifetime);
@@ -214,17 +195,13 @@ async function runAdmittedEnvironmentBootstrap(
   } catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) {
       shutdown = "retain";
-      const failure = retainAuthoritySourceClosure([error], { admission,
-        ...(initialWorkerCustody === undefined ? {} : { processLock: initialWorkerCustody }) });
-      runtimeFailure = failure;
+      const failure = retainAuthoritySourceClosure([error], { admission });
       throw failure;
     }
-    runtimeFailure = error;
     if (error instanceof RuntimeCustodyUncertainError) shutdown = "retain";
     throw error;
   } finally {
     if (shutdown === "release" && !dashboardOwnsAdmission) {
-    releaseUnboundWorkerCustody(initialWorkerCustody, runtimeFailure);
     if (entrypoint === "cli" && entrypointArgs[0] === "dashboard") {
       // Retain signal ownership through the next turn; a queued Ctrl+C must not interrupt admission release.
       const absorb = (): void => undefined;

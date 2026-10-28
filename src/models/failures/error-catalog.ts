@@ -12,6 +12,7 @@ export const ERROR_CATALOG = Object.freeze({
   RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
   RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another runtime or storage command.", EmptyParametersSchema),
   RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
+  LIVE_SMOKE_VERIFICATION_REFUSED: catalogEntry("Browser verification could not finish safely. Preserve its saved state and resolve the refusal before trying again.", EmptyParametersSchema),
   STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Saved runs and writes could not be reconciled after interruption. Preserve their state and resolve the refusal before starting work.", EmptyParametersSchema),
   RUN_INTERRUPTED_BY_CRASH: catalogEntry("The run was interrupted by a crash and ended as failed. Review the result before starting another run.", EmptyParametersSchema),
   RUN_CRASH_WRITE_UNRESOLVED: catalogEntry("The run was interrupted by a crash with an unresolved write. The write remains held for operator resolution and will not be retried.", EmptyParametersSchema),
@@ -211,10 +212,6 @@ export const ERROR_CATALOG = Object.freeze({
     "The UCSD training reminder appeared again after Continue Log In.",
     EmptyParametersSchema,
   ),
-  LIVE_SMOKE_RECOVERY_REFUSED: catalogEntry(
-    "Relay couldn't safely clean up an abandoned sign-in check, so close other Relay windows and try again.",
-    EmptyParametersSchema,
-  ),
   DUO_TERMINAL_REFUSAL: catalogEntry(
     "Duo refused the sign-in. Run it again; if it repeats, check Duo Autopilot.",
     EmptyParametersSchema,
@@ -347,10 +344,6 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   WORKER_CRASHED: catalogEntry(
     "crashed",
-    EmptyParametersSchema,
-  ),
-  WORKER_LEASE_EXPIRED: catalogEntry(
-    "The worker stopped responding. Run it again.",
     EmptyParametersSchema,
   ),
   COMMAND_OUTCOME_UNCERTAIN: catalogEntry(

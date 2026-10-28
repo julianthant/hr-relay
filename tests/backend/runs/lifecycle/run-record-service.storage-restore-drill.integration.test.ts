@@ -1,8 +1,9 @@
+import { recoverInterruptedTestRun } from "../../../support/helpers/backend/run-record-service-world.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createStorageRestoreTestWorld, type DrillPaths } from "../../../support/helpers/backend/storage-restore-world.js";
 import { randomUUID } from "node:crypto";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
-import { RunRecordService, sweepWorkerClaims, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
@@ -128,17 +129,10 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
     return;
   }
   CLOCK.advanceWall(60 * 60 * 1000);
-  const mutationDb = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-sweep" }, CLOCK);
+  const mutationDb = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-crash-recovery" }, CLOCK);
   try {
-    const service = new RunRecordService({ database: mutationDb, clock: CLOCK, ids: { uuid: randomUUID },
-      publishQueued: () => { throw new Error("test must not enqueue"); } });
-    const outcomes = sweepWorkerClaims(mutationDb, workerRunLifecyclePort(service), {
-      staleBefore: CLOCK.now().toISOString(), now: CLOCK.now().toISOString() });
-    assert.equal(outcomes.length, 1);
-    const outcome = outcomes[0]; assert.ok(outcome);
-    assert.equal(outcome.state, "recovery-required");
-    if (outcome.state !== "recovery-required") throw new Error("expected parked recovery");
-    assert.equal(outcome.parked, true);
+    const recovered = await recoverInterruptedTestRun(mutationDb, CLOCK, before.runId);
+    assert.equal(recovered.lifecycle.state, "parked-write");
   } finally { mutationDb.close(); }
   const afterSweep = inspect(p.authorityPath);
   assert.equal(afterSweep.version, committed.version);

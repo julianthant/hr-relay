@@ -87,7 +87,7 @@ export function composeProfileActivity(input: Readonly<{
       if ("state" in input.supervisor) throw new Error("profile-worker-supervisor-custody-unavailable");
       const evidence = input.supervisor.memberEvidence(workerPoolMember(slot));
       if (lease !== undefined && evidence === undefined) {
-        if (lease.lifecycle.state !== "stopped" || input.database.workerLifetimeCustody(lease.workerId).state !== "released") {
+        if (lease.lifecycle.state !== "stopped") {
           throw new Error("profile-worker-supervisor-custody-unavailable");
         }
         input.database.assertWorkerLifecycleRelease(lease.workerId);

@@ -320,13 +320,13 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
     const processLockRoot = join(f.workspace, "inventory-process-locks");
     worker = bindWorkerProcessAdmission({ processLockRoot, authorityPath: f.path, pid: process.pid, clock: f.clock,
       open: () => f.context.database, close: () => undefined,
-      admit: (_database, acquisitionId) => f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-        commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
-        processAcquisitionId: acquisitionId, authorityPath: f.path, processLockRoot, now: f.clock.now().toISOString(),
-      }, randomUUID()).workerId),
+      admit: () => f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+    commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
+    now: f.clock.now().toISOString()
+}, randomUUID()).workerId),
     });
-    const started = f.context.database.startOwnedWorker({ workerId: worker.workerId, workflow: "person-lookup", browserSystems: ["crm"],
-      processId: process.pid, requestedBy: "local-operator", now: f.clock.now().toISOString() }, worker.processLock);
+    const started = f.context.database.authority.workerLeases.start({ workerId: worker.workerId, workflow: "person-lookup", browserSystems: ["crm"],
+      processId: process.pid, requestedBy: "local-operator", now: f.clock.now().toISOString() });
     assert.equal(started.state, "started");
     const custody = f.context.database.readProfileResourceCustody(), slot = custody.slots[0], config = custody.configSnapshots[0], lease = custody.leases[0];
     assert.ok(slot); assert.ok(config); assert.ok(lease);

@@ -188,6 +188,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `processes/runtime-lock-contender.ts` | runtime lock contender |
 | `processes/worker-browser-control-cli.ts` | worker browser control cli |
 | `processes/worker-composition-child.ts` | real worker composition concurrency fixture |
+| `processes/verification-reservation-owner.ts` | standalone verification reservation crash fixture |
 | `processes/worker-stub-cli.ts` | worker stub cli |
 | `helpers/browser/session-factory-fixtures.ts` | fresh browser factory and worker session runtime |
 | `helpers/workflow/flow-task-fixtures.ts` | flow, graph and scenario task contracts |

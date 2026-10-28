@@ -21,7 +21,6 @@ import { composeExplainRuntime } from "./backend/app/composition/explain-compose
 import { composeOcrCommand } from "./backend/transports/cli/ocr.js";
 import { composeStorageCommand } from "./backend/app/composition/storage-compose.js";
 import { composeWorkerRuntime } from "./backend/app/composition/worker-compose.js";
-import type { RuntimeProcessLockHandle } from "./backend/storage/sqlite/runtime-process-locks.js";
 import type { RuntimeAdmission } from "./backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "./backend/storage/admission/lifetime-lock.js";
 import type { RuntimeLifetime } from "./backend/app/bootstrap/secure-env-bootstrap.js";
@@ -30,7 +29,7 @@ import type { RuntimeLifetime } from "./backend/app/bootstrap/secure-env-bootstr
 /** The checkout that owns this cli module, never the caller's CWD. */
 const REPOSITORY_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void, lifetime?: RuntimeLifetime): Promise<void> {
+export async function runCli(admission: RuntimeAdmission, acceptDashboardAdmission: (() => void) | undefined, lifetime: RuntimeLifetime): Promise<void> {
   admission.assertLive();
   if (process.argv[2] === "storage" && process.argv[3] === "transactions") {
     const command = parseTransactionExportArgs(process.argv.slice(4));
@@ -42,7 +41,7 @@ export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: (
     return;
   }
   registerDashboardComposer(async (runtimeIsolation, options) => {
-    if (!(lifetime?.lock instanceof RuntimeLifetimeLock)) throw new Error("dashboard-runtime-lifetime-lock-required");
+    if (!(lifetime.lock instanceof RuntimeLifetimeLock)) throw new Error("dashboard-runtime-lifetime-lock-required");
     const application = await composeDashboardApplication({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend,
       lifetimeLock: lifetime.lock });
     acceptDashboardAdmission?.();
@@ -54,8 +53,7 @@ export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: (
   }));
   registerWorkerComposer(async (runtimeIsolation, args) => {
     const report = await composeWorkerRuntime({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, args,
-      ...(lifetime === undefined ? {} : { stopSignal: lifetime.parentSignal }),
-      ...(takeInitialCustody === undefined ? {} : { takeInitialCustody }) });
+      lifetimeLock: lifetime.lock, stopSignal: lifetime.parentSignal });
     if (report.closure === "unproved") process.exitCode = 1;
     return report;
   });

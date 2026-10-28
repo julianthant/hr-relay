@@ -74,8 +74,8 @@ function fixture(ambiguous=false) {
     target:{workflowId:descriptor.id,startPlanId:plan.startPlanId,expectedVersion:plan.expectedVersion},payload:plan.fingerprints});
   const runIds=appliedRunIds(result);assert.equal(runIds.length,ambiguous?2:1);
   const created=database.authority.runs.get(runIds[0]);assert.ok(created);
-  const slot=database.withAuthorityTransaction(repositories=>admitDirectWorker(repositories,{commandId:ids.uuid(),workflow:descriptor.id,
-    poolIndex:1,expectedPoolVersion:0,processId:process.pid,processAcquisitionId:ids.uuid(),authorityPath,processLockRoot,now:NOW},ids.uuid()));
+  const slot=database.withAuthorityTransaction(repositories=>admitDirectWorker(repositories,{ commandId: ids.uuid(), workflow: descriptor.id,
+    poolIndex: 1, expectedPoolVersion: 0, processId: process.pid, now: NOW },ids.uuid()));
   assert.equal(database.authority.workerLeases.start({workerId:slot.workerId,workflow:descriptor.id,browserSystems:[],processId:process.pid,requestedBy:"local-operator",now:NOW}).state,"started");
   const run=requireLifecycleApplied(lifecycle.claimNext({commandId:ids.uuid(),workflow:descriptor.id,workerId:slot.workerId,runtimeConfig:{
     generation:active.generation,settingsRevision:active.settingsRevision,settingsFingerprint:active.settingsFingerprint,configFingerprint:active.configFingerprint}}));

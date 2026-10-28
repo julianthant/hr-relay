@@ -154,7 +154,7 @@ afterEach(_afterEachFixture0);
     f.restart(); const generation = f.db.getMeta().authorityGeneration;
     expect(f.db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, request, UUID_7))).toEqual(first);
     expect(f.db.getMeta().authorityGeneration).toBe(generation); expect(f.effects()).toBe(0);
-    expect(() => f.db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, { ...request, processAcquisitionId: UUID_7 }, UUID_7))).toThrow(/divergent/u);
+    expect(() => f.db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, { ...request }, UUID_7))).toThrow(/divergent/u);
   });
   it("admits supervised launch only for the exact executing original command and current membership", async () => {
     const f = fixture(); await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 1));

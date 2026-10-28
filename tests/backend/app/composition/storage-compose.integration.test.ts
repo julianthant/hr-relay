@@ -37,7 +37,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthorityDatabase as AuthorityDatabase_m0 } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
-import { RunRecordService, sweepWorkerClaims, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { buildCommittedSettlement, executeSequencedWriteCommit } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -658,17 +658,10 @@ try {
     assert.deepEqual(inspect(p.authorityPath), committed);
     return;
   }
-  clock.advanceWall(60 * 60 * 1000);
-  const mutationDb = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restored-unknown-sweep" }, clock);
-  try {
-    const service = new RunRecordService({ database: mutationDb, clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("test must not enqueue"); } });
-    const outcomes = sweepWorkerClaims(mutationDb, workerRunLifecyclePort(service), { staleBefore: clock.now().toISOString(), now: clock.now().toISOString() });
-    assert.equal(outcomes.length, 0);
-  } finally { mutationDb.close(); }
-  const afterSweep = inspect(p.authorityPath);
-  assert.equal(afterSweep.version, before.version);
-  assert.equal(afterSweep.lifecycle, "parked-write");
-  assert.equal(afterSweep.outcome, "parked"); assert.equal(afterSweep.outcomeCode, "unknown"); assert.equal(afterSweep.checkpoint, false);
+  const retainedUnknown = inspect(p.authorityPath);
+  assert.equal(retainedUnknown.version, before.version);
+  assert.equal(retainedUnknown.lifecycle, "parked-write");
+  assert.equal(retainedUnknown.outcome, "parked"); assert.equal(retainedUnknown.outcomeCode, "unknown"); assert.equal(retainedUnknown.checkpoint, false);
   const doctorAfter = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, p.repoRoot);
   assert.equal(doctorAfter.exitCode, 1, doctorAfter.output);
   const afterReport = z.object({ spanAuthority: SpanAuthorityReconciliationWireSchema }).parse(JSON.parse(doctorAfter.output));

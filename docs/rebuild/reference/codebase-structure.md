@@ -20,7 +20,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
 | `scripts/test/` | Test runner, suite measurement, direct-execution detection, suite policy, and artifact policy. |
-| `scripts/verify/` | Repository privacy, browser-login and test-target verification; `browser-login-recovery.ts` owns exact missing-proof recovery and fresh local profile-use observations. |
+| `scripts/verify/` | Repository privacy, browser-login and test-target verification. Standalone verification holds the runtime listener; abandoned reservations settle through startup recovery. |
 | `scripts/verify-parity-json.ts` | Desktop parity runner. |
 | `src/` | Application source. |
 | `tests/` | Tests, fixtures, helpers, and process entrypoints. |
@@ -150,6 +150,8 @@ Shared fixtures, fresh-authority builders, and child-process entrypoints live un
 - `tests/support/duo-ceremony-setup.ts` registers the shared Duo fixture cleanup for every Vitest project; the fixture owner stays process-safe.
 Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
 and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
+`tests/support/helpers/backend/runtime-lifetime.ts` owns temporary kernel listeners for tests;
+`tests/backend/runs/lifecycle/run-record-service.write-parking.integration.test.ts` owns write-park journal and event atomicity.
 
 | Behavior | Test owner |
 | --- | --- |

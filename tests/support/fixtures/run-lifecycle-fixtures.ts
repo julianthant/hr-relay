@@ -2,8 +2,6 @@ import { retainAuthoritySourceClosure } from '../../../src/backend/storage/sourc
 import { isLiveWorker } from "../../../src/models/run/worker.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { RunRecordService, workerRunLifecyclePort, runContinuationPort } from "../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -11,8 +9,6 @@ import type { Clock } from "../../../src/rules/time/clock.js";
 import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { CONFIG_SNAPSHOT } from "./phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
-import { bindWorkerProcessAdmission } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { WorkerIdSchema } from "../../../src/rules/identity/ids.js";
 import { boundFixtureWorker, boundProfileAdmission, registerBoundFixtureWorker } from "../helpers/synthetic-database-admission.js";
 
 export function testRunService(database: AuthorityDatabase, clock: Clock) {
@@ -46,35 +42,28 @@ export function testAdmittedWorker(database: AuthorityDatabase, clock: Clock, in
   const existing = database.authority.workerSlots.list(input.workflow).find(slot => slot.poolIndex === input.poolIndex && slot.retiredAt === null);
   if (existing !== undefined) {
     assert.ok(boundFixtureWorker(database, input.path, existing.workerId), "fixture cannot adopt an unowned worker");
-    const custody = database.workerLifetimeCustody(existing.workerId);
-    assert.equal(custody.state, "alive");
-    assert.equal(custody.birth.owner.pid, process.pid);
     return { ...testWorkerLifetime(database, input.workflow, input.poolIndex), started: undefined };
   }
-  const authorityPath = realpathSync(input.path), processLockRoot = join(dirname(authorityPath), "locks");
-  let owned: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
+  const member = database.withAuthorityTransaction(repositories => {
+    const current = repositories.workerPools.get(input.workflow);
+    return admitDirectWorker(repositories, { commandId: randomUUID(), workflow: input.workflow,
+      poolIndex: input.poolIndex, expectedPoolVersion: current?.version ?? 0, processId: process.pid,
+      now: clock.now().toISOString() }, randomUUID());
+  });
   try {
-  owned = bindWorkerProcessAdmission({ authorityPath, processLockRoot, pid: process.pid, clock,
-    open: () => database, close: value => value.close(),
-    admit: (value, acquisitionId) => value.withAuthorityTransaction(repositories => {
-      const current = repositories.workerPools.get(input.workflow);
-      return WorkerIdSchema.parse(admitDirectWorker(repositories, { commandId: randomUUID(), workflow: input.workflow,
-        poolIndex: input.poolIndex, expectedPoolVersion: current?.version ?? 0, processId: process.pid,
-        processAcquisitionId: acquisitionId, authorityPath, processLockRoot, now: clock.now().toISOString() }, randomUUID()).workerId);
-    }) });
   let failure: { error: unknown } | undefined;
-  let started: ReturnType<typeof database.startOwnedWorker> | undefined;
+  let started: ReturnType<typeof database.authority.workerLeases.start> | undefined;
   try {
-    started = database.startOwnedWorker({ workerId: owned.workerId, workflow: input.workflow,
+    started = database.authority.workerLeases.start({ workerId: member.workerId, workflow: input.workflow,
       browserSystems: input.browserSystems, processId: process.pid, requestedBy: "local-operator",
-      now: clock.now().toISOString() }, owned.processLock);
+      now: clock.now().toISOString() });
     assert.equal(started.state, "started");
   } catch (error) { failure = { error }; }
   let registrationFailure: { error: unknown } | undefined;
   try {
-    registerBoundFixtureWorker({ database, path: input.path, workerId: owned.workerId,
-      generation: database.authority.workerLeases.get(owned.workerId)?.leaseGeneration,
-      processId: process.pid, handle: owned.processLock, clock });
+    registerBoundFixtureWorker({ database, path: input.path, workerId: member.workerId,
+      generation: database.authority.workerLeases.get(member.workerId)?.leaseGeneration,
+      processId: process.pid, clock });
   } catch (error) { registrationFailure = { error }; }
   if (registrationFailure !== undefined) {
     if (failure !== undefined) throw new AggregateError([failure.error, registrationFailure.error], "fixture-worker-owner-registration-unproved", { cause: failure.error });
@@ -84,7 +73,7 @@ export function testAdmittedWorker(database: AuthorityDatabase, clock: Clock, in
   assert.ok(started);
   return { ...testWorkerLifetime(database, input.workflow, input.poolIndex), started };
   } catch (error) {
-    throw retainAuthoritySourceClosure([error], { admission: { admission, database, owned } });
+    throw retainAuthoritySourceClosure([error], { admission: { admission, database, member } });
   }
 }
 

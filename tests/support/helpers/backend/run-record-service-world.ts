@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "./runtime-lifetime.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { randomUUID } from "node:crypto";
 import { detachBoundFixtureWorkers } from "../synthetic-database-admission.js";
@@ -11,15 +12,15 @@ import { join } from "node:path";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { protectedSubjectDisplay } from "../../../../src/backend/runs/start/protected-input.js";
 import { retainedRunProtectedBindings } from "../../../../src/models/write-safety/protected-input.js";
-import { RunRecordService, type CreateRunRequest } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { RunRecordService, requireLifecycleApplied, type CreateRunRequest } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../../src/models/config/runtime-generation.js";
-import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
+import { RunRecordSchema, runClaim, type RunRecord } from "../../../../src/models/run/record.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
+import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1, UUID_6, HASH_C, LATER, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
-import { testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testWorkerLifetime, testWorkerPorts, testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { AuthorityDatabase, type AuthorityLifecycleHooks, type AuthorityTerminalizationHooks } from "../synthetic-storage-admission.js";
 import { on, once } from "node:events";
@@ -30,6 +31,16 @@ import { z } from "zod";
 
 export const CANONICAL_WORKER_ID = "person-lookup-worker-1";
 const WORKER_ID = CANONICAL_WORKER_ID;
+
+export async function recoverInterruptedTestRun(database: AuthorityDatabase, clock: Clock, runId: string) {
+  const run = database.authority.runs.get(runId);
+  assert.ok(run);
+  const claim = runClaim(run);
+  assert.ok(claim);
+  return requireLifecycleApplied(testRunService(database, clock).recoverCrash({ commandId: randomUUID(), runId,
+    expectedVersion: run.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
+    ...database.crashRunRecoveryIdentity(runId), now: clock.now().toISOString() }, await runtimeLifetimeLock()));
+}
 
 export function createRunRecordServiceTestWorld() {
   const cleanups: (() => void | Promise<void>)[] = [];
