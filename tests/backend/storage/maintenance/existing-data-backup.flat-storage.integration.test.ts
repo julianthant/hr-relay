@@ -12,7 +12,8 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { captureExistingDataOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { ownerClaimRecoveryCopies, verifyExistingDataBackupFiles } from "../../../../src/backend/storage/maintenance/existing-data-backup.js";
+import { ownerClaimRecoveryCopies } from "../../../../src/backend/storage/maintenance/flat-profile-claim.js";
+import { verifyExistingDataBackupFiles } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";

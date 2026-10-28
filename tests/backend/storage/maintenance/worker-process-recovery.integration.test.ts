@@ -18,7 +18,7 @@ import { captureExistingDataOwner } from "../../../../src/backend/storage/config
 import { historicalFlatFields } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { randomUUID } from "node:crypto";
-import { verifyExistingDataBackupFiles } from "../../../../src/backend/storage/maintenance/existing-data-backup.js";
+import { verifyExistingDataBackupFiles } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { vi.restoreAllMocks(); syncBuiltinESMExports(); for (const close of cleanups.splice(0)) close(); });

@@ -12,10 +12,11 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { observeProcessIdentity, acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
-import { MutexRecoveryReceiptSchema } from "../../../../src/backend/storage/admission/installation.js";
+import { MutexRecoveryReceiptSchema } from "../../../../src/backend/storage/admission/mutex-contracts.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { captureExistingDataOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { ownerClaimRecoveryCopies, verifyExistingDataBackupFiles } from "../../../../src/backend/storage/maintenance/existing-data-backup.js";
+import { ownerClaimRecoveryCopies } from "../../../../src/backend/storage/maintenance/flat-profile-claim.js";
+import { verifyExistingDataBackupFiles } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { createHistoricalFlatProfileFixture, historicalFlatFields } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 
 type Fixture = ReturnType<typeof createHistoricalFlatProfileFixture>;

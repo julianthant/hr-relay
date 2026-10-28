@@ -1,6 +1,6 @@
 import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
-import { join, parse, resolve } from "node:path";
+import { join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 import { ProcessStartIdentitySchema } from "../sqlite/runtime-process-locks.js";
@@ -312,4 +312,17 @@ export function companionCredentialEntries(directory: string, record: "protected
     permitted.add(name);
   }
   return permitted;
+}
+
+export function unpublishedDraftAbortMembership(root: string) {
+  const entries: { path: string; directory: boolean; device: number; inode: number; size: number; mode: number; modified: number; changed: number }[] = [];
+  const visit = (path: string): void => {
+    const info = lstatSync(path);
+    if (info.isSymbolicLink() || !info.isFile() && !info.isDirectory() || info.isFile() && info.nlink !== 1
+      || process.getuid !== undefined && info.uid !== process.getuid() || (info.mode & 0o022) !== 0) throw new Error("profile-draft-abort-membership-unsafe");
+    entries.push({ path: relative(root, path), directory: info.isDirectory(), device: info.dev, inode: info.ino, size: info.size,
+      mode: info.mode, modified: info.mtimeMs, changed: info.ctimeMs });
+    if (info.isDirectory()) for (const name of readdirSync(path).sort()) visit(join(path, name));
+  };
+  visit(root); return entries;
 }

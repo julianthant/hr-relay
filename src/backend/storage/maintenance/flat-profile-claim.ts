@@ -12,7 +12,7 @@ import type { RuntimeLocator } from "../admission/installation.js";
 import { readPrivateFile, noSymlinkAncestry, writePrivateStage, fsyncPath } from "../configuration/credential-safe-file.js";
 import { verifyExistingDataOwner, type ExistingDataOwnerWitness } from "../configuration/credential-store.js";
 import { emailKey } from "../configuration/synthetic-verifier.js";
-import { existingDataFileLabel, ownerClaimRecoveryCopies, verifyExistingDataBackup, verifyExistingDataBackupFiles, type ExistingDataBackup } from "./existing-data-backup.js";
+import { BackupSchema, claimIntent, file, retainedStorageBackup, existingDataFileLabel, verifyExistingDataBackup, verifyExistingDataBackupFiles, type ExistingDataBackup } from "./existing-data-backup-files.js";
 import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
 import { LogoutOperationSchema, SignUpOperationSchema, deriveProfileNames, type SignUpOperation } from "../../../models/profiles/profile.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
@@ -326,4 +326,32 @@ function requireStoppedFlatClaim(machine: RuntimeAdmission): void {
   const processLockRoot = join(context.workspace, rebuildRuntimeIsolation.processLockRoot);
   machine.assertFixedProcessLockRoot(context.workspace, processLockRoot);
   assertRuntimeRestoreAdmission(restore, processLockRoot);
+}
+
+export function ownerClaimRecoveryCopies(machine: RuntimeAdmission, profileId: string, scope: "all" | "flat" = "all"): readonly string[] {
+  const context = machine.readInstallationContext();
+  if (context === undefined) throw new Error("existing-data-backup-installation-required");
+  const root = join(context.workspace, ".tracker", "control", "profile-owner-claims");
+  if (lstatSync(root, { throwIfNoEntry: false }) === undefined) return [];
+  noSymlinkAncestry(root, new Map());
+  const copies: string[] = [];
+  for (const name of readdirSync(root)) {
+    z.uuid().parse(name);
+    const path = join(root, name), intent = claimIntent(root, name);
+    if (intent === undefined) continue;
+    if (intent.claimId !== name || intent.installationId !== machine.locator.installationId) throw new Error("existing-data-backup-binding-refused");
+    if (intent.profileId === profileId && (scope === "all" || intent.sourceStateRoot !== undefined)) copies.push(path);
+  }
+  if (scope === "all") {
+    for (const path of [...copies]) {
+      const backup = BackupSchema.parse(JSON.parse(file(join(path, "backup.json")).bytes.toString("utf8")));
+      if (backup.storageBackup === undefined) continue;
+      const reference = { claimId: backup.claimId, backupPath: join(path, "backup.json"), backupDigest: hash(file(join(path, "backup.json")).bytes) };
+      if (verifyFlatProfileClaimBackup(reference, context.workspace, machine.locator.installationId, profileId) === undefined) throw new Error("storage-backup-claim-binding-refused");
+      const retained = retainedStorageBackup(context.workspace, machine.locator.installationId, backup.storageBackup);
+      if (retained === undefined) throw new Error("storage-backup-required");
+      copies.push(dirname(retained.backupPath));
+    }
+  }
+  return copies;
 }

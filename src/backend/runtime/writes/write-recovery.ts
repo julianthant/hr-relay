@@ -46,7 +46,7 @@ import {
   BUILD_MANIFEST,
   resolveTaskImplFingerprint,
 } from "../../../workflow-kit/validation/build-manifest.js";
-import { rejectCommandRequest } from "../../runs/commands/command-kernel.js";
+import { rejectCommandRequest } from "../../runs/commands/command-refusal.js";
 import type {
   WriteResolutionContext,
   WriteResolutionExecutor,

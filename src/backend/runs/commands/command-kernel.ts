@@ -331,7 +331,6 @@ function reject(request: CommandRequest, code: string, message: string): never {
 }
 
 // Invalid served proof is a typed rejection that rolls back the transaction, not a transport failure.
-export { rejectCommandRequest } from "./command-refusal.js";
 
 function conflict(request: CommandRequest, currentVersion: number, message: string): never {
   throw new CommandRefusal({ state: "conflict", commandId: request.commandId, currentVersion, message });
