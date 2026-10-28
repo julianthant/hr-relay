@@ -63,7 +63,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "809f4bf01e531405be519c65bc08e9defc8b9c1d27e05d0f9c975ad61b05fe62",
+      "sha256": "ccca05dbcbc83f8b66d23b43cdefa89286fbb816c85b6f0aec47697bee3139a3",
     "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate. Descriptor and directory close failures retain source custody and original failures; publication cleanup aggregates failures. Abandoned-mutex recovery retains restore custody on unproved closure, and inventory disposal refuses release on failed closure."
   },
   {

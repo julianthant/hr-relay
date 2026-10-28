@@ -1,6 +1,6 @@
 import { readFlatProfileClaimReceipt, assertRetainedFlatClaimFile } from "../../storage/maintenance/flat-profile-claim.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
-import { ownerClaimRecoveryCopies } from "../../storage/maintenance/existing-data-backup.js";
+import { ownerClaimRecoveryCopies } from "../../storage/maintenance/flat-profile-claim.js";
 import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, credentialCopyProcessCustody, assertCredentialCopyResourcesClosed } from "../../storage/maintenance/profile-inventory.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames, deriveAuthorityUpgradePlanDigest } from "../../storage/sqlite/migrations.js";

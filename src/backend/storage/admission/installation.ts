@@ -1,10 +1,12 @@
+import { MutexOwnerSchema, MutexRecoveryReceiptSchema } from "./mutex-contracts.js";
 import type { RuntimeAdmission } from "./admission.js";
 import { FlatProfileClaimSchema, FlatProfileClaimReceiptSchema, verifyFlatProfileClaim, settleFlatProfileClaim, type FlatProfileClaimWitness } from "../maintenance/flat-profile-claim.js";
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
-import { observeBoundRetainedBackupMutexRecovery, observeFlatBackupMutexRecovery, verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup.js";
+import { observeBoundRetainedBackupMutexRecovery, observeFlatBackupMutexRecovery } from "../maintenance/existing-data-backup.js";
+import { verifyExistingDataBackupFiles } from "../maintenance/existing-data-backup-files.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
-import { readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry } from "../configuration/credential-safe-file.js";
-import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, unpublishedDraftAbortMembership, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
+import { readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
+import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
 import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
@@ -734,8 +736,6 @@ function mutex<T>(control: string, callback: () => T): T {
   if (result === undefined) throw new Error("installation-mutex-result-missing");
   return result.value;
 }
-export const MutexOwnerSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
-  phase: z.literal("admitting"), pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema });
 function assertLiveObservationMutex(control: string): void {
   const path = join(control, "admission-mutex"), before = lstatMaybe(path);
   if (before === undefined) return;
@@ -774,19 +774,6 @@ function assertLiveObservationMutex(control: string): void {
     throw error;
   }
 }
-export const FlatBackupRecoveryBindingSchema = z.strictObject({ kind: z.enum(["source-record", "empty-allocation"]),
-  allocationDevice: z.number().int().nonnegative(), allocationInode: z.number().int().nonnegative(), sourceDigest: DigestSchema });
-
-const OwnerMutexRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
-  pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema,
-  installationId: z.uuid(), generation: NonNegativeIntSchema, ownerFile: z.string().min(1),
-  ownerSha256: z.string().regex(/^[0-9a-f]{64}$/u), recoveredAt: z.iso.datetime(), flatBackup: FlatBackupRecoveryBindingSchema.optional() });
-
-const EmptyMutexRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1), custody: z.literal("empty"),
-  acquisitionId: z.uuid(), installationId: z.uuid(), generation: NonNegativeIntSchema,
-  directoryDevice: NonNegativeIntSchema, directoryInode: NonNegativeIntSchema, recoveredAt: z.iso.datetime(), flatBackup: FlatBackupRecoveryBindingSchema.optional() });
-export const MutexRecoveryReceiptSchema = z.union([OwnerMutexRecoveryReceiptSchema, EmptyMutexRecoveryReceiptSchema]);
-
 /** Explicit offline recovery. The restore lock serializes recoveries; the occupied mutex excludes ordinary admission until the final rename. */
 export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: RestoreAdmissionHandle,
   expectedPid: number | "empty"): Readonly<{ acquisitionId: string; pid?: number; receiptPath: string }> {

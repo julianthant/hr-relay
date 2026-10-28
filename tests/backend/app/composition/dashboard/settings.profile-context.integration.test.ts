@@ -15,7 +15,7 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { composeSelectedProfileStorage } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { assertProfileBrowserRoot } from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
-import { ProfileBrowserRootRefusalError } from "../../../../../src/backend/storage/admission/admission.js";
+import { ProfileBrowserRootRefusalError } from "../../../../../src/backend/storage/admission/admission-identity.js";
 import { createProfileRegistry } from "../../../../../src/backend/profiles/registry.js";
 
 it("preserves supported authenticated retained saved-but-inactive Settings across context recreation", async () => {

@@ -6,7 +6,8 @@ import { CredentialLockRecordSchema, readPrivateFile } from "../configuration/cr
 import { lstatSync, readdirSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
-import { ProfileBrowserRootRefusalError, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { ProfileBrowserRootRefusalError } from "../admission/admission-identity.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";

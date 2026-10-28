@@ -1,17 +1,17 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../source-closure.js';
 import {
   CREDENTIAL_DIRECTORY_MODE, CredentialLockRecordSchema, errorCode, fsyncPath, noSymlinkAncestry, statDirectory,
-  sameDirectory, removeExactPath, ensureChildDirectory, readPrivateFile,
+  unpublishedDraftAbortMembership, sameDirectory, removeExactPath, ensureChildDirectory, readPrivateFile,
   createPrivateLock, writePrivateStage, replacePrivateFile, companionCredentialEntries,
   type CredentialInventory, type DirectoryIdentity,
 } from "./credential-safe-file.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { CredentialInitializationSchema, deriveProfileNames, ProfileVerifierDocumentSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, LogoutOperationSchema, type ProfileRegistryRow, type LogoutOperation, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { emailKey, passwordMatches } from "./synthetic-verifier.js";
-import { verifyExistingDataBackup, verifyExistingDataBackupFiles, type ExistingDataBackup } from "../maintenance/existing-data-backup.js";
+import { verifyExistingDataBackup, verifyExistingDataBackupFiles, type ExistingDataBackup } from "../maintenance/existing-data-backup-files.js";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { linkSync, lstatSync, mkdirSync, readdirSync, renameSync, unlinkSync } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type {
@@ -1108,18 +1108,6 @@ export interface UnpublishedDraftAbortWitness { readonly operationId: string; }
 const unpublishedDraftAborts = new WeakMap<UnpublishedDraftAbortWitness, {
   machine: RuntimeAdmission; admission: RuntimeAdmission; capture: z.infer<typeof UnpublishedDraftAbortCaptureSchema>;
 }>();
-export function unpublishedDraftAbortMembership(root: string) {
-  const entries: z.infer<typeof UnpublishedDraftAbortCaptureSchema>["membership"] = [];
-  const visit = (path: string): void => {
-    const info = lstatSync(path);
-    if (info.isSymbolicLink() || !info.isFile() && !info.isDirectory() || info.isFile() && info.nlink !== 1
-      || process.getuid !== undefined && info.uid !== process.getuid() || (info.mode & 0o022) !== 0) throw new Error("profile-draft-abort-membership-unsafe");
-    entries.push({ path: relative(root, path), directory: info.isDirectory(), device: info.dev, inode: info.ino, size: info.size,
-      mode: info.mode, modified: info.mtimeMs, changed: info.ctimeMs });
-    if (info.isDirectory()) for (const name of readdirSync(path).sort()) visit(join(path, name));
-  };
-  visit(root); return entries;
-}
 export function authenticateUnpublishedDraftAbort(store: CredentialStore, operation: SignUpOperation,
   fields: Readonly<{ email: string; password: string; timekeeperName: string }>): boolean {
   const owner = committedStores.get(store);

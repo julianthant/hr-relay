@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { z } from "zod";
 import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { ProfileBrowserRootRefusalError } from "../../../../src/backend/storage/admission/admission.js";
+import { ProfileBrowserRootRefusalError } from "../../../../src/backend/storage/admission/admission-identity.js";
 import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";

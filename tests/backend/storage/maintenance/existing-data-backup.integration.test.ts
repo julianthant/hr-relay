@@ -13,7 +13,9 @@ import { composeProfileRuntime } from "../../../../src/backend/app/composition/s
 import { composeProfileCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { consumeAuthenticatedProfileOwnerClaim } from "../../../../src/backend/profiles/profile-session.js";
 import { captureExistingDataOwner, verifyExistingDataOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { ownerClaimRecoveryCopies, backupExistingData, verifyExistingDataBackup } from "../../../../src/backend/storage/maintenance/existing-data-backup.js";
+import { ownerClaimRecoveryCopies } from "../../../../src/backend/storage/maintenance/flat-profile-claim.js";
+import { backupExistingData } from "../../../../src/backend/storage/maintenance/existing-data-backup.js";
+import { verifyExistingDataBackup } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { readyProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createHistoricalIncompleteProfileFixture, historicalIncompleteProfileFields } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
