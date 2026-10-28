@@ -321,7 +321,7 @@ for (const content of ["clean", "escaped-value", "escaped-key-material", "malfor
 for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material", "malformed"] as const) it(`inspects canonical retained browser JSON with ${content} content`, async () => {
   const f = await fixture();
   const native=createBrowserSessionFactoryFixtures(f.clock,randomUUID(),{schedule:()=>({cancel(){}})}).fakeLauncher();
-  const launch=vi.spyOn(DEFAULT_BROWSER_LAUNCHER,"launch").mockImplementation(native.launcher.launch);
+  const launch=vi.spyOn(DEFAULT_BROWSER_LAUNCHER,"launch").mockImplementation(input=>native.launcher.launch(input));
   let settlement: ReturnType<typeof f.erase> | undefined;
   let worker: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
   let primary:{error:unknown}|undefined;
