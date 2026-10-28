@@ -8,7 +8,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "18d3decd9eee3b3ada92fdab0371f8b49b3a74275e2fb8d2854af76e92ad68a5",
+    "sha256": "c01b2df78426e2185dd5480064139a5ea796a8e3260a30c5917b88974915cb78",
     "reason": "A failed selected-context open marks database closure unproved for typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release; source-closure uncertainty retains it. Rejection observers leave the original lifetime failure and immediate stop promises intact: the CLI races failure, stop awaits closure, and both retain failures before dependent storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately."
   },
   {
@@ -63,7 +63,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "978496033d0f8d3cc451bd0d53320a50fd52e41bcb31fc5d8118697093583f63",
+      "sha256": "e113c223418f3636b104dde91190e4e6696f5448a9e3bda4fdaaa87c2185d0d5",
     "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate. Descriptor and directory close failures retain source custody and original failures; publication cleanup aggregates failures. Abandoned-mutex recovery retains restore custody on unproved closure, and inventory disposal refuses release on failed closure."
   },
   {
@@ -108,8 +108,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "507be5dae2c833af3d7965ce82fb99452cabb868d7d7dab2a4f4f7f94b5b9491",
-    "reason": "The empty rollback-failure accumulator cannot settle migration success: rollback failure retains database custody with the original error, and successful rollback rethrows that error. Failed external validation clears only its admission cache and throws the mutation error or run-search-index-rebuild-required. Malformed diagnostics remain explicit; stopped inspection, upgrade and claimed-profile rebase retain failed source closure and original causes. Finite native6 queued cancellation rolls back on failure and retains original plus rollback or database-close failures before installation or restore custody can release."
+    "sha256": "34caa461489e6d45e801ba09af75162ac27568fd8315f6894520918c0acc9826",
+    "reason": "The empty rollback-failure accumulator cannot settle migration success: rollback failure retains database custody with the original error, and successful rollback rethrows that error. Failed external validation clears only its admission cache and throws the mutation error or run-search-index-rebuild-required. Malformed diagnostics remain explicit; stopped inspection and upgrade retain failed source closure and original causes. Finite native6 queued cancellation rolls back on failure and retains original plus rollback or database-close failures before installation or restore custody can release."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",

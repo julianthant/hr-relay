@@ -1,3 +1,5 @@
+import { deleteOwnedBrowserProfile } from "../runtime/browser/browser-session-factory.js";
+import { proveProfileRootsUnused } from "../storage/maintenance/process-closure.js";
 import { ProfileOnboardingDuoProviderError } from "./onboarding-duo-provider.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
@@ -8,7 +10,6 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
   createCredentialStore,
-  captureExistingDataOwner, verifyExistingDataOwner, type ExistingDataOwnerWitness,
   credentialMigrationSource,
   captureReadyUpgradeCredentialSource,
   inspectCredentialCopy,
@@ -16,7 +17,7 @@ import {
   readForErasure,
   CredentialErasureAuthorityError,
   CredentialStoreCommitUncertainError,
-  authenticateUnpublishedDraftAbort, prepareUnpublishedDraftAbort,
+  prepareUnpublishedDraftAbort,
   RESTORE_ADMISSION_REQUEST,
   type CredentialInitializationCopyInspection, type CredentialStoreOptions, type CredentialStoreHooks,
 } from "../storage/configuration/credential-store.js";
@@ -40,7 +41,7 @@ import { assessCredentialInventory, type CredentialInventory } from "./credentia
 import { createProfileRegistry, withProfileLock, ProfileRegistryAuthorityError } from "./registry.js";
 import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../models/profiles/profile.js";
 import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
-import { ProfileOwnerClaimRequestSchema, ProfileOnboardingStateSchema, type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+import { ProfileOnboardingStateSchema, type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
 import { createProfileOnboarding } from "./profile-onboarding.js";
@@ -58,37 +59,6 @@ export class ProfileUpgradeUnavailableError extends Error {
 }
 
 export interface AuthenticatedProfileUpgrade { readonly profileId: string; }
-const authenticatedOwnerClaims = new WeakMap<AuthenticatedProfileUpgrade, { owner: ExistingDataOwnerWitness; claimId: string; registry?: string; machineRoot: string; flat?: { firstName: string; lastName: string; createdAt: string } }>();
-export function isAuthenticatedProfileOwnerClaim(authorization: AuthenticatedProfileUpgrade): boolean { return authenticatedOwnerClaims.has(authorization); }
-export function consumeAuthenticatedProfileOwnerClaim(authorization: AuthenticatedProfileUpgrade, machine: RuntimeAdmission) {
-  const issued = authenticatedOwnerClaims.get(authorization);
-  if (issued === undefined || issued.machineRoot !== machine.stateRoot) throw new ProfileSessionRefusedError("PROFILE_OWNER_CLAIM_UNAVAILABLE");
-  authenticatedOwnerClaims.delete(authorization);
-  machine.assertExclusive(); verifyExistingDataOwner(issued.owner, machine);
-  if (issued.registry !== undefined && canonicalJsonStringify(machine.readProfileRegistry()) !== issued.registry) throw new ProfileSessionRefusedError("PROFILE_OWNER_CLAIM_UNAVAILABLE");
-  return { owner: issued.owner, claimId: issued.claimId, ...(issued.flat === undefined ? {} : { flat: issued.flat }) };
-}
-export function authorizeFlatExistingDataClaim(machine: RuntimeAdmission,
-  fields: z.infer<typeof ProfileOwnerClaimRequestSchema> & { createdAt: string }): ProfileUpgradeRequired | ProfileRefusal {
-  if (!machine.requiresExistingDataClaim()) return refusal("PROFILE_OWNER_CLAIM_UNAVAILABLE");
-  const { createdAt: claimedAt, ...body } = fields;
-  const request = ProfileOwnerClaimRequestSchema.parse(body), createdAt = IsoInstantSchema.parse(claimedAt);
-  let names: ReturnType<typeof deriveProfileNames>;
-  try { names = deriveProfileNames(request.firstName, request.lastName); }
-  catch (error) { if (error instanceof ProfileNameValidationError) return refusal("PROFILE_NAME_REFUSED"); throw error; }
-  let owner: ExistingDataOwnerWitness;
-  try {
-    owner = captureExistingDataOwner(machine, request);
-    if (verifyExistingDataOwner(owner, machine).record.entries.timekeeperName?.value !== names.timekeeperName) return refusal("PROFILE_OWNER_CLAIM_UNAVAILABLE");
-  } catch (error) {
-    if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
-    return refusal("PROFILE_SIGN_IN_REFUSED");
-  }
-  const authorization = Object.freeze({ profileId: request.claimId });
-  authenticatedOwnerClaims.set(authorization, { owner, claimId: request.claimId, machineRoot: machine.stateRoot,
-    flat: { firstName: names.firstName, lastName: names.lastName, createdAt } });
-  return { ...refusal("PROFILE_OWNER_CLAIM_STARTING"), upgrade: authorization };
-}
 const authenticatedUpgrades = new WeakMap<AuthenticatedProfileUpgrade, (machine: RuntimeAdmission) => RegisteredProfileStorageClaim>();
 export function consumeAuthenticatedProfileUpgrade(authorization: AuthenticatedProfileUpgrade, machine: RuntimeAdmission): RegisteredProfileStorageClaim {
   const consume = authenticatedUpgrades.get(authorization);
@@ -476,35 +446,25 @@ export function createProfileSession(input: {
     readonly email: string;
     readonly password: string;
     readonly createdAt: string;
-  }, names: ReturnType<typeof deriveProfileNames>, claiming = false): OnboardingProfileSession | ProfileRefusal {
+  }, names: ReturnType<typeof deriveProfileNames>): OnboardingProfileSession | ProfileRefusal {
     admission.assertWritable();
     const selection = registry.read();
     if (selection.activeProfileId !== null || readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_TRANSITION_BLOCKED");
     const emailKey = verifiers.emailKeyFor(fields.email);
-    if (readOperations().some(entry => entry.kind === "sign-up" && entry.emailKey !== emailKey)) return refusal("PROFILE_TRANSITION_BLOCKED");
+    if (readOperations().some(entry => entry.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
     const identified = verifiers.identify(fields.email);
     if (identified !== "unknown" && registry.read().profiles.some((row) => row.profileId === identified.profileId)) {
       return refusal("PROFILE_OTHER_EMAIL");
     }
-    let operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.emailKey === emailKey);
-    if (operation?.ownerClaim !== undefined && !claiming) return refusal("PROFILE_TRANSITION_BLOCKED");
-    if (claiming && operation?.ownerClaim === undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
-    if (operation === undefined) {
-      operation = admission.beginProfileSignUp({
-        emailKey, firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
-      });
-    }
+    let operation = admission.beginProfileSignUp({
+      emailKey, firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
+    });
     if (operation.onboarding === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && operation.onboarding.finish !== undefined)) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
-    if (operation.onboarding.abort !== undefined) {
-      if (operation.firstName !== names.firstName || operation.lastName !== names.lastName
-        || !authenticateUnpublishedDraftAbort(storeFor(operation.profileId), operation, { email: fields.email, password: fields.password, timekeeperName: names.timekeeperName })) return refusal("PROFILE_SIGN_IN_REFUSED");
-      return issueOnboardingSession(operation);
-    }
+    if (operation.onboarding.abort !== undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
     if (operation.firstName !== names.firstName || operation.lastName !== names.lastName) return refusal("PROFILE_SIGN_IN_REFUSED");
     registry.ensureRoot(operation.profileId);
     const store = storeFor(operation.profileId);
-    if (operation.phase === "applying" && !(claiming && operation.credentialInitialization?.phase === "document-published"
-      && credentialMigrationSource(store).state === "current")) store.migrateHistory({ operation });
+    if (operation.phase === "applying") store.migrateHistory({ operation });
     operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operation?.operationId) ?? operation;
     let revision = operation.expectedRevision;
     if (revision === undefined) {
@@ -689,6 +649,37 @@ export function createProfileSession(input: {
     },
   });
 
+  async function cancelOnboarding(token: string, operationId: string): Promise<{ readonly state: "signed-out" }> {
+    requireOnboarding(token, operationId, true);
+    await onboarding.drain(operationId);
+    return withProfileLock(machineRoot, () => {
+      let operation = requireOnboarding(token, operationId, true);
+      if (operation.onboarding?.finish !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+      if (operation.onboarding?.duo.state === "registered") {
+        createDraftDuoCredentialStore(admittedProfile(operation.profileId), admission, operationId, operation.onboarding.generation, input.clock ?? systemClock).erase();
+        operation = requireOnboarding(token, operationId, true);
+      }
+      onboarding.assertAbortable(operationId);
+      const draft = operation.onboarding;
+      if (draft === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+      if (draft.abort === undefined) {
+        storeFor(operation.profileId).migrateHistory({ operation });
+        operation = requireOnboarding(token, operationId, true);
+        const commandId = randomUUID(), writeId = randomUUID(), generation = draft.generation + 1;
+        const commandFingerprint = createHash("sha256").update(canonicalJsonStringify({ kind: "abort-profile-onboarding", operationId, generation, commandId, writeId })).digest("hex");
+        operation = { ...operation, onboarding: { ...draft, generation, abort: CredentialEraseInputSchema.parse({ commandId, writeId, commandFingerprint,
+          expectedRevision: storeFor(operation.profileId).read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+          updatedAt: (input.clock ?? systemClock).now().toISOString() }) } };
+        writeOperation(operation);
+      }
+      const witness = prepareUnpublishedDraftAbort(storeFor(operation.profileId), operation);
+      releaseOrdinary(operation.profileId);
+      admission.abortUnpublishedProfile(witness);
+      for (const [current, pending] of onboardingSessions) if (pending === operationId) onboardingSessions.delete(current);
+      return { state: "signed-out" };
+    });
+  }
+
   return Object.freeze({
     close(): void {
       onboarding.assertClosed();
@@ -720,39 +711,6 @@ export function createProfileSession(input: {
       if (fields.password.length === 0) return refusal("PROFILE_SIGN_IN_REFUSED");
       admission.assertWritable();
       return withProfileLock(machineRoot, () => signUpLocked(fields, names));
-    },
-    claimExistingData(fields: { firstName: string; lastName: string; email: string; password: string; claimId: string; claimExistingData: true; createdAt: string }): OnboardingProfileSession | ProfileRefusal | ProfileUpgradeRequired {
-      let names: ReturnType<typeof deriveProfileNames>;
-      try { names = deriveProfileNames(fields.firstName, fields.lastName); }
-      catch (error) { if (error instanceof ProfileNameValidationError) return refusal("PROFILE_NAME_REFUSED"); throw error; }
-      const at = IsoInstantSchema.parse(fields.createdAt), claimId = z.uuid().parse(fields.claimId);
-      if (fields.claimExistingData !== true) return refusal("PROFILE_OWNER_CLAIM_REQUIRED");
-      return withProfileLock(machineRoot, () => {
-        admission.assertWritable();
-        const emailKey = verifiers.emailKeyFor(fields.email);
-        const draft = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.emailKey === emailKey && entry.ownerClaim !== undefined);
-        if (draft !== undefined) {
-          try { captureExistingDataOwner(admission, fields, draft.profileId, draft); }
-          catch (error) { if (error instanceof AuthoritySourceClosureUnprovedError) throw error; return refusal("PROFILE_SIGN_IN_REFUSED"); }
-          return signUpLocked(fields, names, true);
-        }
-        const identified = verifiers.identify(fields.email);
-        if (identified === "unknown") return refusal("PROFILE_SIGN_IN_REFUSED");
-        const registry = admission.readProfileRegistry(), row = registry.profiles.find(entry => entry.profileId === identified.profileId);
-        if (row === undefined || row.registration.onboardingCompletion !== undefined || row.firstName !== names.firstName || row.lastName !== names.lastName
-          || row.timekeeperName !== names.timekeeperName || registry.activeProfileId !== null && registry.activeProfileId !== row.profileId
-          || row.lifecycle !== "ready" || row.credentialState !== "saved" || sessions.size > 0 || readOperations().length !== 0 || upgradeRequested) return refusal("PROFILE_OWNER_CLAIM_UNAVAILABLE");
-        const nowMs = Date.parse(at);
-        if (verifiers.locked(row.profileId, nowMs)) return refusal("PROFILE_SIGN_IN_REFUSED");
-        if (!verifiers.passwordMatches(row.profileId, fields.password)) { verifiers.recordFailure(row.profileId, nowMs); return refusal("PROFILE_SIGN_IN_REFUSED"); }
-        let owner: ExistingDataOwnerWitness;
-        try { owner = captureExistingDataOwner(admission, fields, row.profileId); }
-        catch (error) { if (error instanceof AuthoritySourceClosureUnprovedError) throw error; return refusal("PROFILE_OWNER_CLAIM_UNAVAILABLE"); }
-        const authorization = Object.freeze({ profileId: row.profileId });
-        authenticatedOwnerClaims.set(authorization, { owner, claimId, registry: canonicalJsonStringify(registry), machineRoot });
-        upgradeRequested = true;
-        return { ...refusal("PROFILE_OWNER_CLAIM_STARTING"), upgrade: authorization };
-      });
     },
     assertOnboardingAbort(token: string, operationId: string): void {
       withProfileLock(machineRoot, () => requireOnboarding(token, operationId, true));
@@ -797,7 +755,7 @@ export function createProfileSession(input: {
       return withProfileLock(machineRoot, () => {
         const pending = requireOnboarding(token, operationId);
         if (pending.onboarding === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-        if (pending.onboarding.finish === undefined) writeOperation({ ...pending, onboarding: { ...pending.onboarding,
+        if (pending.onboarding.finish === undefined) writeOperation({ ...pending, phase: "publishing", onboarding: { ...pending.onboarding,
           finish: { finishId: randomUUID(), finishedAt: IsoInstantSchema.parse((input.clock ?? systemClock).now().toISOString()) } } });
         const published = registry.read().profiles.find(row => row.profileId === pending.profileId);
         const operation = published === undefined ? onboarding.verifyFinish(operationId) : pending;
@@ -810,28 +768,35 @@ export function createProfileSession(input: {
         return session;
       });
     },
-    async cancelOnboarding(token: string, operationId: string): Promise<{ readonly state: "signed-out" }> {
-      if (requireOnboarding(token, operationId, true).ownerClaim !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
-      await onboarding.drain(operationId);
-      return withProfileLock(machineRoot, () => {
-        let operation = requireOnboarding(token, operationId, true);
-        onboarding.assertAbortable(operationId);
-        const draft = operation.onboarding;
-        if (draft === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-        if (draft.abort === undefined) {
-          const commandId = randomUUID(), writeId = randomUUID(), generation = draft.generation + 1;
-          const commandFingerprint = createHash("sha256").update(canonicalJsonStringify({ kind: "abort-profile-onboarding", operationId, generation, commandId, writeId })).digest("hex");
-          operation = { ...operation, onboarding: { ...draft, generation, abort: CredentialEraseInputSchema.parse({ commandId, writeId, commandFingerprint,
-            expectedRevision: storeFor(operation.profileId).read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-            updatedAt: (input.clock ?? systemClock).now().toISOString() }) } };
-          writeOperation(operation);
+    cancelOnboarding,
+    async recoverOnboarding(): Promise<void> {
+      const operations = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.onboarding !== undefined);
+      if (operations.length === 0) return;
+      const browserRoot = join(machineRoot, "browsers", "onboarding");
+      proveProfileRootsUnused([browserRoot]);
+      if (existsSync(browserRoot)) for (const name of readdirSync(browserRoot)) {
+        if (!/^onboarding-[a-zA-Z0-9]{6}$/u.test(name)) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+        deleteOwnedBrowserProfile(browserRoot, join(browserRoot, name));
+      }
+      for (const operation of operations) {
+        if (operation.onboarding?.finish !== undefined) {
+          if (operation.phase !== "publishing") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+          const published = registry.read().profiles.find(row => row.profileId === operation.profileId);
+          if (published !== undefined) assertPublishedFinish(operation, published.registration);
+          else assertFinishedProfileOnboarding(operation);
+          const fields = storeFor(operation.profileId).read().entries;
+          const email = fields.ucpathUserId?.value, password = fields.ucpathPassword?.value;
+          if (email === undefined || password === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+          publishSignUp(operation, { email, password });
+        } else {
+          if (operation.onboarding?.abort === undefined) onboarding.recoverClosed(operation.operationId);
+          const draft = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operation.operationId);
+          if (draft === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+          registry.ensureRoot(draft.profileId);
+          const session = issueOnboardingSession(draft);
+          await cancelOnboarding(session.token, operation.operationId);
         }
-        const witness = prepareUnpublishedDraftAbort(storeFor(operation.profileId), operation);
-        releaseOrdinary(operation.profileId);
-        admission.abortUnpublishedProfile(witness);
-        for (const [current, pending] of onboardingSessions) if (pending === operationId) onboardingSessions.delete(current);
-        return { state: "signed-out" };
-      });
+      }
     },
     signIn(fields: { readonly email: string; readonly password: string; readonly at: string;
       readonly credentialMigration?: { readonly kind: "prove-v2" } | { readonly kind: "replace-v3"; readonly entries: CompleteProtectedSettingsPatch } }): ActiveProfileSession | ProfileRefusal | ProfileCancelling | ProfileUpgradeRequired {

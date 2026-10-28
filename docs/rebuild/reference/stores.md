@@ -304,3 +304,6 @@ wired to that workflow.
 
 Start plans retain accepted run input and options without a worker count. Schema 6 removes the
 `workers` field through stopped upgrade; Sessions owns explicit additions to the standing pool.
+
+The startup flat-store backup and empty-profile migration are owned by storage admission; see
+[the backup contract](clock-config-secrets.md#private-onboarding-custody). No flat data is carried into sign-up.

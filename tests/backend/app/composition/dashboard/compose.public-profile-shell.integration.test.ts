@@ -132,6 +132,35 @@ for (const boundary of ["profile-construction", "listener-start"] as const) it(`
   }
 });
 
+for (const closeFails of [false, true]) it(`preserves startup recovery failure and ${closeFails ? "retains" : "releases"} server custody after profile close`, async () => {
+  const f = fixture(), primary = new Error("fixture recovery failed"), cleanup = new Error("fixture profile close failed");
+  const processLockRoot = join(f.root, rebuildRuntimeIsolation.processLockRoot);
+  const actual = await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js");
+  const actualLocks = await vi.importActual<typeof processLocks>("../../../../../src/backend/storage/sqlite/runtime-process-locks.js");
+  let held: processLocks.RuntimeProcessLockHandle | undefined;
+  const locks = vi.spyOn(processLocks, "acquireRuntimeProcessLock").mockImplementation((...args) => {
+    held = actualLocks.acquireRuntimeProcessLock(...args); return held;
+  });
+  let profile: ReturnType<typeof storageCompose.composeProfileRuntime> | undefined;
+  const spy = vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
+    const current = actual.composeProfileRuntime(input); profile = current;
+    return { ...current, session: { ...current.session, async recoverOnboarding() { throw primary; } },
+      async close() { if (closeFails) throw cleanup; await current.close(); } };
+  });
+  try {
+    await assert.rejects(composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation,
+      repoRoot: f.root, backendPortOverride: 0, frontendPortOverride: 0, env: {} }), error => {
+      if (!closeFails) { assert.equal(error, primary); return true; }
+      assert.ok(error instanceof storageCompose.RuntimeCustodyUncertainError);
+      assert.deepEqual(error.errors, [primary, cleanup]); return true;
+    });
+    assert.equal(runtimeProcessLockIsActive(processLockRoot, "server"), closeFails);
+  } finally {
+    spy.mockRestore(); locks.mockRestore(); await profile?.close(); held?.release();
+    f.machine.release(); rmSync(f.root, { recursive: true });
+  }
+});
+
 it("serves public profile state without minting a selected profile, actor or authority database", async () => {
   const f = fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
@@ -314,7 +343,7 @@ it("aborts an unpublished pre-enrollment draft through erasure before accepting 
     assert.equal(existsSync(join(f.machine.stateRoot, "machine", "credential-keys", `${draft.profileId}.json`)), false);
     assert.equal(existsSync(join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`)), false);
     assert.equal(existsSync(join(f.machine.stateRoot, "machine", "erasures", `${draft.profileId}.json`)), true);
-    assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId, "state.db")), true);
+    assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), false);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie } })).status, 401);
     const replacement = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-up", {
       firstName: "Changed", lastName: "Details", email: "changed@ucsd.edu", password: "new-disposable-fixture-password" })).json());

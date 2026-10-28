@@ -100,9 +100,9 @@ describe("operator mutation admission", () => {
     assert.deepEqual([...audit.mutations].sort(), Object.keys(ADMITTED_MUTATIONS).sort());
   });
 
-  it("admits the public profile and explicit owner-claim routes before request-body effects", () => {
+  it("admits the public profile routes before request-body effects", () => {
     const publicSource = readFileSync(resolve(REPO_ROOT, "src/backend/app/composition/dashboard/compose.ts"), "utf8");
-    const table = Object.fromEntries(["sign-in", "sign-up", "claim-existing-data", "logout", "onboarding/duo/browser", "onboarding/duo/portal", "onboarding/duo/start", "onboarding/duo/confirm",
+    const table = Object.fromEntries(["sign-in", "sign-up", "logout", "onboarding/duo/browser", "onboarding/duo/portal", "onboarding/duo/start", "onboarding/duo/confirm",
       "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete"].map(path => [`/api/v1/profile/${path}`, { guard: "operatorMutationIngressGuard" as const }]));
     assert.deepEqual(auditOperatorMutationAdmission(publicSource, table).violations, []);
   });

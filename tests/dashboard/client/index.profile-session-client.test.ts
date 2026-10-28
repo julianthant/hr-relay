@@ -2,23 +2,6 @@ import { z } from "zod";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
-import { ProfileOwnerClaimRequestSchema } from "../../../src/models/profiles/public-profile.js";
-
-it("keeps explicit existing-data claims distinct from ordinary signup and refuses missing consent before transport", async () => {
-  const calls: { path: string; body: unknown }[] = [];
-  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async (url, init) => {
-    assert.ok(typeof init?.body === "string");
-    calls.push({ path: new URL(url).pathname, body: JSON.parse(init.body) });
-    return Response.json({ state: "refused", code: "PROFILE_OWNER_CLAIM_REQUIRED" });
-  } });
-  const fields = { firstName: "Historical", lastName: "Fixture", email: "historical-fixture@ucsd.edu", password: "disposable-historical-fixture" };
-  const claim = { ...fields, claimId: "00000000-0000-4000-8000-000000000001", claimExistingData: true as const };
-  await client.signUpProfile(fields); await client.claimExistingProfileData(claim);
-  assert.deepEqual(calls, [{ path: "/api/v1/profile/sign-up", body: fields }, { path: "/api/v1/profile/claim-existing-data", body: claim }]);
-  assert.equal(ProfileOwnerClaimRequestSchema.safeParse({ ...claim, claimExistingData: false }).success, false);
-  await assert.rejects(client.claimExistingProfileData({ ...claim, claimId: "invalid" }));
-  assert.equal(calls.length, 2);
-});
 
 it("keeps real profile responses and fixed failures distinct without retry or token projection", async () => {
   const requests: { path: string; origin: unknown; body: unknown }[] = [];

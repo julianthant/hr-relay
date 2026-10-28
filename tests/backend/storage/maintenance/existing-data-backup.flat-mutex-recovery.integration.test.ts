@@ -13,11 +13,7 @@ import { observeProcessIdentity, acquireRuntimeProcessLock } from "../../../../s
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { MutexRecoveryReceiptSchema } from "../../../../src/backend/storage/admission/mutex-contracts.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { captureExistingDataOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { ownerClaimRecoveryCopies } from "../../../../src/backend/storage/maintenance/flat-profile-claim.js";
-import { verifyExistingDataBackupFiles } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
-import { createHistoricalFlatProfileFixture, historicalFlatFields } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
+import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 
 type Fixture = ReturnType<typeof createHistoricalFlatProfileFixture>;
 function loseMutex(f: Fixture, phase: "complete" | "copy-prefix" | "empty") {
@@ -197,27 +193,6 @@ for (const change of ["source-reference", "allocation-reference", "foreign-recei
     } finally { f.close(); }
   });
 }
-
-it("preserves recovery history in the later genuine claim snapshot and retains only its exact CLI reference", async () => {
-  const f = createHistoricalFlatProfileFixture();
-  try {
-    const lost = loseMutex(f, "complete"); assert.equal((await resume(f)).exitCode, 0);
-    const sourceRecord = readFileSync(join(lost.root, "source.json"));
-    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
-    try {
-      const owner = captureExistingDataOwner(machine, historicalFlatFields);
-      const operation = await machine.claimExistingProfileData(owner, randomUUID(), systemClock, { ...historicalFlatFields, createdAt: systemClock.now().toISOString() });
-      assert.ok(operation.ownerClaim); assert.equal(operation.onboarding?.finish, undefined);
-      const claim = verifyExistingDataBackupFiles(operation.ownerClaim, f.workspace, machine.locator.installationId);
-      assert.ok(claim.files.some(entry => entry.path === `control/admission-mutex-recovery/${lost.owner.acquisitionId}.json`));
-      assert.ok(claim.files.some(entry => entry.path === `control/admission-mutex-recovery/${lost.owner.acquisitionId}/owner.json`));
-      assert.equal(claim.storageBackup?.backupPath, join(lost.root, "backup.json"));
-      assert.deepEqual(ownerClaimRecoveryCopies(machine, operation.profileId), [dirname(operation.ownerClaim.backupPath), lost.root]);
-      assert.deepEqual(readFileSync(join(lost.root, "source.json")), sourceRecord);
-      assert.equal(machine.readProfileRegistry().profiles.length, 0);
-    } finally { machine.release(); }
-  } finally { f.close(); }
-});
 
 it("refuses a hole in the declared copy prefix rather than resurrecting a missing completed copy", async () => {
   const f = createHistoricalFlatProfileFixture();

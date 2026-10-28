@@ -1,4 +1,3 @@
-import { readFlatProfileClaimReceipt, claimedProfilePath } from "./flat-profile-claim.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { AbsolutePathSchema } from "../../../models/config/schema.js";
 import { BrowserSystemIdSchema, PositiveIntSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
@@ -58,22 +57,20 @@ export function inventoryFileIdentity(path: string) {
 export function enumerateProfileCredentialMembership<Custody extends CredentialMembershipCustody>(admission: RuntimeAdmission, custody: Custody, savedBrowserRoot: string, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>) {
   admission.assertLive();
   const root = admission.stateRoot, flat = admission.profileMaintenanceSchemaVersion() === 6;
-  const claim = flat ? undefined : readFlatProfileClaimReceipt(admission);
-  const mapped = (path: string) => claim === undefined ? path : claimedProfilePath(admission, path, claim);
   if (admission.artifactRoot !== join(root, "artifacts")) throw new Error("profile-inventory-artifact-root-unavailable");
-  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, mapped, path => admission.assertStateRoot(path), ownedWriter);
+  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, path => admission.assertStateRoot(path), ownedWriter);
 }
 
 export function enumerateFlatBackupRecoveryMembership<Custody extends CredentialMembershipCustody>(root: string, custody: Custody) {
-  return enumerateCredentialMembership(root, true, custody, join(root, "browsers"), path => path, path => {
+  return enumerateCredentialMembership(root, true, custody, join(root, "browsers"), path => {
     if (path !== root && !path.startsWith(`${root}${sep}`)) throw new Error("flat-backup-recovery-path-refused");
   });
 }
 
 function enumerateCredentialMembership<Custody extends CredentialMembershipCustody>(root: string, flat: boolean, custody: Custody,
-  savedBrowserRoot: string, mapped: (path: string) => string, assertPath: (path: string) => void,
+  savedBrowserRoot: string, assertPath: (path: string) => void,
   ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>) {
-    const browserRootPaths = [...new Set([...custody.configSnapshots.map(snapshot => mapped(snapshot.config.paths.browserProfileRoot)), mapped(savedBrowserRoot)])];
+    const browserRootPaths = [...new Set([...custody.configSnapshots.map(snapshot => snapshot.config.paths.browserProfileRoot), savedBrowserRoot])];
     if (browserRootPaths.length === 0) throw new Error("profile-inventory-config-unavailable");
     for (const path of browserRootPaths) { assertBrowserRoot(root, path); assertPath(path); }
     if (browserRootPaths.some(path => browserRootPaths.some(other => other !== path && path.startsWith(`${other}${sep}`)))) throw new Error("profile-inventory-browser-root-ambiguous");
@@ -81,13 +78,13 @@ function enumerateCredentialMembership<Custody extends CredentialMembershipCusto
     const backupPaths: string[] = [], manifests: string[] = [];
     const browserRoots = new Set(custody.browsers.map(browser => {
       const slot = custody.slots.find(value => value.workerId === browser.workerId);
-      const roots = [...new Set(custody.configSnapshots.filter(snapshot => snapshot.fingerprint === browser.configFingerprint).map(snapshot => mapped(snapshot.config.paths.browserProfileRoot)))];
+      const roots = [...new Set(custody.configSnapshots.filter(snapshot => snapshot.fingerprint === browser.configFingerprint).map(snapshot => snapshot.config.paths.browserProfileRoot))];
       if (slot === undefined || roots.length !== 1 || browser.profileDirectory === undefined
-        || mapped(browser.profileDirectory) !== workerProfileDirectory({ profileRoot: roots[0], slotOrdinal: slot.ordinal, system: browser.system })) {
+        || browser.profileDirectory !== workerProfileDirectory({ profileRoot: roots[0], slotOrdinal: slot.ordinal, system: browser.system })) {
         throw new Error("profile-inventory-browser-membership-unavailable");
       }
       if (browser.health !== "closed") throw new Error("profile-inventory-browser-closure-unproved");
-      return mapped(browser.profileDirectory);
+      return browser.profileDirectory;
     }));
     const visit = (path: string): void => {
       assertPath(path);

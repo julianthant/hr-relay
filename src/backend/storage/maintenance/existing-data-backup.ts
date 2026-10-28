@@ -1,4 +1,4 @@
-import { SourceRecordSchema, StorageBackupSchema, BackupSchema, issueExistingDataBackup, hash, file, inventory, claimIntent, verifyCopies, retainedStorageBackup, existingDataFileLabel, type ExistingDataBackup } from "./existing-data-backup-files.js";
+import { SourceRecordSchema, StorageBackupSchema, hash, file, inventory, verifyCopies, retainedStorageBackup, existingDataFileLabel } from "./existing-data-backup-files.js";
 import { decodeStoredArtifact } from "../artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { verifyFlatBackupRecoveryManifest } from "../sqlite/backup-service.js";
@@ -9,65 +9,12 @@ import { type RuntimeLocator } from "../admission/installation.js";
 import { FlatBackupRecoveryBindingSchema, MutexRecoveryReceiptSchema, MutexOwnerSchema } from "../admission/mutex-contracts.js";
 import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { z } from "zod";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { writePrivateStage, fsyncPath, noSymlinkAncestry, statDirectory, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
-import type { ExistingDataOwnerWitness } from "../configuration/credential-store.js";
-import type { ProfileRegistryDocument, ProfileOperation, SignUpOperation } from "../../../models/profiles/profile.js";
-import { flatProfileClaimConfigured, verifyFlatProfileClaimBackup } from "./flat-profile-claim.js";
 import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
-
-export async function backupExistingData(machine: RuntimeAdmission, admission: RuntimeAdmission, owner: ExistingDataOwnerWitness, claimId: string, clock: Clock): Promise<ExistingDataBackup> {
-  const { verifyExistingDataOwner, profileAuthorityFileWitnesses } = await import("../configuration/credential-store.js");
-  machine.assertExclusive(); admission.assertReadyStoppedProfileUpgradeOwner(machine);
-  const ownership = verifyExistingDataOwner(owner, machine), context = machine.readInstallationContext();
-  if (context === undefined || ownership.profileId !== undefined && ownership.profileId !== admission.profileBinding.profileId) throw new Error("existing-data-backup-owner-refused");
-  const { current } = await inspectCoupledBackupSource(admission, ownership.profileId === undefined, clock);
-  const controlRoot = join(context.workspace, ".tracker", "control"), claimsRoot = join(controlRoot, "profile-owner-claims");
-  const flat = ownership.profileId === undefined;
-  if (!flat && ownership.key === undefined) throw new Error("existing-data-backup-key-required");
-  let intentSource = { schemaVersion: 1 as const, installationId: machine.locator.installationId, profileId: admission.profileBinding.profileId,
-    credentialFile: ownership.file, ...(flat ? { sourceStateRoot: admission.stateRoot } : { keyFile: ownership.key?.file }), sourceFingerprint: current.authorityContentFingerprint,
-    sourceGeneration: current.authorityGeneration, ...(flat ? {} : { registryDigest: hash(Buffer.from(canonicalJsonStringify(machine.readProfileRegistry()))) }) };
-  let canonicalClaimId = z.uuid().parse(claimId).toLowerCase();
-  if (lstatSync(claimsRoot, { throwIfNoEntry: false }) !== undefined) {
-    noSymlinkAncestry(claimsRoot, new Map());
-    const matching = readdirSync(claimsRoot).flatMap(name => {
-      z.uuid().parse(name);
-      const intent = claimIntent(claimsRoot, name);
-      if (intent === undefined) return [];
-      if (intent.claimId !== name || intent.installationId !== machine.locator.installationId) throw new Error("existing-data-backup-intent-refused");
-      return [intent];
-    }).filter(intent => flat ? intent.sourceStateRoot === admission.stateRoot : intent.profileId === intentSource.profileId);
-    if (matching.length > 1) throw new Error("existing-data-backup-intent-ambiguous");
-    const pending = matching[0];
-    if (pending !== undefined) {
-      if (flat) intentSource = { ...intentSource, profileId: pending.profileId };
-      if (canonicalJsonStringify(pending) !== canonicalJsonStringify({ ...intentSource, claimId: pending.claimId })) throw new Error("existing-data-backup-source-changed");
-      canonicalClaimId = pending.claimId;
-    }
-  }
-  const root = join(claimsRoot, canonicalClaimId), intentPath = join(root, "intent.json");
-  mkdirSync(root, { recursive: true, mode: 0o700 }); noSymlinkAncestry(root, new Map());
-  if (lstatSync(intentPath, { throwIfNoEntry: false }) === undefined) writePrivateStage(intentPath, Buffer.from(canonicalJsonStringify({ ...intentSource, claimId: canonicalClaimId })));
-  fsyncPath(root); fsyncPath(claimsRoot); fsyncPath(controlRoot);
-  const coupled = await writeCoupledBackup(machine, admission, root, flat, clock);
-  const { authorityManifest, source, census, databases } = coupled;
-  const profileRoot = admission.stateRoot;
-  const backup = BackupSchema.parse({ schemaVersion: 1, claimId: canonicalClaimId, installationId: machine.locator.installationId,
-    profileId: intentSource.profileId, ...(flat ? { sourceStateRoot: admission.stateRoot } : {}), authorityManifest, authorityDigest: coupled.authorityDigest, sourceDigest: coupled.sourceDigest,
-    ...(!flat || coupled.storageBackup === undefined ? {} : { storageBackup: coupled.storageBackup }), files: coupled.files });
-  const bytes = Buffer.from(canonicalJsonStringify(backup)), backupPath = join(root, "backup.json");
-  if (lstatSync(backupPath, { throwIfNoEntry: false }) === undefined) { writePrivateStage(backupPath, bytes); fsyncPath(root); fsyncPath(dirname(root)); }
-  else if (hash(file(backupPath).bytes) !== hash(bytes)) throw new Error("existing-data-backup-copy-changed");
-  return issueExistingDataBackup({ claimId: canonicalClaimId, backupPath, backupDigest: hash(bytes) }, { owner, machine, source, census, verifyOwner: () => {
-    verifyExistingDataOwner(owner, machine); coupled.verifySource();
-    if (canonicalJsonStringify(profileAuthorityFileWitnesses(profileRoot)) !== databases) throw new Error("existing-data-backup-source-changed");
-  } });
-}
 
 async function inspectCoupledBackupSource(admission: RuntimeAdmission, flat: boolean, clock: Clock) {
   const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
@@ -224,7 +171,7 @@ function coupledBackupCensus(workspace: string, profileRoot: string, machineRoot
     ...inventory(profileRoot, "profile", new Set(["state.db", "state.db-wal", "state.db-shm", "state.db-journal", ...(flat ? ["locks"] : [])])),
     ...(flat ? [] : inventory(join(machineRoot, "machine"), "machine")),
     ...(flat && lstatSync(join(workspace, "data"), { throwIfNoEntry: false }) !== undefined ? inventory(join(workspace, "data"), "workspace-data") : []),
-    ...inventory(join(workspace, ".tracker", "control"), "control", new Set(["leases", "admission-mutex", "profile-owner-claims",
+    ...inventory(join(workspace, ".tracker", "control"), "control", new Set(["leases", "admission-mutex",
       ...(storageInstallationId === undefined ? [] : [`storage-backups/${storageInstallationId}`]),
       ...(recoveryReceipt === undefined ? [] : [`admission-mutex-recovery/${recoveryReceipt}.json`]), ...recoveryMembers])),
   ];
@@ -238,51 +185,6 @@ function coupledSourceRecord(installationId: string, profileRoot: string,
     databases: profileAuthorityFileWitnesses(profileRoot).map(entry => ({ ...entry,
       ...(entry.file === undefined ? {} : { mode: file(join(profileRoot, `state.db${entry.suffix}`), "authority database").stat.mode }) })),
     files: census().map(entry => ({ ...entry.file, mode: file(entry.path, existingDataFileLabel(entry.file.path)).stat.mode })) }));
-}
-
-export function observeBoundRetainedBackupMutexRecovery(workspace: string, locator: RuntimeLocator,
-  document: ProfileRegistryDocument, operations: readonly ProfileOperation[], restore: RestoreAdmissionHandle) {
-  const control = join(workspace, ".tracker", "control"), claims = join(control, "profile-owner-claims");
-  if (locator.stateRoot !== join(workspace, rebuildRuntimeIsolation.stateRoot)
-    || locator.artifactRoot !== join(workspace, rebuildRuntimeIsolation.artifactRoot)) throw new Error("storage-backup-source-refused");
-  const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
-  assertRuntimeRestoreAdmission(restore, processLockRoot);
-  const locks = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: "0".repeat(64) });
-  const orphans = inspectRuntimeProcessOrphans(processLockRoot);
-  if (Object.values(locks.processLocks).some(lock => lock.state !== "stopped") || orphans.staleServerRecords > 0 || orphans.staleWorkerRecords > 0) throw new Error("storage-backup-process-custody-refused");
-  noSymlinkAncestry(claims, new Map()); statDirectory(claims, "owner claims", 0o700);
-  const names = readdirSync(claims);
-  if (names.length !== 1) throw new Error("storage-backup-claim-membership-refused");
-  const name = z.uuid().parse(names[0]), root = join(claims, name), intent = claimIntent(claims, name);
-  if (intent === undefined || intent.claimId !== name || intent.installationId !== locator.installationId
-    || intent.sourceStateRoot !== join(workspace, rebuildRuntimeIsolation.stateRoot)) throw new Error("storage-backup-claim-binding-refused");
-  if (canonicalJsonStringify(readdirSync(root).sort()) !== canonicalJsonStringify(["backup.json", "configured.json", "files", "flat.json", "intent.json", "source.json"])) throw new Error("storage-backup-claim-membership-refused");
-  const reference = { claimId: name, backupPath: join(root, "backup.json"), backupDigest: hash(file(join(root, "backup.json")).bytes) };
-  const draft = operations.filter((operation): operation is SignUpOperation => operation.kind === "sign-up" && operation.profileId === intent.profileId);
-  const registered = document.profiles.filter(row => row.profileId === intent.profileId);
-  if (draft.length + registered.length !== 1) throw new Error("storage-backup-claim-owner-refused");
-  const verified = verifyFlatProfileClaimBackup(reference, workspace, locator.installationId, intent.profileId, draft[0]);
-  if (verified === undefined || verified.backup.storageBackup === undefined) throw new Error("storage-backup-claim-binding-refused");
-  const { backup, receipt } = verified, registration = registered[0]?.registration;
-  if (!flatProfileClaimConfigured(reference, receipt)) throw new Error("storage-backup-claim-incomplete");
-  if (receipt.operation.profileId !== intent.profileId || draft[0] !== undefined
-    && canonicalJsonStringify(draft[0].ownerClaim) !== canonicalJsonStringify(reference)
-    || registration !== undefined && (registration.onboardingCompletion === undefined
-      || registration.operationId !== receipt.operation.operationId || registration.commandId !== receipt.operation.commandId
-      || registration.writeId !== receipt.operation.writeId)) throw new Error("storage-backup-claim-owner-refused");
-  const source = SourceRecordSchema.parse(JSON.parse(file(join(root, "source.json")).bytes.toString("utf8")));
-  if (source.installationId !== locator.installationId || source.sourceStateRoot !== intent.sourceStateRoot
-    || source.sourceFingerprint !== intent.sourceFingerprint || source.sourceGeneration !== intent.sourceGeneration
-    || canonicalJsonStringify(source.files.map(({ mode: _mode, ...entry }) => entry)) !== canonicalJsonStringify(backup.files)
-    || !source.files.some(entry => entry.path === "profile/credentials/protected.json" && entry.digest === intent.credentialFile.digest
-      && entry.device === intent.credentialFile.device && entry.inode === intent.credentialFile.inode)) throw new Error("storage-backup-claim-source-refused");
-  const retained = retainedStorageBackup(workspace, locator.installationId, backup.storageBackup);
-  if (retained === undefined) throw new Error("storage-backup-required");
-  const roots = [claims, dirname(dirname(retained.backupPath))];
-  const observation = canonicalJsonStringify({ copies: roots.map(path => ({ path, membership: unpublishedDraftAbortMembership(path), files: inventory(path, "") })),
-    authorityHistory: unpublishedDraftAbortMembership(join(locator.stateRoot, "profiles", intent.profileId, "backups", "authority")) });
-  assertRuntimeRestoreAdmission(restore, processLockRoot);
-  return observation;
 }
 
 export function observeFlatBackupMutexRecovery(workspace: string, locator: RuntimeLocator, restore: RestoreAdmissionHandle,

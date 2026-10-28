@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import { chmodSync, cpSync, mkdirSync, statSync, symlinkSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -18,10 +17,7 @@ import { deriveCheckpointOutputDigest } from "../../../../src/models/run/result.
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { captureExistingDataOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createHistoricalFlatProfileFixture, historicalFlatFields } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
+import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 
 beforeEach(() => {
   vi.spyOn(profileProcessQuery, "spawnSync").mockImplementation(command => ({ pid: 0, output: [], stderr: "", status: 0, signal: null,
@@ -70,19 +66,6 @@ it("plans without source writes, binds the exact capture, cancels with lifecycle
       assert.equal(raw.prepare("SELECT count(*) AS count FROM run_results WHERE run_id=?").get(f.runId)?.count, 1);
     } finally { raw.close(); }
     assert.deepEqual(readFileSync(f.protectedPath), before[1]); assert.deepEqual(readFileSync(f.artifact), before[2]);
-    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
-    try {
-      const owner = captureExistingDataOwner(machine, historicalFlatFields);
-      const claimed = await machine.claimExistingProfileData(owner, randomUUID(), systemClock, { ...historicalFlatFields, createdAt: systemClock.now().toISOString() });
-      const upgraded = new DatabaseSync(join(f.stateRoot, "profiles", claimed.profileId, "state.db"), { readOnly: true });
-      try {
-        inspectNativeAuthority(upgraded, 9);
-        const run = runRecordFromRow(upgraded.prepare("SELECT * FROM runs WHERE id=?").get(f.runId));
-        assert.equal(run.lifecycle.state, "terminal");
-        assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled");
-        assert.equal(run.lifecycle.errorSummary, "cancelled offline: stale queued run");
-      } finally { upgraded.close(); }
-    } finally { machine.release(); }
   } finally { f.close(); }
 });
 

@@ -1,3 +1,4 @@
+import { backupFlatStorage } from "../../../../src/backend/storage/maintenance/existing-data-backup.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -14,11 +15,7 @@ import { profileProcessQuery } from "../../../../src/backend/storage/maintenance
 import { acquireRuntimeProcessLock, validateWorkerProcessRecoveryReceipt, inspectRuntimeProcessOrphans, inspectStoppedDeviceRecertificationCustody, workerProcessRecoveryProved, observeProcessIdentity, WorkerProcessLockFileSchema, WORKER_PROCESS_RECOVERY_DIRECTORY } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireStorageBackupEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { captureExistingDataOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { historicalFlatFields } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { randomUUID } from "node:crypto";
-import { verifyExistingDataBackupFiles } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { vi.restoreAllMocks(); syncBuiltinESMExports(); for (const close of cleanups.splice(0)) close(); });
@@ -192,7 +189,7 @@ for (const phase of ["before-link", "after-link"] as const) {
   });
 }
 
-it("keeps recovered flat custody outside finite historical device recertification while preserving supported backup and private claim", async () => {
+it("keeps recovered flat custody outside finite historical device recertification while preserving supported backup ", async () => {
   const f = fixture(), plan = f.plan(); f.apply(plan.report.captureDigest);
   const receipt = readFileSync(f.receipt), originalBytes = readFileSync(f.path), originalInode = statSync(f.path).ino;
   const original = WorkerProcessLockFileSchema.parse(JSON.parse(originalBytes.toString("utf8")));
@@ -202,15 +199,8 @@ it("keeps recovered flat custody outside finite historical device recertificatio
   try { assert.equal(backup.isFlatBackup(), true); } finally { backup.release(); }
   const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
   try {
-    const owner = captureExistingDataOwner(machine, historicalFlatFields);
-    const operation = await machine.claimExistingProfileData(owner, randomUUID(), systemClock,
-      { ...historicalFlatFields, createdAt: systemClock.now().toISOString() });
-    assert.ok(operation.ownerClaim);
-    assert.equal(existsSync(operation.ownerClaim.backupPath), true);
-    const verified = verifyExistingDataBackupFiles(operation.ownerClaim, f.workspace, machine.locator.installationId);
-    assert.equal(verified.sourceStateRoot, f.stateRoot); assert.equal(verified.profileId, operation.profileId);
-    assert.equal(operation.onboarding?.finish, undefined);
-    assert.equal(machine.readProfileRegistry().profiles.length, 0);
+    const backup = await machine.forStoppedFlatBackup();
+    await backupFlatStorage(backup, systemClock);
     assert.equal(workerProcessRecoveryProved(f.processLockRoot, original), true);
     assert.throws(() => inspectStoppedDeviceRecertificationCustody(f.processLockRoot), /device-recertification-worker-custody-unproved/u);
     assert.deepEqual(readFileSync(f.receipt), receipt);

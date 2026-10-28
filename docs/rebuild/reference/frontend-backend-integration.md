@@ -311,25 +311,20 @@ registry/verifier/active-session publication. Only the ordinary returned session
 bootstrap, Queue, Run and HR data authority. Failed or unknown publication remains a defined HOLD;
 public error codes never expose private causes or credential values.
 
-The login surface offers an explicit Claim existing data action using the existing form and
-canonical client. `/api/v1/profile/claim-existing-data` requires exact loopback mutation admission,
-validated details, a claim UUID and literal owner-claim consent. It verifies ownership before issuing
-the maintenance handoff and returns `PROFILE_OWNER_CLAIM_STARTING` without a session cookie. The
-initiating response settles before transport and profile closure, backup and stopped publication.
-After reconnection, the operator repeats the explicit claim; authenticated recovery returns the
-original private operation with its limited onboarding cookie. A fresh browser request UUID does
-not replace the retained operation or repeat its completed effects. Ordinary signup stays separate.
+Sign-up creates a fresh private profile; there is no existing-data claim route or form state.
+Before composing profile runtime, dashboard startup migrates a pre-profile flat store into an empty
+profile installation. The backup and deletion contract lives in `clock-config-secrets.md`.
 
-For an adopted flat installation, the same public shell refuses ordinary signup/sign-in with
-`PROFILE_OWNER_CLAIM_REQUIRED` before constructing private profile or onboarding machinery. The
-claim's stopped handoff verifies its backup, publishes its resumable native transition and reopens
-the same loopback port. Restart may finish only that original authorized transition; a flat source
-without a claim journal stays unclaimed. The resulting authority remains the existing private draft
-until genuine current Duo methods and explicit Finish complete.
+Returning to Details or login cancels the whole draft through canonical credential erasure after
+provider closure. Startup removes leftover unfinished drafts through the same path, after proving
+onboarding browser roots unused. A recorded Finish completes publication at startup instead.
+Local profile credentials and Duo material are removed; devices already enrolled at Duo remain there.
+A stale or signed-out public session returns to login and does not reopen a retained draft.
 
+The typed profile client parses defined wire errors into public refusal codes. Login and sign-up
+render the refusal's catalog sentence; genuine transport failure uses the authority-unavailable text.
 Show setup browser may refresh unavailable public authority with the current cookie, then shows only
-that same operation and profile. A signed-out or stale session requires the original Details through
-the existing sign-up route; it never cancels the retained draft. Unknown method outcomes stay unknown.
+that same operation and profile. Unknown method outcomes stay unknown while that draft is active.
 Show focuses the owned extension tab or recreates that tab once in the same live context. A closed
 window is replaced only after the exact context close event, all tracked pages, the observed process,
 and startup, tab, portal and pump callbacks prove closure. A lost worker-stop acknowledgment during
