@@ -15,6 +15,7 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 export const ERROR_CATALOG = Object.freeze({
   RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
   RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another runtime or storage command.", EmptyParametersSchema),
+  PRIVATE_FILE_LOCK_UNAVAILABLE: catalogEntry("Local storage is busy with another operation. Wait for that operation to finish before trying again.", EmptyParametersSchema),
   RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
   BROWSER_CLOSURE_UNPROVED: catalogEntry("Browser closure could not be verified. No file replacement or credential erasure has started.", EmptyParametersSchema),
   BROWSER_PROFILE_STILL_CLOSING: catalogEntry("The browser profile is still in use or closing. Wait for it to close before continuing.", EmptyParametersSchema),

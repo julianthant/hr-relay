@@ -132,7 +132,7 @@ it("refuses fresh installation without both initializer and verifier before cont
   expect(existsSync(pair.stateRoot)).toBe(false);
 });
 
-it("freezes issued leases and refuses a changed on-disk lease mode", async () => {
+it("freezes issued leases and binds authority to the exact live root and unreleased capability", async () => {
   const { workspace, pair, lifetime } = await fixture();
   const first = adoptSynthetic(workspace, pair, lifetime);
   expect(Object.isFrozen(first)).toBe(true);
@@ -155,14 +155,21 @@ it("freezes issued leases and refuses a changed on-disk lease mode", async () =>
   expect(Reflect.set(shared, "mode", "exclusive")).toBe(false);
   expect(Reflect.set(shared, "assertHeld", () => {})).toBe(false);
   const admission = RuntimeAdmission.fromInstallationLease(shared);
+  expect(admission.lifetime).toBe(lifetime);
   expect(() => admission.assertExclusive()).toThrow(/exclusive offline admission required/u);
-  const leasePath = join(workspace, ".tracker/control", "leases", readdirSync(join(workspace, ".tracker/control", "leases"))[0]);
-  const original = readFileSync(leasePath);
-  const parsed = JSON.parse(original.toString("utf8")) as Record<string, unknown>;
-  writeFileSync(leasePath, JSON.stringify({ ...parsed, mode: "exclusive" }));
-  expect(() => admission.assertLive()).toThrow(/lease identity changed/u);
-  writeFileSync(leasePath, original);
+  expect(existsSync(join(workspace, ".tracker/control", "leases"))).toBe(false);
+  const foreign = await fixture();
+  const foreignLease = adoptSynthetic(foreign.workspace, foreign.pair, foreign.lifetime);
+  expect(() => acquireInstallation(workspace, "shared", foreign.lifetime)).toThrow(/workspace-unproved/u);
+  foreignLease.release();
+  shared.assertHeld(); admission.assertLive();
   admission.release();
+  expect(() => shared.assertHeld()).toThrow(/installation lease released/u);
+  expect(() => admission.assertLive()).toThrow(/released/u);
+  const next = acquireInstallation(workspace, "shared", lifetime);
+  next.release();
+  await lifetime.close();
+  expect(() => next.assertHeld()).toThrow(/runtime authority has closed/u);
 });
 
 it("binds destination and retained source capabilities to one live relocation operation", async () => {

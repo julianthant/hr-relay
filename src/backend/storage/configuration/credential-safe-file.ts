@@ -295,6 +295,11 @@ export interface PrivateFileLock {
   assertHeld(): void;
 }
 
+export class PrivateFileLockUnavailableError extends Error {
+  readonly code = "PRIVATE_FILE_LOCK_UNAVAILABLE";
+  constructor() { super("private file lock is unavailable"); this.name = "PrivateFileLockUnavailableError"; }
+}
+
 export function withPrivateFileLock<T>(directory: string, name: string, body: (held: PrivateFileLock) => T): T {
   if (name === "." || name === ".." || name.includes("/") || name.includes("\\") || name.length === 0) {
     throw new Error("directory-integrity: private lock name is invalid");
@@ -334,7 +339,7 @@ export function withPrivateFileLock<T>(directory: string, name: string, body: (h
     })) break;
     const existing = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
     if (existing !== undefined) assertPrivateLockBytes(existing.bytes);
-    if (systemClock.monotonicMs() > deadline) throw new Error("private file lock is unavailable");
+    if (systemClock.monotonicMs() > deadline) throw new PrivateFileLockUnavailableError();
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
   }
   let outcome: { kind: "value"; value: T } | { kind: "error"; error: unknown };

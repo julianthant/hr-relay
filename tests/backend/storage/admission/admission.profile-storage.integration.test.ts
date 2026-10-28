@@ -280,8 +280,8 @@ it("refuses a concurrent healthy observation change and performs healthy registr
     const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
     const current = f.registry.read();
     const realOpen = fs.openSync;
-    const realWrite = fs.writeFileSync;
     const profilePath = join(f.machine.stateRoot, "machine", "profiles.json");
+    const mutexPath = join(f.workspace, ".tracker", "control", ".installation-mutation.lock");
     let reads = 0, changed = false, writes = 0;
     vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
       if (path === profilePath && typeof flags === "number") {
@@ -298,9 +298,9 @@ it("refuses a concurrent healthy observation change and performs healthy registr
     assert.equal(changed, true);
     vi.restoreAllMocks(); syncBuiltinESMExports();
     const before = f.registry.read();
-    vi.spyOn(fs, "writeFileSync").mockImplementation((path, data, options) => {
-      if (typeof path === "string" && path.includes("admission-mutex")) writes++;
-      return realWrite(path, data, options);
+    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+      if (path === mutexPath && typeof flags === "number" && (flags & fs.constants.O_EXCL) !== 0) writes++;
+      return realOpen(path, flags, mode);
     });
     syncBuiltinESMExports();
     const original = readFileSync(profilePath);
@@ -309,9 +309,9 @@ it("refuses a concurrent healthy observation change and performs healthy registr
     assert.equal(writes, priorWrites);
     assert.deepEqual(readFileSync(profilePath), original);
     vi.restoreAllMocks(); syncBuiltinESMExports();
-    vi.spyOn(fs, "writeFileSync").mockImplementation((path, data, options) => {
-      if (typeof path === "string" && path.includes("admission-mutex")) writes++;
-      return realWrite(path, data, options);
+    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+      if (path === mutexPath && typeof flags === "number" && (flags & fs.constants.O_EXCL) !== 0) writes++;
+      return realOpen(path, flags, mode);
     });
     syncBuiltinESMExports();
     f.machine.publishProfileRegistry(before, { ...before, sessionGeneration: before.sessionGeneration + 1 });

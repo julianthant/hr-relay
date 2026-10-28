@@ -1,4 +1,6 @@
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { PrivateFileLockUnavailableError } from "../../../src/backend/storage/configuration/credential-safe-file.js";
+import { FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { finishProfileOnboarding, readyProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -426,15 +428,16 @@ describe("profile session", () => {
   it("holds the profile lock until the current operation finishes", async () => {
     const root = await temp();
     let nested = false;
+    let nestedFailure: { error: unknown } | undefined;
     const session = createProfileSession({
       machineRoot: root,
       credentialHooks: {
         beforeRename: () => {
           if (nested) return;
           nested = true;
-          assert.throws(() => session.signUp({
+          try { session.signUp({
             firstName: "Sam", lastName: "Rivera", email: "sam@ucsd.edu", password: "secret-two", createdAt: "2026-09-06T12:00:00.000Z",
-          }), /profile operation lock is unavailable/);
+          }); } catch (error) { nestedFailure = { error }; }
         },
       },
     });
@@ -442,23 +445,33 @@ describe("profile session", () => {
       firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
     }));
     assert.equal(alex.state, "active");
+    assert.ok(nestedFailure?.error instanceof PrivateFileLockUnavailableError);
     const registry = JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: { firstName: string }[] };
     assert.equal(registry.profiles.length, 1);
     assert.equal(registry.profiles[0]?.firstName, "Alex");
   }, 20_000);
 
-  it("replaces a dead profile lock before sign-up", async () => {
+  for (const record of ["malformed", "unknown"] as const) it(`retains a ${record} profile lock without sign-up effects`, async () => {
     const root = await temp();
     const machine = join(root, "machine");
-    mkdirSync(machine, { mode: 0o700, recursive: true });
-    writeFileSync(join(machine, ".profile-ops.lock"), `${JSON.stringify({
-      schemaVersion: 1, kind: "profile-ops", pid: 2_147_483_647, platform: "darwin", startToken: "0",
-    })}\n`, { mode: 0o600 });
     const session = createProfileSession({ machineRoot: root });
-    const alex = await finishProfileOnboarding(session, session.signUp({
+    const path = join(machine, ".profile-ops.lock");
+    const bytes = Buffer.from(record === "malformed" ? "{malformed" : JSON.stringify({ nonce: "11111111-1111-4111-8111-111111111111", unknown: true }));
+    writeFileSync(path, bytes, { mode: 0o600, flag: "wx" });
+    const before = fs.readdirSync(root, { recursive: true }).map(name => {
+      const path = join(root, String(name)), info = fs.lstatSync(path);
+      return { path, inode: info.ino, bytes: info.isFile() ? readFileSync(path) : null };
+    });
+    const keys = FakeKeyringEntry.snapshot();
+    assert.throws(() => session.signUp({
       firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    }));
-    assert.equal(alex.state, "active");
+    }), /private lock is malformed/u);
+    assert.deepEqual(readFileSync(path), bytes);
+    assert.deepEqual(fs.readdirSync(root, { recursive: true }).map(name => {
+      const path = join(root, String(name)), info = fs.lstatSync(path);
+      return { path, inode: info.ino, bytes: info.isFile() ? readFileSync(path) : null };
+    }), before);
+    assert.deepEqual(FakeKeyringEntry.snapshot(), keys);
   });
 
   it("does not sign in another profile while a logout operation is still open", async () => {
