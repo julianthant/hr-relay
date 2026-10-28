@@ -367,7 +367,9 @@ OCR and assistant inference share the existing bounded Responses transport, canc
 owner. Account closure fences new work, aborts requests and awaits issued inference/page operations and
 accesses; sign-out also drains those operations before revocation or credential mutation. Failed native
 artifact, PDF or response-reader closure retains explicit resource uncertainty and refuses sign-out
-without clearing credentials. Assistant functions are strict and namespaced. One trusted per-request server binding captures
+without clearing credentials. Cancelling an errored response wrapper may rethrow its original cancellation
+after the transport reader has closed; that identical cancellation remains cancellation, while actual
+transport cancel or reader-release failures retain resource uncertainty. Assistant functions are strict and namespaced. One trusted per-request server binding captures
 request-specific private state before catalog or inference awaits and returns its closure-bound
 validators and handlers; captured state is not automatically sent to the model. The absent binding
 returns an empty set without subject reads. Continuation retains every returned item and exact call

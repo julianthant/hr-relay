@@ -560,6 +560,9 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       if (response.body?.locked === true) throw new Error("ChatGPT response reader remains owned");
       await response.body?.cancel();
     } catch (cause) {
+      // The transport emits cancellation only after its reader closes.
+      if (outcome.kind === "error" && outcome.error === cause
+        && cause instanceof ChatGptAccountError && cause.code === "CHATGPT_OCR_CANCELLED") throw cause;
       const error = new ChatGptResourceClosureUnprovedError(outcome.kind === "value" ? cause
         : new AggregateError([outcome.error, cause], "ChatGPT response and closure failed"));
       retainResponseClosure(error, response); outcome = { kind: "error", error };
