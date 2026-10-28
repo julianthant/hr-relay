@@ -97,6 +97,8 @@ selected profile. It proves dead ownership from retained process birth and the e
 and uses the offline recovery's strict OS process, open-file and working-directory absence proof
 across installation browser roots. Live owners are left alone; uncertain identity or closure refuses
 with `STARTUP_CRASH_RECOVERY_REFUSED` before claiming work.
+A singleton claim whose PID now has a different start identity has a gone original owner. Worker
+records require the PID itself to be gone; a reused identity still refuses.
 
 Immutable receipts in `startup-process-closure/` settle process custody only; original claims and
 worker files stay untouched. Receipts bind installation witnesses, physical roots, original file

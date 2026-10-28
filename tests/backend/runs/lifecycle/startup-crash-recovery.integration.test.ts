@@ -98,3 +98,39 @@ it("preserves the source-closure error identity for composition custody retentio
   osProof().mockImplementationOnce(() => { throw failure; });
   assert.throws(f.reconcile, error => error === failure);
 });
+
+it("settles singleton claims whose pid was reused without changing their original files", async () => {
+  const f = await fixture(); osProof();
+  const originals = (["server", "live-smoke", "geocode"] as const).map(name => {
+    const handle = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name, pid: process.pid }, f.clock,
+      { observeProcessIdentity: () => ({ state: "alive", identity: { platform: "darwin", startToken: "previous-synthetic-birth" } }) });
+    const file = readProcessCustodyFile(join(f.processLockRoot, `${name}-claims`, `${handle.generation}.claim.json`));
+    const original = readRuntimeProcessLock(f.processLockRoot, name); assert.ok(original);
+    return { name, file, original };
+  });
+  f.reconcile();
+  for (const { name, file, original } of originals) {
+    assert.deepEqual(readProcessCustodyFile(file.witness.path), file);
+    assert.ok(readStartupProcessClosure(f.processLockRoot, original));
+    assert.ok(readRuntimeProcessLock(f.processLockRoot, name)?.releasedAt);
+  }
+  const notifications = f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID);
+  assert.equal(notifications.filter(note => note.title === "STARTUP_PROCESS_CLOSED").length, 3);
+  f.reconcile();
+  assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), notifications);
+});
+
+it("refuses a worker record whose pid was reused and leaves its custody unsettled", async () => {
+  const f = await fixture(); osProof();
+  const handle = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "workers", pid: process.pid,
+    admission: { kind: "unbound-worker", authorityPath: join(f.admission.stateRoot, "state.db") } }, f.clock,
+    { observeProcessIdentity: () => ({ state: "alive", identity: { platform: "darwin", startToken: "previous-synthetic-birth" } }) });
+  cleanups.push(async () => { handle.release(); });
+  const file = readProcessCustodyFile(join(f.processLockRoot, "workers", `${handle.acquisitionId}.lock.json`));
+  const original = WorkerProcessLockFileSchema.parse(JSON.parse(file.bytes.toString("utf8")));
+  assert.throws(f.reconcile, error => error instanceof StartupCrashRecoveryRefusedError
+    && error.cause instanceof Error && error.cause.message === "startup-process-identity-changed");
+  assert.deepEqual(readProcessCustodyFile(file.witness.path), file);
+  assert.equal(readStartupProcessClosure(f.processLockRoot, original), undefined);
+  assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);
+});

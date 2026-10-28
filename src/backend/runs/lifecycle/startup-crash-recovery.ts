@@ -60,8 +60,8 @@ export function reconcileStartupCrash(input: { machine: RuntimeAdmission; admiss
       if (original.name === "workers" && workerProcessRecoveryProved(processLockRoot, original)) continue;
       const observed = observeProcessIdentity(original.pid);
       if (observed.state === "alive") {
-        if (canonicalJsonStringify(observed.identity) !== canonicalJsonStringify(original.processIdentity)) throw new Error("startup-process-identity-changed");
-        continue;
+        if (canonicalJsonStringify(observed.identity) === canonicalJsonStringify(original.processIdentity)) continue;
+        if (original.name === "workers") throw new Error("startup-process-identity-changed");
       }
       if (original.name === "workers") {
         if ("admission" in original && original.admission.authorityPath !== authorityPath) continue;

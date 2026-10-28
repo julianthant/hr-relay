@@ -144,7 +144,8 @@ function assertStartupClosureOriginal(receipt: z.infer<typeof StartupProcessClos
   if (receipt.file.path !== expected || root !== resolve(root)
     || Date.parse(receipt.checkedAt) < Date.parse(original.releasedAt ?? original.acquiredAt)
     || receipt.proof.nativeWrites !== (receipt.heldWriteIntentIds.length === 0 ? "settled" : "HELD")) throw new Error("startup-process-closure-unproved");
-  if (observeProcessIdentity(original.pid).state !== "gone") throw new Error("startup-process-closure-owner-unproved");
+  if (original.name === "workers" ? observeProcessIdentity(original.pid).state !== "gone"
+    : recordOwnerIsAlive(original, observeProcessIdentity)) throw new Error("startup-process-closure-owner-unproved");
   const file = readProcessCustodyFile(expected);
   if (canonicalJsonStringify(file.witness) !== canonicalJsonStringify(receipt.file)
     || canonicalJsonStringify(JSON.parse(file.bytes.toString("utf8"))) !== canonicalJsonStringify(original)) throw new Error("startup-process-closure-original-changed");
