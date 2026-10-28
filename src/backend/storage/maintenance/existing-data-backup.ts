@@ -1,7 +1,6 @@
 import { SourceRecordSchema, StorageBackupSchema, hash, file, inventory, verifyCopies, retainedStorageBackup, existingDataFileLabel } from "./existing-data-backup-files.js";
 import { decodeStoredArtifact } from "../artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { assertCredentialCopyResourcesClosed } from "./profile-inventory.js";
 import { profileAuthorityFileWitnesses } from "../configuration/credential-store.js";
 import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";

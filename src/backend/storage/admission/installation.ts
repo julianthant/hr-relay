@@ -16,7 +16,7 @@ import {
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { observeRuntimeLockSnapshot, inspectStoppedDeviceRecertificationCustody, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, readProcessCustodyFile, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle, RUNTIME_PROCESS_LOCK_NAMES, runtimeProcessLockIsActive, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
+import { observeRuntimeLockSnapshot, inspectStoppedDeviceRecertificationCustody, readProcessCustodyFile, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle, RUNTIME_PROCESS_LOCK_NAMES, runtimeProcessLockIsActive, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
 import { NonNegativeIntSchema } from "../../../rules/identity/ids.js";
@@ -95,17 +95,6 @@ const DeviceRecertificationAuthorizationSchema = z.strictObject({ captureDigest:
   acknowledgement: z.literal("recertify-current-files-with-unproved-historical-volume-binding") });
 const DeviceRecertificationJournalSchema = z.strictObject({ schemaVersion: z.literal(1), capture: DeviceRecertificationCaptureSchema,
   stage: ControlUpgradeFileSchema, authorization: DeviceRecertificationAuthorizationSchema });
-const DeviceRecertificationSourceSchema = z.lazy(() => z.strictObject({
-  custody: z.strictObject({ bootStartedAt: z.number().int().positive(), singletons: z.array(RuntimeProcessLockFileSchema), workers: z.array(WorkerProcessLockFileSchema),
-    files: z.array(UnpublishedDraftAbortCaptureSchema.shape.membership.element.omit({ directory: true }).extend({ owner: z.number().int().nonnegative(), links: z.number().int().positive() })) }),
-  membership: UnpublishedDraftAbortCaptureSchema.shape.membership, machineMembership: UnpublishedDraftAbortCaptureSchema.shape.membership,
-  databases: IncompleteProfileDraftCaptureSchema.shape.databases, protectedFile: ControlUpgradeFileSchema,
-  roots: z.array(UnpublishedDraftAbortCaptureSchema.shape.membership.element.pick({ path: true, device: true, inode: true, mode: true }).extend({ owner: z.number().int().nonnegative() })).length(5),
-  metadata: UnpublishedDraftAbortCaptureSchema.shape.membership,
-  documents: z.strictObject({ installation: z.string(), locator: z.string(), stateMarker: z.string(), artifactMarker: z.string() }),
-  stateMarker: ControlUpgradeFileSchema, artifactMarker: ControlUpgradeFileSchema, installation: ControlUpgradeFileSchema,
-  locator: ControlUpgradeFileSchema, registry: ControlUpgradeFileSchema, verifiers: ControlUpgradeFileSchema, pepper: ControlUpgradeFileSchema,
-}));
 export type DeviceRecertificationAuthorization = z.infer<typeof DeviceRecertificationAuthorizationSchema>;
 export interface StoppedDeviceRecertification {
   readonly capture: Readonly<{ digest: string; priorDevice: number; currentDevice: number; historicalVolumeBinding: "unproved" }>;
@@ -2813,114 +2802,6 @@ function controlUpgradeFile(path: string) {
 
 function sameControlUpgradeFile(path: string, expected: z.infer<typeof ControlUpgradeFileSchema>): boolean {
   return lstatMaybe(path) !== undefined && canonicalJsonStringify(controlUpgradeFile(path)) === canonicalJsonStringify(expected);
-}
-
-function completedDeviceRecertificationReceipt(control: string, locator: RuntimeLocator) {
-  const path = join(control, "device-recertification-receipt.json");
-  if (lstatMaybe(path) === undefined) return undefined;
-  const file = controlUpgradeFile(path), receipt = readProfileEvidence(path, DeviceRecertificationJournalSchema);
-  const { capture, stage, authorization } = receipt, { prior, current } = capture;
-  const head = prior.erasures[0], key = head?.credentialKey, duo = prior.duo[0];
-  if (prior.installationId !== locator.installationId || prior.erasures.length !== 1 || head === undefined || key === undefined
-    || key.binding.installationId !== prior.installationId || key.binding.profileId !== head.profileId
-    || head.head.state !== "never-erased" || prior.operations.length !== 0 || prior.duo.length !== 1 || duo === undefined
-    || duo.profileId !== head.profileId || duo.state !== "never-initialized" || duo.revision !== 0
-    || prior.device === current.device || key.file.device !== prior.device
-    || stage.device !== capture.priorControl.device) fail("device-recertification-receipt-invalid");
-  const expected = ProfileContinuitySchema.parse(prior), expectedKey = expected.erasures[0]?.credentialKey;
-  if (expectedKey === undefined) fail("device-recertification-receipt-invalid");
-  expected.device = current.device; expectedKey.file.device = current.device;
-  const bytes = Buffer.from(capture.priorControlBytes, "base64");
-  const { operationId: _operationId, ...content } = capture;
-  if (canonicalJsonStringify(expected) !== canonicalJsonStringify(current)
-    || bytes.toString("base64") !== capture.priorControlBytes
-    || createHash("sha256").update(bytes).digest("hex") !== capture.priorControl.digest
-    || canonicalJsonStringify(ProfileContinuitySchema.parse(JSON.parse(bytes.toString("utf8")))) !== canonicalJsonStringify(prior)
-    || createHash("sha256").update(canonicalJsonStringify(content)).digest("hex") !== authorization.captureDigest
-    || createHash("sha256").update(`${JSON.stringify(current)}\n`).digest("hex") !== stage.digest
-    || !sameControlUpgradeFile(path, file)) fail("device-recertification-receipt-invalid");
-  const source = DeviceRecertificationSourceSchema.parse(JSON.parse(capture.sourceEvidence));
-  if (canonicalJsonStringify(source) !== capture.sourceEvidence) fail("device-recertification-source-invalid");
-  const [workspace, capturedControl, state, artifact, profiles] = source.roots;
-  if (workspace === undefined || capturedControl === undefined || state === undefined || artifact === undefined || profiles === undefined
-    || workspace.path !== dirname(dirname(control)) || capturedControl.path !== control || profiles.path !== join(state.path, "profiles")
-    || new Set(source.roots.map(root => root.path)).size !== source.roots.length
-    || source.roots.some(root => !isAbsolute(root.path) || resolve(root.path) !== root.path
-      || (root.mode & constants.S_IFMT) !== constants.S_IFDIR || (root.mode & 0o022) !== 0
-      || root.owner !== process.getuid?.() && root.owner !== 0)
-    || (capturedControl.mode & 0o7777) !== 0o700 || (profiles.mode & 0o7777) !== 0o700
-    || capturedControl.device !== stage.device) fail("device-recertification-source-invalid");
-  validatePair(workspace.path, { stateRoot: state.path, artifactRoot: artifact.path });
-  function membership(rows: z.infer<typeof UnpublishedDraftAbortCaptureSchema>["membership"], permitted: ReadonlyMap<string, boolean>, required: readonly string[]) {
-    const entries = new Map(rows.map(entry => [entry.path, entry]));
-    if (entries.size !== rows.length || required.some(name => !entries.has(name))
-      || rows.some(entry => permitted.get(entry.path) !== entry.directory
-        || [entry.device, entry.inode, entry.size, entry.mode].some(value => !Number.isSafeInteger(value) || value < 0)
-        || (entry.mode & constants.S_IFMT) !== (entry.directory ? constants.S_IFDIR : constants.S_IFREG)
-        || (entry.directory ? (entry.mode & 0o7777) !== 0o700 : entry.path.startsWith("state.db")
-          ? (entry.mode & 0o022) !== 0 : (entry.mode & 0o7777) !== 0o600))) fail("device-recertification-source-invalid");
-    return entries;
-  }
-  const keyPath = `credential-keys/${head.profileId}.json`;
-  const machine = membership(source.machineMembership, new Map([["", true], ["credential-keys", true], [keyPath, false], ["erasures", true], ["operations", true],
-    ["profiles.json", false], ["profile-registry-version.json", false], ["profile-verifiers.json", false], ["profile-pepper", false]]),
-  ["", "credential-keys", keyPath, "profiles.json", "profile-registry-version.json", "profile-verifiers.json", "profile-pepper"]);
-  const profile = membership(source.membership, new Map([["", true], ["credentials", true], ["credentials/protected.json", false], ["artifacts", true],
-    ["state.db", false], ["state.db-wal", false], ["state.db-shm", false], ["state.db-journal", false]]), ["", "credentials", "credentials/protected.json", "state.db"]);
-  function identity(entries: ReturnType<typeof membership>, name: string, witness: z.infer<typeof ControlUpgradeFileSchema>) {
-    const entry = entries.get(name);
-    if (entry?.directory !== false || entry.device !== witness.device || entry.inode !== witness.inode) fail("device-recertification-source-invalid");
-  }
-  const metadataPaths = [join(control, "installation.json"), join(control, "locator.json"), join(state.path, MARKER), join(artifact.path, MARKER)];
-  const metadata = membership(source.metadata, new Map(metadataPaths.map(name => [name, false])), metadataPaths);
-  function document<T>(name: keyof typeof source.documents, documentPath: string, schema: z.ZodType<T>): T {
-    const bytes = Buffer.from(source.documents[name], "base64"), witness = source[name];
-    identity(metadata, documentPath, witness);
-    if (bytes.toString("base64") !== source.documents[name] || metadata.get(documentPath)?.size !== bytes.length
-      || createHash("sha256").update(bytes).digest("hex") !== witness.digest) fail("device-recertification-source-invalid");
-    return schema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
-  }
-  const historicalInstallation = document("installation", join(control, "installation.json"), InstallationSchema);
-  const historicalLocator = document("locator", join(control, "locator.json"), LocatorSchema);
-  const stateMarker = document("stateMarker", join(state.path, MARKER), MarkerSchema);
-  const artifactMarker = document("artifactMarker", join(artifact.path, MARKER), MarkerSchema);
-  const epochs = epochsOf(historicalLocator);
-  if (historicalInstallation.installationId !== prior.installationId || historicalInstallation.workspace !== workspace.path
-    || historicalLocator.installationId !== prior.installationId || historicalLocator.stateRoot !== state.path || historicalLocator.artifactRoot !== artifact.path
-    || stateMarker.installationId !== prior.installationId || stateMarker.workspace !== workspace.path || stateMarker.role !== "state" || stateMarker.generation !== epochs.state
-    || artifactMarker.installationId !== prior.installationId || artifactMarker.workspace !== workspace.path || artifactMarker.role !== "artifact" || artifactMarker.generation !== epochs.artifact
-    || source.installation.device !== capturedControl.device || source.locator.device !== capturedControl.device
-    || source.stateMarker.device !== state.device || source.artifactMarker.device !== artifact.device) fail("device-recertification-source-invalid");
-  identity(machine, "profiles.json", source.registry); identity(machine, "profile-verifiers.json", source.verifiers); identity(machine, "profile-pepper", source.pepper);
-  identity(machine, keyPath, { ...key.file, device: current.device }); identity(profile, "credentials/protected.json", source.protectedFile);
-  if (source.registry.device !== current.device || source.registry.inode !== current.inode
-    || canonicalJsonStringify(source.databases.map(database => database.suffix)) !== canonicalJsonStringify(["", "-wal", "-shm", "-journal"])) fail("device-recertification-source-invalid");
-  for (const database of source.databases) {
-    const name = `state.db${database.suffix}`;
-    if (profile.has(name) !== (database.file !== undefined)) fail("device-recertification-source-invalid");
-    if (database.file !== undefined) identity(profile, name, database.file);
-  }
-  const { custody } = source, expectedClaims = new Set<string>();
-  if (new Set(custody.singletons.map(claim => `${claim.name}/${claim.generation}`)).size !== custody.singletons.length
-    || new Set(custody.workers.map(worker => worker.acquisitionId)).size !== custody.workers.length
-    || custody.workers.some(worker => worker.releasedAt === null)) fail("device-recertification-source-invalid");
-  for (const claim of custody.singletons) {
-    expectedClaims.add(`${claim.name}-claims/${claim.generation}.claim.json`);
-    if (claim.releasedAt !== null) expectedClaims.add(`${claim.name}-claims/${claim.generation}-${claim.acquisitionId}.release.json`);
-  }
-  for (const worker of custody.workers) expectedClaims.add(`workers/${worker.acquisitionId}.lock.json`);
-  const retained = custody.singletons.filter(claim => claim.releasedAt === null);
-  if (retained.some(claim => claim.name !== "server" || claim.processIdentity.platform !== "darwin"
-    || !/^\d+$/u.test(claim.processIdentity.startToken) || Number(claim.processIdentity.startToken) * 1000 <= 0
-    || Number(claim.processIdentity.startToken) * 1000 >= custody.bootStartedAt || Date.parse(claim.acquiredAt) >= custody.bootStartedAt
-    || Date.parse(claim.acquiredAt) < Number(claim.processIdentity.startToken) * 1000)) fail("device-recertification-source-invalid");
-  const claimFiles = new Set(custody.files.map(entry => entry.path)), directories = new Set(["server-claims/", "live-smoke-claims/", "geocode-claims/", "workers/"]);
-  if (claimFiles.size !== custody.files.length || [...expectedClaims].some(name => !claimFiles.has(name))
-    || custody.files.some(entry => entry.owner !== process.getuid?.() || [entry.device, entry.inode, entry.size, entry.mode].some(value => !Number.isSafeInteger(value) || value < 0)
-      || (directories.has(entry.path) ? (entry.mode & constants.S_IFMT) !== constants.S_IFDIR || (entry.mode & 0o7777) !== 0o700
-        : !expectedClaims.has(entry.path) || !claimFiles.has(`${dirname(entry.path)}/`) || entry.links !== 1
-          || (entry.mode & constants.S_IFMT) !== constants.S_IFREG || (entry.mode & 0o7777) !== 0o600))) fail("device-recertification-source-invalid");
-  return file;
 }
 
 function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typeof PriorProfileContinuitySchema>): string {
