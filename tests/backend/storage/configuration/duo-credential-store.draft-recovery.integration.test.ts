@@ -1,3 +1,5 @@
+import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
+import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { execFileSync, fork, spawnSync } from "node:child_process";
 import nativeChildProcess from "node:child_process";
@@ -237,10 +239,11 @@ it("recovers a draft's durable counter intent through stopped authenticated main
   admission.release(); maintenance.release(); rmSync(f.root, { recursive: true });
 });
 
-for (const boundary of ["source", "journal", "erase", "intent", "source-unlink", "key-unlink", "operation-unlink"] as const) {
+for (const boundary of ["source", "journal", "erase", "intent", "source-unlink", "key-unlink", "keychain-before-delete", "keychain-after-delete", "operation-unlink"] as const) {
   it(`resumes actual unpublished cancellation across ${boundary} with original encrypted custody retained`, async () => {
     const f = privateDraftFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
     const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`);
+    const keyMetadata: unknown = JSON.parse(readFileSync(keyPath, "utf8"));
     const protectedPath = join(f.machine.stateRoot, "profiles", f.draft.profileId, "credentials", "protected.json");
     const intentPath = join(f.root, ".tracker", "control", "profile-publication.json");
     const failure = new Error("fixture draft abort boundary"), rename = nativeFs.renameSync, unlink = nativeFs.unlinkSync, write = nativeFs.writeFileSync;
@@ -262,9 +265,17 @@ for (const boundary of ["source", "journal", "erase", "intent", "source-unlink",
       if (!fired && (boundary === "source-unlink" && target.includes(`.protected.${f.draft.operationId}.`) && target.endsWith(".tmp")
         || boundary === "key-unlink" && target === keyPath || boundary === "operation-unlink" && target === operationPath)) { fired = true; throw failure; }
     });
+    const keyEntry = new FakeKeyringEntry("Relay", `${f.machine.locator.installationId}:${f.draft.profileId}`);
+    const deletePassword = keyEntry.deletePassword.bind(keyEntry);
+    const keychainSpy = vi.spyOn(FakeKeyringEntry.prototype, "deletePassword").mockImplementation(() => {
+      if (!fired && boundary === "keychain-before-delete") { fired = true; throw failure; }
+      const deleted = deletePassword();
+      if (!fired && boundary === "keychain-after-delete") { fired = true; throw failure; }
+      return deleted;
+    });
     syncBuiltinESMExports();
     try { await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId)); }
-    finally { renameSpy.mockRestore(); writeSpy.mockRestore(); unlinkSpy.mockRestore(); syncBuiltinESMExports(); }
+    finally { renameSpy.mockRestore(); writeSpy.mockRestore(); unlinkSpy.mockRestore(); keychainSpy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(fired, true);
     await f.profile.close(); f.machine.release();
     const machine = acquireEntrypointAdmission(f.root, "exclusive");
@@ -278,6 +289,7 @@ for (const boundary of ["source", "journal", "erase", "intent", "source-unlink",
       assert.deepEqual(await profile.session.cancelOnboarding(resumed.token, resumed.operationId), { state: "signed-out" });
     }
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(keyPath), false); assert.equal(existsSync(intentPath), false);
+    assert.throws(() => credentialKeyCustody.read(keyMetadata), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
     assert.equal(existsSync(protectedPath), true);
     assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true });
@@ -436,7 +448,8 @@ for (const boundary of ["source-fsync", "protected-stage"] as const) {
       { execArgv: ["--disable-warning=ExperimentalWarning", "--import", "tsx"], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
     const retained = { root: f.root, child }; retainedProcessLossFixtures.add(retained);
     const closed = once(child, "close"); let stderrBytes = 0; child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; });
-    const ready = z.object({ type: z.literal("ready"), pid: z.number().int().positive() }).parse((await once(child, "message"))[0]);
+    const ready = z.object({ type: z.literal("ready"), pid: z.number().int().positive(), keychain: z.array(z.tuple([z.string(), z.string()])) }).parse((await once(child, "message"))[0]);
+    FakeKeyringEntry.import(ready.keychain);
     assert.equal(ready.pid, child.pid);
     const identity = observeProcessIdentity(ready.pid); assert.equal(identity.state, "alive");
     if (identity.state !== "alive") throw new Error("fixture owned child identity required");

@@ -1,3 +1,4 @@
+import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -36,7 +37,7 @@ function fixture(options: Parameters<typeof createHistoricalFlatProfileFixture>[
     process.stdout.write(handle.acquisitionId);
   `;
   const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, f.processLockRoot],
-    { encoding: "utf8", timeout: 20_000, env: workerBootstrapEnvironment() });
+    { encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
   assert.equal(child.status, 0, child.stderr); assert.equal(child.error, undefined);
   const acquisitionId = z.uuid().parse(child.stdout.trim()), path = join(f.processLockRoot, "workers", `${acquisitionId}.lock.json`);
   const original = WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(path, "utf8")));
@@ -306,7 +307,7 @@ for (const phase of ["original-close", "witness-close", "receipt-close", "stage-
   it(`retains command custody after ${phase} until the isolated owner exits`, () => {
     const f = fixture(), plan = f.plan();
     const child = spawnSync(process.execPath, ["--import", "tsx", "tests/support/processes/worker-process-recovery-fault-child.ts",
-      f.workspace, f.acquisitionId, plan.report.captureDigest, phase], { encoding: "utf8", timeout: 20_000, env: workerBootstrapEnvironment() });
+      f.workspace, f.acquisitionId, plan.report.captureDigest, phase], { encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
     assert.equal(child.error, undefined); assert.equal(child.status, 0, child.stderr);
     const result = z.object({ phase: z.literal(phase), pid: z.number(), snapshot: z.string().optional(),
       closure: z.literal("process-exit-required"), published: z.boolean(), leaseCount: z.number() }).parse(JSON.parse(child.stdout));

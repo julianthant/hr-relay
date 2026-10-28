@@ -1,3 +1,4 @@
+import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import nativeFs, { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -62,6 +63,12 @@ it("backs up the exact database, profile and independent machine authority, reus
     for (const name of ["machine/profile-pepper", `machine/credential-keys/${f.profileId}.json`, "machine/profiles.json", "machine/profile-verifiers.json", "profile/credentials/protected.json", "control/installation.json", "control/profile-registry.json"]) {
       assert.ok(verified.files.some(entry => entry.path === name), name);
     }
+    const keyMetadata: unknown = JSON.parse(readFileSync(f.keyPath, "utf8"));
+    const key = credentialKeyCustody.read(keyMetadata);
+    const copiedKey = join(f.workspace, ".tracker", "control", "profile-owner-claims", claimId, "files", "machine", "credential-keys", `${f.profileId}.json`);
+    assert.equal(readFileSync(copiedKey).includes(key.key), false);
+    assert.equal(readFileSync(copiedKey).includes(Buffer.from(key.key, "base64")), false);
+    assert.equal("key" in JSON.parse(readFileSync(copiedKey, "utf8")), false);
     const backupNames = readdirSync(join(f.profileRoot, "backups", "authority"));
     const replay = await backupExistingData(machine, admission, owner, claimId, systemClock);
     assert.deepEqual(replay, backup);

@@ -1,3 +1,4 @@
+import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { chmodSync, cpSync, mkdirSync, statSync, symlinkSync, readFileSync, readdirSync } from "node:fs";
@@ -40,7 +41,7 @@ function fixture(claimGeneration = 0) {
       try { const current = runRecordFromRow(raw.prepare("SELECT * FROM runs").get());
         updateRunRecord(raw, RunRecordSchema.parse({ ...current, lifecycle: { state: "queued" }, claimGeneration: Number(process.argv[2]), version: current.version + 1 }));
         process.stdout.write(current.envelope.runId); } finally { raw.close(); }`, f.databasePath, String(claimGeneration)],
-    { encoding: "utf8", timeout: 20_000, env: workerBootstrapEnvironment() });
+    { encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
   assert.equal(changed.error, undefined); assert.equal(changed.status, 0, changed.stderr);
   const runId = z.uuid().parse(changed.stdout.trim());
   return { ...f, runId };
@@ -153,7 +154,7 @@ it("dispatches the actual secure-bootstrap CLI plan and apply against an isolate
     symlinkSync(dirname(dirname(fileURLToPath(import.meta.resolve("tsx/package.json")))), join(f.workspace, "node_modules"));
     const command = (args: string[]) => spawnSync(process.execPath,
       ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "cancel-queued-runs", ...args],
-      { cwd: f.workspace, encoding: "utf8", timeout: 20_000, env: workerBootstrapEnvironment() });
+      { cwd: f.workspace, encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
     const planned = command(["--plan", "--json"]);
     assert.equal(planned.error, undefined); assert.equal(planned.status, 0, planned.stderr);
     const plan = z.object({ state: z.literal("planned"), captureDigest: z.string().length(64), runIds: z.array(z.uuid()) }).parse(JSON.parse(planned.stdout));
@@ -170,7 +171,7 @@ it("cancels before recovering a dead worker record, preserving the original proc
     const module = pathToFileURL(join(process.cwd(), "src/backend/storage/sqlite/runtime-process-locks.ts")).href;
     const owner = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
       `import { acquireRuntimeProcessLock } from ${JSON.stringify(module)}; const lock = acquireRuntimeProcessLock({ processLockRoot: process.argv[1], name: "workers", workerId: "person-lookup-worker-4", pid: process.pid }); process.stdout.write(lock.acquisitionId);`, f.processLockRoot],
-      { encoding: "utf8", timeout: 20_000, env: workerBootstrapEnvironment() });
+      { encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
     assert.equal(owner.error, undefined); assert.equal(owner.status, 0, owner.stderr);
     const acquisition = z.uuid().parse(owner.stdout.trim());
     const path = join(f.processLockRoot, "workers", `${acquisition}.lock.json`), original = readFileSync(path);

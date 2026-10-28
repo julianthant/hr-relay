@@ -8,6 +8,7 @@ import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime
 import { observeProcessIdentity } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
+import { FakeKeyringEntry } from "../helpers/credential-keychain-fake.js";
 
 const [workspace, boundary] = z.tuple([z.string().min(1), z.enum(["source-fsync", "protected-stage"])]).parse(process.argv.slice(2));
 const machine = acquireEntrypointAdmission(workspace, "exclusive"), processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
@@ -41,4 +42,4 @@ process.on("message", (message: unknown) => {
   armed = true;
   void profile.session.cancelOnboarding(draft.token, draft.operationId).then(() => process.exit(96), () => process.exit(96));
 });
-process.send?.({ type: "ready", pid: process.pid });
+process.send?.({ type: "ready", pid: process.pid, keychain: FakeKeyringEntry.snapshot() });
