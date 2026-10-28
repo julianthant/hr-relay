@@ -14,6 +14,7 @@ import {
   ItemIdSchema,
   LeaseIdSchema,
   ObservationIdSchema,
+  NodeIdSchema,
   PageStateIdSchema,
   PositiveIntSchema,
   RunIdSchema,
@@ -311,6 +312,15 @@ export const ParkedWriteResolutionBindingSchema = z.strictObject({
 });
 export type ParkedWriteResolutionBinding = z.infer<typeof ParkedWriteResolutionBindingSchema>;
 
+export const ParkedWriteRecheckSchema = z.strictObject({
+  nodeId: NodeIdSchema,
+  commandId: CommandIdSchema,
+  auditId: CommandAuditIdSchema,
+  expectedRunVersion: PositiveIntSchema,
+  requestedAt: IsoInstantSchema,
+  transactionId: z.string().regex(/^T\d+$/u).optional(),
+});
+
 const WriteIntentAttemptFields = {
   occurrence: RepeatOccurrenceSchema.optional(),
   ...WriteIntentIdentityFields,
@@ -356,6 +366,7 @@ const RetryableWriteIntentRecordSchema = z.strictObject({
 const ParkedWriteIntentRecordSchema = z.strictObject({
   ...WriteIntentAttemptFields,
   status: z.literal("parked"),
+  recheck: ParkedWriteRecheckSchema.optional(),
   parkedCode: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
   message: z.string().min(1),
   authorityReason: WriteAuthorityReasonSchema,

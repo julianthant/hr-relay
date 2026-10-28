@@ -4,7 +4,6 @@ import { WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_WORKER_ID, W
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import { testAdmittedWorker, testRunContinuation } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -407,7 +406,7 @@ afterEach(_afterEachFixture0);
     finally { database.close(); }
     assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), false);
     const profile = profiles.find(value => value.workspace === p.repoRoot); assert.ok(profile);
-    profile.finish();
+    await profile.finish();
     admissions.set(p.repoRoot, profile.admission);
     assert.equal(boundProfileCredentials(profile.admission).read().revision, 1);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], CLOCK, p.repoRoot);
@@ -575,11 +574,11 @@ try {
   if (node?.kind !== "transaction") throw new Error("resolution transaction fixture required");
   const settlement = buildCommittedSettlement({ descriptor: writeFixtureDescriptor, nodeId: String(node.id), run: parked, intent,
     commitContract: node.commit.uses, operator: ActorIdSchema.parse("local-operator"), implFingerprint: WRITE_FIXTURE_IMPL_FINGERPRINT,
-    proofSource: "operator-attestation", proofValue, outputValue: JsonValueSchema.parse(node.commit.uses.output.parse(Reflect.apply(node.commit.uses.writeSafety.completion.outputFromProof, undefined, [proofValue]))),
+    proofSource: "recovery-probe", proofValue, outputValue: JsonValueSchema.parse(node.commit.uses.output.parse(Reflect.apply(node.commit.uses.writeSafety.completion.outputFromProof, undefined, [proofValue]))),
     confirmedAt: clock.now().toISOString(), ids: { uuid: randomUUID } });
-  const command = rehearsal.resolutionCommand("resolve-write-present", { runId: parked.envelope.runId, expectedVersion: parked.version,
+  const command = rehearsal.resolutionCommand("recheck-write", { runId: parked.envelope.runId, expectedVersion: parked.version,
     writeIntentId: intent.writeIntentId, intentGeneration: intent.generation }, {
-    proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: proofValue } });
+  });
   releaseSeededWriteOwners(harness.database, clock.now().toISOString()); harness.database.close();
   const inspect = (path: string) => withAuthorityDatabaseReadOnly(admissions.get(p.repoRoot)!, path, db => {
     const run = runRecordFromRow(db.prepare("SELECT * FROM runs WHERE id=?").get(WRITE_FIXTURE_RUN_ID));
@@ -587,7 +586,7 @@ try {
     const operation = WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", db.prepare("SELECT * FROM write_intents WHERE id=?").get(intent.writeIntentId)));
     return { runId: run.envelope.runId, version: run.version, lifecycle: run.lifecycle.state, claimGeneration: run.claimGeneration,
       attempt, attemptId: attempt.writeAttemptId, outcome: attempt.outcome.state, outcomeCode: attempt.outcome.state === "parked" ? attempt.outcome.code : undefined, operationStatus: operation.status,
-      checkpoint: db.prepare("SELECT 1 FROM run_checkpoints WHERE id=?").get(checkpointLookupKey(settlement.checkpoint.workflowId, settlement.checkpoint.itemId, settlement.checkpoint.nodeId, settlement.checkpoint.attempt, settlement.checkpoint.claimGeneration)) !== undefined,
+      checkpoint: db.prepare("SELECT 1 FROM run_checkpoints WHERE id=?").get(checkpointLookupKey(settlement.checkpoint.workflowId, settlement.checkpoint.itemId, settlement.checkpoint.nodeId, settlement.checkpoint.attempt, run.claimGeneration)) !== undefined,
       events: db.prepare("SELECT * FROM timeline_events ORDER BY cursor").all().map(timelineEventFromRow).map(record => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind) };
   }, 500);
   const before = inspect(p.authorityPath);
@@ -627,9 +626,32 @@ try {
       workerLifetime: worker.workerLifetime, now: clock.now().toISOString() }).state, "idle");
     assert.deepEqual(inspect(p.authorityPath), before);
     assert.equal(resolutionKernel(newer).execute(command).state, "applied");
+    const claimed = newer.authority.runs.claimNext({ workflow: writeFixtureDescriptor.id, workerId: worker.workerId,
+      workerLifetime: worker.workerLifetime, now: clock.now().toISOString() });
+    assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("recheck claim required");
+    const recheckClaim = { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration };
+    const validating = newer.authority.runs.transition({ runId: before.runId, expectedVersion: claimed.run.version,
+      claim: recheckClaim, lifecycle: { ...claimed.run.lifecycle, state: "validating" }, now: clock.now().toISOString() });
+    assert.equal(validating.state, "applied"); if (validating.state !== "applied") throw new Error("recheck validation required");
+    const running = newer.authority.runs.transition({ runId: before.runId, expectedVersion: validating.run.version,
+      claim: recheckClaim, lifecycle: { ...validating.run.lifecycle, state: "running", currentNodeId: node.id }, now: clock.now().toISOString() });
+    assert.equal(running.state, "applied"); if (running.state !== "applied") throw new Error("recheck execution required");
+    const requested = newer.authority.writeIntents.get(intent.writeIntentId);
+    assert.ok(requested?.status === "parked" && requested.recheck !== undefined);
+    const recheck = requested.recheck;
+    const checkpoint = { ...settlement.checkpoint, claimGeneration: running.run.claimGeneration };
+    newer.withAuthorityTransaction(() => {
+      newer.commitRecheckedParkedWrite({ commit: settlement.commit, checkpoint, claim: recheckClaim,
+        expectedIntentVersion: requested.version, resolution: { commandId: command.commandId, auditId: recheck.auditId,
+          expectedRunVersion: before.version, writeIntentId: intent.writeIntentId, writeAttemptId: intent.currentAttemptId,
+          generation: intent.generation, bindingProofDigest: intent.bindingProofDigest, idempotencyKeyDigest: intent.idempotencyKeyDigest,
+          runId: before.runId, runAttempt: intent.runAttempt, decision: "present", resolvedAt: clock.now().toISOString() } });
+      newer.authority.runs.transition({ runId: before.runId, expectedVersion: running.run.version, claim: recheckClaim,
+        lifecycle: { state: "queued" }, now: clock.now().toISOString() });
+    });
   } finally { releaseSeededWriteOwners(newer, clock.now().toISOString()); newer.close(); }
   const committed = inspect(p.authorityPath);
-  assert.equal(committed.version, before.version + 1); assert.equal(committed.attemptId, before.attemptId);
+  assert.equal(committed.version, before.version + 5); assert.equal(committed.attemptId, before.attemptId);
   assert.equal(committed.operationStatus, "committed");
   assert.deepEqual(committed.attempt, parkedAttempt);
   assert.equal(committed.outcome, before.outcome); assert.equal(committed.outcomeCode, "unknown");

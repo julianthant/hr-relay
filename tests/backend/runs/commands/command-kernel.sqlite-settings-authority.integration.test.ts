@@ -32,7 +32,7 @@ describe("SQLite settings authority", () => {
       configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
       intakeProjections: NO_INTAKE_PROJECTIONS,
       descriptors: { resolve: (id) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === id) },
-      writeResolution: { resolvePresent: unused, resolveAbsent: unused },
+      writeResolution: { recheck: unused, resolveAbsent: unused },
       workerRuntime: { pool: {
         planPoolWorkerCount: () => { effects++; return Promise.resolve({ state: "accepted", workerIds: ["person-lookup-worker-1"], retirements: [] }); },
         spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused,

@@ -36,7 +36,7 @@ export function createKernelStubCommandFixtures(input: {
     planPoolWorkerCount: unrelated, spawnPoolWorker: unrelated,
     refreshPoolBrowser: unrelated, reopenPoolBrowser: unrelated, stopPoolWorker: unrelated, pausePoolWorker: unrelated, resumePoolWorker: unrelated,
   } };
-  const writeResolution: CommandKernelDependencies["writeResolution"] = { resolvePresent: unrelated, resolveAbsent: unrelated };
+  const writeResolution: CommandKernelDependencies["writeResolution"] = { recheck: unrelated, resolveAbsent: unrelated };
 
   function nextCommandId(): string {
     commandSequence += 1;

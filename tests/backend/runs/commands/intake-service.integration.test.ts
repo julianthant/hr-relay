@@ -135,7 +135,7 @@ async function surface(): Promise<Surface> {
     configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_1 },
     descriptors,
     writeResolution: {
-      resolvePresent: () => { throw new Error("unused"); },
+      recheck: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
     workerRuntime: { pool: {

@@ -46,7 +46,7 @@ function fixture() {
     descriptors: { resolve: workflow => workflow === fixtureDescriptor.id ? fixtureDescriptor : undefined },
     configIdentity: { configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint },
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    writeResolution: { resolvePresent: unused, resolveAbsent: unused },
+    writeResolution: { recheck: unused, resolveAbsent: unused },
     workerRuntime: { pool: { planPoolWorkerCount: async context => { effects += 1; return effect(context); },
       spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused,
       stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });

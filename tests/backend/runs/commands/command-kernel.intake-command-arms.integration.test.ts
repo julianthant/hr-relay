@@ -33,7 +33,6 @@ UUID_7,
 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 /* ── the source file, as a grid the shared edge would have produced ──────── */
 
@@ -154,7 +153,7 @@ async function harness(sessionOverrides: Record<string, unknown> = {}, preReserv
       },
     },
     writeResolution: {
-      resolvePresent: () => { throw new Error("unused"); },
+      recheck: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
     workerRuntime: { pool: {

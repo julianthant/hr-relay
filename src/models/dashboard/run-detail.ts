@@ -757,7 +757,7 @@ export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type ProofFieldWire = z.infer<typeof ProofFieldWireSchema>;
 
-/** WHAT A CONFIRMED-PRESENT RESOLUTION MUST CARRY: the resolution refuses any proof whose `schemaHash` is not the commit contract's own, and parses the value through that exact schema. */
+/** Completion-proof metadata for parked-write evidence; rechecks obtain proof from the target system. */
 export const ProofContractWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("served"),
@@ -765,7 +765,7 @@ export const ProofContractWireSchema = z.discriminatedUnion("state", [
     commitTaskId: TaskIdSchema,
       /* How this write WOULD have proved itself unattended; context the operator needs, because `save-verify` means a reload read-back is the only landing proof. */
     completionKind: z.enum(["receipt", "save-verify", "upload-verify"]),
-    /** The exact value the resolution's `proof.schemaHash` must equal. */
+    /** Schema identity of the completion proof. */
     schemaHash: FingerprintSchema,
     fields: z.array(ProofFieldWireSchema).min(1),
   }),

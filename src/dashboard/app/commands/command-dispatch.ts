@@ -178,9 +178,9 @@ export function composeCommandRequest(
     }
     case "resolve-gate":
       return composeGateResult(action, context.gate, context.gateAnswer, envelope);
-    case "resolve-write-present":
+    case "recheck-write":
     case "resolve-write-absent":
-      // Park resolutions use the evidence-note dialog; this composer cannot carry that required proof.
+      // The parked-write dialog owns these commands.
       return {
         state: "refused",
         reason: `${action.command} is answered by the parked-write dialog, not by this dispatcher`,

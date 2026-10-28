@@ -159,7 +159,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
     // Both typed resolutions, both intent-scoped, both confirm-first — the
     // three properties a surface may not supply for itself.
     expect(section.payload.actions.map((action) => action.kind === "command" && action.command))
-      .toEqual(["resolve-write-present", "resolve-write-absent"]);
+      .toEqual(["recheck-write", "resolve-write-absent"]);
     for (const action of section.payload.actions) {
       if (action.kind !== "command") throw new Error("expected a command descriptor");
       expect(action.confirm).toBeDefined();

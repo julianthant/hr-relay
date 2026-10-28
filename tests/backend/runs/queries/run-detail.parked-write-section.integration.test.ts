@@ -256,7 +256,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
 
     assert.deepEqual(
       actions.map((action) => (action.kind === "command" ? action.command : action.kind)),
-      ["resolve-write-present", "resolve-write-absent"],
+      ["recheck-write", "resolve-write-absent"],
     );
     for (const action of actions) {
       assert.equal(action.kind, "command");
@@ -266,9 +266,9 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       assert.deepEqual(action.writeTarget, { writeIntentId: INTENT_ID, intentGeneration: 1,
         writeAttemptId: ATTEMPT_ID, occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST,
         bindingProofDigest: parkedIntentOf().bindingProofDigest });
-      // Neither resolution may be one click: both settle a real HR write.
+      // Neither may be one click: a found write resumes the run, and absence authorizes a resubmit.
       assert.ok(action.confirm !== undefined);
-      assert.equal(action.confirm.tone, "destructive");
+      assert.equal(action.confirm.tone, action.command === "recheck-write" ? "neutral" : "destructive");
     }
   });
 
@@ -293,10 +293,10 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
         expectedVersion: action.expectedVersion,
         ...writeTarget,
       },
-      payload: { occurrenceKeyDigest, proof: { schemaHash: "a".repeat(64), value: "receipt-123" } },
+      payload: { occurrenceKeyDigest },
     });
     assert.equal(command.family, "run");
-    if (command.family !== "run" || command.type !== "resolve-write-present") throw new Error("unreachable");
+    if (command.family !== "run" || command.type !== "recheck-write") throw new Error("unreachable");
     assert.equal(command.target.writeIntentId, INTENT_ID);
     assert.equal(command.target.intentGeneration, 1);
     assert.equal(command.target.expectedVersion, 4);

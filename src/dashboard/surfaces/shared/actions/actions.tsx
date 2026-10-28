@@ -264,7 +264,7 @@ export function ParkResolutions({
     // Measure the detail column, not viewport width; context rails change the space controls share.
     <div className="mt-[var(--ds-space-base)] grid gap-[var(--ds-space-snug)] @min-[35rem]:grid-cols-2">
       {options.map((a) => {
-        const present = a.kind === "command" && a.command === "resolve-write-present";
+        const present = a.kind === "command" && a.command === "recheck-write";
         const Icon = present ? CheckCircle2 : CircleSlash;
         return (
           <BareButton

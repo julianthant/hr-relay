@@ -97,7 +97,7 @@ A source-bound rerun can carry exact server-owned repeat authorization. Ordinary
 
 `repeatOccurrenceKey` in `src/models/run/rerun.ts` derives one occurrence key from the business digest, consumed confirmation command, and transaction node. The intent retains its `occurrence` provenance. The sequencer queries all intents for the business digest and refuses a different unresolved occurrence. A new occurrence cannot bypass an `attempting`, `parked`, or other unresolved sibling.
 
-A selected repeat reaches fresh prepare, binding, fence, commit, and verification. `isFreshOccurrenceProof` in `src/backend/runtime/gates/repeat-proof.ts` rejects an earlier receipt as proof of the new occurrence. Recovery and operator-present resolution apply the same check. Generic business-key absence cannot settle a repeat occurrence, and an old confirmation cannot authorize another click.
+A selected repeat reaches fresh prepare, binding, fence, commit, and verification. `isFreshOccurrenceProof` in `src/backend/runtime/gates/repeat-proof.ts` rejects an earlier receipt as proof of the new occurrence. Recovery and operator-requested rechecks apply the same check. Generic business-key absence cannot settle a repeat occurrence, and an old confirmation cannot authorize another click.
 
 ## Sequenced writes
 
@@ -154,7 +154,7 @@ A settled prior transaction returns an `already-present` preview without staging
 
 ## 4. Crash recovery and UNKNOWN refusal
 
-`createWriteRecovery` handles unfinished `attempting` intents. Worker and expired-claim recovery must reconcile these intents before ordinary queue admission. [Execution and sessions](execution-and-sessions.md) describes that scheduling boundary.
+`createWriteRecoveryService` handles unfinished `attempting` intents. Production worker startup parks unfinished attempts for operator action; the standalone recovery service is not composed into that startup path. Worker and expired-claim recovery must reconcile these intents before ordinary queue admission. [Execution and sessions](execution-and-sessions.md) describes that scheduling boundary.
 
 The recovery service rebuilds the exact commit input and binds the retained run configuration fingerprint around its read lease. Missing authority or incompatible semantic identity refuses before probing. A failed probe is not absence.
 
@@ -182,14 +182,18 @@ An UNKNOWN submission never authorizes generic retry, another occurrence, cancel
 
 ## 4.1 Parked-write resolution
 
-The command kernel accepts `resolve-write-present` and `resolve-write-absent` only for the current `parked-write` run and `parked` intent. Requests bind run version, intent ID, generation, original attempt ID, binding digest, and `occurrenceKeyDigest`. A stale request or mismatched target changes nothing.
+The command kernel accepts `recheck-write` and `resolve-write-absent` only for the current `parked-write` run and `parked` intent. Both bind run version, intent ID, generation, original attempt ID, binding digest, and `occurrenceKeyDigest`. A stale request or mismatched target changes nothing. No command accepts operator-supplied completion proof.
 
 `createWriteResolutionExecutor` provides two arms:
 
-- Confirmed present validates the supplied proof's current schema hash, parses its value, checks repeat freshness, and reconstructs the output. Authenticated settlement records `proofSource: "operator-attestation"`, the checkpoint, confirmation history, and continuation.
-- Confirmed absent records the operator and confirmation instant and marks the intent `retryable`. It does not click. The next attempt must prepare, observe, and fence again.
+- `recheck-write` records an audited request on the parked intent and queues the same run at its transaction node. The lifecycle continuation requires that exact command and node. The worker runs the read-only probe before prepare, staging, fencing, or clicking. Valid present proof settles the intent with `proofSource: "recovery-probe"`, writes the checkpoint and confirmation history atomically, and continues the run. Absent, ambiguous, unknown, throwing, or invalid proof clears the request and returns the run to `parked-write` with a renewed code, message, and time. This path never authorizes retry, including contracts with stabilized negative recovery.
+- `resolve-write-absent` records the operator and confirmation instant and marks the intent `retryable`. It does not click. The next attempt must prepare, observe, and fence again.
 
-`commitResolvedParkedWrite` and `settleResolvedParkedAbsence` in `authority-database.ts` authenticate the resolution against the command and audit and verify the run CAS. Both preserve the original parked attempt bytes. Resolution is recorded on the intent, not by rewriting the original browser attempt's outcome.
+A recheck optionally accepts `transactionId` only when the completion verifier is `ucpath/verify-termination`. That verifier searches the exact employee and reads only the requested transaction detail. Proof must match the requested transaction ID and the permanent key's subject and effective date. A missing or mismatched record stays parked.
+
+`requestRecheck`, `parkRecheck`, `commitRecheckedParkedWrite`, and `settleResolvedParkedAbsence` in `authority-database.ts` enforce intent CAS and authenticated command/audit identity. Recheck settlement also requires the current running worker claim. The original parked browser attempt remains immutable. The recheck request audit and settled intent authenticate confirmation history and canonical receipts through the recovery-probe proof source.
+
+A lost or crashed recheck claim returns claimed, validating, or running execution to `parked-write`; the intent remains parked and its request is cleared. A fresh operator command is required to check again.
 
 `requireWriteResolutionBinding` checks the consumed semantic surface. Exact contract-closure identity is sufficient. When the closure changes, the module checks workflow identity, descriptor version, transaction node, canonical-input schema, re-derived permanent key, and retained binding identity. Missing evidence, schema failure, and key drift remain distinct refusal categories. There is no force or waiver arm. Settling an intent does not re-plan its run onto a changed descriptor.
 

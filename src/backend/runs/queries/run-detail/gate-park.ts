@@ -203,21 +203,20 @@ function parkedWriteActions(
     writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest };
   return [
     {
-      key: "resolve-write-present",
-      label: "I confirmed it IS there",
-      detail: "Record the transaction you found, with its proof. The run settles as committed and never clicks again.",
+      key: "recheck-write",
+      label: "Check again",
+      detail: "Read the target system again. A verified transaction continues the run; uncertainty keeps the write parked.",
       intent: "warning",
       icon: "resolve",
       placement: ["banner", "footer"],
       kind: "command",
-      command: "resolve-write-present",
+      command: "recheck-write",
       expectedVersion: authority.version,
       confirm: {
-        title: "Confirm the transaction exists",
-        body: `This files ${intent.system} transaction ${intent.writeIntentId} as committed on this run's `
-          + "evidence. If it is not actually there, the run finishes reporting work nobody did.",
-        confirmLabel: "It is there",
-        tone: "destructive",
+        title: "Check the target system again",
+        body: `Relay reads ${intent.system} again and submits nothing. If it finds this write, the run continues to its next step.`,
+        confirmLabel: "Check again",
+        tone: "neutral",
       },
       writeTarget,
     },

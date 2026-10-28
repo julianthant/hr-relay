@@ -50,6 +50,14 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 
 describe("authority classification and command families", () => {
 
+  it("accepts proof-free rechecks and refuses the removed operator-present command", () => {
+    const command = COMMAND_FIXTURES.map(input => CommandRequestSchema.parse(input)).find(input => input.type === "recheck-write");
+    assert.ok(command && command.family === "run" && command.type === "recheck-write");
+    assert.equal(CommandRequestSchema.safeParse({ ...command, payload: { ...command.payload, transactionId: "T123456" } }).success, true);
+    assert.equal(CommandRequestSchema.safeParse({ ...command, payload: { ...command.payload, proof: { schemaHash: HASH_A, value: {} } } }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({ ...command, type: "resolve-write-present" }).success, false);
+  });
+
   it("parses every closed action and keeps the family registry exhaustive", () => {
     for (const fixture of CURRENT_COMMAND_FIXTURES) assert.equal(CommandRequestSchema.safeParse(fixture).success, true);
     const fixtureActions = new Set(CURRENT_COMMAND_FIXTURES.map((fixture) => (fixture as { readonly type: string }).type));
@@ -100,7 +108,7 @@ describe("authority classification and command families", () => {
       bump: "local-write",
       rename: "local-write",
       delete: "destructive",
-      "resolve-write-present": "external-submit",
+      "recheck-write": "external-submit",
       "resolve-write-absent": "external-submit",
       "resolve-gate": "external-submit",
       "notification-read": "local-write",

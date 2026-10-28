@@ -127,7 +127,7 @@ it("executes two real children and a nested child with one actual home process a
     const unused = (): never => { throw new Error("unrequested operator effect"); };
     const kernel = createCommandKernel({ authority: database, lifecycle, clock: systemClock, ids: { uuid: randomUUID },
       appVersion: "0.1.0", descriptors, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
-      intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { resolvePresent: unused, resolveAbsent: unused },
+      intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
       workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused,
         reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
     const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock: systemClock,

@@ -220,7 +220,7 @@ export function createFinalizationTerminalTestWorld() {
       descriptors: { resolve: id => id === separationsKualiFinalizationDescriptor.id ? separationsKualiFinalizationDescriptor : undefined },
       configIdentity: { configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint },
       intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-      writeResolution: { resolvePresent: unrelated, resolveAbsent: unrelated },
+      writeResolution: { recheck: unrelated, resolveAbsent: unrelated },
       workerRuntime: { pool: { planPoolWorkerCount: unrelated, spawnPoolWorker: unrelated, refreshPoolBrowser: unrelated,
         reopenPoolBrowser: unrelated, stopPoolWorker: unrelated, pausePoolWorker: unrelated, resumePoolWorker: unrelated } } });
     const resolved = kernel.execute({ commandId: UUID_7, requestedAt: value.clock.now().toISOString(),

@@ -1,3 +1,4 @@
+import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { fenceWriteFixture, writeFenceFixtureInput } from "../../../support/helpers/write-fence-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -228,28 +229,33 @@ async function fixture(faultStep?:string) {
 function positive(f:Awaited<ReturnType<typeof fixture>>) {
   const resolution={...f.resolution,decision:"present" as const};
   const proof=LEDGER_PAYLOAD.proof;
-  const command={...f.command,type:"resolve-write-present",payload:{occurrenceKeyDigest:f.parked.idempotencyKeyDigest,proof}};
-  const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,...base}=f.parked;
-  const settled=WriteIntentRecordSchema.parse({...base,status:"committed",completionProof:proof,confirmedAt:LATER,version:3,updatedAt:LATER,resolution});
-  const audit={...f.audit,request:command,writeResolution:settled};
-  const outcome={...COMMITTED_OUTCOME,proofSource:"operator-attestation"};
-  const transaction={...LEDGER_PAYLOAD,traceId:f.run.envelope.traceId,proofSource:"operator-attestation"};
+  const command={...f.command,type:"recheck-write",payload:{occurrenceKeyDigest:f.parked.idempotencyKeyDigest}};
+  const recheck={commandId:command.commandId,auditId:resolution.auditId,expectedRunVersion:5,requestedAt:LATER,nodeId:"termination"};
+  const requested=WriteIntentRecordSchema.parse({...f.parked,recheck,version:3,updatedAt:LATER});
+  const audit={...f.audit,request:command,writeResolution:requested};
+  const outcome={...COMMITTED_OUTCOME,proofSource:"recovery-probe"};
+  const transaction={...LEDGER_PAYLOAD,traceId:f.run.envelope.traceId,proofSource:"recovery-probe"};
   const committedSpan={...SPAN_OUTBOX_PAYLOAD,traceId:f.run.envelope.traceId,outcome};
   const checkpoint=RunCheckpointRecordSchema.parse({workflowId:f.run.envelope.workflow,itemId:f.run.envelope.itemId,nodeId:"termination",
-    runId:f.run.envelope.runId,attempt:1,claimGeneration:1,descriptorVersion:1,contractFingerprint:f.run.envelope.contractFingerprint,
+    runId:f.run.envelope.runId,attempt:1,claimGeneration:2,descriptorVersion:1,contractFingerprint:f.run.envelope.contractFingerprint,
     implFingerprint:f.run.envelope.contractFingerprint,output:{schemaHash:deriveSchemaHash(TransactionOutcomeSchema,"output"),value:outcome},
     provenance:[],writtenAt:LATER});
   const commit={writeIntentId:f.parked.writeIntentId,generation:1,completionProof:proof,confirmedAt:LATER,outcome,transaction,committedSpan};
   const apply=()=>f.db.withAuthorityTransaction(repositories=>{
     repositories.commands.insert(command);repositories.commandAudits.insert(audit);
-    const report=f.db.commitResolvedParkedWrite({commit,checkpoint,expectedIntentVersion:2,resolution});
+    repositories.writeIntents.requestRecheck({writeIntentId:f.parked.writeIntentId,generation:1,expectedVersion:2,recheck});
     const service=new RunRecordService({database:f.db,clock:capturedInstantClock(LATER),ids:sequentialIdFactory(),publishQueued:()=>{}});
-    const resumed=runContinuationPort(service).transition({commandId:UUID_7,runId:f.run.envelope.runId,expectedVersion:5,
-      lifecycle:{state:"queued"},startAt:"termination",writeResolution:{kind:"operator",binding:resolution}});
+    const resumed=runContinuationPort(service).transition({commandId:lifecycleCommandId("write-recheck",command.commandId),runId:f.run.envelope.runId,expectedVersion:5,
+      lifecycle:{state:"queued"},startAt:"termination",writeResolution:{kind:"recheck",commandId:command.commandId,
+        writeIntentId:f.parked.writeIntentId,generation:1,writeAttemptId:f.original.writeAttemptId,bindingProofDigest:f.parked.bindingProofDigest}});
     if(resumed.state !== "applied")throw new Error("fixture continuation failed");
+    const {claim}=writeFenceFixtureInput(f.db,{intent:WRITE_INTENT_ATTEMPTING,attempt:WRITE_ATTEMPT});
+    const report=f.db.commitRecheckedParkedWrite({commit,checkpoint,expectedIntentVersion:3,resolution,claim});
+    const running=repositories.runs.get(f.run.envelope.runId)!;
+    repositories.runs.transition({runId:f.run.envelope.runId,expectedVersion:running.version,claim,lifecycle:{state:"queued"},now:LATER});
     return report;
   });
-  return {apply,command,audit,checkpoint,transaction,committedSpan,commit};
+  return {apply,command,audit,checkpoint,transaction,committedSpan,commit,recheck,requested};
 }
 function kernel(f:Awaited<ReturnType<typeof fixture>>,fault?:"audit"|"mismatch",present=false) {
   let preparations=0;
@@ -258,7 +264,9 @@ function kernel(f:Awaited<ReturnType<typeof fixture>>,fault?:"audit"|"mismatch",
     preparations+=1;
     const positiveResult=present ? positive(f) : undefined;
     const resolution={...f.resolution,auditId:context.auditId,decision:present ? "present" as const : "absent" as const};
-    const intent=WriteIntentRecordSchema.parse({...positiveResult?.audit.writeResolution ?? f.audit.writeResolution,resolution});
+    const recheck=positiveResult === undefined ? undefined : {...positiveResult.recheck,auditId:context.auditId};
+    const intent=WriteIntentRecordSchema.parse(positiveResult === undefined ? {...f.audit.writeResolution,resolution}
+      : {...positiveResult.requested,recheck});
     const run=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,startAt:"termination"},lifecycle:{state:"queued"},version:6,updatedAt:LATER});
     expect(repositories.commandAudits.get(context.auditId)).toBeUndefined();
     return {outcome:{run,intent},applyAfterAudit:()=>{
@@ -266,10 +274,12 @@ function kernel(f:Awaited<ReturnType<typeof fixture>>,fault?:"audit"|"mismatch",
       if(fault === "audit")throw new Error("kernel-after-audit-fault");
       const actualIntent=positiveResult === undefined
         ? f.db.settleResolvedParkedAbsence({writeIntentId:f.parked.writeIntentId,generation:1,expectedIntentVersion:2,settlement:f.settlement,resolution})
-        : f.db.commitResolvedParkedWrite({commit:positiveResult.commit,checkpoint:positiveResult.checkpoint,expectedIntentVersion:2,resolution}).intent;
+        : repositories.writeIntents.requestRecheck({writeIntentId:f.parked.writeIntentId,generation:1,expectedVersion:2,recheck});
       const service=new RunRecordService({database:f.db,clock:capturedInstantClock(LATER),ids:sequentialIdFactory("b"),publishQueued:()=>{}});
-      const actual=runContinuationPort(service).transition({commandId:UUID_7,runId:f.run.envelope.runId,expectedVersion:5,
-        lifecycle:{state:"queued"},startAt:"termination",writeResolution:{kind:"operator",binding:resolution}});
+      const actual=runContinuationPort(service).transition({commandId:positiveResult === undefined ? UUID_7 : lifecycleCommandId("write-recheck",context.command.commandId),runId:f.run.envelope.runId,expectedVersion:5,
+        lifecycle:{state:"queued"},startAt:"termination",writeResolution:positiveResult === undefined ? {kind:"operator",binding:resolution}
+          : {kind:"recheck",commandId:context.command.commandId,writeIntentId:f.parked.writeIntentId,generation:1,
+            writeAttemptId:f.original.writeAttemptId,bindingProofDigest:f.parked.bindingProofDigest}});
       if(actual.state !== "applied")throw new Error("fixture continuation failed");
       return {run:fault === "mismatch" ? RunRecordSchema.parse({...actual.run,displayName:"mismatched actual result"}) : actual.run,intent:actualIntent};
     }};
@@ -279,7 +289,7 @@ function kernel(f:Awaited<ReturnType<typeof fixture>>,fault?:"audit"|"mismatch",
     descriptors:{resolve:()=>undefined},configIdentity:{configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},
     intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
     workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
-    writeResolution:{resolvePresent:present ? prepare : unused,resolveAbsent:present ? unused : prepare}});
+    writeResolution:{recheck:present ? prepare : unused,resolveAbsent:present ? unused : prepare}});
   return {instance,preparations:()=>preparations};
 }
 describe("native parked command audit ordering",()=>{
@@ -317,13 +327,13 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.commands.get(UUID_5)).toBeUndefined();expect(f.db.authority.commandAudits.get(UUID_6)).toBeUndefined();
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
-    expect(f.db.authority.runCheckpoints.get(p.checkpoint.workflowId,p.checkpoint.itemId,p.checkpoint.nodeId,1,1)).toBeUndefined();
+    expect(f.db.authority.runCheckpoints.get(p.checkpoint.workflowId,p.checkpoint.itemId,p.checkpoint.nodeId,p.checkpoint.attempt,p.checkpoint.claimGeneration)).toBeUndefined();
     expect(f.db.authority.timelineEvents.page({runId:f.run.envelope.runId,limit:100})).toHaveLength(0);
     expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
   it("publishes exact proof and history while retaining the parked attempt after restart and later run advancement",async ()=>{
     const f=await fixture();const p=positive(f);expect(p.apply().attempt).toEqual(f.original);
-    f.db.authority.runs.advanceRevision({runId:f.run.envelope.runId,expectedVersion:5,now:LATEST});f.restart();
+    f.db.authority.runs.advanceRevision({runId:f.run.envelope.runId,expectedVersion:f.db.authority.runs.get(f.run.envelope.runId)!.version,now:LATEST});f.restart();
     const events=f.db.authority.timelineEvents.page({runId:f.run.envelope.runId,limit:100}).filter(event=>event.payload.kind === "operation-confirmed");
     expect(events).toHaveLength(1);
     expect(reconstructConfirmedOperation(f.db.authority,events[0])).toEqual({ledger:p.transaction,span:p.committedSpan});
@@ -375,7 +385,7 @@ afterEach(_afterEachFixture0);
 describe("native permanent confirmation publication",()=>{
 afterEach(_afterEachFixture0);
 
-  it.each(["audit","mismatch"] as const)("rolls back positive command publication and complete audited result after %s",async fault=>{
+  it.each(["audit","mismatch"] as const)("rolls back recheck request and complete audited result after %s",async fault=>{
     const f=await fixture();const command=positive(f).command;const k=kernel(f,fault,true);const generation=f.db.getMeta().authorityGeneration;
     expect(()=>k.instance.execute(command)).toThrow(fault === "audit" ? "kernel-after-audit-fault" : "acknowledged-effects-mismatch");
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);expect(f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toBeUndefined();
@@ -383,7 +393,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);
     expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
-  it("replays the exact positive audited command after restart and run advancement without repeating publication or continuation",async ()=>{
+  it("replays the exact recheck request after restart and run advancement without repeating publication or continuation",async ()=>{
     const f=await fixture();const command=positive(f).command;let k=kernel(f,undefined,true);
     const result=k.instance.execute(command);expect(result.state).toBe("applied");expect(k.preparations()).toBe(1);
     const publication=f.db.authority.writeIntents.getPublication(f.parked.writeIntentId);
@@ -393,7 +403,7 @@ afterEach(_afterEachFixture0);
     expect(k.instance.execute(command)).toEqual({...result,state:"already-applied"});expect(k.preparations()).toBe(0);
     expect(f.db.authority.commandAudits.findByCommand(command.commandId)).toEqual(audit);
     expect(f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toEqual(publication);
-    expect(f.db.authority.timelineEvents.page({limit:100}).filter(row=>row.payload.kind === "operation-confirmed")).toHaveLength(1);
+    expect(f.db.authority.timelineEvents.page({limit:100}).filter(row=>row.payload.kind === "operation-confirmed")).toHaveLength(0);
     expect(f.db.authority.runs.get(f.run.envelope.runId)?.version).toBe(6);expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
     expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
@@ -438,7 +448,7 @@ afterEach(_afterEachFixture0);
       const table=fault === "checkpoint" ? "run_checkpoints" : fault === "timeline" ? "timeline_events" : fault === "attempt" ? "write_attempts" : "command_audits";
       for(const row of raw.prepare("SELECT name FROM sqlite_schema WHERE type='trigger' AND tbl_name=?").all(table)) raw.exec(`DROP TRIGGER ${String(row.name)}`);
       raw.prepare(`UPDATE ${table} SET payload_json=json_set(payload_json,?,?)`).run(
-        fault === "checkpoint" ? "$.implFingerprint" : fault === "timeline" ? "$.payload.facts.traceId" : fault === "attempt" ? "$.bindingProofDigest" : "$.writeResolution.resolution.writeAttemptId",
+        fault === "checkpoint" ? "$.implFingerprint" : fault === "timeline" ? "$.payload.facts.traceId" : fault === "attempt" ? "$.bindingProofDigest" : "$.writeResolution.recheck.commandId",
         fault === "checkpoint" || fault === "attempt" ? "b".repeat(64) : fault === "timeline" ? "term-000000-abcd" : UUID_8);
     });
     expect(()=>f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toThrow();
@@ -447,14 +457,14 @@ afterEach(_afterEachFixture0);
     const f=await fixture();const p=positive(f);p.apply();
     const publication=f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)!;
     const service=new RunRecordService({database:f.db,clock:capturedInstantClock(LATEST),ids:sequentialIdFactory("c"),publishQueued:()=>{throw new Error("deletion cannot queue");}});
-    const terminal=service.transition({commandId:UUID_8,runId:f.run.envelope.runId,expectedVersion:6,
+    const terminal=service.transition({commandId:UUID_8,runId:f.run.envelope.runId,expectedVersion:f.db.authority.runs.get(f.run.envelope.runId)!.version,
       lifecycle:{state:"terminal",outcome:"discarded",endedAt:LATEST}});
     expect(terminal.state).toBe("applied");
-    const request={commandId:"90000000-0000-4000-8000-000000000001",runId:f.run.envelope.runId,expectedVersion:7};
+    const request={commandId:"90000000-0000-4000-8000-000000000001",runId:f.run.envelope.runId,expectedVersion:f.db.authority.runs.get(f.run.envelope.runId)!.version};
     expect(service.delete(request).state).toBe("deleted");f.restart();
     expect(f.db.authority.runs.get(f.run.envelope.runId)).toBeUndefined();
     expect(f.db.authority.timelineEvents.get(publication.timeline.eventId)).toBeUndefined();
-    expect(f.db.authority.runCheckpoints.get(p.checkpoint.workflowId,p.checkpoint.itemId,p.checkpoint.nodeId,1,1)).toBeUndefined();
+    expect(f.db.authority.runCheckpoints.get(p.checkpoint.workflowId,p.checkpoint.itemId,p.checkpoint.nodeId,p.checkpoint.attempt,p.checkpoint.claimGeneration)).toBeUndefined();
     expect(f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toEqual(publication);
     expect(reconstructConfirmedOperation(f.db.authority,publication.timeline)).toEqual({ledger:p.transaction,span:p.committedSpan});
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);

@@ -362,7 +362,7 @@ export type UcpathSmartHrObservations = Readonly<{
 export type UcpathSmartHrTerminationDriver = Readonly<{
     /* The rich read: every transaction this person has, with each row's action, status, start date and displayed name; both probe kinds fold THIS. */
   scanTerminationTransactions(
-    input: Readonly<{ emplId: Eid }>,
+    input: Readonly<{ emplId: Eid; transactionId?: string }>,
   ): Promise<UcpathTransactionScan>;
   /** Stages the whole three-page wizard. Nothing durable — see the crux. */
   stageTermination(input: UcpathTerminationTarget): Promise<UcpathTerminationStaging>;

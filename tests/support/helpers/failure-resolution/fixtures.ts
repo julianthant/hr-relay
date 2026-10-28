@@ -23,7 +23,7 @@ export function resolutionKernel(db: AuthorityDatabase, clock: Awaited<ReturnTyp
     descriptors: { resolve: name => name === personLookupDescriptor.id ? personLookupDescriptor : undefined },
     configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } },
-    writeResolution: { resolvePresent: unused, resolveAbsent: unused }, ...overrides,
+    writeResolution: { recheck: unused, resolveAbsent: unused }, ...overrides,
   });
 }
 export async function resolutionFixture(runId: string = failure().runId, failureId: string = failure().failureId,

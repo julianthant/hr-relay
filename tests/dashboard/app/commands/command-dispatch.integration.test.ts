@@ -104,7 +104,7 @@ async function createHarness(): Promise<{
     },
     writeResolution: {
       resolveAbsent: () => { throw new Error("unused in test"); },
-      resolvePresent: () => { throw new Error("unused in test"); },
+      recheck: () => { throw new Error("unused in test"); },
     },
     workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("worker runtime is not wired in this fixture"); }, spawnPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, refreshPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, reopenPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, stopPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, pausePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, resumePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); } } },
   });

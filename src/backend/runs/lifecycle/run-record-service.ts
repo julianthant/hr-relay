@@ -1,6 +1,7 @@
+import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
 import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
 import { WorkerControlRefusal, WorkerResetBindingSchema } from "../../../models/run/worker-control.js";
-import { authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
+import { authenticateParkedWriteRecheck, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
 import { runSettingsAvailable, selectNewRunIdentity } from "../settings/run-settings.js";
 import { delegatedCandidateEligible, runRuntimeMatches } from "./run-claim-admission.js";
@@ -499,19 +500,31 @@ export class RunRecordService {
         const identity = resolution.kind === "operator" ? resolution.binding : resolution;
         const intent = repositories.writeIntents.get(identity.writeIntentId);
         const attempt = repositories.writeAttempts.get(identity.writeAttemptId);
-        if (intent === undefined || attempt === undefined || (intent.status !== "committed" && intent.status !== "retryable")
+        if (intent === undefined || attempt === undefined || intent.status === "observed-present"
           || intent.runId !== request.runId || intent.generation !== identity.generation || intent.currentAttemptId !== identity.writeAttemptId
           || intent.bindingProofDigest !== identity.bindingProofDigest || current.run.lifecycle.writeIntentId !== intent.writeIntentId
-          || current.run.lifecycle.intentGeneration !== intent.generation
-          || (identity.decision === "present" ? intent.status !== "committed" : intent.status !== "retryable")) throw new Error("write-resolution-continuation-settlement-mismatch");
-        if (resolution.kind === "operator") {
-          const command = repositories.commands.get(resolution.binding.commandId);
-          const audit = repositories.commandAudits.get(resolution.binding.auditId);
-          authenticateParkedWriteResolution(intent,attempt,command,audit);
-          if (resolution.binding.expectedRunVersion !== request.expectedVersion || resolution.binding.runId !== request.runId
-            || canonicalJsonStringify(intent.resolution) !== canonicalJsonStringify(resolution.binding)) throw new Error("write-resolution-continuation-binding-mismatch");
-        } else if (intent.resolution !== undefined || (intent.status === "committed" ? attempt.outcome.state !== "committed"
-          : attempt.outcome.state !== "safe-to-retry" || intent.settlement.state === "operator-confirmed-absent")) throw new Error("write-resolution-continuation-recovery-proof-mismatch");
+          || current.run.lifecycle.intentGeneration !== intent.generation) throw new Error("write-resolution-continuation-settlement-mismatch");
+        const auditId = resolution.kind === "operator" ? resolution.binding.auditId
+          : resolution.kind === "recheck" && intent.status === "parked" ? intent.recheck?.auditId : undefined;
+        const audit = auditId === undefined ? undefined : repositories.commandAudits.get(auditId);
+        if (resolution.kind === "recheck") {
+          if (intent.status !== "parked" || intent.recheck?.commandId !== resolution.commandId
+            || intent.recheck.nodeId !== request.startAt || intent.recheck.expectedRunVersion !== request.expectedVersion
+            || request.commandId !== lifecycleCommandId("write-recheck", resolution.commandId)) throw new Error("write-recheck-continuation-binding-mismatch");
+          authenticateParkedWriteRecheck(intent, attempt, repositories.commands.get(resolution.commandId),
+            audit);
+        } else {
+          if (intent.status !== "committed" && intent.status !== "retryable") throw new Error("write-resolution-continuation-settlement-mismatch");
+          const decision = resolution.kind === "operator" ? resolution.binding.decision : resolution.decision;
+          if (decision === "present" ? intent.status !== "committed" : intent.status !== "retryable") throw new Error("write-resolution-continuation-settlement-mismatch");
+          if (resolution.kind === "operator") {
+            authenticateParkedWriteResolution(intent, attempt, repositories.commands.get(resolution.binding.commandId),
+              audit);
+            if (resolution.binding.expectedRunVersion !== request.expectedVersion || resolution.binding.runId !== request.runId
+              || canonicalJsonStringify(intent.resolution) !== canonicalJsonStringify(resolution.binding)) throw new Error("write-resolution-continuation-binding-mismatch");
+          } else if (intent.resolution !== undefined || (intent.status === "committed" ? attempt.outcome.state !== "committed"
+            : attempt.outcome.state !== "safe-to-retry" || intent.settlement.state === "operator-confirmed-absent")) throw new Error("write-resolution-continuation-recovery-proof-mismatch");
+        }
       }
       if (!isWriteResolution && current.run.lifecycle.state === "parked-write"
         && request.lifecycle.state === "queued") {
@@ -855,16 +868,24 @@ export class RunRecordService {
         });
       }
       const now = this.dependencies.clock.now().toISOString();
-      const unfinished = repositories.writeIntents.listAttemptingByItem({
+      let unfinished = repositories.writeIntents.listAttemptingByItem({
         workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
       })[0] ?? repositories.writeIntents.listByRun(request.runId).find(intent => intent.status === "parked");
       if (unfinished !== undefined) {
-        const message = unfinished.status === "parked" ? unfinished.message
+        let message = unfinished.status === "parked" ? unfinished.message
           : `run ${request.runId} has an unfinished attempting write intent ${unfinished.writeIntentId}; recovery must settle it before release`;
-        if (run.lifecycle.state !== "running" || held === undefined) return {
+        if (held === undefined || (run.lifecycle.state !== "running" && unfinished.status !== "parked")) return {
           state: "recovery-required", run, writeIntentId: unfinished.writeIntentId,
           intentGeneration: unfinished.generation, parked: false, message,
         };
+        if (unfinished.status === "parked" && unfinished.recheck !== undefined) {
+          unfinished = repositories.writeIntents.parkRecheck({ writeIntentId: unfinished.writeIntentId, generation: unfinished.generation,
+            expectedVersion: unfinished.version, commandId: unfinished.recheck.commandId, code: "unknown",
+            message: "The write check lost its worker claim; check again to read the target system.",
+            authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "authority-row", "recheck-claim-lost"), now });
+          if (unfinished.status !== "parked") throw new Error("write-recheck-park-required");
+          message = unfinished.message;
+        }
         const parked = repositories.runs.transition({ runId: request.runId, expectedVersion: request.expectedVersion,
           claim: { workerId: held.workerId, claimGeneration: held.claimGeneration },
           lifecycle: { state: "parked-write", writeIntentId: unfinished.writeIntentId,

@@ -88,7 +88,7 @@ const PHASE1_ACTIVE = {
     "bump",
     "rename",
     "delete",
-    "resolve-write-present",
+    "recheck-write",
     "resolve-write-absent",
   ],
   gate: ["resolve-gate"],
@@ -163,7 +163,7 @@ type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
 export type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type RunDeleteCommand = Extract<RunCommand, { type: "delete" }>;
-type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
+type WriteResolutionCommand = Extract<RunCommand, { type: "recheck-write" | "resolve-write-absent" }>;
 
 export interface ExplorerEditExecutor {
   apply(input: ExplorerEditApplyRequest, repositories: AuthorityRepositories): Readonly<{ result: ExplorerEditApplyResult }>;
@@ -184,7 +184,7 @@ interface PreparedWriteResolution {
 }
 
 export interface WriteResolutionExecutor {
-  resolvePresent(repositories: AuthorityRepositories, context: WriteResolutionContext): PreparedWriteResolution;
+  recheck(repositories: AuthorityRepositories, context: WriteResolutionContext): PreparedWriteResolution;
   resolveAbsent(repositories: AuthorityRepositories, context: WriteResolutionContext): PreparedWriteResolution;
 }
 
@@ -610,7 +610,7 @@ function executeRetry(
       request,
       "invalid-state",
       `run ${request.target.runId} is parked on write intent ${current.lifecycle.writeIntentId}; `
-      + "a parked unknown write uses resolve-write-present/resolve-write-absent, never generic retry",
+      + "a parked unknown write uses recheck-write/resolve-write-absent, never generic retry",
     );
   }
   if (!isTerminalRunState(current.lifecycle)) {
@@ -1499,8 +1499,8 @@ function executeWriteResolution(
   if (intent.currentAttemptId !== request.target.writeAttemptId || intent.bindingProofDigest !== request.target.bindingProofDigest
     || intent.idempotencyKeyDigest !== request.payload.occurrenceKeyDigest) reject(request,"invalid-state","Resolution must bind the exact original parked attempt and permanent occurrence key");
   const context: WriteResolutionContext = Object.freeze({ command: request, run: current, intent, now, auditId });
-  const raw = request.type === "resolve-write-present"
-    ? dependencies.writeResolution.resolvePresent(repositories, context)
+  const raw = request.type === "recheck-write"
+    ? dependencies.writeResolution.recheck(repositories, context)
     : dependencies.writeResolution.resolveAbsent(repositories, context);
   const outcome = WriteResolutionOutcomeSchema.parse(raw.outcome);
   if (outcome.run.envelope.runId !== request.target.runId) {
@@ -2409,7 +2409,7 @@ function dispatchActive(
         case "delete": return executeDelete(dependencies, repositories, request, now);
         case "bump": return executeBump(dependencies, repositories, request, now);
         case "rename": return executePresentation(dependencies, repositories, request, now);
-        case "resolve-write-present":
+        case "recheck-write":
         case "resolve-write-absent":
           return executeWriteResolution(dependencies, repositories, request, now, auditId);
       }

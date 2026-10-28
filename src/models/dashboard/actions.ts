@@ -8,7 +8,7 @@ export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive",
 /** The command verbs a served action may name; the two write resolutions are INTENT-scoped rather than run-scoped, and every verb on this list has a durable reason it is here. */
 export const ActionCommandKeySchema = z.enum([
   "retry", "restart", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
-  "resolve-write-present", "resolve-write-absent",
+  "recheck-write", "resolve-write-absent",
 ]);
 
 /** Both write resolutions are INTENT-scoped as well as run-scoped: a stale generation is refused by the kernel, so the descriptor carries the generation it was projected from. */
@@ -62,7 +62,7 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
   }),
 ]).superRefine((action, context) => {
   if (action.kind !== "command") return;
-  const scoped = action.command === "resolve-write-present" || action.command === "resolve-write-absent";
+  const scoped = action.command === "recheck-write" || action.command === "resolve-write-absent";
   // Intent targets belong only to write resolutions, which require one to be sendable.
   if (scoped && action.writeTarget === undefined) {
     context.addIssue({

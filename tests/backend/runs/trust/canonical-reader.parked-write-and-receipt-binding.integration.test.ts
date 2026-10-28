@@ -7,8 +7,7 @@ import { foldTrustGate } from "../../../support/helpers/backend/trust-authority-
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey, WriteFixtureProofSchema } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { closePersonLookupReceiptDatabase, openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 
 import { buildRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
@@ -150,25 +149,23 @@ afterEach(cleanup);
     assert.equal(resumed.envelope.contractFingerprint, parked.envelope.contractFingerprint);
   });
 
-  it("resolves confirmed-present after an unrelated edit moved the contract closure", async () => {
+  it("rechecks after an unrelated edit moved the contract closure", async () => {
     const harness = await roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(parked);
 
-    const result = harness.kernel.execute(resolutionCommand("resolve-write-present", {
+    const result = harness.kernel.execute(resolutionCommand("recheck-write", {
       runId: WRITE_FIXTURE_RUN_ID,
       expectedVersion: parked.version,
       writeIntentId: intent.writeIntentId,
       intentGeneration: intent.generation,
-    }, {
-      proof: {
-        schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
-        value: { transactionId: "T998877" },
-      },
-    }));
+    }, {}));
     assert.equal(result.state, "applied");
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
+    harness.world.probeResults.push({ state: "present", proof: { transactionId: "T998877" } });
+    assert.equal((await harness.resume()).outcomes[0]?.state, "done");
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "committed");
   });
 
@@ -239,55 +236,6 @@ afterEach(cleanup);
     assert.equal(stale.state, "rejected");
     assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
-  });
-});
-
-
-describe("a confirmed-present proof that does not fit", () => {
-afterEach(cleanup);
-
-  async function refusedPresent(payload: Record<string, unknown>) {
-    const harness = await roundTrip();
-    await harness.park();
-    const intent = parkedIntent(harness.database);
-    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
-    assert.ok(parked);
-    const result = harness.kernel.execute(resolutionCommand("resolve-write-present", {
-      runId: WRITE_FIXTURE_RUN_ID,
-      expectedVersion: parked.version,
-      writeIntentId: intent.writeIntentId,
-      intentGeneration: intent.generation,
-    }, payload));
-    const after = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
-    assert.ok(after && after.lifecycle.state === "parked-write", "the park survived the refusal");
-    assert.equal(after.version, parked.version);
-    const settled = harness.database.authority.writeIntents.get(intent.writeIntentId);
-    assert.ok(settled && settled.status === "parked");
-    assert.equal(settled.generation, intent.generation);
-    return result;
-  }
-
-  it("rejects a proof bound to a schema this build does not have", async () => {
-    const result = await refusedPresent({
-      proof: { schemaHash: "1".repeat(64), value: { transactionId: "T998877" } },
-    });
-    assert.ok(result.state === "rejected");
-    assert.equal(result.code, "schema-mismatch");
-    assert.match(result.message, /bound to schema/);
-  });
-
-  it("rejects a proof that does not parse, naming the leaf that failed", async () => {
-    const result = await refusedPresent({
-      proof: {
-        schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
-        // The contract's receipt is `T` + at least six digits.
-        value: { transactionId: "nope" },
-      },
-    });
-    assert.ok(result.state === "rejected");
-    assert.equal(result.code, "schema-mismatch");
-    assert.match(result.message, /does not parse through/);
-    assert.match(result.message, /transactionId/);
   });
 });
 
@@ -377,7 +325,7 @@ afterEach(cleanup);
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "retryable");
   });
 
-  it("lifts the moment the write is answered PRESENT", async () => {
+  it("keeps cancellation refused while a recheck waits for read proof", async () => {
     const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
@@ -385,25 +333,20 @@ afterEach(cleanup);
     assert.ok(parked);
 
     assert.equal(
-      harness.kernel.execute(resolutionCommand("resolve-write-present", {
+      harness.kernel.execute(resolutionCommand("recheck-write", {
         runId: WRITE_FIXTURE_RUN_ID,
         expectedVersion: parked.version,
         writeIntentId: intent.writeIntentId,
         intentGeneration: intent.generation,
-      }, {
-        proof: {
-          schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
-          value: { transactionId: "T998877" },
-        },
-      })).state,
+      }, {})).state,
       "applied",
     );
     const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(resumed);
 
     const cancelled = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, resumed.version));
-    assert.equal(cancelled.state, "applied");
-    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "committed");
+    assert.equal(cancelled.state, "rejected");
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
   });
 });
 
@@ -419,9 +362,9 @@ afterEach(cleanup);
     const intent = parkedIntent(h.database);
     const run = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(run);
-    const command = resolutionCommand("resolve-write-present", { runId: WRITE_FIXTURE_RUN_ID,
+    const command = resolutionCommand("recheck-write", { runId: WRITE_FIXTURE_RUN_ID,
       expectedVersion: run.version, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation },
-      { proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T998877" } } });
+      {});
     const generation = h.database.getMeta().authorityGeneration;
     assert.throws(() => h.kernel.execute(command), /kernel outer resolution rollback/);
     assert.deepEqual(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID), run);
