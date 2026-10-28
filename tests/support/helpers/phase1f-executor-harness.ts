@@ -276,7 +276,7 @@ export function sessionFactoryHarness(
   const closeReasons: BrowserSessionCloseReason[] = [];
   const trace: SessionFactoryTraceEntry[] = [];
   return {
-    factory: {
+    factory: { probeProfile: async () => undefined,
       async open(input) {
         opens += 1;
         const systemOpens = (opensBySystem.get(input.system) ?? 0) + 1;

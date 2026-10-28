@@ -796,6 +796,25 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         claimNext: (request) => {
           assertCurrent();
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
+          prepareRun: async (run, signal) => {
+            const target = executionDescriptor(run.envelope.workflow);
+            if (target === undefined) throw new Error("worker-execution-descriptor-unavailable");
+            sessions.configureExecution(run.envelope.workflow, stores);
+            sessions.configureRunResources(ownedResources.forRun(run));
+            const contracts = new Set(workflowProjections(target).contracts.map(contract => contract.id));
+            const needs = stores.stores.flatMap(store => Object.values(store.tasks).filter(task => contracts.has(task.contract.id))
+              .flatMap(task => task.impl.sessions));
+            await withBoundRunConfigFingerprint(sessions, run.envelope.configFingerprint, async () => {
+              const prepared = new Set<string>();
+              for (const need of needs) {
+                if (prepared.has(need.system)) continue;
+                prepared.add(need.system);
+                const instance = run.envelope.resolvedInstance?.[need.system];
+                if (instance === undefined) throw new Error("preclaim-browser-instance-unavailable");
+                await sessions.prepareProfile(need, instance, signal);
+              }
+            }, run.envelope.browserMode);
+          },
           claim: admit => database.withAuthorityTransaction((repositories) => {
           assertCurrent();
           const directive = controlPoll();

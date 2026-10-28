@@ -251,7 +251,7 @@ describe("worker browser sessions", () => {
 
   it("admits a legacy headless resource only at the configured default, never for a headed run", async () => {
     const harness = sessionFactory();
-    const legacy: WorkerBrowserSessionFactory = {
+    const legacy: WorkerBrowserSessionFactory = { probeProfile: async () => undefined,
       async open(input) {
         const resource = await harness.factory.open(input);
         const { browserMode: _browserMode, ...withoutMode } = resource;
@@ -281,7 +281,7 @@ describe("worker browser sessions", () => {
 
   it("refuses a factory resource that echoes a different fingerprint", async () => {
     const harness = sessionFactory();
-    const forging: WorkerBrowserSessionFactory = {
+    const forging: WorkerBrowserSessionFactory = { probeProfile: async () => undefined,
       async open(input) {
         const resource = await harness.factory.open(input);
         return { ...resource, configFingerprint: OTHER_FINGERPRINT };
@@ -315,7 +315,7 @@ describe("bounded browser-session acquisition", () => {
     });
     const base = sessionFactory();
 
-    const stubborn: WorkerBrowserSessionFactory = {
+    const stubborn: WorkerBrowserSessionFactory = { probeProfile: async () => undefined,
       async open(input) {
         const resource = await base.factory.open(input);
         return {
@@ -366,7 +366,7 @@ describe("bounded browser-session acquisition", () => {
     const claims: (() => boolean)[] = [];
     const budgets: number[] = [];
     let attempts = 0;
-    const factory: WorkerBrowserSessionFactory = {
+    const factory: WorkerBrowserSessionFactory = { probeProfile: async () => undefined,
       discardProfile: async () => ({ profileDirectory: "/fixture/profile" }),
       open: async input => {
         assert.ok(input.claimStaleRequestRecovery);
@@ -407,7 +407,7 @@ describe("bounded browser-session acquisition", () => {
     const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
     const sessions = new WorkerSessionManager({
       workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
-      factory: { open: async input => ({ ...await base.factory.open(input),
+      factory: { probeProfile: async () => undefined, open: async input => ({ ...await base.factory.open(input),
         authentication: { authenticate: async () => { throw failure; } } }) },
       clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
       duoCeremony: await fixtureDuoCeremonyGates(clock),
@@ -429,7 +429,7 @@ describe("bounded browser-session acquisition", () => {
     const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
     const sessions = new WorkerSessionManager({
       workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
-      factory: { open: async input => ({ ...await base.factory.open(input), authentication: {
+      factory: { probeProfile: async () => undefined, open: async input => ({ ...await base.factory.open(input), authentication: {
         authenticate: () => new Promise<never>((_resolve, reject) => { rejectLogin = reject; loginStarted(); }),
       } }) }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
       duoCeremony: await fixtureDuoCeremonyGates(clock),
@@ -451,7 +451,7 @@ describe("bounded browser-session acquisition", () => {
     let releaseCleanup: (() => void) | undefined;
     const cleanup = new Promise<void>(resolve => { releaseCleanup = resolve; });
     let closureProved = false;
-    const factory: WorkerBrowserSessionFactory = {
+    const factory: WorkerBrowserSessionFactory = { probeProfile: async () => undefined,
       open: async input => {
         const resource = await base.factory.open(input);
         return { ...resource, close: async closeInput => {
@@ -495,7 +495,7 @@ describe("bounded browser-session acquisition", () => {
     const scheduler = new ManualScheduler(clock);
     const sessions = new WorkerSessionManager({
       workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
-      factory: { open: async input => {
+      factory: { probeProfile: async () => undefined, open: async input => {
         const resource = await base.factory.open(input);
         await opened;
         return resource;
@@ -534,7 +534,7 @@ describe("bounded browser-session acquisition", () => {
     const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
     const sessions = new WorkerSessionManager({
       workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
-      factory: { open: async () => { throw failure; } }, clock, scheduler: new ManualScheduler(clock),
+      factory: { probeProfile: async () => undefined, open: async () => { throw failure; } }, clock, scheduler: new ManualScheduler(clock),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: await fixtureDuoCeremonyGates(clock),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
@@ -553,7 +553,7 @@ describe("bounded browser-session acquisition", () => {
       release = resolve;
     });
     const base = sessionFactory();
-    const slowOpen: WorkerBrowserSessionFactory = {
+    const slowOpen: WorkerBrowserSessionFactory = { probeProfile: async () => undefined,
       async open(input) {
         const resource = await base.factory.open(input);
         await gate;

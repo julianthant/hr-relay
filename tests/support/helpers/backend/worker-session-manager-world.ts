@@ -28,19 +28,21 @@ export function createWorkerSessionManagerTestWorld() {
     loginHangs?: boolean;
   }> = {}): Readonly<{
     factory: WorkerBrowserSessionFactory;
+    probes: () => number;
     opens: () => number;
     logins: () => number;
     resets: () => number;
     closes: () => number;
     screenshots: () => number;
   }> {
+    let probes = 0;
     let opens = 0;
     let logins = 0;
     let resets = 0;
     let closes = 0;
     let screenshots = 0;
     return {
-      factory: {
+      factory: { probeProfile: async () => { probes++; },
         async open(input) {
           opens += 1;
           const sessionId = BrowserSessionIdSchema.parse(
@@ -104,6 +106,7 @@ export function createWorkerSessionManagerTestWorld() {
           };
         },
       },
+      probes: () => probes,
       opens: () => opens,
       logins: () => logins,
       resets: () => resets,

@@ -23,10 +23,7 @@ async function withPage(body: string, check: (page: Page, resource: WorkerBrowse
     const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
     const page = await context.newPage();
     await page.setContent(html(body));
-    let closed = false;
-    context.on("close", () => { closed = true; });
     const harness = { ...fixtures.fakeLauncher(), launcher: {
-      observeProcess: () => ({ pid: 123, observation: closed ? { state: "gone" as const } : { state: "alive" as const, identity: { platform: "darwin" as const, startToken: "fixture" } } }),
       launch: async (input: { profileDirectory: string }) => { mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 }); return context; },
     } };
     const factory = fixtures.factoryFor(config, harness, fixtures.recordingBindings({ verify: fixtures.verifierFor({ authenticated }).verify }));

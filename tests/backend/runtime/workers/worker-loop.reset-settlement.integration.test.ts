@@ -223,7 +223,7 @@ describe("reset owns active and late callbacks through browser closure", () => {
       const base = sessionFactoryHarness({ ucpath: () => stage === "read" ? { ...driver,
         searchPersonOrg: async () => { started(); await held; throw new Error("actual read callback rejected after reset"); },
       } : driver, crm: () => healthyCrmDriver() });
-      const h = await world.loopHarness({ sessions: { ...base, factory: { open: async input => {
+      const h = await world.loopHarness({ sessions: { ...base, factory: { probeProfile: async () => undefined, open: async input => {
         signal = input.signal;
         if (stage === "acquisition") { signal = input.signal; started(); await held; }
         const resource = await base.factory.open(input);
@@ -376,7 +376,7 @@ it("marks held actual browser close uncertain at its scheduled expiry without re
   const starting = new Promise<void>(resolve => { started = resolve; });
   const factory = h.deps.sessionFactory;
   const manager = new WorkerSessionManager({ workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
-    factory: { open: async input => { const resource = await factory.open(input); return { ...resource, close: async input => { started(); await held; return resource.close(input); } }; } },
+    factory: { probeProfile: async () => undefined, open: async input => { const resource = await factory.open(input); return { ...resource, close: async input => { started(); await held; return resource.close(input); } }; } },
     clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony,
     resetOwner: { member: workerPoolMember(slot), lifetime: { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt } },
     onObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration: lease.leaseGeneration }); },
@@ -571,7 +571,7 @@ it("ends failed close activity while exact Stop retains and then closes the reso
   let closes = 0;
   const factory = h.deps.sessionFactory;
   const manager = new WorkerSessionManager({ workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
-    factory: { open: async input => { const resource = await factory.open(input); return { ...resource, close: async input => {
+    factory: { probeProfile: async () => undefined, open: async input => { const resource = await factory.open(input); return { ...resource, close: async input => {
       closes += 1;
       if (closes === 1) throw new Error("injected first close failure");
       return resource.close(input);

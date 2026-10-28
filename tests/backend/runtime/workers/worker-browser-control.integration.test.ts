@@ -26,7 +26,7 @@ async function harness() {
   const closed: string[] = [];
   let resetFails = false, closeFails = false, loginFails = false;
   let resetHold: Promise<void> | undefined;
-  const factory: WorkerBrowserSessionFactory = { async open(input) {
+  const factory: WorkerBrowserSessionFactory = { probeProfile: async () => undefined, async open(input) {
     opened.push(input);
     const sessionId = BrowserSessionIdSchema.parse(randomUUID());
     return { sessionId, system: input.system, instance: input.instance, configFingerprint: input.configFingerprint, signInFingerprint: input.configFingerprint, profileRevision: 1,
@@ -53,7 +53,7 @@ describe("exact worker browser controls", () => {
     try {
       const first = await h.warm();
       const other = await h.warm("ucpath", FingerprintSchema.parse("b".repeat(64)));
-      h.sessions.configureRunResources({ sessionFactory: { open: async () => { throw new Error("new-settings-must-not-open-retained-resource"); } }, sessionAcquireMs: 100,
+      h.sessions.configureRunResources({ sessionFactory: { probeProfile: async () => undefined, open: async () => { throw new Error("new-settings-must-not-open-retained-resource"); } }, sessionAcquireMs: 100,
         duoCeremony: await fixtureDuoCeremonyGates(h.clock), defaultBrowserMode: "headless" });
       assert.equal((await h.sessions.controlBrowser("refresh-browser", first, SIGNAL)).sessionId, first);
       const replacement = await h.sessions.controlBrowser("reopen-browser", first, SIGNAL);

@@ -97,7 +97,7 @@ describe("composition-reads-no-environment-leaf", () => {
       if (role === "worker") {
       const worker = await composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(), ...common, admission: f.machine, preflightRunnerFactory: healthyRuntimePreflightRunners, args: ["person-lookup", "--pool-index", "1", "--drain"],
         duoCeremony: duoCeremonyGatesOver(selectedContext.database, profileClock, new ManualScheduler(profileClock)),
-        sessionFactory: { open: () => { throw new Error("no browser may open for idle proof"); } }, write: () => undefined });
+        sessionFactory: { probeProfile: async () => undefined, open: () => { throw new Error("no browser may open for idle proof"); } }, write: () => undefined });
       assert.deepEqual(worker.outcomes, []);
       assert.equal(worker.stopped, "idle");
       }

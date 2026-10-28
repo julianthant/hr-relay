@@ -303,9 +303,6 @@ describe("registered browser-login smoke lifecycle", () => {
               if (launches > 0) current = helpers.fakeLauncher();
               launches += 1;
               return current.launcher.launch(input);
-            }, observeProcess: (directory, pid) => {
-              if (current.launcher.observeProcess === undefined) throw new Error("fixture process observer unavailable");
-              return current.launcher.observeProcess(directory, pid);
             } },
             admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root,
               workerId: slot.workerId, ordinal: slot.ordinal, system: "ucpath", profileRoot: config.paths.browserProfileRoot }),

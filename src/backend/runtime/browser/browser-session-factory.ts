@@ -1,3 +1,5 @@
+import type { ProcessIdentityObservation } from "../../storage/sqlite/runtime-process-locks.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { DuoCredentialSchema, DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { workerProfileDirectory } from "../../storage/maintenance/profile-inventory.js";
 export { workerProfileDirectory };
@@ -6,9 +8,8 @@ import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-regi
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
-import { lstatSync, mkdirSync, readdirSync, readlinkSync, rmSync, statSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
-import { hostname } from "node:os";
 import { chromium } from "playwright";
 import type { BrowserContext, Page } from "playwright";
 import type {
@@ -47,7 +48,6 @@ import type { AuthenticatedApplicationEvidence } from "../../systems/browser-sha
 import type { SystemLoginContext } from "../../systems/browser-shared/login-contract.js";
 import { BROWSER_SYSTEM_BINDINGS } from "./system-bindings.js";
 import type { BrowserSystemBinding, BrowserSystemBindings } from "./system-bindings.js";
-import { observeProcessIdentity, type ProcessIdentityObservation } from "../../storage/sqlite/runtime-process-locks.js";
 import { attachBrowserDiagnostics } from "./browser-diagnostics.js";
 import type { DebugEvent } from "../../../models/events/timeline.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -68,8 +68,14 @@ export interface PersistentContextLauncher {
     acceptDownloads: boolean;
     downloadsPath: string;
     viewport: Readonly<{ width: number; height: number }>;
+    timeoutMs?: number;
   }>): Promise<BrowserContext>;
   observeProcess?(profileDirectory: string, pid?: number): Readonly<{ pid: number; observation: ProcessIdentityObservation }>;
+}
+
+export class BrowserProfileStillClosingError extends Error {
+  readonly code = "BROWSER_PROFILE_STILL_CLOSING";
+  constructor(cause: unknown) { super(ERROR_CATALOG.BROWSER_PROFILE_STILL_CLOSING.text, { cause }); this.name = "BrowserProfileStillClosingError"; }
 }
 
 export const PROFILE_CUSTODY_UNAVAILABLE_TEXT = "Browser profile custody is unavailable. The browser cannot open until its current profile revision is admitted.";
@@ -113,13 +119,13 @@ interface SsoCredentials {
 }
 
 const DEFAULT_LAUNCHER: PersistentContextLauncher = {
-  observeProcess: observeChromiumProcess,
   async launch(input) {
     return chromium.launchPersistentContext(input.profileDirectory, {
       // The extension requires the full bundled Chromium; the headless shell
       // cannot load one (duo-autopilot/README.md).
       channel: "chromium",
       headless: input.headless,
+      ...(input.timeoutMs === undefined ? {} : { timeout: input.timeoutMs }),
       acceptDownloads: input.acceptDownloads,
       downloadsPath: input.downloadsPath,
       viewport: input.viewport,
@@ -175,12 +181,33 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
   readonly #options: BrowserSessionFactoryOptions;
   readonly #bindings: BrowserSystemBindings;
   readonly #launcher: PersistentContextLauncher;
-  readonly #owned = new Map<string, Readonly<{ context: BrowserContext; lifecycle: ContextLifecycle; process: Readonly<{ pid: number; observation: ProcessIdentityObservation }> }>>();
+  readonly #owned = new Map<string, Readonly<{ context: BrowserContext; lifecycle: ContextLifecycle }>>();
 
   constructor(options: BrowserSessionFactoryOptions) {
     this.#options = options;
     this.#bindings = options.bindings ?? BROWSER_SYSTEM_BINDINGS;
     this.#launcher = options.launcher ?? DEFAULT_LAUNCHER;
+  }
+
+  async probeProfile(input: Parameters<WorkerBrowserSessionFactory["probeProfile"]>[0]): Promise<void> {
+    input.signal.throwIfAborted();
+    const { config } = this.#options, system = BrowserSystemIdSchema.parse(input.system);
+    const profileDirectory = workerProfileDirectory({ profileRoot: config.paths.browserProfileRoot,
+      slotOrdinal: this.#options.slotOrdinal(WorkerIdSchema.parse(input.workerId), system), system });
+    if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
+    assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
+    profileReservations.add(profileDirectory);
+    const context = await this.#launchProfile(profileDirectory, browserModeFor(input.browserMode, config.browser.headless), false,
+      system, config.timeouts.sessionAcquireMs);
+    const lifecycle = observeContextLifecycle(context);
+    this.#owned.set(profileDirectory, { context, lifecycle });
+    try {
+      await this.#closeWithProof(context, lifecycle, system, "fresh-boundary");
+      this.#releaseProfile(profileDirectory);
+    } catch (error) {
+      throw new BrowserSessionClosureUnprovedError([error], `${system} native profile probe closure is unproved`, { cause: error });
+    }
+    input.signal.throwIfAborted();
   }
 
   async open(input: Readonly<{
@@ -222,29 +249,26 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     if (canonicalJsonStringify(admittedIdentity) !== canonicalJsonStringify(profileIdentity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
-    if (resetRequired) deleteOwnedBrowserProfile(config.paths.browserProfileRoot, profileDirectory);
     assertDuoAutopilotReady(config);
     profileReservations.add(profileDirectory);
-    let context: BrowserContext;
-    try {
-      mkdirSync(dirname(profileDirectory), { recursive: true, mode: 0o700 });
-      context = await this.#launcher.launch({
-        profileDirectory,
-        headless: browserMode === "headless",
-        extensionDirectory: config.paths.duoExtensionDir,
-        acceptDownloads: input.acceptDownloads,
-        downloadsPath: config.paths.downloadsDir,
-        viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
-      });
-    } catch (error) {
-      throw new BrowserSessionClosureUnprovedError([error], `${system} browser launch failed and its closure is unproved`, { cause: error });
+    if (resetRequired) {
+      const previous = await this.#launchProfile(profileDirectory, browserMode, input.acceptDownloads, system);
+      const lifecycle = observeContextLifecycle(previous);
+      this.#owned.set(profileDirectory, { context: previous, lifecycle });
+      try {
+        await this.#closeWithProof(previous, lifecycle, system, "fresh-boundary");
+        this.#releaseProfile(profileDirectory);
+      } catch (error) {
+        throw new BrowserSessionClosureUnprovedError([error], `${system} browser profile reset did not close its launch probe`, { cause: error });
+      }
+      deleteOwnedBrowserProfile(config.paths.browserProfileRoot, profileDirectory);
+      profileReservations.add(profileDirectory);
     }
+    const context = await this.#launchProfile(profileDirectory, browserMode, input.acceptDownloads, system);
 
     const lifecycle = observeContextLifecycle(context);
     try {
-      const process = (this.#launcher.observeProcess ?? observeChromiumProcess)(profileDirectory);
-      if (process?.observation.state !== "alive") throw new ProfileCustodyUnavailableError();
-      this.#owned.set(profileDirectory, { context, lifecycle, process });
+      this.#owned.set(profileDirectory, { context, lifecycle });
       if (config.features.duoWebAuthn) await provisionDuo(context, config);
       const existing = context.pages();
       const page = existing[0] ?? await context.newPage();
@@ -346,7 +370,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         },
         close: async (closeInput): Promise<BrowserSessionCloseProof> => {
           await this.#closeWithProof(context, lifecycle, system, closeInput.reason);
-          await this.#releaseProfile(profileDirectory);
+          this.#releaseProfile(profileDirectory);
           diagnostics.dispose();
           emit("released");
           return Object.freeze({ sessionId, system, pagesClosed: true, contextClosed: true });
@@ -358,7 +382,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       // close it. Prove the cleanup here or surface BOTH failures.
       try {
         await this.#closeWithProof(context, lifecycle, system, "login-failed");
-        await this.#releaseProfile(profileDirectory);
+        this.#releaseProfile(profileDirectory);
       } catch (closeError) {
         throw new BrowserSessionClosureUnprovedError(
           [error, closeError],
@@ -395,17 +419,27 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     return Object.freeze({ profileDirectory });
   }
 
-  async #releaseProfile(profileDirectory: string): Promise<void> {
+  async #launchProfile(profileDirectory: string, browserMode: BrowserPresentationMode, acceptDownloads: boolean, system: BrowserSystemId, timeoutMs?: number): Promise<BrowserContext> {
+    const { config } = this.#options;
+    try {
+      mkdirSync(dirname(profileDirectory), { recursive: true, mode: 0o700 });
+      return await this.#launcher.launch({ profileDirectory, headless: browserMode === "headless",
+        extensionDirectory: config.paths.duoExtensionDir, acceptDownloads, downloadsPath: config.paths.downloadsDir,
+        viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
+        ...(timeoutMs === undefined ? {} : { timeoutMs }) });
+    } catch (error) {
+      if (error instanceof Error && ["Failed to create a ProcessSingleton for your profile directory.", "Opening in existing browser session."]
+        .some(message => error.message.includes(message))) {
+        profileReservations.delete(profileDirectory);
+        throw new BrowserProfileStillClosingError(error);
+      }
+      throw new BrowserSessionClosureUnprovedError([error], `${system} browser launch failed and its closure is unproved`, { cause: error });
+    }
+  }
+
+  #releaseProfile(profileDirectory: string): void {
     const owned = this.#owned.get(profileDirectory);
     if (owned === undefined || !owned.lifecycle.closed() || owned.context.pages().length !== 0) throw new ProfileCustodyUnavailableError();
-    const deadline = this.#options.clock.monotonicMs() + this.#options.config.browser.closeProofMs;
-    for (;;) {
-      const current = (this.#launcher.observeProcess ?? observeChromiumProcess)(profileDirectory, owned.process.pid);
-      if (current === undefined || current.pid !== owned.process.pid) throw new ProfileCustodyUnavailableError();
-      if (current.observation.state === "gone") break;
-      if (this.#options.clock.monotonicMs() >= deadline) throw new ProfileCustodyUnavailableError();
-      await new Promise<void>(resolve => { this.#options.scheduler.schedule(Math.min(deadline, this.#options.clock.monotonicMs() + 25), resolve); });
-    }
     this.#owned.delete(profileDirectory);
     profileReservations.delete(profileDirectory);
   }
@@ -439,7 +473,6 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     );
   }
 
-  // Playwright close resolution alone is not teardown proof; verify context and process termination.
   async #closeWithProof(
     context: BrowserContext,
     lifecycle: ContextLifecycle,
@@ -489,15 +522,6 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
 }
 
 const profileReservations = new Set<string>();
-
-function observeChromiumProcess(profileDirectory: string, ownedPid?: number): Readonly<{ pid: number; observation: ProcessIdentityObservation }> {
-  if (ownedPid !== undefined) return { pid: ownedPid, observation: observeProcessIdentity(ownedPid) };
-  const owner = readlinkSync(join(profileDirectory, "SingletonLock"));
-  const prefix = `${hostname()}-`;
-  if (!owner.startsWith(prefix)) throw new ProfileCustodyUnavailableError();
-  const pid = PositiveIntSchema.parse(Number(owner.slice(prefix.length)));
-  return { pid, observation: observeProcessIdentity(pid) };
-}
 
 function assertPrivateProfilePath(root: string, path: string): void {
   if (!path.startsWith(`${root}${sep}`)) throw new ProfileCustodyUnavailableError();

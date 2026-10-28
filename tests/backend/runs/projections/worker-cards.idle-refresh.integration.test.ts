@@ -37,7 +37,7 @@ it("rearms idle refresh from genuine native admission, browser settlement and cu
   let refreshes = 0;
   const sessions = new WorkerSessionManager({ workerId: world.WORKER_1, workflowId: world.WORKFLOW, stores: taskStoreRegistry, clock: h.clock, scheduler: h.scheduler,
     acquireDeadlineMs: 1000, duoCeremony: await fixtureDuoCeremonyGates(h.clock), onObservation: value => h.database.authority.workerControls.observe({ ...value, leaseGeneration: 1 }),
-    factory: { open: async input => {
+    factory: { probeProfile: async () => undefined, open: async input => {
       const sessionId = BrowserSessionIdSchema.parse(randomUUID());
       return { sessionId, system: input.system, instance: input.instance, configFingerprint: fingerprint, signInFingerprint: fingerprint,
         profileRevision: 1, browserMode: "headed", acceptDownloads: false, exclusive: false, driver: { system: input.system },

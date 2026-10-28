@@ -472,7 +472,7 @@ describe("task screenshot persistence before checkpoint", () => {
       const { service } = captureService(database);
       const capture = createRunBrowserScreenshotCapture({ service });
       const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(claimed.claim.workerId), workflowId: WorkflowIdSchema.parse("person-lookup"), stores,
-        factory: { open: async input => {
+        factory: { probeProfile: async () => undefined, open: async input => {
           const resource = await harness.sessions.factory.open(input);
           return { ...resource, screenshot: async () => {
             if (failure === "capture" && resource.system === "ucpath") throw Object.assign(new Error("private fixture content"), { name: "private fixture name" });
@@ -589,7 +589,7 @@ describe("Person Lookup final capture points", () => {
         const acquired: string[] = [];
         const persisted: string[] = [];
         sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(claimed.claim.workerId), workflowId: WorkflowIdSchema.parse("person-lookup"), stores: taskStoreRegistry,
-          factory: { open: async input => {
+          factory: { probeProfile: async () => undefined, open: async input => {
             const resource = await factory.factory.open(input);
             return { ...resource, screenshot: async () => {
               acquired.push(pages.get(input.system) ?? "unexpected-page");

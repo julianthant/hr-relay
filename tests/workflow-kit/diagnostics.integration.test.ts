@@ -23,7 +23,7 @@ describe("worker browser sessions", () => {
   it("captures once before reset for successful and failed selected browser leases", async () => {
     let opens = 0;
     let screenshots = 0;
-    const factory: WorkerBrowserSessionFactory = {
+    const factory: WorkerBrowserSessionFactory = { probeProfile: async () => undefined,
       async open(input) {
         opens += 1;
         const sessionId = BrowserSessionIdSchema.parse(

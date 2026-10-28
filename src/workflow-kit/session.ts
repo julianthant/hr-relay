@@ -72,6 +72,7 @@ export class BrowserSessionClosureUnprovedError extends AggregateError {
 
 /** The one concrete browser-creation port: the worker session manager is its only caller; implementations own launch, profile isolation, auth dispatch and provable teardown. */
 export interface WorkerBrowserSessionFactory {
+  readonly probeProfile: (input: Readonly<{ workerId: WorkerId; system: BrowserSystemId; instance?: string; browserMode?: BrowserPresentationMode; signal: AbortSignal }>) => Promise<void>;
   readonly open: (input: Readonly<{
     workerId: WorkerId;
     workflowId: WorkflowId;

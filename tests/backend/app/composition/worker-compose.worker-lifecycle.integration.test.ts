@@ -314,7 +314,7 @@ describe("composed worker runtime", () => {
     const closeFailure = new Error("synthetic fixture context closure failure");
     const unprovable: SessionFactoryHarness = {
       ...sessions,
-      factory: { open: async input => {
+      factory: { probeProfile: async () => undefined, open: async input => {
         const resource = await sessions.factory.open(input);
         closes.push(async () => {
           const proof = await resource.close({ reason: "worker-stop" });

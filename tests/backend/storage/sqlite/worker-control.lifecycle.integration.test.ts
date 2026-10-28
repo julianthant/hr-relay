@@ -258,7 +258,7 @@ describe("exact lifecycle reservation", () => {
     const authenticating = new Promise<void>(resolve => { entered = resolve; });
     let authSignal: AbortSignal | undefined;
     let calls = 0;
-    const sessionFactory = { open: async (input: Parameters<typeof h.deps.sessionFactory.open>[0]) => {
+    const sessionFactory = { probeProfile: async () => undefined, open: async (input: Parameters<typeof h.deps.sessionFactory.open>[0]) => {
       const resource = await h.deps.sessionFactory.open(input);
       return { ...resource, authentication: { authenticate: async (...args: Parameters<typeof resource.authentication.authenticate>) => {
         calls += 1;
@@ -488,7 +488,7 @@ describe("exact lifecycle reservation", () => {
     const h = await fixture(), f = await retryStarting(h);
     if (f.binding.operation.kind !== "retry") throw new Error("missing retry binding");
     const sessions = new WorkerSessionManager({ workerId: h.deps.workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
-      factory: { open: async input => {
+      factory: { probeProfile: async () => undefined, open: async input => {
         const resource = await h.deps.sessionFactory.open(input);
         return { ...resource, authentication: { authenticate: async () => { throw new Error("controlled-initialization-auth-failed"); } } };
       } }, clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony,
@@ -548,7 +548,7 @@ describe("exact lifecycle reservation", () => {
     let closing!: () => void, release!: () => void;
     const entered = new Promise<void>(resolve => { closing = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
     const manager = new WorkerSessionManager({ workerId: h.deps.workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
-      factory: { open: async input => {
+      factory: { probeProfile: async () => undefined, open: async input => {
         const resource = await h.deps.sessionFactory.open(input);
         return { ...resource, close: async options => { closing(); await held; return resource.close(options); } };
       } }, clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony,
@@ -660,7 +660,7 @@ describe("exact lifecycle reservation", () => {
     let entered!: () => void, release!: () => void;
     const authenticating = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
     const manager = new WorkerSessionManager({ workerId: h.deps.workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
-      factory: { open: async input => {
+      factory: { probeProfile: async () => undefined, open: async input => {
         const resource = await h.deps.sessionFactory.open(input);
         return { ...resource, authentication: { authenticate: async (...args: Parameters<typeof resource.authentication.authenticate>) => {
           entered(); await held; return resource.authentication.authenticate(...args);

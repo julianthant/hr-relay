@@ -86,9 +86,9 @@ export function createBrowserProfileAuthority(input: Readonly<{authority:Authori
      const observations=input.authority.workerControls.browsers(profile.workerId).filter(value=>value.system===profile.system);
      if(observations.some(value=>value.health!=="closed"))throw new ProfileCustodyUnavailableError();
      const previous=observations.at(-1);
-     if(previous===undefined&&lstatSync(profile.profileDirectory,{throwIfNoEntry:false})!==undefined)throw new ProfileCustodyUnavailableError();
+     const unobservedProfile=previous===undefined&&lstatSync(profile.profileDirectory,{throwIfNoEntry:false})!==undefined;
      if(previous!==undefined&&previous.profileDirectory!==profile.profileDirectory)throw new ProfileCustodyUnavailableError();
-     const resetRequired=previous!==undefined&&(previous.instance!==profile.instance||previous.signInFingerprint!==profile.signInFingerprint);
+     const resetRequired=unobservedProfile||previous!==undefined&&(previous.instance!==profile.instance||previous.signInFingerprint!==profile.signInFingerprint);
      return Promise.resolve(BrowserProfileAdmissionSchema.parse({...profile,profileRevision:previous===undefined?1:previous.profileRevision+(resetRequired?1:0),resetRequired}));
     },
  };

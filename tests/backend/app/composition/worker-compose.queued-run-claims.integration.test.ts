@@ -317,7 +317,7 @@ describe("composed worker runtime", () => {
     let acquisitionStarts = 0, acquisitionAborts = 0;
     const neverOpeningSessions: SessionFactoryHarness = {
       ...unusedResources,
-      factory: {
+      factory: { probeProfile: async () => undefined,
         open: input => new Promise<never>((_resolve, reject) => {
           acquisitionStarts++;
           const abort = () => {

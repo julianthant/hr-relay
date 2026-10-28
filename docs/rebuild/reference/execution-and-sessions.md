@@ -257,9 +257,12 @@ when `features.duoWebAuthn` is enabled.
 
 The factory's `#closeWithProof` bounds page and context closure by `browser.closeProofMs`, whose
 default is 15,000 ms. It checks that every captured page is closed, no open replacement page
-remains, and the context emitted its close event. `#releaseProfile` then observes the owned
-Chromium process as gone within another close-proof bound before releasing the profile reservation.
-A resolved Playwright `close()` promise alone proves neither step.
+remains, and the context emitted its close event before releasing the in-process profile reservation.
+It does not inspect browser PIDs or Chromium markers. Before claim, the manager retains a matching
+owned context or probes native profile availability through the same launcher and verifies closure.
+The probe reads no HR credentials, provisions no Duo state and performs no authentication or task
+callback. Chromium profile-in-use refusal reports `BROWSER_PROFILE_STILL_CLOSING`; the selected run
+remains unclaimed. Selection and version are checked again after asynchronous preparation.
 
 `WorkerSessionManager.closeAll` throws `WorkerSessionClosureUnprovedError`, an `AggregateError`
 retaining cleanup failures, when closure cannot be proved. `runWorkerLoop` returns accumulated

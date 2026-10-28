@@ -419,6 +419,28 @@ export class WorkerSessionManager {
     this.#defaultBrowserMode = BrowserPresentationModeSchema.parse(resources.defaultBrowserMode);
   }
 
+  async prepareProfile(needInput: SessionNeed, instance: string | undefined, signal: AbortSignal): Promise<void> {
+    const need = SessionNeedSchema.parse(needInput), configFingerprint = this.#runConfigFingerprint, browserMode = this.#runBrowserMode;
+    if (configFingerprint === undefined || browserMode === undefined || this.#closingReason !== undefined || this.#controlInFlight) throw new Error("browser-profile-preparation-unavailable");
+    await this.#withSystemTurn(need.system, signal, async () => {
+      const cleanup = this.#acquisitionCleanupFailures.get(need.system);
+      if (cleanup !== undefined) throw cleanup;
+      if (this.#poisoned.has(need.system)) throw new WorkerSessionClosureUnprovedError(this.#workerId);
+      const existing = this.#resources.get(need.system);
+      if (existing !== undefined) {
+        if (existing.instance === instance && existing.configFingerprint === configFingerprint
+          && effectiveResourceBrowserMode(existing, this.#defaultBrowserMode) === browserMode) return;
+        await this.#closeSystem(need.system, "fresh-boundary");
+      }
+      const acquired = this.#onActivity?.("acquiring");
+      try { await this.#factory.probeProfile({ workerId: this.#workerId, system: need.system, ...(instance === undefined ? {} : { instance }), browserMode, signal }); }
+      catch (error) {
+        if (error instanceof BrowserSessionClosureUnprovedError) this.#acquisitionCleanupFailures.set(need.system, error);
+        throw error;
+      } finally { acquired?.(); }
+    });
+  }
+
   activeSystems(): readonly BrowserSystemId[] {
     return Object.freeze([...this.#resources.keys()]);
   }

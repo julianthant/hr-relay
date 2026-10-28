@@ -46,12 +46,13 @@ function admittedFactoryDelegations(source: ts.SourceFile, checker: ts.TypeCheck
         && statement.expression.arguments.length === 1 && ts.isObjectLiteralExpression(statement.expression.arguments[0])) {
         const properties = statement.expression.arguments[0].properties;
         const method = properties[0];
-        if (properties.length === 2 && ts.isMethodDeclaration(method) && method.name.getText(source) === "open"
+        if (properties.length === 3 && ts.isMethodDeclaration(method) && method.name.getText(source) === "open"
           && method.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.AsyncKeyword) === true
           && method.parameters.length === 1 && method.parameters[0].name.getText(source) === "request"
           && method.parameters[0].type !== undefined && compact(method.parameters[0].type) === 'Parameters<WorkerBrowserSessionFactory["open"]>[0]'
-          && method.body?.statements.length === 3 && ts.isSpreadAssignment(properties[1])
-          && compact(properties[1]) === '...(factory.discardProfile===undefined?{}:{discardProfile:factory.discardProfile.bind(factory)})') {
+          && method.body?.statements.length === 3 && ts.isSpreadAssignment(properties[2])
+          && compact(properties[2]) === '...(factory.discardProfile===undefined?{}:{discardProfile:factory.discardProfile.bind(factory)})'
+          && compact(properties[1]) === 'asyncprobeProfile(request:Parameters<WorkerBrowserSessionFactory["probeProfile"]>[0]){if(!scope.requestedCapabilities.includes(`system.${request.system}.${request.instance??"prod"}`asPreflightAdmissionScope["requestedCapabilities"][number]))thrownewPreflightAdmissionRefusal("scope-mismatch","Browserprobediffersfromitsadmittedpreflightscope.");awaitpreflight.prepareSession(scope,request.system,request.signal);returnfactory.probeProfile(request);}') {
           const [scopeCheck, prepare, delegate] = method.body.statements;
           if (ts.isIfStatement(scopeCheck)
             && compact(scopeCheck.expression) === 'request.configFingerprint!==scope.configFingerprint||!scope.requestedCapabilities.includes(`system.${request.system}.${request.instance??"prod"}`asPreflightAdmissionScope["requestedCapabilities"][number])'

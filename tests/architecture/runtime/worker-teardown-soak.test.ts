@@ -156,7 +156,7 @@ function teardownFactory(closeFailsFor: readonly string[] = []): TeardownFactory
   const closes: string[] = [];
   return {
     closes: () => Object.freeze([...closes]),
-    factory: {
+    factory: { probeProfile: async () => undefined,
       async open(input) {
         opens += 1;
         const sessionId = BrowserSessionIdSchema.parse(

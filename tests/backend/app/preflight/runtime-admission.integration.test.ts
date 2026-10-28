@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -187,6 +188,82 @@ await _afterEachFixture0();
 }
 });
 
+it("leaves the selected run unclaimed when browser preparation refuses, then claims only after preparation completes", async () => {
+try {
+  const h = await harness(); await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+  assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+  const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
+  const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+    workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+  const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+  const refused = new Error("synthetic browser profile still closing");
+  await assert.rejects(claimWithPreflight({ preflight: h.preflight, signal: signal(),
+    claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async run => {
+      assert.deepEqual(h.database.authority.runs.get(run.envelope.runId), original);
+      assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
+      throw refused;
+    } }), error => error === refused);
+  assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
+  assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
+  let preparations = 0;
+  const claimed = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+    claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async run => {
+      preparations++;
+      assert.deepEqual(h.database.authority.runs.get(run.envelope.runId), original);
+    } });
+  assert.equal(preparations, 1); assert.equal(claimed.state, "applied");
+} finally { await _afterEachFixture0(); }
+});
+
+for (const change of ["selection", "version", "cancel", "abort"] as const) it(`rechecks ${change} changes made during async browser preparation before claiming`, async () => {
+  let release: () => void = () => undefined, completed: Promise<unknown> | undefined;
+  try {
+    const h = await harness(), ingress = { ...h.ingress, submissions: [{ emplId: "10873698" }, { emplId: "10000002" }] };
+    await h.plans.prepare?.(ingress, signal()); const plan = h.plans.plan(ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const queued = h.database.authority.runs.listByWorkflow(plan.workflowId); assert.equal(queued.length, 2);
+    const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+      workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+    let entered: () => void = () => undefined;
+    const started = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
+    const prepared: { runId: string; version: number }[] = [], controller = new AbortController();
+    const operation = claimWithPreflight({ preflight: h.preflight, signal: controller.signal,
+      claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async run => {
+        prepared.push({ runId: run.envelope.runId, version: run.version });
+        if (prepared.length === 1) { entered(); await held; }
+      } });
+    const result = operation.then(value => ({ value }), (error: unknown) => ({ error })); completed = result;
+    await started;
+    const first = h.database.authority.runs.get(prepared[0].runId); assert.ok(first);
+    assert.equal(first.lifecycle.state, "queued"); assert.equal(first.claimGeneration, 0);
+    if (change === "abort") controller.abort(new Error("operator stopped during profile preparation"));
+    else if (change === "cancel") assert.equal(h.lifecycle.transition({ commandId: randomUUID(), runId: first.envelope.runId,
+      expectedVersion: first.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() } }).state, "applied");
+    else {
+      const selected = change === "version" ? first : queued.find(run => run.envelope.runId !== first.envelope.runId); assert.ok(selected);
+      assert.equal(h.database.authority.runs.bumpPriority({ runId: selected.envelope.runId, expectedVersion: selected.version,
+        now: h.clock.now().toISOString() }).state, "applied");
+    }
+    release();
+    const settled = await result;
+    if (change === "abort") { assert.ok("error" in settled); assert.equal(settled.error, controller.signal.reason); }
+    else {
+      assert.ok("value" in settled); assert.equal(settled.value.state, "applied");
+      assert.ok(settled.value.state === "applied");
+      const claimed = settled.value.run;
+      if (change === "version") {
+        assert.equal(claimed.envelope.runId, first.envelope.runId); assert.equal(prepared.length, 2);
+        assert.equal(prepared[1].version, first.version + 1);
+      } else {
+        assert.notEqual(claimed.envelope.runId, first.envelope.runId);
+        assert.equal(h.database.authority.runs.get(first.envelope.runId)?.claimGeneration, 0);
+        assert.equal(prepared.at(-1)?.runId, claimed.envelope.runId);
+      }
+    }
+  } finally { release(); await completed; await _afterEachFixture0(); }
+});
+
 it("claim checks the selected retained run before writing; browser gate refuses a new fault before open", async () => {
 try {
 
@@ -198,12 +275,12 @@ try {
     workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
   const request = { commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
   const generation = h.database.getMeta().authorityGeneration;
-  await assert.rejects(claimWithPreflight({ preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit) }), PreflightAdmissionRefusal);
+  await assert.rejects(claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit) }), PreflightAdmissionRefusal);
   assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original); assert.equal(h.database.getMeta().authorityGeneration, generation);
   h.faults.clear(); await h.preflight.admission.prepare(h.preflight.runScope(original.envelope), signal());
-  const claimed = await claimWithPreflight({ preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit) }); assert.equal(claimed.state, "applied");
+  const claimed = await claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit) }); assert.equal(claimed.state, "applied");
   let opens = 0;
-  const factory = preflightSessionFactory({ open: async () => { opens += 1; throw new Error("counted browser effect"); } }, h.preflight, h.preflight.runScope(original.envelope));
+  const factory = preflightSessionFactory({ probeProfile: async () => undefined, open: async () => { opens += 1; throw new Error("counted browser effect"); } }, h.preflight, h.preflight.runScope(original.envelope));
   const open = { workerId, workflowId: personLookupDescriptor.id,
     system: "ucpath" as const, instance: "prod", configFingerprint: original.envelope.configFingerprint, acceptDownloads: false, exclusive: false, signal: signal(),
     duoCeremony: {} as Parameters<typeof factory.open>[0]["duoCeremony"] };
@@ -223,7 +300,7 @@ it("session readiness checks only its admitted system and freshly refuses every 
     const scope = h.preflight.currentScope(personLookupDescriptor.id);
     let opens = 0;
     const reachedBrowser = new Error("session prerequisites passed");
-    const factory = preflightSessionFactory({ open: async () => { opens += 1; throw reachedBrowser; } }, h.preflight, scope);
+    const factory = preflightSessionFactory({ probeProfile: async () => undefined, open: async () => { opens += 1; throw reachedBrowser; } }, h.preflight, scope);
     const open = {
       workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: personLookupDescriptor.id,
       system: "crm" as const, instance: "prod", configFingerprint: scope.configFingerprint,
@@ -271,7 +348,7 @@ for (const fault of ["missing", "duplicate", "throw", "protected-revision"] as c
       revise = () => { h.changeProtected(); };
       let opens = 0;
       const scope = h.preflight.currentScope(personLookupDescriptor.id);
-      const factory = preflightSessionFactory({ open: async () => { opens += 1; throw new Error("browser effect"); } }, h.preflight, scope);
+      const factory = preflightSessionFactory({ probeProfile: async () => undefined, open: async () => { opens += 1; throw new Error("browser effect"); } }, h.preflight, scope);
       await assert.rejects(factory.open({
         workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: personLookupDescriptor.id,
         system: "crm", instance: "prod", configFingerprint: scope.configFingerprint,
@@ -416,13 +493,13 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     const scope = h.preflight.runScope(run.envelope);
     testWorkerPorts(h.database, h.clock, { path: h.f.databasePath, descriptor: personLookupDescriptor, poolIndex: 1 });
     const workerId = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0].workerId;
-    assert.equal((await claimWithPreflight({ preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext({ workerLifetime: testWorkerLifetime(h.database, plan.workflowId, 1).workerLifetime,
+    assert.equal((await claimWithPreflight({ prepareRun: async () => undefined, preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext({ workerLifetime: testWorkerLifetime(h.database, plan.workflowId, 1).workerLifetime,
       commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId,
       runtimeConfig: selectRunRuntime(h.database.authority),
     }, admit) })).state, "applied");
     let opens = 0;
     const reachedBrowser = new Error("session prerequisites passed");
-    const factory = preflightSessionFactory({ open: async () => { opens += 1; throw reachedBrowser; } }, h.preflight, scope);
+    const factory = preflightSessionFactory({ probeProfile: async () => undefined, open: async () => { opens += 1; throw reachedBrowser; } }, h.preflight, scope);
     const open = {
       workerId, workflowId: personLookupDescriptor.id,
       system: "ucpath" as const, instance: "prod", configFingerprint: run.envelope.configFingerprint,
@@ -517,11 +594,11 @@ try {
   const request={commandId:"ffffffff-ffff-4fff-8fff-ffffffffffff",workflow:plan.workflowId,workerId,workerLifetime:testWorkerLifetime(h.database,plan.workflowId,1).workerLifetime,runtimeConfig:selectRunRuntime(h.database.authority)};
   renameSync(h.f.executable,`${h.f.executable}.parked`);h.clock.advanceWall(60_000);h.clock.advanceMonotonic(60_000);
   const generation=h.database.getMeta().authorityGeneration;
-  await assert.rejects(claimWithPreflight({preflight:h.preflight,signal:signal(),claim:admit=>h.lifecycle.claimNext(request,admit)}),PreflightAdmissionRefusal);
+  await assert.rejects(claimWithPreflight({prepareRun:async()=>undefined,preflight:h.preflight,signal:signal(),claim:admit=>h.lifecycle.claimNext(request,admit)}),PreflightAdmissionRefusal);
   assert.equal(h.database.getMeta().authorityGeneration,generation);assert.deepEqual(h.database.authority.runs.get(original.envelope.runId),original);
   renameSync(`${h.f.executable}.parked`,h.f.executable);await h.preflight.admission.prepare(h.preflight.runScope(original.envelope),signal());
-  assert.equal((await claimWithPreflight({preflight:h.preflight,signal:signal(),claim:admit=>h.lifecycle.claimNext(request,admit)})).state,"applied");
-  let opens=0;const factory=preflightSessionFactory({open:async()=>{opens++;throw new Error("counted browser effect");}},h.preflight,h.preflight.runScope(original.envelope));
+  assert.equal((await claimWithPreflight({prepareRun:async()=>undefined,preflight:h.preflight,signal:signal(),claim:admit=>h.lifecycle.claimNext(request,admit)})).state,"applied");
+  let opens=0;const factory=preflightSessionFactory({probeProfile:async()=>undefined,open:async()=>{opens++;throw new Error("counted browser effect");}},h.preflight,h.preflight.runScope(original.envelope));
   const open={workerId:workerId,workflowId:personLookupDescriptor.id,system:"ucpath" as const,instance:"prod",configFingerprint:original.envelope.configFingerprint,acceptDownloads:false,exclusive:false,signal:signal(),duoCeremony:{} as Parameters<typeof factory.open>[0]["duoCeremony"]};
   await assert.rejects(factory.open(open),/counted browser effect/u);assert.equal(opens,1);
   renameSync(h.f.executable, `${h.f.executable}.parked`);
