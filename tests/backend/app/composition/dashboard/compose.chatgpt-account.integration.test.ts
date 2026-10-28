@@ -1,4 +1,4 @@
-import { runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
+import { assertRuntimeLifetimeHeld, runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import assert from "node:assert/strict";
 import { copyFileSync } from "node:fs";
@@ -6,8 +6,6 @@ import { join } from "node:path";
 import { startDashboardHttpServer } from "../../../../../src/backend/transports/http/http-server.js";
 import { it, vi } from "vitest";
 import * as accounts from "../../../../../src/backend/accounts/chatgpt-account-service.js";
-import * as processLocks from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { readRuntimeProcessLock } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { readFileSync } from "node:fs";
 import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
@@ -79,26 +77,19 @@ for (const startupFailure of [false, true]) it(`drains a pending HTTP completion
   } finally { factory.mockRestore(); await runtime.close(); await profile.close(); }
 });
 
-it("retains actual account, database and process custody when cleanup refuses after the pending HTTP wait drains", async () => {
+it("retains actual account, database and controller custody when cleanup refuses after the pending HTTP wait drains", async () => {
+  const controllerLock=await runtimeLifetimeLock();
   const profile = await createBoundProfileFixture(), repoRoot = profile.workspace;
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), file), join(repoRoot, file));
   const primary = new Error("synthetic account cleanup refusal"), errors: unknown[] = [];
   let actualAccount: accounts.ChatGptAccountService | undefined;
-  let role: processLocks.RuntimeProcessLockHandle | undefined;
   let httpClosed = false, networkReads = 0, callbackUrl: string | undefined;
   const actualCreate = accounts.createChatGptAccountService;
   const factory = vi.spyOn(accounts, "createChatGptAccountService").mockImplementation(options => {
     actualAccount = actualCreate({ ...options, fetch: async () => { networkReads++; throw new Error("external transport forbidden"); } });
     return { ...actualAccount, close: async () => { assert.equal(httpClosed, true); throw primary; } };
   });
-  const actualAcquire = processLocks.acquireRuntimeProcessLock;
-  const acquisition = vi.spyOn(processLocks, "acquireRuntimeProcessLock").mockImplementation((...args) => {
-    const handle = actualAcquire(...args);
-    if (processLocks.RuntimeProcessLockOptionsSchema.parse(args[0]).name === "server") role = handle;
-    return handle;
-  });
-  const lockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
   const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null } });
   const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active");
@@ -107,7 +98,7 @@ it("retains actual account, database and process custody when cleanup refuses af
   const protectedPath = join(profile.stateRoot, "credentials", "protected.json"), protectedBefore = readFileSync(protectedPath);
   let retentionProved = false;
   try {
-    const dashboard = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token }, clock, repoRoot,
+    const dashboard = await composeDashboardRuntime({ lifetimeLock: controllerLock, admission: profile.machine, profile: { runtime, token: active.token }, clock, repoRoot,
       isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       httpServerStarter: async input => {
         const started = ChatGptSignInStartSchema.parse(await (await input.app.request("http://127.0.0.1/api/v1/settings/chatgpt-account/sign-in", {
@@ -140,16 +131,15 @@ it("retains actual account, database and process custody when cleanup refuses af
     assert.equal(context.database.getMeta().profileId, active.profileId);
     context.admission.assertLive(); profile.machine.assertLive();
     assert.deepEqual(readFileSync(protectedPath), protectedBefore);
-    const current = readRuntimeProcessLock(lockRoot, "server"); assert.ok(current); assert.ok(role);
-    assert.equal(current.acquisitionId, role.acquisitionId); assert.equal(current.releasedAt, null);
+    await assertRuntimeLifetimeHeld(controllerLock);
     retentionProved = true;
   } catch (error) { errors.push(error); }
-  factory.mockRestore(); acquisition.mockRestore();
+  factory.mockRestore();
   if (retentionProved) {
     try {
       assert.ok(actualAccount); await actualAccount.close();
       assert.ok(callbackUrl); await assert.rejects(fetch(callbackUrl));
-      context.database.close(); context.admission.release(); assert.ok(role); role.release(); await profile.close();
+      context.database.close(); context.admission.release(); await profile.close();
     } catch (error) { errors.push(error); }
   }
   if (errors.length > 0) throw new AggregateError(errors, "account cleanup custody proof failed", { cause: errors[0] });

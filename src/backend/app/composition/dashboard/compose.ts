@@ -91,7 +91,6 @@ import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { createPreflightAuthority } from "../../../../models/preflight/preflight.js";
 import { BackupServiceStateWireSchema, type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
 import { AuthorityDatabase, AuthorityHealthPreflightRunner, summarizeBackupHealth } from "../../../storage/sqlite/index.js";
-import { acquireRuntimeProcessLock } from "../../../storage/sqlite/runtime-process-locks.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
@@ -453,8 +452,6 @@ async function composeDashboardRuntimeStartup(
   const machineAdmission = requireRuntimeAdmission(input.admission);
   const installation = machineAdmission.readInstallationContext();
   if (installation === undefined) throw new Error("profile-application-installation-required");
-  const processLockRoot = join(installation.workspace, input.isolation.processLockRoot);
-  machineAdmission.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
   const profile = input.profile;
   if (profile === undefined) throw new Error("PROFILE_AUTHORITY_UNAVAILABLE");
   profile.runtime.assertMachineOwner(machineAdmission);
@@ -476,18 +473,12 @@ async function composeDashboardRuntimeStartup(
 
 
   const hostFacts = hostConfigFacts(env);
-  // Take the server role lock before opening authority; it fences competing dashboard handles.
-  const processLock = input.applicationTransport === undefined ? acquireRuntimeProcessLock(
-    { processLockRoot, name: "server", pid: process.pid },
-    clock,
-  ) : undefined;
   let databaseClosed = true, transportClosed = true;
   startupCleanups.push(() => {
     requireProducerClosure();
     if (!databaseClosed || !transportClosed) {
       throw new RuntimeCustodyUncertainError([new Error("dashboard authority closure is unproved")]);
     }
-    try { processLock?.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
   });
   const context = (() => {
     try { return profile.runtime.selectedContext(profile.token); }
@@ -1022,8 +1013,6 @@ async function composeDashboardRuntimeStartup(
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       try { await profile.runtime.close(); }
       catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
-      try { processLock?.release(); }
-      catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
       if (input.applicationTransport === undefined) {
         try { machineAdmission.release(); }
         catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
@@ -1121,36 +1110,27 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   const machine = requireRuntimeAdmission(input.admission), clock = input.clock ?? systemClock;
   const installation = machine.readInstallationContext();
   if (installation === undefined) throw new Error("profile-application-installation-required");
-  const processLockRoot = join(installation.workspace, input.isolation.processLockRoot);
-  machine.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
   const repoRoot = input.repoRoot ?? process.cwd();
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
   const bundle = frontend === "built-bundle" ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript) : undefined;
-  const processLock = acquireRuntimeProcessLock({ processLockRoot, name: "server", pid: process.pid }, clock);
   const { profile: profileRuntime, facts } = await (async () => {
-    try {
-      const facts = hostConfigFacts(env);
-      let onboardingDuo = input.onboardingDuo;
-      if (onboardingDuo === undefined) {
-        const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, "onboarding");
-        ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);
-        ensureChildDirectory(browsers, browserRoot, "onboarding browsers", 0o700, 0o700);
-        onboardingDuo = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
-          clock, closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
-      }
-      const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: facts,  onboardingDuo });
-      try { await profile.session.recoverOnboarding(); }
-      catch (error) {
-        try { await profile.close(); }
-        catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
-        throw error;
-      }
-      return { profile, facts };
-    } catch (error) {
-      if (error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError) throw error;
-      try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
+    const facts = hostConfigFacts(env);
+    let onboardingDuo = input.onboardingDuo;
+    if (onboardingDuo === undefined) {
+      const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, "onboarding");
+      ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);
+      ensureChildDirectory(browsers, browserRoot, "onboarding browsers", 0o700, 0o700);
+      onboardingDuo = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
+        clock, closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
+    }
+    const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: facts,  onboardingDuo });
+    try { await profile.session.recoverOnboarding(); }
+    catch (error) {
+      try { await profile.close(); }
+      catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       throw error;
     }
+    return { profile, facts };
   })();
   const app = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
   type Selection = { sessionId: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
@@ -1367,7 +1347,6 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     try { return await startDashboardHttpServer({ app, port: bindPort ?? input.backendPortOverride ?? input.isolation.backendPort }); }
     catch (error) {
       try { await profileRuntime?.close(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
-      try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       throw error;
     }
   })();
@@ -1389,7 +1368,6 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       try { await profileRuntime?.close(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
-      try { processLock.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       try { machine.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
     })();
     return stopping;

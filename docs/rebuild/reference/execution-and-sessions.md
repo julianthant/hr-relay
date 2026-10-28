@@ -537,6 +537,9 @@ closure report `waiting`; failed closure remains unavailable until actual closur
 retains exact native command outcomes, including retired members and confirmations preceding later
 work, without exposing native lock custody snapshots.
 
+Dashboard composition borrows the held controller lifetime. Bootstrap retains it through HTTP,
+worker and account drains; unproved resource closure retains custody.
+
 Workers receive the controller's listening handle over IPC before authority admission. Lease start
 records the admitted command as `startCommandId` for replacement and standing recovery. It retains
 exact member, lease-generation, control, settings and reservation fences. The actual supervisor's
