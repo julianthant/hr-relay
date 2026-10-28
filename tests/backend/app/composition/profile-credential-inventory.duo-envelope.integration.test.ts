@@ -145,7 +145,7 @@ it("refuses an unbound physical Duo document before creating a key stage or publ
   } catch (error) { primary = { error }; }
   try { await f.close(); }
   catch (error) {
-    if (primary !== undefined) throw new AggregateError([primary.error, error], "unbound Duo refusal and owned cleanup failed", { cause: primary.error });
+    if (primary !== undefined) throw new AggregateError([primary.error, error], "unbound Duo refusal and owned cleanup failed", { cause: error });
     throw error;
   }
   if (primary !== undefined) throw primary.error;
