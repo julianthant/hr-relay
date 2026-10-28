@@ -176,7 +176,7 @@ describe("gate resolution", () => {
     assert.equal(started.state, "applied");
     const runId = singleAppliedRunId(started);
     const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
-      path: join(harness.stateRoot, "kernel.sqlite"), workflow: finiteGateDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
+      path: join(harness.stateRoot, "state.db"), workflow: finiteGateDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
     });
     const claimed = harness.database.authority.runs.claimNext({
       workflow: String(finiteGateDescriptor.id), workerId, workerLifetime, now: NOW,
@@ -263,7 +263,7 @@ describe("gate resolution", () => {
     assert.equal(started.state, "applied");
     const runId = singleAppliedRunId(started);
     const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
-      path: join(harness.stateRoot, "kernel.sqlite"), workflow: externalGateDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
+      path: join(harness.stateRoot, "state.db"), workflow: externalGateDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
     });
     const claimResult = harness.database.authority.runs.claimNext({
       workflow: String(externalGateDescriptor.id), workerId, workerLifetime, now: NOW,

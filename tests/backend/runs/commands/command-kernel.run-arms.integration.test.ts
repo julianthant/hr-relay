@@ -177,7 +177,7 @@ describe("run arms", () => {
     assert.equal(again.state, "applied");
 
     const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
-      path: join(harness.stateRoot, "kernel.sqlite"), workflow: rejectActiveDescriptor.id, poolIndex: 1, browserSystems: [],
+      path: join(harness.stateRoot, "state.db"), workflow: rejectActiveDescriptor.id, poolIndex: 1, browserSystems: [],
     });
     const claimed = harness.database.authority.runs.claimNext({ workflow: rejectActiveDescriptor.id, workerId, workerLifetime, now: NOW });
     assert.equal(claimed.state, "claimed");
