@@ -1,3 +1,4 @@
+import { StartupCrashRecoveryRefusedError } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { AssistantAuthorizationError } from "../../../assistant/authorization.js";
 import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { ActivityPopulationError } from "../../../runs/queries/activity-population.js";
@@ -28,6 +29,7 @@ export function failureStatus(
   error: unknown,
 ): { status: 400 | 403 | 404 | 409 | 500; body: Record<string, unknown> } {
   if (error instanceof ProfileUpgradeUnavailableError) return { status: 500, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof StartupCrashRecoveryRefusedError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof AssistantAuthorizationError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof z.ZodError) {
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };

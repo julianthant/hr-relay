@@ -7,7 +7,7 @@ import { EditableSettingsOverrideSchema } from "../../../models/config/schema.js
 import { RecoveryRuntimeLockSnapshotSchema } from "./recovery-contracts.js";
 import { WorkerLifecycleBindingSchema } from "../../../models/run/worker-control.js";
 import { WorkerPoolMemberSchema, WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
-import { RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema } from "./runtime-process-locks.js";
+import { RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, ProcessCustodyFileSchema } from "./runtime-process-locks.js";
 import { ParkedWriteResolutionBindingSchema } from "../../../rules/write-safety/write-safety.js";
 
 import { z } from "zod";
@@ -457,6 +457,12 @@ export const WorkerLifetimeBirthSchema = z.strictObject({
   owner: WorkerProcessLockFileSchema,
 }).refine(value => "workerId" in value.owner && value.owner.workerId === value.member.workerId
   && value.owner.pid === value.processId && value.owner.releasedAt === null, "worker-birth-custody-binding-mismatch");
+
+export const CanonicalCrashRecoveryRequestSchema = z.strictObject({
+  commandId: CommandIdSchema, runId: RunIdSchema, expectedVersion: PositiveIntSchema, claim: RunClaimTokenSchema,
+  birth: WorkerLifetimeBirthSchema, originalFile: ProcessCustodyFileSchema, closureDigest: FingerprintSchema,
+  now: IsoInstantSchema,
+});
 
 export const WorkerStartRequestSchema = z.strictObject({
   commandId: CommandIdSchema.optional(),

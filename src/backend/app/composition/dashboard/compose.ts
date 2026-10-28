@@ -1,3 +1,4 @@
+import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
@@ -618,6 +619,11 @@ async function composeDashboardRuntimeStartup(
       spanWriter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
     },
   });
+  try { reconcileStartupCrash({ machine: machineAdmission, admission, database, lifecycle, processLockRoot, clock }); }
+  catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) custody.failedClosures.push(error);
+    throw error;
+  }
   const { backfillGapNotifier, inbox: notificationInbox, observer: notificationObserver } = createTrustNotifications({
     admission, database, clock, ids, reader: lifecycle, stateRoot,
   });

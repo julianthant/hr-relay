@@ -1,3 +1,4 @@
+import { CanonicalCrashRecoveryRequestSchema } from "./run-store-contracts.js";
 import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
@@ -10,7 +11,7 @@ import { terminalDelegationDependencyRecord } from "../../../models/run/result.j
 import { delegationJoinDisposition } from "../../../rules/workflow/dependencies.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
-import { authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, type RuntimeProcessLockHandle, type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
+import { readStartupProcessClosure, readProcessCustodyFile, WorkerProcessLockFileSchema, authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, type RuntimeProcessLockHandle, type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
@@ -94,7 +95,7 @@ import { ActorIdSchema, ArtifactIdSchema, BrowserSystemIdSchema, CommandAuditIdS
 import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../../../models/run/record.js";
 import { DeletedRunRecordSchema, RunDeleteInputSchema, type DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import { RunResultRecordSchema, createRunTerminalEvidenceResult, deriveTerminalFailureDigest, terminalEvidenceResult, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, type RunResultRecord } from "../../../models/run/result.js";
-import { TerminalAuthorizationRecordSchema, type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
+import { FailureTerminalAuthorizationRecordSchema, TerminalAuthorizationRecordSchema, type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
 import { StartPlanRecordSchema, isStartPlanExpired, type StartPlanRecord } from "../../../models/run/start-plan.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
@@ -2564,6 +2565,82 @@ export class AuthorityDatabase implements Disposable {
 
   withAuthorityReadSnapshot<Result>(read: () => Result): Result {
     return this.#withReadSnapshot(read);
+  }
+
+  assertPristineQueuedRun(runId: string, expectedVersion: number): void {
+    const run = this.#readRunRow(RunIdSchema.parse(runId));
+    if (run === undefined || run.version !== expectedVersion || run.lifecycle.state !== "queued" || run.claimGeneration !== 0
+      || this.#database.prepare("SELECT 1 FROM write_intents WHERE run_id=? LIMIT 1").get(runId) !== undefined
+      || this.#database.prepare("SELECT 1 FROM run_checkpoints WHERE run_id=? LIMIT 1").get(runId) !== undefined) throw new Error("startup-stale-queue-custody-unproved");
+  }
+
+  crashRunRecoveryProof(runId: string) {
+    return this.withAuthorityReadSnapshot(() => {
+      const run = this.#readRunRow(RunIdSchema.parse(runId));
+      const claim = run === undefined ? undefined : runClaim(run);
+      if (run === undefined || claim === undefined || !("workerLifetime" in run.lifecycle) || run.lifecycle.workerLifetime === undefined) throw new Error("crash-recovery-claim-unproved");
+      const custody = this.workerLifetimeCustody(claim.workerId);
+      if (custody.state !== "dead" && custody.state !== "released") throw new Error("crash-recovery-owner-unproved");
+      if (run.lifecycle.workerLifetime.leaseGeneration !== custody.birth.leaseGeneration
+        || run.lifecycle.workerLifetime.membershipRevision !== custody.birth.member.membershipRevision) throw new Error("crash-recovery-lifetime-changed");
+      const originalFile = readProcessCustodyFile(join(custody.birth.processLockRoot, "workers", `${custody.birth.owner.acquisitionId}.lock.json`));
+      const original = WorkerProcessLockFileSchema.parse(JSON.parse(originalFile.bytes.toString("utf8")));
+      if (canonicalJsonStringify({ ...original, releasedAt: null }) !== canonicalJsonStringify(custody.birth.owner)) throw new Error("crash-recovery-original-changed");
+      const receipt = readStartupProcessClosure(custody.birth.processLockRoot, original);
+      const meta = this.getMeta();
+      if (receipt === undefined || receipt.authorityPath !== resolve(this.#path) || receipt.installationId !== meta.installationId
+        || receipt.profileId !== meta.profileId || !receipt.browserRoots.includes(join(dirname(this.#path), "browsers"))) throw new Error("crash-recovery-process-closure-unproved");
+      return { birth: custody.birth, originalFile: originalFile.witness, closureDigest: receipt.digest };
+    });
+  }
+
+  recoverCrashedRun(input: unknown): RunRecord {
+    const request = CanonicalCrashRecoveryRequestSchema.parse(input);
+    return this.withAuthorityTransaction(repositories => {
+      const current = this.#readRunRow(request.runId), claim = current === undefined ? undefined : runClaim(current);
+      if (current === undefined || current.version !== request.expectedVersion || claim?.workerId !== request.claim.workerId
+        || claim.claimGeneration !== request.claim.claimGeneration || Date.parse(request.now) < Date.parse(current.envelope.enqueuedAt)) throw new Error("crash-recovery-claim-changed");
+      const proof = this.crashRunRecoveryProof(request.runId);
+      if (canonicalJsonStringify(proof) !== canonicalJsonStringify({ birth: request.birth, originalFile: request.originalFile, closureDigest: request.closureDigest })) throw new Error("crash-recovery-proof-changed");
+      const intents = repositories.writeIntents.listByRun(request.runId);
+      const unfinished = intents.find(intent => intent.status !== "committed" && intent.status !== "observed-present");
+      if (unfinished !== undefined) {
+        if (unfinished.status !== "attempting" && unfinished.status !== "parked") throw new Error("crash-recovery-write-outcome-unproved");
+        const parked = RunRecordSchema.parse({ ...current, version: current.version + 1, updatedAt: request.now,
+          lifecycle: { state: "parked-write", writeIntentId: unfinished.writeIntentId, intentGeneration: unfinished.generation,
+            parkedAt: request.now, code: "unknown", message: `RUN_CRASH_WRITE_UNRESOLVED: ${ERROR_CATALOG.RUN_CRASH_WRITE_UNRESOLVED.text}` } });
+        this.#writeRunRow(parked, "update");
+        return parked;
+      }
+      const code = "RUN_INTERRUPTED_BY_CRASH", summary = ERROR_CATALOG[code].text;
+      const failure = FailureRecordSchema.parse({ diagnosticSafetyVersion: 1,
+        failureId: lifecycleCommandId("crash-failure", request.commandId),
+        fingerprint: sha256Hex(`hrauto:failure-class:v1\0${current.envelope.workflow}\0absent-node\0absent-task\0${code}`),
+        runId: current.envelope.runId, traceId: current.envelope.traceId, attempt: current.envelope.attempt,
+        workflowId: current.envelope.workflow, code, summary, transient: false,
+        writeState: intents.length === 0 ? "not-attempted" : intents.some(intent => intent.status === "observed-present") ? "verified" : "committed",
+        causeChain: [{ code, summary, role: "primary", transient: false }],
+        remediation: [{ kind: "operator-action", message: summary }], occurredAt: request.now });
+      const authorization = FailureTerminalAuthorizationRecordSchema.parse({ kind: "failed", runId: current.envelope.runId,
+        workflowId: current.envelope.workflow, attempt: current.envelope.attempt, descriptorVersion: current.envelope.descriptorVersion,
+        contractFingerprint: current.envelope.contractFingerprint, expectedVersion: current.version, claim: request.claim,
+        authorizedAt: request.now, failureId: failure.failureId });
+      this.#assertTerminalAuthorizationMatchesRun(authorization, current);
+      const terminal = RunRecordSchema.parse({ ...current, version: current.version + 1, updatedAt: request.now, completion: completionFromAuthorization(authorization),
+        lifecycle: { state: "terminal", outcome: "failed", endedAt: request.now, failureId: failure.failureId,
+          errorSummary: summary, diagnosticSafetyVersion: 1 } });
+      const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
+      if (violation !== undefined) throw new Error(`crash-recovery-transition-refused: ${violation}`);
+      this.#insertFailure(failure);
+      this.#terminalizationHooks?.afterFailureStorageStep?.("failure");
+      this.#insertRunResult(createRunTerminalEvidenceResult(terminal, { kind: "failed-evidence", authorization,
+        failureDigest: deriveTerminalFailureDigest(failure) }));
+      this.#terminalizationHooks?.afterFailureStorageStep?.("result");
+      this.#writeRunRow(terminal, "update");
+      this.#terminalizationHooks?.afterFailureStorageStep?.("run");
+      this.#assertTerminalAuthorizationConsequence(authorization, terminal);
+      return terminal;
+    });
   }
 
   terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport {

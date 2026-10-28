@@ -8,12 +8,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "18d3decd9eee3b3ada92fdab0371f8b49b3a74275e2fb8d2854af76e92ad68a5",
-    "reason": "A failed selected-context open marks database closure unproved for typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release; source-closure uncertainty retains it. Rejection observers leave the original lifetime failure and immediate stop promises intact: the CLI races failure, stop awaits closure, and both retain failures before dependent storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately."
+    "sha256": "17bd11de4c770828e50c21981959891959905e7a06561c7e435d6b4839c2c29d",
+    "reason": "Startup proof source-closure uncertainty marks producer closure unproved before unwind, retaining dependent database and process custody. A failed selected-context open marks database closure unproved for typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release; source-closure uncertainty retains it. Rejection observers leave the original lifetime failure and immediate stop promises intact: the CLI races failure, stop awaits closure, and both retain failures before dependent storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "754a2d05d0b11d657479eb1c83aed9759cabde4c756238965ba52fc74f11252a",
+    "sha256": "d5e31fe1756d8c320ab82256fcfdfe5b610419ead7e4be459d4707d0e7bd6101",
     "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure. The maintenance tick retains its first error, stops rescheduling, signals the worker stop controller, and compose surfaces it as a failed report."
   },
   {
@@ -108,7 +108,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "507be5dae2c833af3d7965ce82fb99452cabb868d7d7dab2a4f4f7f94b5b9491",
+    "sha256": "45427c1b01502f2b0d63da8391f88c935681947504852f075c400414dbd75f02",
     "reason": "The empty rollback-failure accumulator cannot settle migration success: rollback failure retains database custody with the original error, and successful rollback rethrows that error. Failed external validation clears only its admission cache and throws the mutation error or run-search-index-rebuild-required. Malformed diagnostics remain explicit; stopped inspection, upgrade and claimed-profile rebase retain failed source closure and original causes. Finite native6 queued cancellation rolls back on failure and retains original plus rollback or database-close failures before installation or restore custody can release."
   },
   {
@@ -118,8 +118,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "sha256": "6860de0292d85aa03ed5f8ec8ab3c1479e318146f31718f0ed194f87c06aa9ab",
-    "reason": "Failed admission releases custody only after the opened resource closes successfully; close and release failures retain custody and original errors. Descriptor-bound worker/recovery reads aggregate any read and close failures, then rethrow; receipt absence alone preserves ordinary stale-owner refusal. Restore-publication cleanup preserves primary failures and refuses uncertain closure; failed worker handoff marks custody uncertain before any replacement release."
+    "sha256": "b8e0e0fd46bcee4c550d33ecb598f3e662b24a86d702bb7b994969cfb693644f",
+    "reason": "Unproved startup proof source closure retains the original opened resource, admission and process handles before any dependent cleanup. Failed admission releases custody only after the opened resource closes successfully; close and release failures retain custody and original errors. Descriptor-bound worker/recovery reads aggregate any read and close failures, then rethrow; receipt absence alone preserves ordinary stale-owner refusal. Restore-publication cleanup preserves primary failures and refuses uncertain closure; failed worker handoff marks custody uncertain before any replacement release."
   },
   {
     "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
