@@ -22,6 +22,8 @@ import { verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from ".
 import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
 import { inspectRuntimeProcessOrphans, observeRuntimeLockSnapshot, readRuntimeProcessLock } from "../../storage/sqlite/runtime-process-locks.js";
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
+import { DuoDocumentEnvelopeSchema } from "../../../models/config/duo-credential-store.js";
+import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
 
 import { requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
 import { RuntimeAdmission } from "../../storage/admission/admission.js";
@@ -273,8 +275,14 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       const duoBackups = join(duoRoot, "machine", "duo-purpose-backups");
       for (const path of [root, processLockRoot, duoDocument, duoBackups]) visit(path);
       if (lstatSync(duoDocument, { throwIfNoEntry: false })?.isFile()) {
-        const scanned = scanProfileCredentialCopy(duoDocument, copies.capturedSecrets, copies);
-        if (scanned.containsSecret) throw new Error("duo-purpose-plaintext-refused");
+        if (authorityWitness() !== registry) throw new Error("credential-maintenance-inventory-changed");
+        const file = readPrivateFile(duoDocument, { label: "Duo credential", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
+        if (file === undefined) throw new Error("duo-document-required");
+        let envelope: ReturnType<typeof DuoDocumentEnvelopeSchema.parse>;
+        try { envelope = DuoDocumentEnvelopeSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes))); }
+        catch { throw new Error("duo-purpose-plaintext-refused"); }
+        if (envelope.installationId !== admission.profileBinding.installationId || envelope.profileId !== profileId) throw new Error("duo-envelope-binding-mismatch");
+        if (authorityWitness() !== registry) throw new Error("credential-maintenance-inventory-changed");
       }
       return canonicalJsonStringify(entries);
     };
