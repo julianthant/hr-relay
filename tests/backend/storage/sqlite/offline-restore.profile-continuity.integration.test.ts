@@ -1,3 +1,6 @@
+import * as nativeBrowserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { z } from "zod";
 import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
@@ -102,6 +105,38 @@ async function waitForFile(path: string) {
 }
 
 describe("profile restore continuity", () => {
+  for(const closure of ["busy","unproved"] as const)it(`retains source, suspects, backups and journals with zero replacement after ${closure} native browser closure`,async()=>{
+    const clock=manualClock(new Date("2026-10-21T12:00:00.000Z")),f=await world(clock);
+    const refusal=closure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy"))
+      :new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
+    let primary:{error:unknown}|undefined;
+    const native=vi.spyOn(nativeBrowserInventory,"probeStoppedProfileBrowsersClosed").mockRejectedValue(refusal);
+    try{
+      const manifestPath=await f.backup(),request={manifestPath,stoppedSystemProof:f.proof()};
+      const suspectDirectory=join(f.stateRoot,"backups","suspects"),control=join(f.workspace,".tracker","control");
+      const sourceIdentity=fs.lstatSync(f.path),source=readFileSync(f.path),profileTree=storageTree(f.stateRoot);
+      const machineTree=storageTree(join(f.machine.stateRoot,"machine")),controlTree=storageTree(control);
+      const suspectsExisted=existsSync(suspectDirectory);
+      let copies=0,replacements=0,projections=0;
+      const restore=new OfflineAuthorityRestoreService(f.current(),{authorityPath:f.path,suspectDirectory,busyTimeoutMs:250,
+        processLockRoot:f.processLockRoot,stoppedProofMaxAgeMs:60000},async()=>{projections++;},clock,
+        {copyFile:(from,to)=>{copies++;copyFileSync(from,to);},atomicReplace:(from,to)=>{replacements++;renameSync(from,to);}},undefined,f.store());
+      await assert.rejects(restore.restore(request),error=>error instanceof OfflineRestoreFailure
+        &&error.authorityState==="unchanged"&&error.cause===refusal);
+      assert.equal(native.mock.calls.length,1);assert.equal(native.mock.calls[0]?.[0],f.current());
+      assert.deepEqual([copies,replacements,projections],[0,0,0]);
+      const after=fs.lstatSync(f.path);
+      assert.deepEqual([after.dev,after.ino,after.size,after.mtimeMs,after.ctimeMs],
+        [sourceIdentity.dev,sourceIdentity.ino,sourceIdentity.size,sourceIdentity.mtimeMs,sourceIdentity.ctimeMs]);
+      assert.deepEqual(readFileSync(f.path),source);assert.deepEqual(storageTree(f.stateRoot),profileTree);
+      assert.deepEqual(storageTree(join(f.machine.stateRoot,"machine")),machineTree);assert.deepEqual(storageTree(control),controlTree);
+      assert.equal(existsSync(suspectDirectory),suspectsExisted);
+    }catch(error){primary={error};}
+    native.mockRestore();
+    try{await f.close();}catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"offline-native-fixture-cleanup-failed",{cause:error});}
+    if(primary!==undefined)throw primary.error;
+  });
+
   it("restores matching canonical SQLite without rolling credentials/control back, invalidates old context and admits a fresh child", async () => {
     const f = await world();
     try {
