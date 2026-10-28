@@ -16,6 +16,7 @@ import {
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
   ParkedWriteResolutionBindingSchema,
+  ParkedWriteRecheckSchema,
 } from "../../../rules/write-safety/write-safety.js";
 import { RunClaimTokenSchema } from "./run-store-contracts.js";
 import { RunRecordRefusalSchema } from "../../../models/config/authority.js";
@@ -125,7 +126,7 @@ export const AtomicWriteCommitReportSchema = z.strictObject({
     && canonicalJsonStringify(outcome.completionProof) === canonicalJsonStringify(intent.completionProof);
   const resolved = outcome.state === "parked" && intent.resolution !== undefined
     && intent.resolution.writeAttemptId === report.attempt.writeAttemptId && intent.resolution.decision === "present"
-    && report.transaction.proofSource === "operator-attestation";
+    && report.transaction.proofSource === "recovery-probe";
   if ((!ordinary && !resolved) || !AtomicWriteCommitInputSchema.safeParse({writeIntentId:intent.writeIntentId,
     generation:intent.generation,completionProof:intent.completionProof,confirmedAt:intent.confirmedAt,
     outcome:report.committedSpan.outcome,transaction:report.transaction,committedSpan:report.committedSpan}).success
@@ -137,6 +138,7 @@ export const AtomicWriteCommitReportSchema = z.strictObject({
 export const ResolvedParkedWriteCommitInputSchema = z.strictObject({
   commit:AtomicWriteCommitInputSchema,checkpoint:RunCheckpointRecordSchema,
   expectedIntentVersion:PositiveIntSchema,resolution:ParkedWriteResolutionBindingSchema,
+  claim: RunClaimTokenSchema,
 });
 
 export const ResolvedParkedWriteAbsenceInputSchema = z.strictObject({
@@ -162,6 +164,14 @@ export const WriteIntentParkRequestSchema = z.strictObject({
   message: z.string().min(1),
   authorityReason: WriteAuthorityReasonSchema,
   now: IsoInstantSchema,
+});
+
+export const WriteRecheckRequestSchema = z.strictObject({
+  writeIntentId: WriteIntentIdSchema, generation: PositiveIntSchema, expectedVersion: PositiveIntSchema,
+  recheck: ParkedWriteRecheckSchema,
+});
+export const WriteRecheckParkRequestSchema = WriteIntentParkRequestSchema.safeExtend({
+  commandId: ParkedWriteRecheckSchema.shape.commandId,
 });
 
 // Retryable settlement requires typed stabilized absence or an explicit operator resolution.

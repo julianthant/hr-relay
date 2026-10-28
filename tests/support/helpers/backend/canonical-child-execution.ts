@@ -31,7 +31,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   const unused = (): never => { throw new Error("unrequested canonical fixture effect"); };
   const kernel = createCommandKernel({ authority: database, lifecycle, clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
     descriptors: { resolve }, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
-    intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { resolvePresent: unused, resolveAbsent: unused },
+    intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unused, resolveAbsent: unused },
     workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused,
       reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
   const childRuns = createDurableChildRunExecutor({ authority: database,

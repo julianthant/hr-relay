@@ -27,7 +27,7 @@ export type WriteBindingRepositories = Pick<AuthorityRepositories, "runCheckpoin
 
 export const WriteResolutionArmSchema = z.enum([
   "recovery-probe",
-  "operator-confirmed-present",
+  "recheck",
   "operator-confirmed-absent",
 ]);
 export type WriteResolutionArm = z.infer<typeof WriteResolutionArmSchema>;

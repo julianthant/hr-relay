@@ -56,7 +56,7 @@ function refineIdentityInput(
         "a document-eid source requires the document's own EID field to hold exactly this EID",
     });
   }
-  if (input.emplIdSource !== "document-eid" && documentValue !== undefined) {
+  if (input.emplIdSource !== "document-eid" && input.emplIdSource !== "operator-entered" && documentValue !== undefined) {
     context.addIssue({
       code: "custom",
       path: ["emplIdSource"],

@@ -73,7 +73,7 @@ describe("exact native worker reset reservation", () => {
         h.database.authority.writeIntents.settleRetryable({ writeIntentId: original.intent.writeIntentId,
           generation: 1, expectedVersion: 1, now: h.clock.now().toISOString(), settlement: { state: "operator-confirmed-absent",
             writeIntentId: original.intent.writeIntentId, generation: 1, operator: "local-operator",
-            confirmedAt: h.clock.now().toISOString(), evidenceNote: "Synthetic absence" } });
+            confirmedAt: h.clock.now().toISOString() } });
         const bindingProof = { ...original.intent.bindingProof, proofId: UUID_6 };
         const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
         fence = { intent: { ...original.intent, generation: 2, version: 3, bindingProof, bindingProofDigest },

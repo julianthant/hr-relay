@@ -39,6 +39,13 @@ edit. Descriptor `version` is a positive integer. `contractFingerprint` comes fr
 build manifest in `src/workflow-kit/validation/build-manifest.ts`; authors do not supply it to
 `defineWorkflow`.
 
+`failureCorrections` binds a task node and failure code to one run input. Logs offers Check again
+and a text entry for that input only when the failed run has no uncertain writes. The correction
+preserves execution options and protected input bindings, retains source-run lineage, and reads
+every selected step again. A corrected match key creates a new item identity. Inputs emitted by
+the Run parser remain available for ordinary starts. Other correction inputs can change only
+through their declared failure action.
+
 ### 1.1.1 Short code
 
 A workflow `code` contains two to four lowercase letters. `defineWorkflowDescriptor` checks its

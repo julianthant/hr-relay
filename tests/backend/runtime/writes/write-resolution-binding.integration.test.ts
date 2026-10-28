@@ -192,7 +192,7 @@ describe("write-resolution binding — what a parked write may survive", () => {
     assert.equal(stateOf(binding, "binding-proof-identity"), "not-evaluated");
     await assert.rejects(
       async () => requireWriteResolutionBinding({
-        arm: "operator-confirmed-present",
+        arm: "recheck",
         descriptor: writeFixtureDescriptorWithMovedKey,
         run: parkedRun(),
         intent: parkedIntent(),

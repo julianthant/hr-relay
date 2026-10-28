@@ -27,6 +27,7 @@ interface RoundTrip {
   readonly world: WriteFixtureWorld;
   readonly kernel: CommandKernel;
   readonly park: (failCommit?: boolean) => Promise<WorkerLoopReport>;
+  readonly resume: () => Promise<WorkerLoopReport>;
 }
 
 
@@ -99,7 +100,9 @@ export function createParkedWriteRoundTripTestWorld() {
       // throws AFTER the fence — the canonical post-fence unknown.
       world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
       if (failCommit) world.commitThrows = new Error("browser crashed mid-click");
-      return runWorkerLoop({
+      return resume();
+    };
+    const resume = () => runWorkerLoop({
         ...testWorkerPorts(database, clock, { path: profile.path, descriptor: writeFixtureDescriptor, poolIndex: 1 }),
         workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
         workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
@@ -134,9 +137,8 @@ export function createParkedWriteRoundTripTestWorld() {
           resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
         }),
       });
-    };
 
-    return { profile, database, clock, world, kernel, park };
+    return { profile, database, clock, world, kernel, park, resume };
   }
 
   function parkedIntent(database: AuthorityDatabase) {
@@ -154,7 +156,7 @@ export function createParkedWriteRoundTripTestWorld() {
   }
 
   function resolutionCommand(
-    type: "resolve-write-present" | "resolve-write-absent",
+    type: "recheck-write" | "resolve-write-absent",
     target: Readonly<{
       runId: string;
       expectedVersion: number;

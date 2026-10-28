@@ -42,7 +42,7 @@ export function installRunOperationsRoutes(app: DashboardApp, setup: Awaited<Ret
   const kernel = createCommandKernel({ lifecycle, authority: database, clock, ids, appVersion: "0.1.0", descriptors,
     preflight: runtime.admission, configIdentity: identity,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    writeResolution: { resolvePresent: unexpected, resolveAbsent: unexpected },
+    writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
     workerRuntime: { pool: { planPoolWorkerCount: unexpected, spawnPoolWorker: unexpected, refreshPoolBrowser: unexpected, reopenPoolBrowser: unexpected, stopPoolWorker: unexpected, pausePoolWorker: unexpected, resumePoolWorker: unexpected } } });
   const queueApp: DashboardApp = new Hono();
   queueApp.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });

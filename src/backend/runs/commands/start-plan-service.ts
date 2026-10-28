@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { failureCorrectionSubmission } from "../start/failure-correction.js";
+import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { RunRecoveryMode } from "../../../models/run/envelope.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
 import type { PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
@@ -89,7 +92,6 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           `${descriptor.id} step omissions require exactly one submission; this plan carries ${String(ingress.submissions.length)}`,
         );
       }
-      const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys, ingress.stepOmissions);
       const sourceSelection = ingress.rerunSource?.selectedStepKeys;
       if (sourceSelection !== undefined && JSON.stringify(sourceSelection) !== JSON.stringify(ingress.selectedStepKeys)) {
         throw new Error("Rerun source selection must equal submitted selection");
@@ -100,8 +102,24 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         const run = repositories.runs.get(rerunSource.runId);
         if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
         validateRerunSourcePlan(repositories, run);
-        return { input: run.input.parsed };
+        const correction = rerunSource.failureCorrection;
+        if (correction === undefined) return { input: run.input.parsed };
+        const submission = failureCorrectionSubmission(descriptor, run, repositories.failures.get(correction.failureId), ingress);
+        return { input: run.input.parsed, submissions: [submission], stepOmissions: run.envelope.stepOmissions };
       });
+      const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,
+        source?.stepOmissions ?? ingress.stepOmissions);
+      if (rerunSource?.failureCorrection === undefined) {
+        for (const submission of ingress.submissions) for (const correction of descriptor.failureCorrections ?? []) {
+          if (descriptor.surfaces?.inputRun?.parser.rules.some(rule => rule.emit === correction.inputField)) continue;
+          const object = z.record(z.string(), JsonValueSchema).safeParse(submission);
+          const prior = source === undefined ? undefined : z.record(z.string(), JsonValueSchema).parse(source.input.value);
+          if (object.success && Object.hasOwn(object.data, correction.inputField)
+            && prior?.[correction.inputField] !== object.data[correction.inputField]) {
+            throw new RerunRefusedError("invalid-value", "This input can only be entered through its failure action");
+          }
+        }
+      }
       let record = planStart(
         {
           authority: deps.authorityRead,
@@ -114,7 +132,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           descriptor,
           ...(deps.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: deps.protectedSubmissionBindings }),
           ...(source === undefined ? {} : { retainedInputs: [source.input] }),
-          submissions: ingress.submissions.map((submission) =>
+          submissions: (source?.submissions ?? ingress.submissions).map((submission) =>
             applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys)),
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
           dryRun: ingress.dryRun,

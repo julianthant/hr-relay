@@ -90,7 +90,7 @@ export function createDeterministicUcpathSmartHrDriver(
   return {
     ...refuseUnimplementedPersonOrgHalf(half),
     system: "ucpath",
-    async scanTerminationTransactions(input: Readonly<{ emplId: Eid }>) {
+    async scanTerminationTransactions(input: Readonly<{ emplId: Eid; transactionId?: string }>) {
       if (options.scanThrows !== undefined) throw new Error(options.scanThrows);
       const parsed = UcpathTransactionScanSchema.parse(options.scan);
       if (parsed.emplId !== input.emplId) {
@@ -99,7 +99,9 @@ export function createDeterministicUcpathSmartHrDriver(
           + "person is not evidence about this one",
         );
       }
-      return parsed;
+      if (parsed.state === "unreadable" || input.transactionId === undefined) return parsed;
+      const rows = parsed.rows.filter(row => row.transactionId === input.transactionId);
+      return UcpathTransactionScanSchema.parse({ ...parsed, rows, scannedRowCount: rows.length });
     },
     async stageTermination(input) {
       if (options.emplIdNotRecognized === true) {
@@ -260,11 +262,14 @@ export function createDeterministicUcpathSmartHrWorldDriver(
   return {
     ...refuseUnimplementedPersonOrgHalf(half),
     system: "ucpath",
-    async scanTerminationTransactions(input: Readonly<{ emplId: Eid }>) {
+    async scanTerminationTransactions(input: Readonly<{ emplId: Eid; transactionId?: string }>) {
       if (input.emplId !== world.emplId) {
         throw new Error(`${half} holds transactions for ${directIdentifierDisplay(world.emplId)}, not ${directIdentifierDisplay(input.emplId)}`);
       }
-      return scan();
+      const result = scan();
+      if (result.state === "unreadable" || input.transactionId === undefined) return result;
+      const rows = result.rows.filter(row => row.transactionId === input.transactionId);
+      return UcpathTransactionScanSchema.parse({ ...result, rows, scannedRowCount: rows.length });
     },
     async stageTermination(input) {
       world.events.push(`stage:${input.effectiveDate}`);

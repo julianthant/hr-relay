@@ -274,9 +274,8 @@ export const separationsUcpathTerminationWorkflow = defineWorkflow({
       statusKey: "awaitingIdentityApproval",
       result: IdentityApprovalResultSchema,
       when: {
-        kind: "equals",
-        of: { from: "node", nodeId: COMPARISON_NODE, path: "packet.emplIdSource" },
-        value: "name-resolved",
+        kind: "is-true",
+        of: { from: "node", nodeId: COMPARISON_NODE, path: "approvalRequired" },
       },
     }, [comparison, terminationType]);
     const approval = task({

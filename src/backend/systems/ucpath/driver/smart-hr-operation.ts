@@ -336,7 +336,7 @@ async function readTransactionDetail(
 
 export async function scanTerminationTransactionsOnPage(
   page: Page,
-  input: Readonly<{ emplId: Eid }>,
+  input: Readonly<{ emplId: Eid; transactionId?: string }>,
   observedAt: string,
 ): Promise<UcpathTransactionScan> {
   const unreadable = (
@@ -488,6 +488,7 @@ export async function scanTerminationTransactionsOnPage(
     } else {
       ids = await scanTransactionIds(resultRows, afterSearch.resultRowCount);
     }
+    if (input.transactionId !== undefined) ids = ids.filter(id => id === input.transactionId);
     const rows: UcpathTransactionRow[] = [];
     for (const id of ids) rows.push(await readTransactionDetail(page, id, input.emplId));
     return UcpathTransactionScanSchema.parse({

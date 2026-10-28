@@ -22,7 +22,7 @@ describe("write fence claim admission", () => {
           h.database.authority.writeIntents.settleRetryable({ writeIntentId: original.intent.writeIntentId,
             generation: 1, expectedVersion: 1, now: WRITE_FIXTURE_NOW,
             settlement: { state: "operator-confirmed-absent", writeIntentId: original.intent.writeIntentId,
-              generation: 1, operator: "local-operator", confirmedAt: WRITE_FIXTURE_NOW, evidenceNote: "Synthetic absence" } });
+              generation: 1, operator: "local-operator", confirmedAt: WRITE_FIXTURE_NOW } });
           const bindingProof = { ...original.intent.bindingProof, proofId: UUID_6 };
           const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
           fence = { intent: { ...original.intent, generation: 2, version: 3, bindingProof, bindingProofDigest },

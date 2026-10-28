@@ -72,7 +72,7 @@ export const CommandActionSchema = z.enum([
   "bump",
   "rename",
   "delete",
-  "resolve-write-present",
+  "recheck-write",
   "resolve-write-absent",
   "resolve-gate",
   "notification-read",
@@ -361,8 +361,8 @@ export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
     // Field-level patch model; an entry edits one field, never a whole checkpoint blob.
   // blob payload was a deferred-arm placeholder no producer ever sent.
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-present"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema, proof: SchemaBoundCanonicalValueSchema, evidenceNote: OperatorReasonSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema, evidenceNote: OperatorReasonSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("recheck-write"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema, transactionId: z.string().regex(/^T\d+$/u).optional() }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema }) }),
 ]);
 
 export const GateCommandRequestSchema = z.strictObject({
@@ -565,12 +565,19 @@ export const CommandAuditRecordSchema = z.strictObject({
     && (audit.versionChanges.length !== 0 || audit.affectedDependencyIds.length !== 0 || audit.writeResolution !== undefined)) {
     context.addIssue({ code: "custom", path: ["versionChanges"], message: "a no-change notification audit cannot record effects" });
   }
-  const resolved = request.family === "run" && (request.type === "resolve-write-present" || request.type === "resolve-write-absent") && audit.result.state === "applied";
+  const resolved = request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent") && audit.result.state === "applied";
   if (!resolved) {
     if (audit.writeResolution !== undefined) context.addIssue({code:"custom",path:["writeResolution"],message:"resolution acknowledgement requires an applied resolution command"});
     return;
   }
   const intent = audit.writeResolution;
+  if (request.type === "recheck-write") {
+    if (intent?.status !== "parked" || intent.recheck?.commandId !== request.commandId
+      || intent.recheck.auditId !== audit.auditId || intent.recheck.requestedAt !== audit.completedAt) {
+      context.addIssue({ code: "custom", path: ["writeResolution"], message: "applied recheck requires its immutable request acknowledgement" });
+    }
+    return;
+  }
   if (intent === undefined || (intent.status !== "committed" && intent.status !== "retryable") || intent.resolution === undefined
     || intent.resolution.commandId !== request.commandId || intent.resolution.auditId !== audit.auditId
     || intent.resolution.resolvedAt !== audit.completedAt) context.addIssue({code:"custom",path:["writeResolution"],message:"applied resolution requires its complete immutable settlement acknowledgement"});
@@ -824,7 +831,7 @@ export const COMMAND_EFFECT_BY_ACTION = {
   bump: "local-write",
   rename: "local-write",
   delete: "destructive",
-  "resolve-write-present": "external-submit",
+  "recheck-write": "external-submit",
   "resolve-write-absent": "external-submit",
   "resolve-gate": "external-submit",
   "notification-read": "local-write",
@@ -866,7 +873,7 @@ export const COMMAND_ASSISTANT_METADATA = {
   bump: "Change run priority",
   rename: "Rename a run",
   delete: "Delete a terminal run",
-  "resolve-write-present": "Resolve a write with verified presence",
+  "recheck-write": "Check a parked write again",
   "resolve-write-absent": "Resolve a write with verified absence",
   "resolve-gate": "Resolve an operator gate",
   "notification-read": "Mark a notification read",
@@ -899,7 +906,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"],
   settings: ["apply-settings", "apply-protected-settings"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
-  run: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"],
+  run: ["retry", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
   explorer: ["apply-explorer-edit"],
@@ -942,7 +949,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
   { family: "storage-relocation", actions: ["plan-storage-relocation", "cancel-storage-relocation"] },
-  { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"] },
+  { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"] },
   { family: "explorer", actions: ["apply-explorer-edit"] },

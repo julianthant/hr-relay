@@ -56,7 +56,7 @@ function commands(database: AuthorityDatabase, descriptors: { resolve(id: string
   const unused = (): never => { throw new Error("unrequested-crash-fixture-effect"); };
   const kernel = createCommandKernel({ authority: database, lifecycle, clock: systemClock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
     descriptors, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    writeResolution: { resolvePresent: unused, resolveAbsent: unused }, workerRuntime: { pool: { planPoolWorkerCount: unused,
+    writeResolution: { recheck: unused, resolveAbsent: unused }, workerRuntime: { pool: { planPoolWorkerCount: unused,
       spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
   return { lifecycle, kernel };
 }

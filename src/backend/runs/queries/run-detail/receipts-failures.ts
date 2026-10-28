@@ -1,3 +1,6 @@
+import { failureCodeFromTaskCode } from "../../../../models/failures/error-catalog.js";
+import { StartPlanRequestSchema } from "../../../../models/dashboard/start-plan.js";
+import { RerunRefusedError, previewRerunWarnings } from "../../start/rerun.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
 import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
 import { projectFailureDisplay } from "../../../../models/dashboard/failure-display.js";
@@ -21,7 +24,6 @@ import type { RunDetailQueryDeps, RunDetailTrustDeps } from "../run-detail-types
 import { requireTrustRun, assertTrustEvidenceIdentity } from "../../trust/run-reader.js";
 import { DiagnosticBundleCorruptError } from "../../commands/refusals.js";
 import { availableSections } from "./availability.js";
-import { descriptorRuntimeNodes } from "../../../../workflow-kit/workflow.js";
 
 export type ReceiptFailureSection = "receipt" | "failure";
 
@@ -91,18 +93,10 @@ export function buildReceiptFailureSection(
     traceId: failure.traceId, spanPath: source.spanPath,
     ...(failure.nodeId === undefined ? {} : { nodeId: failure.nodeId }),
   } };
-  const descriptor = deps.canonical?.descriptors.resolve(authority.envelope.workflow);
-  const failedNode = descriptor === undefined ? undefined : descriptorRuntimeNodes(descriptor).find(node => node.id === failure.nodeId);
-  const canCorrectDocument = authority.envelope.workflow === "separations" && failure.code === "DOCUMENT_UNAVAILABLE"
-    && failure.writeState === "not-attempted" && failure.taskId === "kuali/read-separation-document"
-    && failedNode?.kind === "task" && failedNode.uses.id === failure.taskId
-    && descriptor?.version === authority.envelope.descriptorVersion && descriptor.contractFingerprint === authority.envelope.contractFingerprint
-    && descriptor.surfaces.inputRun?.parser.rules.some(rule => rule.emit === "documentNumber"
-      && rule.when.kind === "pattern" && rule.when.pattern === "document-number");
   return RunDetailSectionResponseSchema.parse({
     section: "failure",
     payload: { state: "available", value: { ...native,
-      ...(canCorrectDocument ? { rerunInput: { field: "documentNumber", expectedVersion: authority.version } } : {}), ...failureDetailWire(
+      ...failureRecovery(deps, authority, failure), ...failureDetailWire(
       runId,
       failure,
       trust,
@@ -110,6 +104,33 @@ export function buildReceiptFailureSection(
       deps.captures,
     ) } },
   });
+}
+
+export function failureRecovery(deps: RunDetailQueryDeps, run: RunRecord, failure: FailureRecord): object {
+  const canonical = deps.canonical;
+  const descriptor = canonical?.descriptors.resolve(run.envelope.workflow);
+  const correction = descriptor?.failureCorrections?.find(entry => entry.nodeId === failure.nodeId && failureCodeFromTaskCode(entry.code) === failure.code);
+  if (canonical === undefined || descriptor === undefined || correction === undefined || failure.writeState !== "not-attempted"
+    || descriptor.contractFingerprint !== run.envelope.contractFingerprint || descriptor.version !== run.envelope.descriptorVersion) return {};
+  const source = { runId: run.envelope.runId, expectedVersion: run.version, intent: "rerun" as const,
+    selectedStepKeys: descriptor.timeline.filter(step => !run.envelope.stepOmissions?.some(omission => omission.step === step.key)).map(step => step.key),
+    failureCorrection: { failureId: failure.failureId, inputField: correction.inputField } };
+  // The canonical rerun owner excludes uncertain writes and incompatible source evidence.
+  try {
+    const warnings = canonical.database.withAuthorityReadSnapshot(() => previewRerunWarnings(canonical.database.authority, descriptor, source));
+    if (warnings.warnings.length > 0) return {};
+  } catch (error) {
+    if (error instanceof RerunRefusedError) return {};
+    throw error;
+  }
+  return { recovery: { correction, expectedVersion: run.version,
+    retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: run.version,
+      confirm: { title: "Check again", body: "Retry this run from its retained checkpoints.", confirmLabel: "Check again", tone: "neutral" } },
+    confirm: { title: correction.actionLabel, body: "Relay reads the entered value in the real system before continuing. Identity still requires operator approval.", confirmLabel: correction.actionLabel, tone: "neutral" },
+    request: StartPlanRequestSchema.parse({ workflowId: descriptor.id, rerunSource: source, submissions: [{}],
+      selectedStepKeys: source.selectedStepKeys, dryRun: run.envelope.dryRun, browserMode: run.envelope.browserMode ?? "headless",
+      captureBrowserScreenshots: run.envelope.captureBrowserScreenshots ?? false, priority: run.envelope.priority,
+      ...(run.envelope.requestedInstance === undefined ? {} : { requestedInstance: run.envelope.requestedInstance }) }) } };
 }
 
 function receiptAbsenceReason(authority: RunRecord, trust?: RunDetailTrustDeps): string {

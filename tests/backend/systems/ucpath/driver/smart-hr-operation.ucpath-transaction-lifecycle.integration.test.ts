@@ -513,6 +513,28 @@ describe("SS Smart HR transaction scan", () => {
     });
   });
 
+  it("reads only the requested transaction detail from the employee's exact search results", async () => {
+    const firstId = "T009000001", secondId = "T009000002";
+    const page = singleResultAutoDrillPage(firstId, 0, firstId, "row", "none", [firstId, secondId]);
+    const opened = vi.spyOn(page, "goto");
+    const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID, transactionId: secondId }, OBSERVED_AT);
+    assert.equal(scan.state, "read"); if (scan.state !== "read") throw new Error("read required");
+    assert.deepEqual(scan.rows.map(row => row.transactionId), [secondId]);
+    assert.equal(scan.scannedRowCount, 1);
+    assert.deepEqual(opened.mock.calls.map(([url]) => url).filter(url => url.includes("UC_TRANSACT_ID=")),
+      [opened.mock.calls.map(([url]) => url).find(url => url.endsWith(`UC_TRANSACT_ID=${secondId}`))]);
+  });
+
+  it("does not open another transaction detail when the requested ID is missing", async () => {
+    const firstId = "T009000001";
+    const page = singleResultAutoDrillPage(firstId);
+    const opened = vi.spyOn(page, "goto");
+    const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID, transactionId: "T999999999" }, OBSERVED_AT);
+    assert.equal(scan.state, "read"); if (scan.state !== "read") throw new Error("read required");
+    assert.deepEqual(scan.rows, []);
+    assert.equal(opened.mock.calls.some(([url]) => url.includes("UC_TRANSACT_ID=")), false);
+  });
+
   it("refuses a keyed result-row reread whose receipt is absent", async () => {
     const transactionId = "T009000001";
     const scan = await scanTerminationTransactionsOnPage(

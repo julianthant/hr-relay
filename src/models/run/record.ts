@@ -147,8 +147,8 @@ const LEGAL_RUN_TRANSITIONS: ReadonlyMap<RunState, readonly RunState[]> = new Ma
   // Every non-terminal state may also update in place; `terminal` deliberately has no
   // self-edge: a settled outcome is settled.
   ["queued", ["queued", "claimed", "terminal"]],
-  ["claimed", ["claimed", "validating", "queued", "terminal"]],
-  ["validating", ["validating", "running", "queued", "terminal"]],
+  ["claimed", ["claimed", "validating", "parked-write", "queued", "terminal"]],
+  ["validating", ["validating", "running", "parked-write", "queued", "terminal"]],
   ["running", ["running", "parked-gate", "parked-write", "queued", "terminal"]],
   // A gate or write resolution re-enqueues; the fresh claim reacquires sessions
   // (ref workflow-model ). A parked run holds no worker, so it can never resume in place.

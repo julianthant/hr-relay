@@ -166,7 +166,7 @@ export function createCommandKernelTestWorld() {
       descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined },
       resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT });
     return {
-      resolvePresent: (repositories, context) => { calls.push(`${context.command.type}:${context.run.envelope.runId}`); return executor.resolvePresent(repositories, context); },
+      recheck: (repositories, context) => { calls.push(`${context.command.type}:${context.run.envelope.runId}`); return executor.recheck(repositories, context); },
       resolveAbsent: (repositories, context) => { calls.push(`${context.command.type}:${context.run.envelope.runId}`); return executor.resolveAbsent(repositories, context); },
     };
   }

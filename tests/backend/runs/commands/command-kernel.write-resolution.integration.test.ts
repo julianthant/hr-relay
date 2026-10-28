@@ -55,7 +55,7 @@ describe("write resolution", () => {
         writeIntentId: parked.intent.writeIntentId, writeAttemptId: parked.intent.currentAttemptId, bindingProofDigest: parked.intent.bindingProofDigest,
         intentGeneration: 1,
       },
-      payload: { occurrenceKeyDigest: parked.intent.idempotencyKeyDigest, evidenceNote: "Checked UCPath directly; the transaction is absent" },
+      payload: { occurrenceKeyDigest: parked.intent.idempotencyKeyDigest },
     }));
     assert.equal(result.state, "applied");
     assert.deepEqual(harness.writeCalls, [`resolve-write-absent:${parked.runId}`]);
@@ -72,7 +72,7 @@ describe("write resolution", () => {
         writeIntentId: parked.intent.writeIntentId, writeAttemptId: parked.intent.currentAttemptId, bindingProofDigest: parked.intent.bindingProofDigest,
         intentGeneration: 1,
       },
-      payload: { occurrenceKeyDigest: parked.intent.idempotencyKeyDigest, evidenceNote: "stale browser action" },
+      payload: { occurrenceKeyDigest: parked.intent.idempotencyKeyDigest },
     }));
     assert.equal(stale.state, "conflict");
 
@@ -83,7 +83,7 @@ describe("write resolution", () => {
         writeIntentId: parked.intent.writeIntentId, writeAttemptId: parked.intent.currentAttemptId, bindingProofDigest: parked.intent.bindingProofDigest,
         intentGeneration: 4,
       },
-      payload: { occurrenceKeyDigest: parked.intent.idempotencyKeyDigest, evidenceNote: "stale generation" },
+      payload: { occurrenceKeyDigest: parked.intent.idempotencyKeyDigest },
     }));
     assert.equal(staleGeneration.state, "rejected");
     if (staleGeneration.state === "rejected") assert.equal(staleGeneration.code, "invalid-state");

@@ -44,8 +44,8 @@ export function decisionAnswerValid(action: LogDecisionAction, answer: LogDecisi
 export function decisionActionResult(action: LogDecisionAction, answer: LogDecisionAnswer): LogDecisionAction["result"] {
   if (!decisionAnswerValid(action, answer)) throw new Error("log-decision-answer-incomplete");
   if (action.input?.kind === "verification") return answer.outcome === "present"
-    ? { title: "Termination confirmed", message: `Transaction ${answer.transaction?.trim()} is present. Continued to Finalize Kuali document.`, tone: "positive" as const, continues: true }
-    : { title: "Termination not submitted", message: "No matching termination was found. Continued to retry the termination.", tone: "info", continues: true };
+    ? { title: "Checking transaction", message: `Relay is reading ${answer.transaction?.trim()} in UCPath.`, tone: "info", continues: true }
+    : { title: "Marked as not submitted", message: "Relay submits it again.", tone: "info", continues: true };
   if (action.input?.kind === "candidate") return { ...action.result, message: `Selected ${answer.candidate}. ${action.result.message}` };
   if (action.input?.kind === "date") return { ...action.result, message: `Last day worked: ${answer.date}. ${action.result.message}` };
   if (action.input?.kind === "text") return { ...action.result, message: `${action.input.label}: ${answer.text?.trim()}. ${action.result.message}` };

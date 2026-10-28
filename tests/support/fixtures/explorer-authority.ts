@@ -54,7 +54,7 @@ export async function explorerAuthorityFixture(owned?: Readonly<{
       descriptors: { resolve: id => query.modules.find(module => module.descriptor.id === id)?.descriptor },
       configIdentity: UNSTORED_CONFIG_IDENTITY,
       intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-      writeResolution: { resolvePresent: () => { throw new Error("Explorer must not resolve a write"); }, resolveAbsent: () => { throw new Error("Explorer must not resolve a write"); } },
+      writeResolution: { recheck: () => { throw new Error("Explorer must not resolve a write"); }, resolveAbsent: () => { throw new Error("Explorer must not resolve a write"); } },
       workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker"); }, spawnPoolWorker: () => { throw new Error("unexpected worker"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker"); }, stopPoolWorker: () => { throw new Error("unexpected worker"); }, pausePoolWorker: () => { throw new Error("unexpected worker"); }, resumePoolWorker: () => { throw new Error("unexpected worker"); } } },
       explorerEdits: { apply: (input, repositories: AuthorityRepositories) => {
         assert.equal(repositories.explorerOverrides, database.authority.explorerOverrides);

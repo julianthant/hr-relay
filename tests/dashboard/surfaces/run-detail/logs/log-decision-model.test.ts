@@ -22,7 +22,9 @@ describe("approved log decisions", () => {
     assert.equal(decisionAnswerValid(action, { outcome: "present", transaction: " " }), false);
     assert.equal(decisionAnswerValid(action, { outcome: "absent" }), true);
     assert.throws(() => decisionActionResult(action, { outcome: "present" }), /answer-incomplete/u);
-    assert.match(decisionActionResult(action, { outcome: "present", transaction: " SIM-042 " }).message, /Transaction SIM-042 is present/u);
+    assert.match(decisionActionResult(action, { outcome: "present", transaction: " SIM-042 " }).message, /^Relay is reading SIM-042 in UCPath\.$/u);
+    assert.deepEqual(decisionActionResult(action, { outcome: "absent" }), { title: "Marked as not submitted", message: "Relay submits it again.", tone: "info", continues: true });
+    assert.equal(decisionActionResult(action, { outcome: "present", transaction: "T123456" }).continues, true);
     const date = example("review-fields").decision.actions?.[0]; assert.ok(date);
     for (const value of ["", "9/25/2026", "2026-02-30", "2026-99-99"]) assert.equal(decisionAnswerValid(date, { date: value }), false);
     assert.equal(decisionAnswerValid(date, { date: "2026-09-25" }), true);

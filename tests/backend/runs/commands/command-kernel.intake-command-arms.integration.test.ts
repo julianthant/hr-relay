@@ -153,7 +153,7 @@ async function harness(sessionOverrides: Record<string, unknown> = {}, preReserv
       },
     },
     writeResolution: {
-      resolvePresent: () => { throw new Error("unused"); },
+      recheck: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
     workerRuntime: { pool: {

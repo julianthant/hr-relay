@@ -2,6 +2,10 @@ import { z } from "zod";
 import { ErrorCodeSchema } from "../../rules/identity/ids.js";
 import { BoundarySourceSchema } from "./boundary-failure.js";
 
+export function failureCodeFromTaskCode(code: string): string {
+  return ErrorCodeSchema.parse(code.toUpperCase().replaceAll("-", "_"));
+}
+
 const EmptyParametersSchema = z.strictObject({});
 
 function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, parameters: Parameters) {
