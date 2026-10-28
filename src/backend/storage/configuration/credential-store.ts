@@ -1186,10 +1186,13 @@ export function observeCredentialKeyStageIntent(witness: CommittedCredentialKeyS
   if (issued === undefined) throw new Error("credential-key-stage-witness-unissued");
   issued.afterIntent?.();
 }
-export function verifyCommittedCredentialKeyStage(witness: CommittedCredentialKeyStage, stateRoot: string, scope: ProfilePublicationRead): CredentialKeyStagePublication {
+export function verifyCommittedCredentialKeyStage(witness: CommittedCredentialKeyStage, stateRoot: string, scope: ProfilePublicationRead,
+  bindCapture: (capture: CredentialKeyStagePublication) => void): CredentialKeyStagePublication {
   const issued = committedKeyStages.get(witness);
   if (issued === undefined) throw new Error("credential-key-stage-witness-unissued");
   scope.assertOperation(stateRoot, issued.capture.operation.operationId);
+  assertCredentialKeyStagePublication(stateRoot, issued.capture);
+  bindCapture(issued.capture);
   issued.revalidate(scope);
   assertCredentialKeyStagePublication(stateRoot, issued.capture);
   return issued.capture;

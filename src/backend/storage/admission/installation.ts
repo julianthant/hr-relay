@@ -597,6 +597,7 @@ function withInstallationControl<T>(control: string, callback: (held: PrivateFil
 }
 class ActiveProfilePublicationRead {
   #active = true;
+  #keyStage: CredentialKeyStagePublication | undefined;
   readonly #control: string;
   readonly #workspace: string;
   readonly #locator: RuntimeLocator;
@@ -615,11 +616,18 @@ class ActiveProfilePublicationRead {
     this.assertHeld();
     if (this.#locator.stateRoot !== stateRoot || this.#operationId !== operationId) fail("credential-key-stage-publication-scope-mismatch");
   }
+  verifyKeyStage(witness: CommittedCredentialKeyStage): CredentialKeyStagePublication {
+    return verifyCommittedCredentialKeyStage(witness, this.#locator.stateRoot, this, capture => {
+      if (capture.key.binding.installationId !== this.#locator.installationId) fail("credential-key-stage-publication-scope-mismatch");
+      if (this.#keyStage !== undefined && canonicalJsonStringify(this.#keyStage) !== canonicalJsonStringify(capture)) fail("credential-key-stage-publication-scope-mismatch");
+      this.#keyStage = capture;
+    });
+  }
   read(): ProfileRegistryDocument {
     this.assertHeld();
     const current = readLocator(this.#control, this.#workspace);
     if (!equalLocator(current, this.#locator)) fail("profile-machine-authority-changed");
-    return readMachineRegistry(this.#control, this.#locator, false, undefined, undefined, this.#operationId);
+    return readMachineRegistry(this.#control, this.#locator, false, undefined, this.#keyStage, this.#operationId);
   }
   expire(): void { this.#active = false; }
 }
@@ -1278,6 +1286,8 @@ function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPu
       assertErasureMembership(document, intent.prior.erasures);
       for (const row of intent.prior.erasures) assertCredentialErasureHeadFiles(erasurePath(locator, row.profileId), row.head);
       if (stagedPublication === undefined) return document;
+      if (!recoverPublication && publicationOperationId === id
+        && canonicalJsonStringify(stagedPublication) === canonicalJsonStringify(capture)) return document;
       if (!recoverPublication || canonicalJsonStringify(stagedPublication) !== canonicalJsonStringify(capture)) fail("credential-key-stage-fresh-owner-required");
       if (priorState) atomicJson(operationPath, capture.operation);
       atomicJson(witnessPath, profileRegistryWitness(locator.installationId, path, document, intent.erasures, intent.duo));
@@ -1921,7 +1931,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         assertHeld();
         const current = readLocator(control, workspace);
         if (!equalLocator(current, locator)) fail("profile-machine-authority-changed");
-        const keyStage = keyStageWitness === undefined ? undefined : verifyCommittedCredentialKeyStage(keyStageWitness, locator.stateRoot, scope);
+        const keyStage = keyStageWitness === undefined ? undefined : scope.verifyKeyStage(keyStageWitness);
         if (keyStage !== undefined && (typeof input === "string" || canonicalJsonStringify(input) !== canonicalJsonStringify(keyStage.operation))) fail("credential-key-stage-operation-mismatch");
         const priorPending = lstatMaybe(join(control, "profile-publication.json")) ? readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema) : undefined;
         const resumedKeyStage = keyStage !== undefined && priorPending?.kind === "profile" && priorPending.keyStage !== undefined;
@@ -1966,7 +1976,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           ...(keyStage === undefined ? {} : { keyStage }), erasures: prior.erasures, duo: prior.duo });
         if (keyStageWitness !== undefined) {
           observeCredentialKeyStageIntent(keyStageWitness);
-          verifyCommittedCredentialKeyStage(keyStageWitness, locator.stateRoot, scope);
+          scope.verifyKeyStage(keyStageWitness);
         }
         const directory = join(locator.stateRoot, "machine", "operations");
         if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); syncDir(dirname(directory)); }
