@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
@@ -6,6 +7,7 @@ import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { acquireRuntimeRestoreAdmission, assertWorkerProcessRecoveryRuntimeStopped, observeProcessIdentity,
   observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity, readProcessCustodyFile, processCustodyDigest,
   WorkerProcessLockFileSchema, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
+import { readPrivateFile } from "../configuration/credential-safe-file.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
@@ -41,8 +43,12 @@ async function capture(workspace: string, clock: Clock) {
   if (Object.values(locks).some(lock => lock.state !== "stopped")) throw new Error("queued-run-cancellation-runtime-active");
   const files = ["", "-wal", "-shm", "-journal"].map(suffix => {
     const filePath = `${path}${suffix}`;
-    return lstatSync(filePath, { throwIfNoEntry: false }) === undefined ? { path: filePath, absent: true }
-      : readProcessCustodyFile(filePath, 512 * 1024 * 1024).witness;
+    const file = readPrivateFile(filePath, { label: "authority database", maxBytes: 512 * 1024 * 1024 });
+    if (file === undefined) {
+      if (suffix === "") throw new Error("queued-run-cancellation-source-missing");
+      return { path: filePath, absent: true };
+    }
+    return { path: filePath, ...file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
   });
   const inventory = await AuthorityDatabase.readFlatQueuedRunCancellation(path);
   const witnesses = [...installation.witnesses, ...workers.map(worker => worker.file), ...singletonClaims.map(claim => claim.file), ...files];

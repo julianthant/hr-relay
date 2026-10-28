@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, symlinkSync, readFileSync, readdirSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, statSync, symlinkSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, it, vi } from "vitest";
@@ -179,5 +179,26 @@ it("cancels before recovering a dead worker record, preserving the original proc
     const recovery = runOfflineWorkerProcessRecovery(f.workspace, ["--acquisition", acquisition, "--plan"]);
     assert.equal(runOfflineWorkerProcessRecovery(f.workspace, ["--acquisition", acquisition, "--capture", recovery.report.captureDigest, "--apply"]).report.state, "recovered");
     assert.deepEqual(readFileSync(path), original);
+  } finally { f.close(); }
+});
+
+it("plans and applies a safe 0644 native6 SQLite file without changing its mode", async () => {
+  const f = fixture();
+  try {
+    chmodSync(f.databasePath, 0o644);
+    const before = readFileSync(f.databasePath), protectedBytes = readFileSync(f.protectedPath);
+    const plan = await runOfflineQueuedRunCancellation(f.workspace, ["--plan", "--json"]);
+    assert.deepEqual(readFileSync(f.databasePath), before);
+    assert.equal(statSync(f.databasePath).mode & 0o777, 0o644);
+    assert.equal((await runOfflineQueuedRunCancellation(f.workspace, ["--capture", plan.report.captureDigest, "--apply", "--json"])).report.state, "cancelled");
+    assert.equal(statSync(f.databasePath).mode & 0o777, 0o644);
+    assert.deepEqual(readFileSync(f.protectedPath), protectedBytes);
+    const raw = new DatabaseSync(f.databasePath, { readOnly: true });
+    try {
+      inspectNativeAuthority(raw, 6);
+      const run = runRecordFromRow(raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId));
+      assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled");
+      assert.equal(run.lifecycle.errorSummary, "cancelled offline: stale queued run");
+    } finally { raw.close(); }
   } finally { f.close(); }
 });
