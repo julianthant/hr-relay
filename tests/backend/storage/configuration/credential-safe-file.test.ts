@@ -83,6 +83,41 @@ it("retains distinct synchronous locks and expires the exact held witness", () =
   } finally { fs.rmSync(root, { recursive: true }); }
 });
 
+it("refuses an exact-byte replacement before entering a private mutex", () => {
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-lock-identity-"));
+  const path = join(root, ".installation-mutation.lock"), original = join(root, "retained-original");
+  const open = fs.openSync, close = fs.closeSync;
+  let descriptor: number | undefined, replaced = false, entered = 0;
+  try {
+    fs.chmodSync(root, 0o700);
+    vi.spyOn(fs, "openSync").mockImplementation((target, flags, mode) => {
+      const fd = open(target, flags, mode);
+      if (target === path && typeof flags === "number" && (flags & fs.constants.O_EXCL) !== 0) descriptor = fd;
+      return fd;
+    });
+    vi.spyOn(fs, "closeSync").mockImplementation(fd => {
+      close(fd);
+      if (fd === descriptor && !replaced) {
+        replaced = true;
+        fs.renameSync(path, original);
+        fs.writeFileSync(path, fs.readFileSync(original), { mode: 0o600, flag: "wx" });
+      }
+    });
+    syncBuiltinESMExports();
+    assert.throws(() => withPrivateFileLock(root, ".installation-mutation.lock", () => { entered++; }), error => {
+      assert.ok(error instanceof AggregateError);
+      const primary: unknown = error.errors[0]; assert.ok(primary instanceof Error);
+      assert.match(String(primary.cause), /identity changed after creation/u);
+      assert.match(String(error.errors[1]), /changed during cleanup/u);
+      return true;
+    });
+    assert.equal(replaced, true); assert.equal(entered, 0);
+    assert.deepEqual(fs.readFileSync(path), fs.readFileSync(original));
+    assert.notEqual(fs.statSync(path).ino, fs.statSync(original).ino);
+    assert.equal(fs.statSync(path).mode & 0o777, 0o600);
+  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); fs.rmSync(root, { recursive: true }); }
+});
+
 it("retains primary failure and refuses to remove a replaced private mutex", () => {
   const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-lock-"));
   const path = join(root, ".installation-mutation.lock"), primary = new Error("primary operation failure");

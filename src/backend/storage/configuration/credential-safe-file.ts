@@ -257,6 +257,10 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
     if (!verify()) {
       throw new Error("directory-integrity: credential lock differs after creation");
     }
+    const published = lstatSync(path);
+    if (published.dev !== createdIdentity.device || published.ino !== createdIdentity.inode) {
+      throw new Error("directory-integrity: credential lock identity changed after creation");
+    }
   } catch (error) {
     failWithCleanup(error instanceof Error
       ? new Error("credential store lock could not be published exactly", { cause: error })
