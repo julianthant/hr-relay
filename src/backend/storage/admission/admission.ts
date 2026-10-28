@@ -1201,6 +1201,7 @@ export class RuntimeAdmission {
       catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
         { descriptor: { descriptor, identity: descriptorIdentity } }); }
       if (primary !== undefined) throw primary.error;
+      this.assertLive();
     };
     verifyBytes();
     if (this.#scope === "stopped-control-inventory") return new RuntimeAdmission(issuanceToken,
