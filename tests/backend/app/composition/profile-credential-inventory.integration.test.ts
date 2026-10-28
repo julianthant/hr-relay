@@ -366,7 +366,7 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
     assert.equal(observed.unknownFormats.includes(path), content === "malformed");
   } catch(error){primary={error};}
   try{launch.mockRestore();worker?.processLock.release();settlement?.admission.release();await f.cleanup();}
-  catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"browser-json-fixture-cleanup-failed");}
+  catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"browser-json-fixture-cleanup-failed",{cause:error});}
   if(primary!==undefined)throw primary.error;
 });
 
@@ -495,6 +495,6 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
     }
   }catch(error){primary={error};}
   try{stopped?.release();restore?.release();settlement?.admission.release();await f.cleanup();}
-  catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"verification-cleanup-fixture-close-failed");}
+  catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"verification-cleanup-fixture-close-failed",{cause:error});}
   if(primary!==undefined)throw primary.error;
 },30000);
