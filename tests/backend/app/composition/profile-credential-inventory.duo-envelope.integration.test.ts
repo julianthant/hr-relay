@@ -111,6 +111,7 @@ it("validates the same key-stage publication before and after intent under one h
 
 it("refuses an unbound physical Duo document before creating a key stage or publication intent", async () => {
   const f = await createBoundProfileFixture({ pending: "storage" });
+  let primary: { error: unknown } | undefined;
   try {
     AuthorityDatabase.initializeProfile(f.admission);
     const operationDirectory = join(f.machine.stateRoot, "machine", "operations");
@@ -121,7 +122,6 @@ it("refuses an unbound physical Duo document before creating a key stage or publ
     const duoDirectory = join(f.machine.stateRoot, "machine", "duo-credentials");
     mkdirSync(duoDirectory, { recursive: true, mode: 0o700 });
     const duoPath = join(duoDirectory, `${operation.profileId}.json`), duoBytes = Buffer.from("{unbound-duo");
-    writeFileSync(duoPath, duoBytes, { mode: 0o600, flag: "wx" });
     const keyDirectory = join(f.machine.stateRoot, "machine", "credential-keys");
     assert.equal(nativeFs.existsSync(keyDirectory), false);
     const keys = FakeKeyringEntry.snapshot();
@@ -132,6 +132,7 @@ it("refuses an unbound physical Duo document before creating a key stage or publ
         clock: systemClock, hostFacts: { primaryDisplay: null } }),
       hooks: { beforeInitialKey: () => { keyStageEffects++; } } });
 
+    writeFileSync(duoPath, duoBytes, { mode: 0o600, flag: "wx" });
     assert.throws(() => store.migrateHistory({ operation }));
 
     assert.equal(keyStageEffects, 0);
@@ -141,5 +142,11 @@ it("refuses an unbound physical Duo document before creating a key stage or publ
     assert.deepEqual(readFileSync(operationPath), operationBytes);
     assert.deepEqual(readFileSync(controlPath), controlBytes);
     assert.deepEqual(FakeKeyringEntry.snapshot(), keys);
-  } finally { await f.close(); }
+  } catch (error) { primary = { error }; }
+  try { await f.close(); }
+  catch (error) {
+    if (primary !== undefined) throw new AggregateError([primary.error, error], "unbound Duo refusal and owned cleanup failed", { cause: primary.error });
+    throw error;
+  }
+  if (primary !== undefined) throw primary.error;
 });
