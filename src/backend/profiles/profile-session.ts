@@ -816,7 +816,7 @@ export function createProfileSession(input: {
           verifiers.recordFailure(row.profileId, nowMs);
           return refusal("PROFILE_SIGN_IN_REFUSED");
         }
-        const finishing = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId);
+        const finishing = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId && entry.onboarding !== undefined);
         if (finishing.length > 1) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
         for (const operation of finishing) {
           assertPublishedFinish(operation, row.registration);
