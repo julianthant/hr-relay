@@ -1,3 +1,6 @@
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { once } from "node:events";
+import { z } from "zod";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import nativeFirstBootFs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -49,7 +52,7 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
     if (active.state !== "active") throw new Error("actual profile sign-in required");
     assert.equal(existsSync(join(profile.machine.stateRoot, "state.db")), false);
     assert.equal(existsSync(authorityPath), true);
-    dashboard = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token },
+    dashboard = await composeDashboardRuntime({ lifetimeLock: profile.lifetime, admission: profile.machine, profile: { runtime, token: active.token },
       isolation: rebuildRuntimeIsolation, repoRoot: workspace, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0,
       preflightRunnerFactory: healthyRuntimePreflightRunners });
     const response = await fetch(`http://127.0.0.1:${String(dashboard.port)}/api/v1/settings/storage-relocation`);
@@ -59,7 +62,7 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
     await dashboard.stop(); dashboard = undefined; dashboardStopped = true;
     const credentialPath = join(profile.stateRoot, "credentials", "protected.json"), credentialBytes = readFileSync(credentialPath);
     rmSync(authorityPath);
-    const fresh = acquireEntrypointAdmission(workspace, "exclusive"); restarted = fresh;
+    const fresh = acquireEntrypointAdmission(workspace, "exclusive", profile.lifetime); restarted = fresh;
     assert.throws(() => {
       const claim = createProfileRegistry(fresh).storageClaim(active.profileId);
       fresh.admitProfile(claim);
@@ -80,10 +83,12 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
 
 const roots: string[] = [];
 const children: ChildProcess[] = [];
+const rootClosures: (() => Promise<void>)[] = [];
 const _afterEachFixture0 = async () => {
   for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) {
     const exited = new Promise<void>(resolve => child.once("exit", () => resolve())); child.kill("SIGKILL"); await exited;
   }
+  for (const close of rootClosures.splice(0)) await close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 it("keeps the owned restoring journal after process death and absent staging until explicit exact stopped settlement", async () => {
@@ -91,7 +96,8 @@ try {
 
   const profile = await createBoundProfileFixture();
   const root = profile.workspace, profileId = profile.admission.profileBinding.profileId; roots.push(root);
-  profile.admission.release(); profile.machine.release();
+  const port = profile.lifetime.port;
+  await profile.closeController();
   const url = (path: string) => pathToFileURL(join(process.cwd(), path)).href;
   const code = `
     import { readFileSync, renameSync, copyFileSync } from "node:fs";
@@ -104,7 +110,9 @@ try {
     const { RecoveryStopProofStore } = await import(${JSON.stringify(url("src/backend/storage/sqlite/recovery-stop-proof.ts"))});
     const { createProfileRegistry } = await import(${JSON.stringify(url("src/backend/profiles/registry.ts"))});
     const { createCredentialStore } = await import(${JSON.stringify(url("src/backend/storage/configuration/credential-store.ts"))});
-    const root = process.argv[1], machine = acquireEntrypointAdmission(root, "exclusive");
+    const { RuntimeLifetimeLock } = await import(${JSON.stringify(url("src/backend/storage/admission/lifetime-lock.ts"))});
+    const lifetime = await RuntimeLifetimeLock.acquire(Number(process.argv[2]));
+    const root = process.argv[1], machine = acquireEntrypointAdmission(root, "exclusive", lifetime);
     const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(${JSON.stringify(profileId)})), state = admission.stateRoot;
     const credentials = createCredentialStore({ admission, stateRoot: state, erasureJournalAdmission: machine,
       erasureJournalPath: join(machine.stateRoot, "machine", "erasures", admission.profileBinding.profileId + ".json") });
@@ -126,26 +134,34 @@ try {
       } }, undefined, credentials);
     await service.restore({ manifestPath, stoppedSystemProof });
   `;
-  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, root],
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, root, String(port)],
     { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"] }); children.push(child);
   const message = await new Promise<{ state: string; workspace: string; profileId: string; operationId: string; stagedPath: string; manifestPath: string }>((resolve, reject) => {
     let output = ""; child.stderr?.on("data", value => { output += String(value); });
-    child.once("message", value => resolve(value as { state: string; workspace: string; profileId: string; operationId: string; stagedPath: string; manifestPath: string }));
+    child.once("message", value => {
+      try { resolve(z.strictObject({ state: z.literal("barrier-held"), workspace: z.string().min(1), profileId: z.uuid(),
+        operationId: z.uuid(), stagedPath: z.string().min(1), manifestPath: z.string().min(1) }).parse(value)); }
+      catch (error) { reject(error instanceof Error ? error : new Error("restore child receipt validation failed", { cause: error })); }
+    });
     child.once("exit", code => reject(new Error(`restore child exited ${String(code)}: ${output}`)));
   });
   assert.equal(message.state, "barrier-held");
   const workspace = message.workspace; roots.push(workspace);
   const journalPath = join(workspace, ".tracker", "control", "journal.json"), before = readFileSync(journalPath);
-  const exited = new Promise<void>(resolve => child.once("exit", () => resolve())); child.kill("SIGKILL"); await exited;
-  assert.throws(() => acquireEntrypointAdmission(workspace, "shared"), /unfinished restoring/u);
+  const closed = once(child, "close"); assert.equal(child.kill("SIGKILL"), true);
+  assert.deepEqual(await closed, [null, "SIGKILL"]);
+  const lifetime = await RuntimeLifetimeLock.acquire(port);
+  const releaseRoot = () => lifetime.close();
+  rootClosures.push(releaseRoot);
+  assert.throws(() => acquireEntrypointAdmission(workspace, "shared", lifetime), /unfinished restoring/u);
   assert.deepEqual(readFileSync(journalPath), before);
   rmSync(message.stagedPath);
-  assert.throws(() => acquireEntrypointAdmission(workspace, "shared"), /unfinished restoring/u);
+  assert.throws(() => acquireEntrypointAdmission(workspace, "shared", lifetime), /unfinished restoring/u);
   const settled = await runOfflineAuthorityRestoreRecovery(workspace, ["--operation", message.operationId,
-    "--from", message.manifestPath, "--outcome", "replaced", "--json"]);
+    "--from", message.manifestPath, "--outcome", "replaced", "--json"], lifetime);
   assert.deepEqual(settled.report, { state: "settled", operationId: message.operationId, outcome: "replaced" });
   assert.equal(existsSync(journalPath), false);
-  const admission = acquireEntrypointAdmission(workspace, "shared");
+  const admission = acquireEntrypointAdmission(workspace, "shared", lifetime);
   const childAdmission = admission.admitProfile(createProfileRegistry(admission).storageClaim(message.profileId));
   try { const db = AuthorityDatabase.open(childAdmission, { path: join(childAdmission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "native-crash-reopen" });
     try { assert.equal(db.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { db.close(); }
@@ -216,21 +232,22 @@ const _afterEachFixture0 = async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 
-function initializedRoot(): string {
+async function initializedRoot() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "runtime-admission-refusal-")));
   roots.push(root);
-  acquireEntrypointAdmission(root, "exclusive").release();
-  return root;
+  const lifetime = await runtimeLifetimeLock();
+  acquireEntrypointAdmission(root, "exclusive", lifetime).release();
+  return { root, lifetime };
 }
 
 it("propagates installation lstat access failure instead of treating the path as absent", async () => {
 try {
 
-  const root = initializedRoot();
+  const { root, lifetime } = await initializedRoot();
   const failure = Object.assign(new Error("injected lstat access failure"), { code: "EACCES" });
   vi.spyOn(nativeFirstBootFs, "lstatSync").mockImplementationOnce(() => { throw failure; });
   syncBuiltinESMExports();
-  assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === failure);
+  assert.throws(() => acquireEntrypointAdmission(root, "shared", lifetime), error => error === failure);
 
 } finally {
 await _afterEachFixture0();
@@ -238,9 +255,10 @@ await _afterEachFixture0();
 });
 }
 
-it.each(["malformed", "foreign"] as const)("refuses %s machine registry without publishing control entries", kind => {
+it.each(["malformed", "foreign"] as const)("refuses %s machine registry without publishing control entries", async kind => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "machine-registry-admission-")));
-  const machine = acquireEntrypointAdmission(workspace, "exclusive");
+  const lifetime = await runtimeLifetimeLock();
+  const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
   const registryPath = join(machine.stateRoot, "machine", "profiles.json");
   machine.release();
   const control = join(workspace, ".tracker/control");
@@ -248,7 +266,7 @@ it.each(["malformed", "foreign"] as const)("refuses %s machine registry without 
     const document = JSON.parse(readFileSync(registryPath, "utf8")) as Record<string, unknown>;
     writeFileSync(registryPath, kind === "malformed" ? "{" : JSON.stringify({ ...document, sessionGeneration: 7 }), { mode: 0o600 });
     const before = readFileSync(registryPath), beforeEntries = readdirSync_m1(control);
-    assert.throws(() => acquireEntrypointAdmission(workspace, "shared"));
+    assert.throws(() => acquireEntrypointAdmission(workspace, "shared", lifetime));
     assert.deepEqual(readdirSync_m1(control), beforeEntries);
     assert.equal(readFileSync(registryPath).equals(before), true);
     assert.equal(existsSync(join(control, "admission-mutex")), false);
@@ -257,14 +275,15 @@ it.each(["malformed", "foreign"] as const)("refuses %s machine registry without 
 
 const retainedFirstBootLockOwners = new Set<object>();
 
-it("fresh machine admission creates its private fixed lock root before profile composition", () => {
+it("fresh machine admission creates its private fixed lock root before profile composition", async () => {
   const workspace = nativeFirstBootFs.mkdtempSync(join(nativeFirstBootFs.realpathSync(tmpdir()), "relay-first-boot-locks-"));
   const held: { workspace: string; admission?: ReturnType<typeof acquireEntrypointAdmission>; primary?: { error: unknown } } = { workspace };
   retainedFirstBootLockOwners.add(held);
   try {
     const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
     assert.equal(nativeFirstBootFs.existsSync(processLockRoot), false);
-    const machine = acquireEntrypointAdmission(workspace, "exclusive"); held.admission = machine;
+    const lifetime = await runtimeLifetimeLock();
+    const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime); held.admission = machine;
     machine.assertFixedProcessLockRoot(workspace, processLockRoot);
     const lock = nativeFirstBootFs.lstatSync(processLockRoot);
     assert.ok(lock.isDirectory() && !lock.isSymbolicLink());
@@ -275,7 +294,7 @@ it("fresh machine admission creates its private fixed lock root before profile c
     const context = machine.readInstallationContext(); assert.ok(context);
     const registry = machine.readProfileRegistry(); assert.deepEqual(registry.profiles, []);
     machine.release();
-    const reopened = acquireEntrypointAdmission(workspace, "exclusive"); held.admission = reopened;
+    const reopened = acquireEntrypointAdmission(workspace, "exclusive", lifetime); held.admission = reopened;
     reopened.assertFixedProcessLockRoot(workspace, processLockRoot);
     assert.equal(reopened.readInstallationContext()?.locator.installationId, context.locator.installationId);
     assert.deepEqual(reopened.readProfileRegistry(), registry);
@@ -287,12 +306,13 @@ it("fresh machine admission creates its private fixed lock root before profile c
   } catch (error) { held.primary = { error }; throw retainFirstBootSourceClosure([error], { admission: held }); }
 });
 
-it.each(["missing", "permissions"] as const)("ordinary admission refuses an existing %s lock root without repair", kind => {
+it.each(["missing", "permissions"] as const)("ordinary admission refuses an existing %s lock root without repair", async kind => {
   const workspace = nativeFirstBootFs.mkdtempSync(join(nativeFirstBootFs.realpathSync(tmpdir()), "relay-existing-locks-"));
   const held: { workspace: string; admission?: ReturnType<typeof acquireEntrypointAdmission>; primary?: { error: unknown } } = { workspace };
   retainedFirstBootLockOwners.add(held);
   try {
-    const machine = acquireEntrypointAdmission(workspace, "exclusive"); held.admission = machine;
+    const lifetime = await runtimeLifetimeLock();
+    const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime); held.admission = machine;
     const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
     machine.assertFixedProcessLockRoot(workspace, processLockRoot);
     const context = machine.readInstallationContext(); assert.ok(context);
@@ -301,7 +321,7 @@ it.each(["missing", "permissions"] as const)("ordinary admission refuses an exis
     if (kind === "missing") nativeFirstBootFs.rmdirSync(processLockRoot);
     else nativeFirstBootFs.chmodSync(processLockRoot, 0o755);
     const before = kind === "missing" ? undefined : nativeFirstBootFs.lstatSync(processLockRoot);
-    const reopened = acquireEntrypointAdmission(workspace, "exclusive"); held.admission = reopened;
+    const reopened = acquireEntrypointAdmission(workspace, "exclusive", lifetime); held.admission = reopened;
     reopened.assertLive();
     assert.equal(reopened.readInstallationContext()?.locator.installationId, context.locator.installationId);
     assert.throws(() => reopened.assertFixedProcessLockRoot(workspace, processLockRoot), (error: unknown) => error instanceof Error

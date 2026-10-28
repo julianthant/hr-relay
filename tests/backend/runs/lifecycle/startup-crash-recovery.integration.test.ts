@@ -12,8 +12,7 @@ const world = createRunRecordServiceTestWorld();
 afterEach(async () => { await world.cleanup(); vi.restoreAllMocks(); });
 
 it("cancels only previous-local-day pristine queues, records notifications, and repeats without effects", async () => {
-  const f = await world.fixture(), lock = await RuntimeLifetimeLock.acquire(0);
-  world.cleanups.push(() => lock.close());
+  const f = await world.fixture(), lock = f.lifetime;
   const reconcile = () => reconcileStartupCrash({ ...f, lifecycle: f.service, lock });
   const old = world.created(f.service, f.request);
   f.clock.advanceWall(24 * 60 * 60 * 1000);
@@ -76,9 +75,27 @@ it("refuses other unfinished write states and rolls back all cleanup", async () 
 
 it("refuses a closed controller without consuming a run", async () => {
   const f = await world.interruptedFixture();
-  await f.lock.close();
-  assert.throws(() => reconcileStartupCrash({ ...f, lifecycle: f.service }), StartupCrashRecoveryRefusedError);
+  const closed = await RuntimeLifetimeLock.acquire(0);
+  await closed.close();
+  assert.throws(() => reconcileStartupCrash({ ...f, lock: closed, lifecycle: f.service }), StartupCrashRecoveryRefusedError);
   assert.deepEqual(f.database.authority.runs.get(f.run.envelope.runId), f.run);
+});
+
+it("refuses an unrelated held controller before changing any interrupted run or resource", async () => {
+  const f = await world.interruptedFixture(), unrelated = await RuntimeLifetimeLock.acquire(0);
+  const before = f.database.readProfileResourceCustody(), generation = f.database.getMeta().authorityGeneration;
+  try {
+    assert.throws(() => reconcileStartupCrash({ ...f, lock: unrelated, lifecycle: f.service }), error => {
+      assert.ok(error instanceof StartupCrashRecoveryRefusedError);
+      assert.ok(error.cause instanceof Error);
+      assert.equal(error.cause.message, "crash-recovery-controller-mismatch");
+      return true;
+    });
+    assert.deepEqual(f.database.readProfileResourceCustody(), before);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);
+    f.lifetime.assertHeld();
+  } finally { await unrelated.close(); }
 });
 
 it("preserves the source-closure error identity for composition custody retention", async () => {

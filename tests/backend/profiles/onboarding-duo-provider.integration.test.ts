@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +23,8 @@ for (const pendingClose of [false, true]) it(pendingClose
   const root = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-launch-")));
   const browserRoot = join(root, "browsers"); mkdirSync(browserRoot, { mode: 0o700 });
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
-  const machine = acquireEntrypointAdmission(root, "exclusive");
+  const lifetime = await runtimeLifetimeLock();
+  const machine = acquireEntrypointAdmission(root, "exclusive", lifetime);
   const processLockRoot = join(root, rebuildRuntimeIsolation.processLockRoot); mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
   let context: BrowserContext | undefined, launches = 0, acquisitions = 0, submissions = 0;
   let owner: DraftDuoBrowserOwner | undefined;

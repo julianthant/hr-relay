@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { createProductionAssistantTools } from "../../../src/backend/assistant/tools.js";
 import { assistantKnowledgeArtifact, createAssistantContext } from "../../../src/backend/assistant/context.js";
@@ -43,7 +44,8 @@ afterEach(async () => {
 });
 async function fixture() {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "assistant-authorization-")));
-  const machine = acquireEntrypointAdmission(workspace, "exclusive");
+  const lifetime = await runtimeLifetimeLock();
+  const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });

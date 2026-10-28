@@ -47,7 +47,7 @@ async function fixture() {
   return { f, owner, store, clock, operationPath, readOperation, profileId: active.profileId,
     restart() {
       owner.release(); f.admission.release(); f.machine.release();
-      const machine = acquireEntrypointAdmission(f.workspace, "exclusive");
+      const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
       const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
       return { machine, runtime, async close() { await runtime.close(); machine.release(); await f.close(); } };
     },

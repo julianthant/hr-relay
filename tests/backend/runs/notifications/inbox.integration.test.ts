@@ -1,10 +1,10 @@
+import { runInheritedRuntimeChild } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createNotificationInboxTestWorld } from "../../../support/helpers/backend/notification-inbox-world.js";
 
 
 
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -237,7 +237,7 @@ async function harness() {
   const open = () => AuthorityDatabase.open(profile.admission, { path, busyTimeoutMs: 250, migrationOwner: "notification-test" }, clock,
     undefined, undefined, undefined, boundProfileCredentials(profile.admission));
   const inbox = (db: AuthorityDatabase) => createNotificationInbox({ authority: db, clock, ids: sequentialIdFactory("a"), actorId: "local-operator" });
-  return { open, inbox, clock, path, workspace: profile.workspace, profileId: profile.admission.profileBinding.profileId };
+  return { open, inbox, clock, path, lifetime: profile.lifetime, workspace: profile.workspace, profileId: profile.admission.profileBinding.profileId };
 }
 describe("durable notification publication", () => {
 afterEach(_afterEachFixture0);
@@ -246,24 +246,26 @@ afterEach(_afterEachFixture0);
     const f = await harness(); const initial = f.open(); initial.close();
     const script = `
       import { AuthorityDatabase } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/sqlite/authority-database.ts"))};
-      import { acquireEntrypointAdmission } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/admission/bootstrap-admission.ts"))};
+      import { acquireSharedRuntimeAdmission } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/admission/admission.ts"))};
+      import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/admission/lifetime-lock.ts"))};
       import { createProfileRegistry } from ${JSON.stringify(join(process.cwd(), "src/backend/profiles/registry.ts"))};
       import { registerBoundProfile, boundProfileCredentials } from ${JSON.stringify(join(process.cwd(), "tests/support/helpers/synthetic-database-admission.ts"))};
       import { join } from "node:path";
       import { manualClock } from ${JSON.stringify(join(process.cwd(), "src/rules/time/clock.ts"))};
       import { createNotificationInbox } from ${JSON.stringify(join(process.cwd(), "src/backend/runs/notifications/inbox.ts"))};
       const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
-      const machine = acquireEntrypointAdmission(process.argv[1], "shared");
-      const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(process.argv[2]));
+      const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
+      const machine = acquireSharedRuntimeAdmission(process.argv[2], lifetime);
+      const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(process.argv[3]));
       registerBoundProfile(admission, machine);
       const db = AuthorityDatabase.open(admission,{path:join(admission.stateRoot,"state.db"),busyTimeoutMs:250,migrationOwner:"crash-proof"},clock,
         undefined,undefined,undefined,boundProfileCredentials(admission));
       const inbox = createNotificationInbox({authority:db,clock,ids:{uuid:()=>"00000000-0000-4000-8000-000000000991"},actorId:"local-operator"});
       const event = ${JSON.stringify(event)};
-      if(process.argv[3]==="before") db.withAuthorityTransaction(()=>{void inbox.publish(event);process.exit(71);});
+      if(process.argv[4]==="before") db.withAuthorityTransaction(()=>{void inbox.publish(event);process.exit(71);});
       else {await inbox.publish(event);process.exit(72);}
     `;
-    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, f.workspace, f.profileId, boundary], { cwd: process.cwd(), encoding: "utf8" });
+    const child = await runInheritedRuntimeChild(f.lifetime, script, [f.workspace, f.profileId, boundary]);
     expect(child.status, child.stderr).toBe(boundary === "before" ? 71 : 72);
     const db = f.open();
     try {

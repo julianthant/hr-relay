@@ -195,8 +195,8 @@ function applied(
 describe("independent credential store", () => {
 afterEach(_afterEachFixture0);
 
-  it("validates a request before reading private bytes and keeps diagnostics value-free", () => {
-    const f = fixture();
+  it("validates a request before reading private bytes and keeps diagnostics value-free", async () => {
+    const f = await fixture();
     applied(f.store, request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -235,10 +235,10 @@ afterEach(_afterEachFixture0);
     );
   });
 
-  it.each(["before", "after"] as const)("resolves retry time after a SIGKILL %s credential rename", (boundary) => {
-    const f = fixture();
+  it.each(["before", "after"] as const)("resolves retry time after a SIGKILL %s credential rename", async (boundary) => {
+    const f = await fixture();
     const input = request({ commandId: COMMAND_1, writeId: WRITE_1, expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } });
-    const child = boundary === "before" ? crashBeforeCredentialRename(f.tracker, input) : crashAfterCredentialRename(f.tracker, input);
+    const child = boundary === "before" ? await crashBeforeCredentialRename(f.tracker, input) : await crashAfterCredentialRename(f.tracker, input);
     assert.equal(child.signal, "SIGKILL", child.stderr);
     assert.equal(f.store.acceptedAt(COMMAND_1), boundary === "before" ? undefined : NOW_1);
     const retry = ProtectedSettingsApplyInputSchema.parse({ ...input, updatedAt: boundary === "before" ? NOW_2 : NOW_1 });

@@ -1,7 +1,6 @@
 import { createBoundProfileFixture, boundProfileCredentials } from "../../support/helpers/admission-fixture.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { randomUUID } from "node:crypto";
-import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { RuntimeLifetimeLockReleasedError, type RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";
 import { chmodSync, existsSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
@@ -39,7 +38,7 @@ afterEach(async () => {
 });
 async function fixture() {
   const profile = await createBoundProfileFixture(), root = profile.stateRoot;
-  const lock = await runtimeLifetimeLock(), profileRunId = randomUUID();
+  const lock = profile.lifetime, profileRunId = randomUUID();
   let database: AuthorityDatabase;
   try {
     database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "browser-login-test" }, clock,
@@ -272,13 +271,13 @@ describe("registered browser-login smoke lifecycle", () => {
           assert.deepEqual(closure.errors, [launch]);
           return true;
         });
-        await lock.close();
+        lock.assertHeld();
         const slots = database.authority.workerSlots.list();
         expect(slots).toHaveLength(1);
         expect(slots[0].retiredAt).toBeNull();
         expect(existsSync(workerProfileDirectory({ profileRoot, slotOrdinal: slots[0].ordinal, system: "ucpath" }))).toBe(true);
         expect(database.authority.duoCeremonyLeases.get(credentialKey)).toBeUndefined();
-      } finally { await lock.close(); }
+      } finally { lock.assertHeld(); }
     });
   });
 
@@ -336,7 +335,7 @@ describe("registered browser-login smoke lifecycle", () => {
         expect(existsSync(join(config.paths.browserProfileRoot, "w1"))).toBe(false);
         expect(database.authority.workerSlots.list().filter(slot => slot.retiredAt === null)).toEqual([]);
         expect(database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("released");
-      } finally { await lock.close(); }
+      } finally { lock.assertHeld(); }
     });
   });
 
@@ -405,7 +404,7 @@ describe("registered browser-login smoke lifecycle", () => {
         expect(database.authority.workerSlots.list().filter(slot => slot.retiredAt === null)).toEqual([]);
         expect(existsSync(join(config.paths.browserProfileRoot, "w1"))).toBe(false);
         expect(database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("released");
-      } finally { await lock.close(); }
+      } finally { lock.assertHeld(); }
     });
   });
 
@@ -429,7 +428,7 @@ describe("registered browser-login smoke lifecycle", () => {
       await expect(admit(profile)).resolves.toMatchObject({ profileDirectory });
       expect(() => admit({ ...profile, signInFingerprint: FingerprintSchema.parse("cd".repeat(32)) })).toThrow(/custody-unavailable/u);
       expect(() => admit({ ...profile, workerId: WorkerIdSchema.parse("person-lookup-worker-2") })).toThrow(/custody-unavailable/u);
-      await lock.close();
+      database.close(); await fixtureOwner(database).profile.closeController();
       expect(() => admit(profile)).toThrow(RuntimeLifetimeLockReleasedError);
     } finally { await lock.close(); }
   });
@@ -458,7 +457,7 @@ describe("registered browser-login smoke lifecycle", () => {
       expect(() => admit(profile)).toThrow(/custody-unavailable/u);
       chmodSync(profileDirectory, 0o700);
       expect(() => admit({ ...profile, profileDirectory: join(root, "other") })).toThrow(/custody-unavailable/u);
-    } finally { await lock.close(); }
+    } finally { lock.assertHeld(); }
   });
 
   it("prints fixed acquisition and stall text without free-form error messages", () => {

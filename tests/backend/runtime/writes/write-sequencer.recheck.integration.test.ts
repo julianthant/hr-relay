@@ -1,4 +1,3 @@
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { reconcileStartupCrash } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { RunRecordService, lifecycleCommandId, runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -99,7 +98,7 @@ describe("parked write read-only recheck", () => {
       const attempt = h.database.authority.writeAttempts.get(intent.currentAttemptId);
       const interruptedIntent = h.database.authority.writeIntents.get(intent.writeIntentId);
       assert.ok(interruptedIntent?.status === "parked" && interruptedIntent.recheck?.commandId === command.commandId);
-      const lock = await runtimeLifetimeLock();
+      const lock = h.profile.lifetime;
       const service = new RunRecordService({ database: h.database, clock: h.clock, ids: sequentialIdFactory("f"), publishQueued: () => {} });
       if (mode === "canonical") {
         const outcome = service.recoverCrash({ commandId: lifecycleCommandId("lost-recheck", { runId: run.envelope.runId, version: current.version }),

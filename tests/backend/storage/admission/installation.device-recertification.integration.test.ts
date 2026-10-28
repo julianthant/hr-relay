@@ -14,7 +14,7 @@ import { createHistoricalIncompleteProfileFixture } from "../../../support/fixtu
 const Continuity = z.object({ device: z.number(), inode: z.number(), digest: z.string(), installationId: z.string(),
   erasures: z.array(z.object({ credentialKey: z.object({ keyId: z.string(), file: z.object({ device: z.number(), inode: z.number(), digest: z.string() }).passthrough() }).passthrough() }).passthrough()) }).passthrough();
 const acknowledgement = "recertify-current-files-with-unproved-historical-volume-binding" as const;
-const prepare = (workspace: string) => RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(workspace);
+const prepare = (workspace: string, lifetime: Fixture["lifetime"]) => RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(workspace, lifetime);
 type Fixture = Awaited<ReturnType<typeof createHistoricalIncompleteProfileFixture>>;
 function drift(f: Fixture) {
   const current = Continuity.parse(JSON.parse(readFileSync(f.controlPath, "utf8"))), prior = structuredClone(current);
@@ -36,8 +36,8 @@ it("recertifies only two explicitly authorized device witnesses, preserving the 
   const f = await createHistoricalIncompleteProfileFixture();
   try {
     const current = drift(f), before = preserved(f);
-    assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive"), /profile-registry-continuity-mismatch/);
-    const held = await prepare(f.workspace);
+    assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime), /profile-registry-continuity-mismatch/);
+    const held = await prepare(f.workspace, f.lifetime);
     try {
       assert.equal(held.capture.historicalVolumeBinding, "unproved");
       held.recertify({ captureDigest: held.capture.digest, acknowledgement });
@@ -46,10 +46,10 @@ it("recertifies only two explicitly authorized device witnesses, preserving the 
     assert.deepEqual(Continuity.parse(JSON.parse(readFileSync(f.controlPath, "utf8"))), current);
     assert.deepEqual(preserved(f), before);
     assert.equal(existsSync(paths(f).intent), false); assert.equal(existsSync(paths(f).receipt), true);
-    const replay = await prepare(f.workspace);
+    const replay = await prepare(f.workspace, f.lifetime);
     try { replay.recertify({ captureDigest: replay.capture.digest, acknowledgement }); }
     finally { replay.release(); }
-    const machine = acquireEntrypointAdmission(f.workspace, "exclusive");
+    const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
     try {
       const registry = machine.readProfileRegistry();
       assert.equal(registry.profiles.length, 1); assert.equal(registry.activeProfileId, f.profileId);
@@ -57,15 +57,15 @@ it("recertifies only two explicitly authorized device witnesses, preserving the 
     } finally { machine.release(); }
     const invalid = Continuity.parse(JSON.parse(readFileSync(f.controlPath, "utf8"))); invalid.device += 4;
     writeFileSync(f.controlPath, JSON.stringify(invalid));
-    assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive"), /profile-registry-continuity-mismatch/);
+    assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime), /profile-registry-continuity-mismatch/);
   } finally { await f.close(); }
 });
 
 it("requires the exact capture acknowledgement and preserves stable capture digests across stopped preparation", async () => {
   const f = await createHistoricalIncompleteProfileFixture();
   try {
-    drift(f); const before = readFileSync(f.controlPath), first = await prepare(f.workspace), digest = first.capture.digest;
-    first.release(); const held = await prepare(f.workspace);
+    drift(f); const before = readFileSync(f.controlPath), first = await prepare(f.workspace, f.lifetime), digest = first.capture.digest;
+    first.release(); const held = await prepare(f.workspace, f.lifetime);
     try {
       assert.equal(held.capture.digest, digest);
       assert.throws(() => held.recertify({ captureDigest: "0".repeat(64), acknowledgement }), /authorization-mismatch/);
@@ -89,7 +89,7 @@ for (const field of ["registry-inode", "registry-digest", "installation-uuid", "
       if (field === "key-id") key.keyId = randomUUID();
       if (field === "one-device-only") key.file.device = current.device;
       writeFileSync(f.controlPath, JSON.stringify(value)); const before = readFileSync(f.controlPath);
-      await assert.rejects(prepare(f.workspace));
+      await assert.rejects(prepare(f.workspace, f.lifetime));
       assert.equal(readFileSync(f.controlPath).equals(before), true); assert.equal(existsSync(paths(f).intent), false);
     } finally { await f.close(); }
   });
@@ -99,7 +99,7 @@ for (const change of ["replacement-key", "protected-bytes", "extra-artifact", "a
   it(`revalidates ${change} after authorization capture and before any effect`, async () => {
     const f = await createHistoricalIncompleteProfileFixture();
     try {
-      drift(f); const held = await prepare(f.workspace), before = readFileSync(f.controlPath);
+      drift(f); const held = await prepare(f.workspace, f.lifetime), before = readFileSync(f.controlPath);
       try {
         if (change === "replacement-key") { copyFileSync(f.keyPath, `${f.keyPath}.replacement`); renameSync(`${f.keyPath}.replacement`, f.keyPath); }
         if (change === "protected-bytes") writeFileSync(f.protectedPath, "{}");
@@ -122,7 +122,7 @@ for (const boundary of ["intent", "control", "receipt", "settlement"] as const) 
   it(`resumes the exact durable ${boundary} prefix without repeating source mutations`, async () => {
     const f = await createHistoricalIncompleteProfileFixture();
     try {
-      const current = drift(f), before = preserved(f), held = await prepare(f.workspace), digest = held.capture.digest;
+      const current = drift(f), before = preserved(f), held = await prepare(f.workspace, f.lifetime), digest = held.capture.digest;
       const { intent, receipt } = paths(f), rename = nativeFs.renameSync, unlink = nativeFs.unlinkSync;
       let fired = false;
       const renameSpy = vi.spyOn(nativeFs, "renameSync").mockImplementation((from, to) => {
@@ -139,8 +139,8 @@ for (const boundary of ["intent", "control", "receipt", "settlement"] as const) 
       try { assert.throws(() => held.recertify({ captureDigest: digest, acknowledgement }), /fixture recertification interruption/); }
       finally { renameSpy.mockRestore(); unlinkSpy.mockRestore(); syncBuiltinESMExports(); held.release(); }
       assert.equal(fired, true);
-      assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive"), /device-recertification-pending/);
-      const resumed = await prepare(f.workspace);
+      assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime), /device-recertification-pending/);
+      const resumed = await prepare(f.workspace, f.lifetime);
       try { assert.equal(resumed.capture.digest, digest); resumed.recertify({ captureDigest: digest, acknowledgement }); }
       finally { resumed.release(); }
       assert.deepEqual(Continuity.parse(JSON.parse(readFileSync(f.controlPath, "utf8"))), current);
@@ -171,12 +171,12 @@ for (const custody of ["preboot-gone", "sameboot-gone", "live", "reused-pid", "u
       }
       const before = readFileSync(path);
       if (custody === "preboot-gone") {
-        const held = await prepare(f.workspace);
+        const held = await prepare(f.workspace, f.lifetime);
         try { held.recertify({ captureDigest: held.capture.digest, acknowledgement }); }
         finally { held.release(); }
         assert.equal(readFileSync(path).equals(before), true);
-        assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace), /process-custody-unproved/);
-      } else await assert.rejects(prepare(f.workspace), /custody-unproved/);
+        assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime), /process-custody-unproved/);
+      } else await assert.rejects(prepare(f.workspace, f.lifetime), /custody-unproved/);
       assert.equal(readFileSync(path).equals(before), true);
     } finally { await f.close(); }
   });
@@ -196,7 +196,7 @@ for (const shape of ["finished", "duo", "second-profile", "operation", "erasure-
       if (shape === "erasure-history") { mkdirSync(join(f.machineRoot, "erasures"), { recursive: true, mode: 0o700 }); writeFileSync(join(f.machineRoot, "erasures", `${f.profileId}.json`), "{}", { mode: 0o600 }); }
       writeFileSync(f.registryPath, JSON.stringify(registry));
       const before = readFileSync(f.controlPath);
-      await assert.rejects(prepare(f.workspace));
+      await assert.rejects(prepare(f.workspace, f.lifetime));
       assert.equal(readFileSync(f.controlPath).equals(before), true); assert.equal(existsSync(paths(f).intent), false);
     } finally { await f.close(); }
   });
@@ -207,7 +207,7 @@ it("retains an unowned pre-intent stage and refuses to guess a recovery", async 
   try {
     drift(f); const before = readFileSync(f.controlPath);
     writeFileSync(join(f.workspace, `.tracker/control/.device-recertification.${randomUUID()}.stage`), "{}", { mode: 0o600 });
-    await assert.rejects(prepare(f.workspace), /stage-unowned/);
+    await assert.rejects(prepare(f.workspace, f.lifetime), /stage-unowned/);
     assert.equal(readFileSync(f.controlPath).equals(before), true); assert.equal(existsSync(paths(f).intent), false);
   } finally { await f.close(); }
 });
@@ -215,7 +215,7 @@ it("retains an unowned pre-intent stage and refuses to guess a recovery", async 
 it("rejects a substituted staged document before changing the original continuity", async () => {
   const f = await createHistoricalIncompleteProfileFixture();
   try {
-    drift(f); const held = await prepare(f.workspace), digest = held.capture.digest, { intent } = paths(f), rename = nativeFs.renameSync;
+    drift(f); const held = await prepare(f.workspace, f.lifetime), digest = held.capture.digest, { intent } = paths(f), rename = nativeFs.renameSync;
     const spy = vi.spyOn(nativeFs, "renameSync").mockImplementation((from, to) => { rename(from, to); if (String(to) === intent) throw new Error("fixture durable intent"); });
     syncBuiltinESMExports();
     try { assert.throws(() => held.recertify({ captureDigest: digest, acknowledgement }), /fixture durable intent/); }
@@ -225,7 +225,7 @@ it("rejects a substituted staged document before changing the original continuit
     altered.generation += 1; writeFileSync(stage, JSON.stringify(altered));
     const journal = z.object({ stage: z.object({ device: z.number(), inode: z.number(), digest: z.string() }) }).passthrough().parse(JSON.parse(readFileSync(intent, "utf8")));
     journal.stage.digest = createHash("sha256").update(readFileSync(stage)).digest("hex"); writeFileSync(intent, JSON.stringify(journal));
-    const before = readFileSync(f.controlPath), resumed = await prepare(f.workspace);
+    const before = readFileSync(f.controlPath), resumed = await prepare(f.workspace, f.lifetime);
     try { assert.throws(() => resumed.recertify({ captureDigest: digest, acknowledgement })); }
     finally { resumed.release(); }
     assert.equal(readFileSync(f.controlPath).equals(before), true, "a substituted stage must never replace continuity");
@@ -243,12 +243,12 @@ for (const descendant of [
     let held: Awaited<ReturnType<typeof prepare>> | undefined;
     try {
       drift(f); const before = readFileSync(f.controlPath);
-      if (timing === "after") held = await prepare(f.workspace);
+      if (timing === "after") held = await prepare(f.workspace, f.lifetime);
       const directory = join(f.machineRoot, descendant.directory), path = join(directory, descendant.name);
       mkdirSync(directory, { recursive: true, mode: 0o700 });
       if (descendant.kind === "directory") mkdirSync(path, { mode: 0o700 });
       else writeFileSync(path, "unowned fixture custody", { mode: 0o600 });
-      if (held === undefined) await assert.rejects(prepare(f.workspace), /device-recertification-membership-refused/);
+      if (held === undefined) await assert.rejects(prepare(f.workspace, f.lifetime), /device-recertification-membership-refused/);
       else assert.throws(() => held?.recertify({ captureDigest: held.capture.digest, acknowledgement }), /device-recertification-membership-refused/);
       assert.equal(readFileSync(f.controlPath).equals(before), true); assert.equal(existsSync(paths(f).intent), false);
     } finally { held?.release(); await f.close(); }

@@ -1,6 +1,7 @@
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { boundProfileCredentials, createBoundProfileFixture } from '../../../support/helpers/admission-fixture.js';
 import { storageTree } from '../../../support/helpers/integration/storage-recovery-fixture.js';
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createInstallationControlTestWorld } from "../../../support/helpers/backend/installation-control-world.js";
 import { randomUUID } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
@@ -42,8 +43,8 @@ function currentProfileRelocationSnapshot(workspace: string) {
   return { physical, bytes: storageTree(workspace) };
 }
 
-function settledMove(workspace: string, destination: RuntimePair): { operationId: string; locator: ExclusiveInstallationLease["locator"] } {
-  const lease = acquireInstallation(workspace, "exclusive");
+function settledMove(workspace: string, destination: RuntimePair, lifetime: RuntimeLifetimeLock): { operationId: string; locator: ExclusiveInstallationLease["locator"] } {
+  const lease = acquireInstallation(workspace, "exclusive", lifetime);
   const held = restore(workspace);
   try {
     const plan = relocationPlan(lease, destination);
@@ -108,32 +109,32 @@ it.each(["credential key", "erasure journal", "Duo membership"] as const)(
   },
 );
 
-it("adopts empty defaults, admits shared readers, and refuses lost locator and owner mismatch", () => {
-  const { workspace, pair } = fixture();
-  const first = adoptSynthetic(workspace, pair);
+it("adopts empty defaults, admits shared readers, and refuses lost locator and owner mismatch", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const first = adoptSynthetic(workspace, pair, lifetime);
   expect(first.locator.generation).toBe(0);
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/lease busy/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/lease busy/u);
   first.release();
-  const one = acquireInstallation(workspace, "shared");
-  const two = acquireInstallation(workspace, "shared");
+  const one = acquireInstallation(workspace, "shared", lifetime);
+  const two = acquireInstallation(workspace, "shared", lifetime);
   expect(one.locator).toEqual(two.locator);
   one.release(); two.release();
   const locator = join(workspace, ".tracker/control", "locator.json");
   unlinkSync(locator);
-  expect(() => acquireInstallation(workspace, "exclusive", { defaultPair: pair })).toThrow(/locator missing/u);
+  expect(() => acquireInstallation(workspace, "exclusive", lifetime, { defaultPair: pair })).toThrow(/locator missing/u);
   expect(existsSync(join(pair.stateRoot, ".runtime-owner.json"))).toBe(true);
 });
 
-it("refuses fresh installation without both initializer and verifier before control writes", () => {
-  const { workspace, pair } = fixture();
-  expect(() => acquireInstallation(workspace, "exclusive", { defaultPair: pair })).toThrow(/requires initializer and verifier/u);
+it("refuses fresh installation without both initializer and verifier before control writes", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  expect(() => acquireInstallation(workspace, "exclusive", lifetime, { defaultPair: pair })).toThrow(/requires initializer and verifier/u);
   expect(existsSync(join(workspace, ".tracker/control"))).toBe(false);
   expect(existsSync(pair.stateRoot)).toBe(false);
 });
 
-it("freezes issued leases and refuses a changed on-disk lease mode", () => {
-  const { workspace, pair } = fixture();
-  const first = adoptSynthetic(workspace, pair);
+it("freezes issued leases and refuses a changed on-disk lease mode", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const first = adoptSynthetic(workspace, pair, lifetime);
   expect(Object.isFrozen(first)).toBe(true);
   expect(Reflect.set(first, "assertHeld", () => {})).toBe(false);
   const firstAdmission = RuntimeAdmission.fromInstallationLease(first);
@@ -148,7 +149,7 @@ it("freezes issued leases and refuses a changed on-disk lease mode", () => {
   expect(() => firstAdmission.assertFixedProcessLockRoot(workspace, lockRoot)).toThrow(/installation changed/u);
   writeFileSync(installedPath, installedBytes);
   first.release();
-  const shared = acquireInstallation(workspace, "shared");
+  const shared = acquireInstallation(workspace, "shared", lifetime);
   expect(shared.readInstallationContext()).toMatchObject({ workspace, locator: shared.locator, receipts: [] });
   expect(Object.isFrozen(shared)).toBe(true);
   expect(Reflect.set(shared, "mode", "exclusive")).toBe(false);
@@ -211,16 +212,16 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
 
     const before = currentProfileRelocationSnapshot(profile.workspace);
     const foreignBefore = currentProfileRelocationSnapshot(foreign.workspace);
-    expect(() => acquireRecoveryRuntimeRelocation(profile.workspace, binding, held)).toThrow("restore-admission-handle-mismatch");
+    expect(() => acquireRecoveryRuntimeRelocation(profile.workspace, profile.lifetime, binding, held)).toThrow("restore-admission-handle-mismatch");
     expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(before);
     expect(currentProfileRelocationSnapshot(foreign.workspace)).toEqual(foreignBefore);
     expect(inspectPendingRelocationStatus(profile.workspace)).toBeUndefined();
 
     const currentHeld = restore(profile.workspace);
     cleanup = async () => { currentHeld.release(); held.release(); await foreign.close(); await profile.close(); };
-    const lease = acquireInstallation(profile.workspace, "exclusive");
+    const lease = acquireInstallation(profile.workspace, "exclusive", profile.lifetime);
     cleanup = async () => { lease.release(); currentHeld.release(); held.release(); await foreign.close(); await profile.close(); };
-    const { workspace: destinationWorkspace } = fixture();
+    const { workspace: destinationWorkspace } = await fixture();
     const destination = { stateRoot: join(dirname(destinationWorkspace), "recovery-profile-state"),
       artifactRoot: join(dirname(destinationWorkspace), "recovery-profile-artifacts") };
     const plan = currentProfileRelocationPlan(lease.locator, destination);
@@ -231,13 +232,13 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
     const recoveryBefore = currentProfileRelocationSnapshot(profile.workspace);
     const pendingBefore = inspectPendingRelocationStatus(profile.workspace);
     expect(pendingBefore).toMatchObject({ operationId, fromGeneration: recoveryBinding.fromGeneration });
-    expect(() => acquireRecoveryRuntimeRelocation(profile.workspace, recoveryBinding, currentHeld))
+    expect(() => acquireRecoveryRuntimeRelocation(profile.workspace, profile.lifetime, recoveryBinding, currentHeld))
       .toThrow(ProfileStorageRelocationUnsupportedError);
     expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(recoveryBefore);
     expect(inspectPendingRelocationStatus(profile.workspace)).toEqual(pendingBefore);
     expect(existsSync(destination.stateRoot)).toBe(false);
     expect(existsSync(destination.artifactRoot)).toBe(false);
-    const reacquired = acquireInstallation(profile.workspace, "exclusive",
+    const reacquired = acquireInstallation(profile.workspace, "exclusive", profile.lifetime,
       { recoverRelocation: { ...recoveryBinding, restoreAdmission: currentHeld } });
     cleanup = async () => { reacquired.release(); currentHeld.release(); held.release(); await foreign.close(); await profile.close(); };
     reacquired.release();
@@ -252,20 +253,20 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
   if (cleanupFailure !== undefined) throw cleanupFailure.error;
 });
 
-it("does not silently re-adopt defaults after control is lost", () => {
-  const { workspace, pair } = fixture();
-  const first = adoptSynthetic(workspace, pair); first.release();
+it("does not silently re-adopt defaults after control is lost", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const first = adoptSynthetic(workspace, pair, lifetime); first.release();
   rmSync(join(workspace, ".tracker/control"), { recursive: true });
-  expect(() => acquireInstallation(workspace, "exclusive", { defaultPair: pair })).toThrow(/existing ownership witness without locator/u);
+  expect(() => acquireInstallation(workspace, "exclusive", lifetime, { defaultPair: pair })).toThrow(/existing ownership witness without locator/u);
 });
 
-it("refuses an unexplained v1 completed generation without a receipt chain", () => {
-  const { workspace, pair } = fixture();
-  const first = adoptSynthetic(workspace, pair); first.release();
+it("refuses an unexplained v1 completed generation without a receipt chain", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const first = adoptSynthetic(workspace, pair, lifetime); first.release();
   const path = join(workspace, ".tracker/control", "locator.json");
   const locator = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
   writeFileSync(path, JSON.stringify({ ...locator, generation: 1 }));
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/active locator receipt chain mismatch/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/active locator receipt chain mismatch/u);
 });
 
 it("binds the first real saved plan at applied revision one and expected revision zero", async () => {
@@ -331,16 +332,16 @@ it("claims destination roots for one operation and refuses foreign witnesses", a
   if (cleanupFailure !== undefined) throw cleanupFailure.error;
 });
 
-it("refuses a retained default-source fence after control and owner markers are lost", () => {
-  const { workspace, pair } = fixture();
-  const first = adoptSynthetic(workspace, pair); first.release();
+it("refuses a retained default-source fence after control and owner markers are lost", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const first = adoptSynthetic(workspace, pair, lifetime); first.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "valid synthetic authority");
   writeFileSync(join(pair.stateRoot, ".runtime-source-fence.json"), "synthetic retained fence", { mode: 0o600 });
   rmSync(join(workspace, ".tracker/control"), { recursive: true });
   unlinkSync(join(pair.stateRoot, ".runtime-owner.json"));
   unlinkSync(join(pair.artifactRoot, ".runtime-owner.json"));
   let verifierCalled = false;
-  expect(() => acquireInstallation(workspace, "exclusive", { defaultPair: pair, verifyExisting: (candidate) => {
+  expect(() => acquireInstallation(workspace, "exclusive", lifetime, { defaultPair: pair, verifyExisting: (candidate) => {
     verifierCalled = true;
     return { kind: "verified-existing", pair: candidate, authorityGeneration: 0, databaseIdentity: "synthetic-database" };
   } })).toThrow(/retained source fence without locator/u);
@@ -348,68 +349,68 @@ it("refuses a retained default-source fence after control and owner markers are 
   expect(existsSync(join(workspace, ".tracker/control", "installation.json"))).toBe(false);
 });
 
-it("requires typed validation for existing defaults and refuses interrupted adoption", () => {
-  const { workspace, pair } = fixture();
+it("requires typed validation for existing defaults and refuses interrupted adoption", async () => {
+  const { workspace, pair, lifetime } = await fixture();
   mkdirSync(pair.stateRoot, { recursive: true, mode: 0o700 });
   writeFileSync(join(pair.stateRoot, "state.db"), "synthetic");
-  expect(() => acquireInstallation(workspace, "exclusive", { defaultPair: pair })).toThrow(/requires verifier/u);
-  const lease = acquireInstallation(workspace, "exclusive", { defaultPair: pair, verifyExisting: (candidate) => ({ kind: "verified-existing", pair: candidate, authorityGeneration: 0, databaseIdentity: "synthetic-identity" }) });
+  expect(() => acquireInstallation(workspace, "exclusive", lifetime, { defaultPair: pair })).toThrow(/requires verifier/u);
+  const lease = acquireInstallation(workspace, "exclusive", lifetime, { defaultPair: pair, verifyExisting: (candidate) => ({ kind: "verified-existing", pair: candidate, authorityGeneration: 0, databaseIdentity: "synthetic-identity" }) });
   lease.release();
   const journal = join(workspace, ".tracker/control", "journal.json");
   writeFileSync(journal, JSON.stringify({ schemaVersion: 1, phase: "adopting", installationId: lease.locator.installationId }), { mode: 0o600 });
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/unfinished adopting/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/unfinished adopting/u);
 });
 
-it("adopts owner-owned 0755 existing roots and preflights unsafe 0777 roots before recording installation", () => {
-  const valid = fixture();
+it("adopts owner-owned 0755 existing roots and preflights unsafe 0777 roots before recording installation", async () => {
+  const valid = await fixture();
   mkdirSync(valid.pair.stateRoot, { recursive: true, mode: 0o755 });
   mkdirSync(valid.pair.artifactRoot, { mode: 0o755 });
   writeFileSync(join(valid.pair.stateRoot, "state.db"), "synthetic");
-  const adopted = acquireInstallation(valid.workspace, "exclusive", { defaultPair: valid.pair, verifyExisting: (pair) => {
+  const adopted = acquireInstallation(valid.workspace, "exclusive", valid.lifetime, { defaultPair: valid.pair, verifyExisting: (pair) => {
     expect(Object.isFrozen(pair)).toBe(true);
     return { kind: "verified-existing", pair, authorityGeneration: 3, databaseIdentity: "synthetic-database" };
   } });
   expect(adopted.locator.generation).toBe(0); adopted.release();
-  const unsafe = fixture();
+  const unsafe = await fixture();
   mkdirSync(unsafe.pair.stateRoot, { recursive: true, mode: 0o700 }); chmodSync(unsafe.pair.stateRoot, 0o777);
-  expect(() => acquireInstallation(unsafe.workspace, "exclusive", { defaultPair: unsafe.pair })).toThrow(/unsafe data root/u);
+  expect(() => acquireInstallation(unsafe.workspace, "exclusive", unsafe.lifetime, { defaultPair: unsafe.pair })).toThrow(/unsafe data root/u);
   expect(existsSync(join(unsafe.workspace, ".tracker/control", "installation.json"))).toBe(false);
   expect(existsSync(join(unsafe.pair.stateRoot, ".runtime-owner.json"))).toBe(false);
 });
 
-it("rejects unsafe private files, root ownership, and invalid overlap", () => {
-  const { workspace, pair } = fixture();
-  expect(() => acquireInstallation(workspace, "exclusive", { defaultPair: { stateRoot: pair.stateRoot, artifactRoot: workspace } })).toThrow(/root|overlap|default/u);
-  expect(() => acquireInstallation(workspace, "exclusive", { defaultPair: { stateRoot: join(dirname(workspace), "other-state"), artifactRoot: join(dirname(workspace), "other-artifacts") } })).toThrow(/known default root pair/u);
-  const lease = adoptSynthetic(workspace, pair); lease.release();
-  const exclusive = acquireInstallation(workspace, "exclusive");
+it("rejects unsafe private files, root ownership, and invalid overlap", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  expect(() => acquireInstallation(workspace, "exclusive", lifetime, { defaultPair: { stateRoot: pair.stateRoot, artifactRoot: workspace } })).toThrow(/root|overlap|default/u);
+  expect(() => acquireInstallation(workspace, "exclusive", lifetime, { defaultPair: { stateRoot: join(dirname(workspace), "other-state"), artifactRoot: join(dirname(workspace), "other-artifacts") } })).toThrow(/known default root pair/u);
+  const lease = adoptSynthetic(workspace, pair, lifetime); lease.release();
+  const exclusive = acquireInstallation(workspace, "exclusive", lifetime);
   const held = restore(workspace);
   const bad = { stateRoot: join(workspace, ".tracker/control", "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
   expect(() => exclusive.beginRelocation(bad, relocationPlan(exclusive, bad), held)).toThrow(/control overlaps/u);
   exclusive.release(); held.release();
   const locator = join(workspace, ".tracker/control", "locator.json");
   chmodSync(locator, 0o644);
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/unsafe file/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/unsafe file/u);
   chmodSync(locator, 0o600);
   const hardlink = join(dirname(workspace), "locator-hardlink"); linkSync(locator, hardlink);
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/unsafe file/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/unsafe file/u);
   unlinkSync(hardlink);
   const bytes = readFileSync(locator); unlinkSync(locator); symlinkSync(join(pair.stateRoot, ".runtime-owner.json"), locator);
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/unsafe file/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/unsafe file/u);
   unlinkSync(locator); writeFileSync(locator, bytes, { mode: 0o600 });
   const marker = join(pair.stateRoot, ".runtime-owner.json");
   const foreign = JSON.parse(readFileSync(marker, "utf8")) as Record<string, unknown>;
   foreign.installationId = "00000000-0000-4000-8000-000000000000";
   writeFileSync(marker, JSON.stringify(foreign));
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/root ownership mismatch/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/root ownership mismatch/u);
 });
 
-it("moves both roots with a fixed lock shell, preserves source bytes, and binds a v2 receipt", () => {
-  const { workspace, pair } = fixture();
-  const first = adoptSynthetic(workspace, pair); first.release();
+it("moves both roots with a fixed lock shell, preserves source bytes, and binds a v2 receipt", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const first = adoptSynthetic(workspace, pair, lifetime); first.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "synthetic source authority");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "synthetic artifact");
-  const lease = acquireInstallation(workspace, "exclusive");
+  const lease = acquireInstallation(workspace, "exclusive", lifetime);
   expect(() => Object.assign(lease.locator, { generation: 99 })).toThrow(TypeError);
   const held = restore(workspace);
   const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-state", "artifacts") };
@@ -437,18 +438,18 @@ it("moves both roots with a fixed lock shell, preserves source bytes, and binds 
   const retained = join(workspace, ".tracker", `.data.retained-${operationId}-state`);
   expect(readFileSync(join(retained, "state.db"), "utf8")).toBe("synthetic source authority");
   expect(readFileSync(join(retained, "artifacts", "a.artifact"), "utf8")).toBe("synthetic artifact");
-  const reader = acquireInstallation(workspace, "shared");
+  const reader = acquireInstallation(workspace, "shared", lifetime);
   expect(reader.locator).toEqual(next);
   expect(reader.readRelocationReceipts()).toHaveLength(1);
   reader.release();
 });
 
-it("resumes fenced, retained, and switched journals only with an exact held restore admission", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("resumes fenced, retained, and switched journals only with an exact held restore admission", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "synthetic source authority");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "synthetic artifact");
-  const moving = acquireInstallation(workspace, "exclusive");
+  const moving = acquireInstallation(workspace, "exclusive", lifetime);
   const held = restore(workspace);
   const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
   const plan = relocationPlan(moving, destination);
@@ -461,14 +462,14 @@ it("resumes fenced, retained, and switched journals only with an exact held rest
   expect(inspectPendingRelocationStatus(workspace)).toEqual({ operationId, phase: "fenced", fromGeneration: 0 });
   expect(existsSync(join(pair.stateRoot, ".runtime-source-fence.json"))).toBe(true);
   moving.release(); held.release();
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/unfinished fenced/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/unfinished fenced/u);
   const resumedHeld = restore(workspace);
   const request = { installationId: initial.locator.installationId, fromGeneration: 0, operationId, restoreAdmission: resumedHeld };
   expect(() => inspectPendingRelocationRecovery(workspace, randomUUID(), resumedHeld)).toThrow(/recovery operation binding mismatch/u);
   expect(inspectPendingRelocationRecovery(workspace, operationId, resumedHeld)).toEqual({
     installationId: initial.locator.installationId, fromGeneration: 0, operationId,
   });
-  const resume = acquireInstallation(workspace, "exclusive", { recoverRelocation: request });
+  const resume = acquireInstallation(workspace, "exclusive", lifetime, { recoverRelocation: request });
   expect(() => inspectPendingRelocationRecovery(workspace, operationId, resumedHeld)).toThrow(/lease busy/u);
   resume.retainRelocationSources();
   expect(inspectPendingRelocationStatus(workspace)).toEqual({ operationId, phase: "retained", fromGeneration: 0 });
@@ -477,9 +478,9 @@ it("resumes fenced, retained, and switched journals only with an exact held rest
   expect(next.generation).toBe(1);
   resume.release(); resumedHeld.release();
   writeFileSync(join(workspace, ".tracker/control", "journal.json"), retainedJournal);
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/unfinished retained/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/unfinished retained/u);
   const finalHeld = restore(workspace);
-  const afterSwitchCrash = acquireInstallation(workspace, "exclusive", { recoverRelocation: { ...request, restoreAdmission: finalHeld } });
+  const afterSwitchCrash = acquireInstallation(workspace, "exclusive", lifetime, { recoverRelocation: { ...request, restoreAdmission: finalHeld } });
   expect(afterSwitchCrash.switchRelocationLocator(verify)).toEqual(next);
   afterSwitchCrash.settleRelocation(verify);
   afterSwitchCrash.release(); finalHeld.release();
@@ -487,16 +488,16 @@ it("resumes fenced, retained, and switched journals only with an exact held rest
   const absentRestore = restore(workspace);
   expect(() => inspectPendingRelocationRecovery(workspace, operationId, absentRestore)).toThrow(/ENOENT|journal/u);
   absentRestore.release();
-  const reader = acquireInstallation(workspace, "shared");
+  const reader = acquireInstallation(workspace, "shared", lifetime);
   expect(reader.locator).toEqual(next); reader.release();
 });
 
-it("keeps the source fence as a negative witness if its journal is lost", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("keeps the source fence as a negative witness if its journal is lost", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "synthetic");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "synthetic");
-  const moving = acquireInstallation(workspace, "exclusive");
+  const moving = acquireInstallation(workspace, "exclusive", lifetime);
   const held = restore(workspace);
   const destination = { stateRoot: join(dirname(workspace), "moved-state"), artifactRoot: join(dirname(workspace), "moved-artifacts") };
   const plan = relocationPlan(moving, destination);
@@ -506,95 +507,95 @@ it("keeps the source fence as a negative witness if its journal is lost", () => 
   moving.fenceRelocationSource();
   moving.release(); held.release();
   unlinkSync(join(workspace, ".tracker/control", "journal.json"));
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/fenced source/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/fenced source/u);
   expect(() => inspectPendingRelocationStatus(workspace)).toThrow(/fenced source/u);
 });
 
-it("moves artifacts alone without advancing the state marker epoch", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("moves artifacts alone without advancing the state marker epoch", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "state remains");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact remains");
   const destination = { stateRoot: pair.stateRoot, artifactRoot: join(dirname(workspace), "external-artifacts") };
-  const result = settledMove(workspace, destination);
+  const result = settledMove(workspace, destination, lifetime);
   expect(result.locator).toMatchObject({ generation: 1, stateRootGeneration: 0, artifactRootGeneration: 1 });
   expect(readFileSync(join(pair.stateRoot, "state.db"), "utf8")).toBe("state remains");
   expect(statSync(pair.artifactRoot).isFile()).toBe(true);
   const retained = join(pair.stateRoot, `.artifacts.retained-${result.operationId}-artifact`);
   expect(readFileSync(join(retained, "a.artifact"), "utf8")).toBe("artifact remains");
-  const reader = acquireInstallation(workspace, "shared");
+  const reader = acquireInstallation(workspace, "shared", lifetime);
   expect(reader.readRelocationReceipts()).toHaveLength(1);
   reader.release();
 });
 
-it("pins prior artifact tombstone and retained witness when state moves later", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("pins prior artifact tombstone and retained witness when state moves later", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "state source");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact source");
-  const first = settledMove(workspace, { stateRoot: pair.stateRoot, artifactRoot: join(dirname(workspace), "external-artifacts") });
+  const first = settledMove(workspace, { stateRoot: pair.stateRoot, artifactRoot: join(dirname(workspace), "external-artifacts") }, lifetime);
   const oldRetained = join(pair.stateRoot, `.artifacts.retained-${first.operationId}-artifact`);
-  const second = settledMove(workspace, { stateRoot: join(dirname(workspace), "moved-state"), artifactRoot: join(dirname(workspace), "external-artifacts") });
+  const second = settledMove(workspace, { stateRoot: join(dirname(workspace), "moved-state"), artifactRoot: join(dirname(workspace), "external-artifacts") }, lifetime);
   expect(second.locator).toMatchObject({ generation: 2, stateRootGeneration: 2, artifactRootGeneration: 1 });
   expect(readFileSync(join(oldRetained, "a.artifact"), "utf8")).toBe("artifact source");
   expect(readFileSync(pair.artifactRoot, "utf8")).toContain("relocation-tombstone");
-  const current = acquireInstallation(workspace, "shared");
+  const current = acquireInstallation(workspace, "shared", lifetime);
   const receipts = current.readRelocationReceipts();
   expect(receipts).toHaveLength(2);
   expect(receipts[1]?.pinnedEntries).toEqual([".artifacts.retained-" + first.operationId + "-artifact", "artifacts"]);
   current.release();
 });
 
-it("uses a witness shell after both roots move, artifacts move again, then state moves", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("uses a witness shell after both roots move, artifacts move again, then state moves", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "state source");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact source");
   const firstState = join(dirname(workspace), "first-state");
   const firstArtifacts = join(firstState, "artifacts");
-  settledMove(workspace, { stateRoot: firstState, artifactRoot: firstArtifacts });
-  const second = settledMove(workspace, { stateRoot: firstState, artifactRoot: join(dirname(workspace), "second-artifacts") });
+  settledMove(workspace, { stateRoot: firstState, artifactRoot: firstArtifacts }, lifetime);
+  const second = settledMove(workspace, { stateRoot: firstState, artifactRoot: join(dirname(workspace), "second-artifacts") }, lifetime);
   const oldRetained = join(firstState, `.artifacts.retained-${second.operationId}-artifact`);
-  const third = settledMove(workspace, { stateRoot: join(dirname(workspace), "third-state"), artifactRoot: join(dirname(workspace), "second-artifacts") });
+  const third = settledMove(workspace, { stateRoot: join(dirname(workspace), "third-state"), artifactRoot: join(dirname(workspace), "second-artifacts") }, lifetime);
   expect(third.locator).toMatchObject({ generation: 3, stateRootGeneration: 3, artifactRootGeneration: 2 });
   expect(statSync(firstState).isDirectory()).toBe(true);
   expect(readFileSync(join(firstState, "state.db"), "utf8")).toContain("relocation-tombstone");
   expect(readFileSync(firstArtifacts, "utf8")).toContain("relocation-tombstone");
   expect(readFileSync(join(oldRetained, "a.artifact"), "utf8")).toBe("artifact source");
-  const current = acquireInstallation(workspace, "shared");
+  const current = acquireInstallation(workspace, "shared", lifetime);
   const receipts = current.readRelocationReceipts();
   expect(receipts).toHaveLength(3);
   expect(receipts[2]?.retentions.find((row) => row.role === "state")?.strategy).toBe("witness-shell");
   current.release();
 });
 
-it("moves state alone after artifacts are disjoint and retains per-root epochs", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("moves state alone after artifacts are disjoint and retains per-root epochs", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "state remains");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact remains");
-  const invalid = acquireInstallation(workspace, "exclusive");
+  const invalid = acquireInstallation(workspace, "exclusive", lifetime);
   const invalidRestore = restore(workspace);
   const stranded = { stateRoot: join(dirname(workspace), "stranded-state"), artifactRoot: pair.artifactRoot };
   expect(() => invalid.beginRelocation(stranded, relocationPlan(invalid, stranded), invalidRestore)).toThrow(/strand nested artifacts/u);
   invalid.release(); invalidRestore.release();
-  const first = settledMove(workspace, { stateRoot: join(dirname(workspace), "first-state"), artifactRoot: join(dirname(workspace), "external-artifacts") });
+  const first = settledMove(workspace, { stateRoot: join(dirname(workspace), "first-state"), artifactRoot: join(dirname(workspace), "external-artifacts") }, lifetime);
   expect(first.locator).toMatchObject({ stateRootGeneration: 1, artifactRootGeneration: 1 });
-  const second = settledMove(workspace, { stateRoot: join(dirname(workspace), "second-state"), artifactRoot: join(dirname(workspace), "external-artifacts") });
+  const second = settledMove(workspace, { stateRoot: join(dirname(workspace), "second-state"), artifactRoot: join(dirname(workspace), "external-artifacts") }, lifetime);
   expect(second.locator).toMatchObject({ generation: 2, stateRootGeneration: 2, artifactRootGeneration: 1 });
   expect(statSync(join(dirname(workspace), "first-state")).isFile()).toBe(true);
   expect(readFileSync(join(dirname(workspace), `.first-state.retained-${second.operationId}-state`, "state.db"), "utf8")).toBe("state remains");
-  const reader = acquireInstallation(workspace, "shared");
+  const reader = acquireInstallation(workspace, "shared", lifetime);
   expect(reader.readRelocationReceipts()).toHaveLength(2);
   reader.release();
 });
 
-it("recovers an interrupted lock-shell entry rename with its exact journal manifest", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("recovers an interrupted lock-shell entry rename with its exact journal manifest", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "old authority");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "old artifact");
-  const lease = acquireInstallation(workspace, "exclusive");
+  const lease = acquireInstallation(workspace, "exclusive", lifetime);
   const held = restore(workspace);
   const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
   const plan = relocationPlan(lease, destination);
@@ -613,9 +614,9 @@ it("recovers an interrupted lock-shell entry rename with its exact journal manif
   copyFileSync(join(pair.stateRoot, ".runtime-source-fence.json"), join(retained, ".runtime-source-fence.json"));
   renameSync(join(pair.stateRoot, "state.db"), join(retained, "state.db"));
   lease.release(); held.release();
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/unfinished retaining/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/unfinished retaining/u);
   const recoveredHeld = restore(workspace);
-  const recovered = acquireInstallation(workspace, "exclusive", { recoverRelocation: {
+  const recovered = acquireInstallation(workspace, "exclusive", lifetime, { recoverRelocation: {
     installationId: initial.locator.installationId, fromGeneration: 0, operationId, restoreAdmission: recoveredHeld,
   } });
   recovered.retainRelocationSources();
@@ -623,46 +624,46 @@ it("recovers an interrupted lock-shell entry rename with its exact journal manif
   recovered.switchRelocationLocator(verify);
   recovered.settleRelocation(verify);
   recovered.release(); recoveredHeld.release();
-  const reader = acquireInstallation(workspace, "shared");
+  const reader = acquireInstallation(workspace, "shared", lifetime);
   expect(reader.locator.generation).toBe(1); reader.release();
 });
 
-it("refuses tampered completed receipts and recreated retained sources", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("refuses tampered completed receipts and recreated retained sources", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "old authority");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "old artifact");
-  const result = settledMove(workspace, { stateRoot: pair.stateRoot, artifactRoot: join(dirname(workspace), "new-artifacts") });
+  const result = settledMove(workspace, { stateRoot: pair.stateRoot, artifactRoot: join(dirname(workspace), "new-artifacts") }, lifetime);
   const receiptDirectory = join(workspace, ".tracker/control", "relocation-receipts");
   const receiptPath = join(receiptDirectory, readdirSync(receiptDirectory)[0]);
   const bytes = readFileSync(receiptPath);
   const receipt = JSON.parse(bytes.toString()) as Record<string, unknown>;
   writeFileSync(receiptPath, JSON.stringify({ ...receipt, operationId: "33333333-3333-4333-8333-333333333333" }));
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/receipt chain mismatch/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/receipt chain mismatch/u);
   writeFileSync(receiptPath, bytes);
   unlinkSync(pair.artifactRoot);
   mkdirSync(pair.artifactRoot, { mode: 0o700 });
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/tombstone|unsafe/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/tombstone|unsafe/u);
   if (result.locator.schemaVersion !== 2) throw new Error("expected v2 locator");
   expect(result.locator.artifactRootGeneration).toBe(1);
 });
 
-it("refuses a missing retained source after a completed move", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("refuses a missing retained source after a completed move", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "source");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact");
-  const moved = settledMove(workspace, { stateRoot: pair.stateRoot, artifactRoot: join(dirname(workspace), "new-artifacts") });
+  const moved = settledMove(workspace, { stateRoot: pair.stateRoot, artifactRoot: join(dirname(workspace), "new-artifacts") }, lifetime);
   rmSync(join(pair.stateRoot, `.artifacts.retained-${moved.operationId}-artifact`), { recursive: true });
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/retained|unsafe|ENOENT/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/retained|unsafe|ENOENT/u);
 });
 
-it("reads only prior receipts when first and later operations publish their own receipt before journal clear", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("reads only prior receipts when first and later operations publish their own receipt before journal clear", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "source");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact");
-  const lease = acquireInstallation(workspace, "exclusive");
+  const lease = acquireInstallation(workspace, "exclusive", lifetime);
   const held = restore(workspace);
   const destination = { stateRoot: pair.stateRoot, artifactRoot: join(dirname(workspace), "new-artifacts") };
   const plan = relocationPlan(lease, destination);
@@ -680,9 +681,9 @@ it("reads only prior receipts when first and later operations publish their own 
   expect(receipts).toHaveLength(1);
   lease.release(); held.release();
   writeFileSync(join(control, "journal.json"), journalBytes, { mode: 0o600 });
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/unfinished switched/u);
+  expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/unfinished switched/u);
   const resumedHeld = restore(workspace);
-  const resumed = acquireInstallation(workspace, "exclusive", { recoverRelocation: {
+  const resumed = acquireInstallation(workspace, "exclusive", lifetime, { recoverRelocation: {
     installationId: initial.locator.installationId, fromGeneration: 0, operationId, restoreAdmission: resumedHeld,
   } });
   expect(resumed.readPriorReceipts()).toEqual([]);
@@ -691,7 +692,7 @@ it("reads only prior receipts when first and later operations publish their own 
   expect(readdirSync(join(control, "relocation-receipts"))).toEqual(receipts);
   expect(existsSync(join(control, "journal.json"))).toBe(false);
 
-  const later = acquireInstallation(workspace, "exclusive");
+  const later = acquireInstallation(workspace, "exclusive", lifetime);
   const laterHeld = restore(workspace);
   const laterDestination = { stateRoot: join(dirname(workspace), "later-state"), artifactRoot: destination.artifactRoot };
   const laterPlan = relocationPlan(later, laterDestination);
@@ -708,7 +709,7 @@ it("reads only prior receipts when first and later operations publish their own 
   later.release(); laterHeld.release();
   writeFileSync(join(control, "journal.json"), laterJournalBytes, { mode: 0o600 });
   const laterResumedHeld = restore(workspace);
-  const laterResumed = acquireInstallation(workspace, "exclusive", { recoverRelocation: {
+  const laterResumed = acquireInstallation(workspace, "exclusive", lifetime, { recoverRelocation: {
     installationId: initial.locator.installationId, fromGeneration: 1, operationId: laterOperationId,
     restoreAdmission: laterResumedHeld,
   } });

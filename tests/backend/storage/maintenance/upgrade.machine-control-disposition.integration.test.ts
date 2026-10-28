@@ -32,7 +32,7 @@ function sourceBytes(f: Awaited<ReturnType<typeof priorFormatFixture>>) {
 it("converts only stopped machine-control format while keeping an incomplete historical profile held", async () => {
   const f = await priorFormatFixture(), original = sourceBytes(f);
   const controlBytes = readFileSync(f.controlPath), markerBytes = readFileSync(f.markerPath);
-  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const plan = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.deepEqual(plan, { state: "planned", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.equal(readFileSync(f.controlPath).equals(controlBytes), true); assert.equal(readFileSync(f.markerPath).equals(markerBytes), true);
@@ -50,7 +50,7 @@ it("converts only stopped machine-control format while keeping an incomplete his
   assert.throws(() => maintenance.admitProfile(maintenance.issueRegisteredProfileClaim(f.profileId)), /profile-storage-claim-unavailable/u);
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
   maintenance.release();
-  const machine = acquireEntrypointAdmission(f.workspace, "exclusive");
+  const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
   const profile = composeProfileRuntime({ admission: machine,  hostFacts, clock: systemClock });
   const signed = profile.session.signIn({ email: historicalIncompleteProfileFields.email, password: historicalIncompleteProfileFields.password,
     at: new Date().toISOString() });
@@ -63,7 +63,7 @@ it("converts only stopped machine-control format while keeping an incomplete his
 });
 
 it("retains the runtime hold through a cold machine-control format publication recovery", async () => {
-  const f = await priorFormatFixture(), original = sourceBytes(f), maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  const f = await priorFormatFixture(), original = sourceBytes(f), maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const rename = nativeFs.renameSync; let fired = false;
   const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, target) => {
     rename(source, target);
@@ -75,7 +75,7 @@ it("retains the runtime hold through a cold machine-control format publication r
   assert.equal(fired, true);
   assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-control-upgrade.json")), true);
   maintenance.release();
-  const cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  const cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const recovered = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.equal(recovered.state, "upgraded"); assert.equal(recovered.runtimeAccess, "onboarding-incomplete"); assert.equal(recovered.profileCount, 1);
   const current = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);

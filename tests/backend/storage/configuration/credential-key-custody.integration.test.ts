@@ -133,7 +133,7 @@ it("migrates a stopped installation at startup, retains readable ciphertext and 
     anchor.file.digest = createHash("sha256").update(legacy).digest("hex");
     writeFileSync(controlPath, JSON.stringify(control)); writeFileSync(keyPath, legacy);
     credentialKeyCustody.delete(binding);
-    const machine = acquireEntrypointAdmission(f.workspace, "exclusive");
+    const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
     const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(binding.profileId));
     try {
       const store = createCredentialStore({ admission, stateRoot: f.stateRoot, erasureJournalAdmission: machine,
@@ -144,7 +144,7 @@ it("migrates a stopped installation at startup, retains readable ciphertext and 
       assert.throws(() => store.read(), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
     } finally { admission.release(); machine.release(); }
     const metadata = readFileSync(keyPath);
-    assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive"), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
+    assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
     assert.deepEqual(readFileSync(keyPath), metadata); assert.deepEqual(readFileSync(protectedPath), ciphertext);
   } finally { await f.close(); }
 });
@@ -206,7 +206,7 @@ for (const changed of ["key", "keyId", "filename", "inode"] as const) it(`refuse
   if (changed === "inode") { const replacement = join(directory, "replacement"); writeFileSync(replacement, legacy, { mode: 0o600 }); renameSync(replacement, path); }
   const before = readFileSync(path), identity = statSync(path), entries = FakeKeyringEntry.snapshot();
   try {
-    assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive"));
+    assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime));
     assert.equal(readFileSync(path).equals(before), true, "legacy source must remain unchanged");
     assert.equal(statSync(path).ino, identity.ino);
     assert.equal(JSON.stringify(FakeKeyringEntry.snapshot()) === JSON.stringify(entries), true, "OS entries must remain unchanged");
@@ -251,12 +251,12 @@ for (const boundary of ["journal", "intent"] as const) for (const changed of (bo
     const before = readFileSync(path), entries = FakeKeyringEntry.snapshot();
     const directoryBefore = readdirSync(directory).map(entry => ({ name: entry, bytes: readFileSync(join(directory, entry)) }));
     if (changed) {
-      assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive"));
+      assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime));
       assert.equal(readFileSync(path).equals(before), true);
       assert.equal(JSON.stringify(FakeKeyringEntry.snapshot()) === JSON.stringify(entries), true);
       assert.deepEqual(readdirSync(directory).map(entry => ({ name: entry, bytes: readFileSync(join(directory, entry)) })), directoryBefore);
     } else {
-      const machine = acquireEntrypointAdmission(f.workspace, "exclusive");
+      const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
       try {
         assert.equal(credentialKeyCustody.read(JSON.parse(readFileSync(path, "utf8"))).key === key.key, true);
         assert.equal(credentialKeyCustody.fileDigest(readFileSync(path)), legacyDigest);
@@ -280,7 +280,7 @@ it("migrates an original schema-1 key before supported stopped prior-control con
     credentialKeyCustody.delete(key);
     const before = [f.registryPath, f.verifierPath, f.protectedPath, f.databasePath].map(path => ({ path, bytes: readFileSync(path) }));
     const control = readFileSync(f.controlPath), marker = readFileSync(f.markerPath);
-    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     try {
       assert.equal(credentialKeyCustody.read(JSON.parse(readFileSync(f.keyPath, "utf8"))).key === key.key, true);
       assert.equal(readFileSync(f.keyPath).includes(key.key), false);
@@ -289,8 +289,8 @@ it("migrates an original schema-1 key before supported stopped prior-control con
       assert.equal(readFileSync(f.controlPath).equals(control), true);
       assert.equal(readFileSync(f.markerPath).equals(marker), true);
       maintenance.release();
-      assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive"));
-      const cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+      assert.throws(() => acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime));
+      const cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
       try {
         const upgraded = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory);
         assert.equal(upgraded.state, "upgraded");

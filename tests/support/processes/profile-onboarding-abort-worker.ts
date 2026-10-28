@@ -1,3 +1,4 @@
+import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import nativeFs, { existsSync, readdirSync, fstatSync, openSync, closeSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
@@ -9,8 +10,9 @@ import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { FakeKeyringEntry } from "../helpers/credential-keychain-fake.js";
 
-const [workspace, boundary] = z.tuple([z.string().min(1), z.enum(["source-fsync", "protected-stage"])]).parse(process.argv.slice(2));
-const machine = acquireEntrypointAdmission(workspace, "exclusive");
+const [workspace, boundary, port] = z.tuple([z.string().min(1), z.enum(["source-fsync", "protected-stage"]), z.coerce.number().int().positive()]).parse(process.argv.slice(2));
+const lifetime = await RuntimeLifetimeLock.acquire(port);
+const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
 let armed = false;
 const fsync = nativeFs.fsyncSync;
 function loseProcess(): never {

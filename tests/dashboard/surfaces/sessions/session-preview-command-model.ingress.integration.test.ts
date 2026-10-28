@@ -22,7 +22,8 @@ it("confirms immutable Sessions intent through HTTP ingress, kernel storage and 
   try {
     copyFileSync("package.json", join(root, "package.json"));
     copyFileSync("package-lock.json", join(root, "package-lock.json"));
-    runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: installationAdmission(root), preflightRunnerFactory: healthyRuntimePreflightRunners,
+    const lifetimeLock = await runtimeLifetimeLock();
+    runtime = await composeDashboardRuntime({ lifetimeLock, admission: installationAdmission(root, lifetimeLock), preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, clock, repoRoot: root,
       workerProcess: { spawn: () => { throw new Error("plan must not spawn a worker"); } } });
     const origin = `http://127.0.0.1:${runtime.port}`;

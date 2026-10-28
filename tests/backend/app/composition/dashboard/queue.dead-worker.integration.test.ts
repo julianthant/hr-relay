@@ -3,7 +3,6 @@ import { once } from "node:events";
 import { afterEach, describe, it } from "vitest";
 import { createOperatorProjection } from "../../../../../src/backend/app/composition/dashboard/queue.js";
 import { reconcileExitedWorker } from "../../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
-import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
 import { ownedWorkerLifetimeFixture } from "../../../../support/helpers/backend/worker-lifetime-world.js";
@@ -15,7 +14,7 @@ afterEach(world.cleanup);
 
 describe("Sessions follows child-exit recovery", () => {
   it.each(["starting", "idle"] as const)("settles an exited %s lease before another Run", async phase => {
-    const f = await ownedWorkerLifetimeFixture(world), lock = await RuntimeLifetimeLock.acquire(0);
+    const f = await ownedWorkerLifetimeFixture(world), lock = f.lifetime;
     try {
       f.observe(phase);
       const projection = createOperatorProjection({ database: f.database, reader: f.service,
@@ -44,6 +43,6 @@ describe("Sessions follows child-exit recovery", () => {
       assert.throws(() => reconcileExitedWorker({ ...f, lifecycle: f.service, lock, workerId: f.slot.workerId,
         leaseGeneration: f.started.leaseGeneration + 1 }));
       assert.deepEqual(projection.buildDashboardDayWire(day).workerCards, result.workerCards);
-    } finally { await f.dispose(); await lock.close(); }
+    } finally { await f.dispose(); }
   });
 });

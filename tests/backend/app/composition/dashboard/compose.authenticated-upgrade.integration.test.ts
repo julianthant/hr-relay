@@ -72,8 +72,8 @@ const inspectStopped = AuthorityDatabase.inspectStoppedUpgrade.bind(AuthorityDat
 
 const login = { email: "fixture@ucsd.edu", password: "disposable-fixture-password" };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
-async function priorEight() {
-  const profile = await createBoundProfileFixture();
+async function priorEight(lifetime?: Awaited<ReturnType<typeof runtimeLifetimeLock>>) {
+  const profile = await createBoundProfileFixture(lifetime === undefined ? {} : { lifetime });
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
   const database = AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock, undefined, undefined, undefined, credentials);
@@ -111,7 +111,7 @@ async function priorEight() {
   } finally { raw.close(); }
 
   profile.machine.release();
-  const machine = acquireSharedRuntimeAdmission(profile.workspace);
+  const machine = acquireSharedRuntimeAdmission(profile.workspace, profile.lifetime);
   return { profile, binding, machine };
 }
 function post(port: number) {
@@ -144,7 +144,7 @@ it("commits authenticated refusal, stops, upgrades with backup, restarts the pub
   let closureProved = false;
   const cleanupFailures: unknown[] = [];
   try {
-    application = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0,
+    application = await composeDashboardApplication({ lifetimeLock: f.profile.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0,
       frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
@@ -244,7 +244,7 @@ it("drains the actual notification health writer before preparing profile invent
   let primary: { error: unknown } | undefined, closureProved = false;
   const cleanupFailures: unknown[] = [];
   try {
-    application = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0,
+    application = await composeDashboardApplication({ lifetimeLock: f.profile.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0,
       frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
@@ -291,7 +291,7 @@ it("drains the actual notification health writer before preparing profile invent
 
 it("retains credential source custody when authenticated upgrade capture cannot close its real key descriptor", async () => {
   const controllerLock=await runtimeLifetimeLock();
-  const f = await priorEight();
+  const f = await priorEight(controllerLock);
   const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.binding.profileId}.json`);
   const keyIdentity = lstatSync(keyPath);
   const captureReady = credentialOwner.captureReadyUpgradeCredentialSource;
@@ -354,7 +354,7 @@ it("retains credential source custody when authenticated upgrade capture cannot 
     await assert.rejects(application.stop(), error => error === failure);
     assert.equal(transportClosed, true); assert.equal(starts, 1); assert.equal(closes, 1);
     f.machine.assertLive(); await assertRuntimeLifetimeHeld(controllerLock);
-    assert.throws(() => acquireExclusiveRuntimeAdmission(f.profile.workspace));
+    assert.throws(() => acquireExclusiveRuntimeAdmission(f.profile.workspace, f.profile.lifetime));
     assert.deepEqual(sourceTree(), liveBefore);
     assert.equal(sourceFiles.fstatSync(descriptor).dev, keyIdentity.dev);
     assert.equal(sourceFiles.fstatSync(descriptor).ino, keyIdentity.ino);
@@ -389,7 +389,7 @@ const retainedStartupOwners = new WeakMap<Error, {
 
 it("drains startup producers before inventory when the real HTTP listener cannot bind", async () => {
   const controllerLock=await runtimeLifetimeLock();
-  const f = await createBoundProfileFixture();
+  const f = await createBoundProfileFixture({ lifetime: controllerLock });
   const runtime = composeProfileRuntime({ admission: f.machine, clock: systemClock, hostFacts: { primaryDisplay: null } });
   const actualHttp = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
   const actualNotifications = await vi.importActual<typeof notificationOwner>("../../../../../src/backend/app/composition/dashboard/notifications.js");
@@ -501,7 +501,7 @@ for (const control of ["wrong-password", "locked", "forged", "reused", "verifier
       const replacement = `${f.profile.path}.replacement`; copyFileSync(f.profile.path, replacement); renameSync(replacement, f.profile.path);
     }
     session.close(); f.machine.release();
-    const owner = acquireExclusiveRuntimeAdmission(f.profile.workspace);
+    const owner = acquireExclusiveRuntimeAdmission(f.profile.workspace, f.profile.lifetime);
     exclusive = owner;
     if (control === "forged") {
       assert.throws(() => consumeAuthenticatedProfileUpgrade({ ...authorization }, owner), error => error instanceof ProfileSessionRefusedError && error.code === "PROFILE_UPGRADE_UNAVAILABLE");
@@ -532,7 +532,7 @@ it("keeps current sign-in ordinary with no maintenance authorization", async () 
 
 it("surfaces an actual restart failure after exclusive readback without claiming an authenticated session", async () => {
   const controllerLock=await runtimeLifetimeLock();
-  const f = await priorEight();
+  const f = await priorEight(controllerLock);
   const actual = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
   const injected = new Error("upgrade restart injected");
   let starts = 0;
@@ -595,7 +595,7 @@ it("rejects a genuine foreign installation after authentication without granting
 
 it("retains a real competing shared owner and surfaces exclusive reacquisition refusal before backup or migration", async () => {
   const controllerLock=await runtimeLifetimeLock();
-  const f = await priorEight(), before = digest(f.profile.path);
+  const f = await priorEight(controllerLock), before = digest(f.profile.path);
   const actual = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
   let held: RuntimeAdmission | undefined, starts = 0;
   const start = vi.spyOn(http, "startDashboardHttpServer").mockImplementation(async input => {
@@ -603,7 +603,7 @@ it("retains a real competing shared owner and surfaces exclusive reacquisition r
     const listener = await actual.startDashboardHttpServer(input);
     return Object.freeze({ ...listener, async close() {
       await listener.close();
-      held = acquireSharedRuntimeAdmission(f.profile.workspace);
+      held = acquireSharedRuntimeAdmission(f.profile.workspace, f.profile.lifetime);
     } });
   });
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, proved = false;
@@ -636,7 +636,7 @@ it("refuses replacement of the exact encrypted v4 source across admission turnov
   try {
     const result = session.signIn({ ...login, at: systemClock.now().toISOString() }); assert.ok("upgrade" in result);
     session.close(); f.machine.release();
-    owner = acquireExclusiveRuntimeAdmission(f.profile.workspace);
+    owner = acquireExclusiveRuntimeAdmission(f.profile.workspace, f.profile.lifetime);
     renameSync(path, retained); copyFileSync(retained, path); replaced = true;
     const exclusive = owner;
     assert.throws(() => consumeAuthenticatedProfileUpgrade(result.upgrade, exclusive), { message: "profile-upgrade-handoff-credential-changed" });
@@ -667,7 +667,7 @@ for (const control of ["key", "erasure-head"] as const) it(`retains exact ${cont
   try {
     const result = session.signIn({ ...login, at: systemClock.now().toISOString() }); assert.ok("upgrade" in result);
     session.close(); f.machine.release();
-    const owner = acquireExclusiveRuntimeAdmission(f.profile.workspace); exclusive = owner;
+    const owner = acquireExclusiveRuntimeAdmission(f.profile.workspace, f.profile.lifetime); exclusive = owner;
     let expected: string;
     if (existsSync(path)) {
       const original = lstatSync(path), originalDigest = digest(path);
@@ -710,13 +710,13 @@ for (const control of ["key", "erasure-head"] as const) it(`retains exact ${cont
 
 for (const control of ["verifier", "key", "source"] as const) it(`releases the acquired exclusive owner after HTTP ${control} revalidation refusal`, async () => {
   const controllerLock=await runtimeLifetimeLock();
-  const f = await priorEight(), before = digest(f.profile.path);
+  const f = await priorEight(controllerLock), before = digest(f.profile.path);
   const actualAdmission = await vi.importActual<typeof admissionOwner>("../../../../../src/backend/storage/admission/admission.js");
   const actualHttp = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
   let exclusive: RuntimeAdmission | undefined, acquisitions = 0, starts = 0;
   let restore: (() => void) | undefined;
-  const acquire = vi.spyOn(admissionOwner, "acquireExclusiveRuntimeAdmission").mockImplementation(workspace => {
-    const owner = actualAdmission.acquireExclusiveRuntimeAdmission(workspace);
+  const acquire = vi.spyOn(admissionOwner, "acquireExclusiveRuntimeAdmission").mockImplementation((workspace, lifetime) => {
+    const owner = actualAdmission.acquireExclusiveRuntimeAdmission(workspace, lifetime);
     exclusive = owner; acquisitions++;
     if (control === "verifier") createProfileVerifiers(owner.stateRoot).recordFailure(f.binding.profileId, Date.now());
     else {
@@ -757,7 +757,7 @@ for (const control of ["verifier", "key", "source"] as const) it(`releases the a
     assert.equal(digest(f.profile.path), before); assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
     await assertRuntimeLifetimeHeld(controllerLock);
     restore?.(); restore = undefined;
-    const fresh = actualAdmission.acquireExclusiveRuntimeAdmission(f.profile.workspace);
+    const fresh = actualAdmission.acquireExclusiveRuntimeAdmission(f.profile.workspace, f.profile.lifetime);
     fresh.assertExclusive(); fresh.release();
     proved = true;
   } finally {
@@ -784,8 +784,8 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
   const injected = new Error("held-upgrade-source-disposal");
   let exclusive: RuntimeAdmission | undefined, heldRestore: ReturnType<typeof runtimeLocks.acquireRuntimeRestoreAdmission> | undefined;
   let dispose: (() => void) | undefined, snapshotPath: string | undefined, disposalAttempts = 0, acquisitions = 0, starts = 0;
-  const acquire = vi.spyOn(admissionOwner, "acquireExclusiveRuntimeAdmission").mockImplementation(workspace => {
-    const owner = actualAdmission.acquireExclusiveRuntimeAdmission(workspace); exclusive = owner; acquisitions++; return owner;
+  const acquire = vi.spyOn(admissionOwner, "acquireExclusiveRuntimeAdmission").mockImplementation((workspace, lifetime) => {
+    const owner = actualAdmission.acquireExclusiveRuntimeAdmission(workspace, lifetime); exclusive = owner; acquisitions++; return owner;
   });
   const restore = vi.spyOn(runtimeLocks, "acquireRuntimeRestoreAdmission").mockImplementation((input, clock) => {
     const owner = actualLocks.acquireRuntimeRestoreAdmission(input, clock); heldRestore = owner; return owner;
@@ -802,7 +802,7 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
   });
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, proved = false;
   try {
-    application = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
+    application = await composeDashboardApplication({ lifetimeLock: f.profile.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
     assert.equal(response.headers.has("set-cookie"), false);
@@ -823,7 +823,7 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
     assert.ok(exclusive); exclusive.assertExclusive();
     assert.equal(disposalAttempts, 1); assert.equal(acquisitions, 1); assert.equal(starts, 1);
     assert.ok(snapshotPath); assert.equal(existsSync(snapshotPath), true);
-    assert.throws(() => actualAdmission.acquireSharedRuntimeAdmission(f.profile.workspace));
+    assert.throws(() => actualAdmission.acquireSharedRuntimeAdmission(f.profile.workspace, f.profile.lifetime));
     const stopped = application.stop();
     assert.equal(application.stop(), stopped); await assert.rejects(stopped, error => error === failure);
     exclusive.assertExclusive();
@@ -854,8 +854,8 @@ for (const fault of ["unproved-close", "closed-link-refusal"] as const) it(`reta
   const root = join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot);
   let exclusive: RuntimeAdmission | undefined, phase = false, temporary: { path: string; identity: ReturnType<typeof lstatSync>; digest: string } | undefined;
   let processBaseline: string[] | undefined, descriptor: number | undefined, closes = 0, unlinks = 0, links = 0, acquisitions = 0, restores = 0, starts = 0;
-  const acquire = vi.spyOn(admissionOwner, "acquireExclusiveRuntimeAdmission").mockImplementation(workspace => {
-    const owner = actualAdmission.acquireExclusiveRuntimeAdmission(workspace); exclusive = owner; acquisitions++; return owner;
+  const acquire = vi.spyOn(admissionOwner, "acquireExclusiveRuntimeAdmission").mockImplementation((workspace, lifetime) => {
+    const owner = actualAdmission.acquireExclusiveRuntimeAdmission(workspace, lifetime); exclusive = owner; acquisitions++; return owner;
   });
   const restore = vi.spyOn(runtimeLocks, "acquireRuntimeRestoreAdmission").mockImplementation((input, clock) => {
     restores++; processBaseline = readdirSync(root).sort(); phase = true;
@@ -891,7 +891,7 @@ for (const fault of ["unproved-close", "closed-link-refusal"] as const) it(`reta
   const start = vi.spyOn(http, "startDashboardHttpServer").mockImplementation(input => { starts++; return actualHttp.startDashboardHttpServer(input); });
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, proved = false;
   try {
-    application = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
+    application = await composeDashboardApplication({ lifetimeLock: f.profile.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
     assert.equal(response.headers.has("set-cookie"), false);

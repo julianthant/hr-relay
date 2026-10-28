@@ -28,25 +28,25 @@ async function backup(admission: RuntimeAdmission) {
 
 it("requires the entire receipt-backed plan history and activation snapshot in a moved restore candidate", async () => {
   const f = await installation();
-  const initial = acquireExclusiveRuntimeAdmission(f.workspace);
+  const initial = acquireExclusiveRuntimeAdmission(f.workspace, f.lifetime);
   try {
     const withoutRelocation = await backup(initial);
     expect(validateStorageRelocationRestoreCandidate({admission:initial,activeAuthorityPath:f.authorityPath,
       verifiedBackup:withoutRelocation})).toBeUndefined();
   } finally {initial.release();}
   const firstDestination = {stateRoot:join(f.root,"moved-state"),artifactRoot:join(f.root,"first-artifacts")};
-  const firstPlan = plan(f.workspace,firstDestination);
-  await relocate(f.workspace,firstPlan.commandId);
-  const first = acquireExclusiveRuntimeAdmission(f.workspace);
+  const firstPlan = plan(f.workspace, f.lifetime,firstDestination);
+  await relocate(f.workspace, f.lifetime,firstPlan.commandId);
+  const first = acquireExclusiveRuntimeAdmission(f.workspace, f.lifetime);
   let withoutHistory: Awaited<ReturnType<typeof backup>>;
   try {withoutHistory = await backup(first);} finally {first.release();}
   const destination = {stateRoot:firstDestination.stateRoot,artifactRoot:join(f.root,"second-artifacts")};
-  const secondPlan = plan(f.workspace,destination);
-  const planned = acquireExclusiveRuntimeAdmission(f.workspace);
+  const secondPlan = plan(f.workspace, f.lifetime,destination);
+  const planned = acquireExclusiveRuntimeAdmission(f.workspace, f.lifetime);
   let withoutSnapshot: Awaited<ReturnType<typeof backup>>;
   try {withoutSnapshot = await backup(planned);} finally {planned.release();}
-  await relocate(f.workspace,secondPlan.commandId);
-  const active = acquireExclusiveRuntimeAdmission(f.workspace);
+  await relocate(f.workspace, f.lifetime,secondPlan.commandId);
+  const active = acquireExclusiveRuntimeAdmission(f.workspace, f.lifetime);
   const path = join(active.stateRoot,"state.db");
   try {
     const complete = await backup(active);

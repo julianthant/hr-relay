@@ -61,7 +61,7 @@ diagnostic stages: 0 reclaimed, 1 retained; retained evidence remains budget-acc
     assert.equal(after.authorityContentFingerprint, inspection.authorityContentFingerprint);
     try { admission.release(); profile.machine.release(); }
     catch (error) { throw retainAuthoritySourceClosure([error], { admission, directory: { profile } }); }
-    const sharedMachine = acquireSharedRuntimeAdmission(root);
+    const sharedMachine = acquireSharedRuntimeAdmission(root, profile.lifetime);
     const sharedOwners: { machine: typeof sharedMachine; admission?: ReturnType<typeof sharedMachine.admitProfile>; profile: typeof profile; primary?: unknown } = {
       machine: sharedMachine, profile,
     };

@@ -54,7 +54,7 @@ export function createSettingsAuthorityTestWorld() {
       return { admission: renewed.admission, store: renewed.credentials,
         execute: (request: unknown, authority: CommandAuthority) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request) };
     };
-    return { repoRoot, root, path, database, store, execute, clock, admission, renewAfterRestore };
+    return { repoRoot, lifetime: profile.lifetime, root, path, database, store, execute, clock, admission, renewAfterRestore };
   }
 
   function protectedCommand(expectedRevision: number) {

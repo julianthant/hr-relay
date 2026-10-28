@@ -1,3 +1,8 @@
+import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
+import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { DatabaseSync } from "node:sqlite";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { runRecordColumns } from "../../../src/backend/storage/sqlite/run-record-row.js";
@@ -22,7 +27,7 @@ const world = createRunRecordServiceTestWorld();
 afterEach(() => world.cleanup());
 
 async function fixture() {
-  const f = await world.fixture(), lock = await runtimeLifetimeLock(), now = f.clock.now().toISOString();
+  const f = await world.fixture(), lock = f.lifetime, now = f.clock.now().toISOString();
   stopSyntheticDatabaseWorkers({ database: f.database, path: join(f.root, "state.db") });
   const profileRunId = randomUUID(), credentialKey = "ab".repeat(32);
   const slot = f.database.admitVerificationWorker({ ...f.admission.profileBinding, lockPort: lock.port,
@@ -95,38 +100,44 @@ it("refuses an unbound browser observation without closing rows or retiring its 
 it("recovers an actual hard-crashed standalone reservation with no worker lease before admitting another", async () => {
   const f = await world.fixture();
   stopSyntheticDatabaseWorkers({ database: f.database, path: join(f.root, "state.db") });
-  const portOwner = await RuntimeLifetimeLock.acquire(0), port = portOwner.port;
-  await portOwner.close();
+  const port = f.lifetime.port, binding = f.admission.profileBinding;
   const installation = f.machine.readInstallationContext(); assert.ok(installation);
+  await f.closeController();
   const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"),
     fileURLToPath(new URL("../../support/processes/verification-reservation-owner.ts", import.meta.url)),
     installation.workspace, String(port), f.clock.now().toISOString()],
   { env: credentialKeychainTestEnvironment({}), stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const exited = once(child, "close");
   child.stderr?.resume();
-  let lock: RuntimeLifetimeLock | undefined;
+  let lock: RuntimeLifetimeLock | undefined, machine: RuntimeAdmission | undefined, admission: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined;
   try {
     const received = await Promise.race([once(child, "message"), exited.then(() => { throw new Error("verification-owner-exited-before-reservation"); })]);
     const member = z.strictObject({ workerId: z.string(), revision: z.number().int().positive() }).parse(received[0]);
-    assert.equal(f.database.authority.workerLeases.get(member.workerId), undefined);
     await assert.rejects(RuntimeLifetimeLock.acquire(port), RuntimeAlreadyRunningError);
     assert.equal(child.kill("SIGKILL"), true);
     assert.deepEqual(await exited, [null, "SIGKILL"]);
     lock = await RuntimeLifetimeLock.acquire(port);
-    reconcileStartupCrash({ ...f, lifecycle: f.service, lock });
-    assert.equal(f.database.authority.workerSlots.get(member.workerId)?.retiredAt, f.clock.now().toISOString());
-    assert.equal(f.database.authority.workerSlots.get(member.workerId)?.membershipRevision, member.revision + 1);
-    assert.equal(f.database.authority.workerLeases.get(member.workerId), undefined);
-    assert.equal(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID)
+    machine = acquireEntrypointAdmission(installation.workspace, "shared", lock);
+    admission = machine.admitProfile(machine.issueRegisteredProfileClaim(binding.profileId));
+    const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
+      erasureJournalPath: join(machine.stateRoot, "machine", "erasures", binding.profileId + ".json") });
+    database = AuthorityDatabase.open(admission, { path: join(f.root, "state.db"), busyTimeoutMs: 250,
+      migrationOwner: "verification-restart-proof" }, f.clock, undefined, undefined, undefined, credentials);
+    assert.equal(database.authority.workerLeases.get(member.workerId), undefined);
+    reconcileStartupCrash({ machine, admission, database, clock: f.clock, lifecycle: testRunService(database, f.clock), lock });
+    assert.equal(database.authority.workerSlots.get(member.workerId)?.retiredAt, f.clock.now().toISOString());
+    assert.equal(database.authority.workerSlots.get(member.workerId)?.membershipRevision, member.revision + 1);
+    assert.equal(database.authority.workerLeases.get(member.workerId), undefined);
+    assert.equal(database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID)
       .filter(note => note.title === "RUN_CRASH_RESOURCES_RELEASED").length, 1);
-    const next = f.database.admitVerificationWorker({ ...f.admission.profileBinding, lockPort: port, commandId: randomUUID(),
-      workflow: "person-lookup", expectedPoolVersion: f.database.authority.workerPools.get("person-lookup")?.version,
+    const next = database.admitVerificationWorker({ ...binding, lockPort: port, commandId: randomUUID(),
+      workflow: "person-lookup", expectedPoolVersion: database.authority.workerPools.get("person-lookup")?.version,
       profileRunId: randomUUID(), system: "ucpath", credentialKey: "ab".repeat(32), leaseGeneration: 1,
       now: f.clock.now().toISOString() }, lock);
     assert.notEqual(next.workerId, member.workerId);
   } finally {
     if (child.exitCode === null && child.signalCode === null) { child.kill("SIGKILL"); await exited; }
-    await lock?.close();
+    database?.close(); admission?.release(); machine?.release(); await lock?.close();
   }
 });
 

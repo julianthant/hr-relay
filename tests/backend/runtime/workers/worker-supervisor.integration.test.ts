@@ -1,4 +1,4 @@
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { once } from "node:events";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { writePrivateStage } from '../../../../src/backend/storage/configuration/credential-safe-file.js';
 import { workerProfileDirectory } from '../../../../src/backend/runtime/browser/browser-session-factory.js';
@@ -131,17 +131,23 @@ it("retires a real worker only after its opened Chromium profile closes, custody
   }
   const root = profile.workspace;
   const output: string[] = [], children: ChildProcess[] = [], runIds: string[] = [];
+  const childClosures: Promise<unknown[]>[] = [];
   const failures: unknown[] = [];
   let runtime: DashboardRuntime | undefined, database: ReturnType<typeof profile.openDatabase> | undefined;
   let retiringMember: ReturnType<typeof workerPoolMember> | undefined;
   const diagnostics = () => output.join("") + JSON.stringify({ runs: runIds.map(id => database?.authority.runs.get(id)), leases: database?.authority.workerLeases.listLive(), browsers: retiringMember === undefined ? [] : database?.authority.workerControls.browsers(retiringMember.workerId) });
   const spawnWorker: WorkerProcessSpawner = request => {
-    const child = spawn_m1(request.command, [...request.args], { cwd: request.cwd, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const child = spawn_m1(request.command, [...request.args, "--fixture-lock-port", String(profile.lifetime.port)], { cwd: request.cwd, stdio: ["ignore", "pipe", "pipe", "ipc"], detached: true });
+    childClosures.push(once(child, "close"));
     children.push(child); child.stdout?.on("data", chunk => output.push(String(chunk))); child.stderr?.on("data", chunk => output.push(String(chunk)));
+    let transfer: Promise<void>;
+    try { transfer = profile.lifetime.share(child); }
+    catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
+    void transfer.catch(error => { child.emit("error", error); child.kill("SIGTERM"); });
     return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
   };
   try {
-    runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
+    runtime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime, ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
       workerProcess: { launch: { environment: {}, command: process.execPath, prefixArgs: ["--import", "tsx", join_m1(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), root], cwd: process.cwd() }, spawn: spawnWorker, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => output.push(line) } });
     const duoDirectory = join_m1(root, `physical-duo-${randomUUID()}`);
     mkdirSync(duoDirectory, { mode: 0o700 });
@@ -251,6 +257,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     try {
       writeFileSync(join_m1(root, "release-drivers"), "cleanup released");
       await runtime?.detach();
+      await Promise.all(childClosures);
       assert.ok(children.every(child => child.exitCode !== null || child.signalCode !== null));
       if (database !== undefined) {
         const activeSlots = database.authority.workerSlots.list().filter(slot => slot.retiredAt === null);

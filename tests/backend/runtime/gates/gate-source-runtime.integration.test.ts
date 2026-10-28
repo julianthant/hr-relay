@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { GateIdSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -42,10 +43,10 @@ afterEach(() => {
 
 const NOW = "2026-08-03T09:00:00.000Z";
 
-function repoRootWithState(): { repoRoot: string; stateRoot: string } {
+async function repoRootWithState() {
   const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-worker-compose-"));
   roots.push(repoRoot);
-  const stateRoot = installationAdmission(repoRoot).stateRoot;
+  const stateRoot = installationAdmission(repoRoot, await runtimeLifetimeLock()).stateRoot;
   writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "worker-composition-fixture", version: "0.1.0", type: "module" }));
   return { repoRoot, stateRoot };
 }
@@ -62,7 +63,7 @@ function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
 describe("worker-loop source gate composition", () => {
   for (const mode of ["external", "children-terminal"] as const) {
     it(`parks and source-settles a ${mode} descriptor through the production worker loop`, async () => {
-      const { stateRoot } = repoRootWithState();
+      const { stateRoot } = await repoRootWithState();
       const clock = manualClock(new Date(NOW));
       const database = reopen(stateRoot, clock);
       const descriptor = sourceGateDescriptor(mode);

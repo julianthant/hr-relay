@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createHistoricalIncompleteProfileFixture } from '../../../support/fixtures/storage/historical-incomplete-profile-fixture.js';
 import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import nativeFs from 'node:fs';
@@ -48,7 +49,8 @@ async function setup(options: { sharedMachine?: true } = {}) {
 
 it("durably stages pending enrollment before acknowledgement and holds signing until exact confirmation", async () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "duo-pending-enrollment-")));
-  const machine = acquireEntrypointAdmission(workspace, "exclusive");
+  const lifetime = await runtimeLifetimeLock();
+  const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
   const clock = manualClock(new Date());
   const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu",
       password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
@@ -213,7 +215,7 @@ async function stoppedControlFixture(retainedCredential?: unknown) {
     const processLockRoot = fixture.processLockRoot;
     const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
     held.restore = restore;
-    const upgrade = acquireStoppedProfileControlUpgrade(fixture.workspace, restore);
+    const upgrade = acquireStoppedProfileControlUpgrade(fixture.workspace, restore, fixture.lifetime);
     held.upgrade = upgrade;
     retainedStoppedControlSetupOwners.delete(held);
     return { ...fixture, stateRoot: fixture.profileRoot, path: fixture.databasePath, profileId, controlPath, upgrade, restore,
@@ -291,7 +293,8 @@ it("refuses an attestation from another genuinely issued stopped profile", async
 
 it("does not apply retained-engine disposition to ordinary credential initialization", async () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "duo-ordinary-initialization-")));
-  const machine = acquireEntrypointAdmission(workspace, "exclusive"), clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
+  const lifetime = await runtimeLifetimeLock();
+  const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime), clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
   let path: string | undefined, bytes: Buffer | undefined;
   const session = createProfileSession({ admission: machine, machineRoot: machine.stateRoot,
     initializationInventory: (child, operation, writer, copies) => {
@@ -387,7 +390,7 @@ const DuoChildEventSchema = z.discriminatedUnion("type", [
 ]);
 async function duoChild(f: Awaited<ReturnType<typeof setup>>) {
   const child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
-    [f.workspace, f.admission.profileBinding.profileId, f.input.credentialId, f.clock.now().toISOString()],
+    [f.workspace, f.admission.profileBinding.profileId, f.input.credentialId, f.clock.now().toISOString(), String(f.lifetime.port)],
     { execArgv: ["--import", "tsx"], stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const held: { fixture: typeof f; child: typeof child; events?: object; closure?: object; primary?: { error: unknown }; failures: unknown[] } = { fixture: f, child, failures: [] };
   retainedPublicationRecoveryOwners.add(held);
@@ -406,6 +409,7 @@ async function duoChild(f: Awaited<ReturnType<typeof setup>>) {
     return DuoChildEventSchema.parse(result.value?.[0]);
   };
   try {
+    await f.lifetime.share(child);
     const ready = await event(); assert.equal(ready.type, "ready");
     if (ready.type !== "ready") throw new Error("Duo fixture child readiness required");
     assert.equal(ready.pid, child.pid);
@@ -557,7 +561,7 @@ it("finishes one interrupted Duo publication after the producing process exits a
     const canonicalBefore = readFileSync(f.documentPath);
     const profileId = f.admission.profileBinding.profileId;
     child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
-      [f.workspace, profileId, f.input.credentialId, f.clock.now().toISOString()],
+      [f.workspace, profileId, f.input.credentialId, f.clock.now().toISOString(), String(f.lifetime.port)],
       { execArgv: ["--import", "tsx"], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
     retained.child = child;
     const closeEvent = once(child, "close");
@@ -608,7 +612,7 @@ it("finishes one interrupted Duo publication after the producing process exits a
     assert.equal(readFileSync(stagePath).equals(stageBefore), true);
     assert.equal(readFileSync(f.documentPath).equals(canonicalBefore), true);
     f.admission.release(); f.machine.release();
-    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     retained.maintenance = maintenance;
     {
       const changedProfile = JSON.parse(intentBefore.toString("utf8")) as { capture: { profileId: string } };
@@ -663,7 +667,7 @@ it("finishes one interrupted Duo publication after the producing process exits a
       assert.equal(recovered.revision > 0, true);
     }
     maintenance.release();
-    const machine = RuntimeAdmission.acquireMachine(f.workspace, "shared");
+    const machine = RuntimeAdmission.acquireMachine(f.workspace, "shared", f.lifetime);
     retained.machine = machine;
     const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(profileId));
     retained.admission = admission;
@@ -774,8 +778,8 @@ it("admits only the finite stopped machine-control pair through maintenance admi
   const unsupported = await createHistoricalIncompleteProfileFixture();
   const unsupportedPaths = downgradeStoppedControl(unsupported, 1);
   try {
-    assert.throws(() => RuntimeAdmission.acquireMachine(unsupported.workspace, "exclusive"));
-    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(unsupported.workspace);
+    assert.throws(() => RuntimeAdmission.acquireMachine(unsupported.workspace, "exclusive", unsupported.lifetime));
+    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(unsupported.workspace, unsupported.lifetime);
     try {
       await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /profile-control-upgrade-pending-conversion-unsupported/u);
       assertUnchanged(unsupportedPaths);
@@ -784,7 +788,7 @@ it("admits only the finite stopped machine-control pair through maintenance admi
   const missingKey = await createHistoricalIncompleteProfileFixture();
   const missingPaths = downgradeStoppedControl(missingKey, 2, true);
   try {
-    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(missingKey.workspace);
+    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(missingKey.workspace, missingKey.lifetime);
     try {
       await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /profile-credential-key-unowned/);
       assertUnchanged(missingPaths);
@@ -794,7 +798,7 @@ it("admits only the finite stopped machine-control pair through maintenance admi
   const livePaths = downgradeStoppedControl(live, 2);
   const lock = acquireRuntimeProcessLock({ processLockRoot: livePaths.processLockRoot, name: "server", pid: process.pid });
   try {
-    assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(live.workspace), /profile-control-upgrade-runtime-active/u);
+    assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(live.workspace, live.lifetime), /profile-control-upgrade-runtime-active/u);
     assertUnchanged(livePaths);
   } finally { lock.release(); await live.close(); }
 });
@@ -802,8 +806,8 @@ it("admits only the finite stopped machine-control pair through maintenance admi
 it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and rolls back a mutated stage", async () => {
   const fixture = await createHistoricalIncompleteProfileFixture();
   const paths = downgradeStoppedControl(fixture, 2);
-  assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "exclusive"));
-  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
+  assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "exclusive", fixture.lifetime));
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace, fixture.lifetime);
   try {
     const planned = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(planned.state, "planned");
@@ -854,7 +858,7 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
 it("recovers a machine-control publication stopped between the control and marker renames", async () => {
   const fixture = await createHistoricalIncompleteProfileFixture();
   const paths = downgradeStoppedControl(fixture, 2);
-  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace, fixture.lifetime);
   try {
     execFileSync("/usr/bin/chflags", ["uchg", paths.markerPath]);
     await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
@@ -883,7 +887,7 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
   try {
     const paths = downgradeStoppedControl(fixture, 2);
     held.processLockRoot = paths.processLockRoot;
-    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace);
+    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace, fixture.lifetime);
     held.maintenance = maintenance;
     const restore = maintenance.maintenanceRestore();
     held.restore = restore;
@@ -918,7 +922,7 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
     assert.throws(() => releaseStoppedMachineControlUpgrade(control, restore, true), (error: unknown) => error instanceof AuthoritySourceClosureUnprovedError);
     assert.equal(existsSync(join(paths.processLockRoot, "restore-admission.lock.json")), true);
     assert.throws(() => acquireRuntimeRestoreAdmission({ processLockRoot: paths.processLockRoot, pid: process.pid }), /held by live pid/u);
-    assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "shared"), /installation lease busy/u);
+    assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "shared", fixture.lifetime), /installation lease busy/u);
     assert.throws(() => releaseStoppedMachineControlUpgrade(control, restore, true), (error: unknown) => error instanceof AuthoritySourceClosureUnprovedError);
     assert.equal(existsSync(snapshotFile), true);
     for (const directory of issued) if (directory !== created[0]) assert.equal(existsSync(directory), false);
@@ -1056,7 +1060,7 @@ for (const readOwner of ['scan', 'parse'] as const) it(`retains the actual stopp
     assert.equal(realStat(held.descriptor).ino, identity.ino);
     assertRuntimeRestoreAdmission(f.restore, join(f.workspace, rebuildRuntimeIsolation.processLockRoot));
     assert.equal(f.upgrade.registeredProfileIds().includes(f.profileId), true);
-    assert.throws(() => { held.competing = RuntimeAdmission.acquireMachine(f.workspace, 'exclusive'); });
+    assert.throws(() => { held.competing = RuntimeAdmission.acquireMachine(f.workspace, 'exclusive', f.lifetime); });
     assert.equal(held.competing, undefined);
     assert.equal(nativeFs.existsSync(f.workspace), true);
     assert.equal(destructiveCleanup, 0);

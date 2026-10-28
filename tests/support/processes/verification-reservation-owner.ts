@@ -11,7 +11,7 @@ import { reconcileStartupCrash } from "../../../src/backend/runs/lifecycle/start
 import { manualClock } from "../../../src/rules/time/clock.js";
 
 const [workspace, port, now] = z.tuple([z.string().min(1), z.coerce.number().int().positive(), z.iso.datetime()]).parse(process.argv.slice(2));
-const lock = await RuntimeLifetimeLock.acquire(port), machine = acquireEntrypointAdmission(workspace, "shared");
+const lock = await RuntimeLifetimeLock.acquire(port), machine = acquireEntrypointAdmission(workspace, "shared", lock);
 const selected = captureSelectedProfileStorage(machine), admission = machine.admitProfile(machine.issueRegisteredProfileClaim(selected.profileId));
 const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
   erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });

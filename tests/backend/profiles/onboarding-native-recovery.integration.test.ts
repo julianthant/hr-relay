@@ -26,9 +26,9 @@ async function requireOwnedBrowserExit(pid:number){
 it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then recovers only after native closure",async()=>{
   await runtimeLifetimeLock();
   const f=await createHistoricalIncompleteProfileFixture();
-  const maintenance=RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  const maintenance=RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   await maintenance.reclassifyIncompleteProfileAsDraft(f.profileId);maintenance.release();
-  const machine=acquireEntrypointAdmission(f.workspace,"exclusive");
+  const machine=acquireEntrypointAdmission(f.workspace,"exclusive", f.lifetime);
   const profile=composeProfileRuntime({admission:machine,hostFacts:{primaryDisplay:null},clock:systemClock});
   const operation=SignUpOperationSchema.parse(JSON.parse(readFileSync(f.operationPath,"utf8")));
   assert.ok(operation.onboarding);

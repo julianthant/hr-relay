@@ -84,7 +84,11 @@ async function world(clock: Clock = systemClock) {
   const restore = (projection: (path: string) => Promise<void> = async () => {}, replace = renameSync, factory?: OfflineRestoreAdmissionFactory) => new OfflineAuthorityRestoreService(admission,
     { authorityPath: fixture.path, suspectDirectory: join(fixture.stateRoot, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 },
     projection, clock, { copyFile: copyFileSync, atomicReplace: replace }, factory, store());
-  return { ...fixture, profileId, journalPath, processLockRoot, credentialInventories, renew, store, session, signIn, backup, proof, restore, current: () => admission };
+  let controllerClosure: Promise<void> | undefined;
+  const closeController = (): Promise<void> => controllerClosure ??= (async () => {
+    await currentSession.closeOnboarding(); currentSession.close(); await fixture.closeController();
+  })();
+  return { ...fixture, profileId, journalPath, processLockRoot, credentialInventories, renew, store, session, signIn, backup, proof, restore, closeController, current: () => admission };
 }
 
 function childJob(script: string) {
@@ -93,7 +97,7 @@ function childJob(script: string) {
   child.stdout.on("data", (bytes: Buffer) => { output += bytes.toString("utf8"); });
   // Child diagnostics remain private; parent reports only exit and fixed protocol tokens.
   child.stderr.resume();
-  const done = new Promise<number | null>((resolve, reject) => { child.once("error", reject); child.once("exit", resolve); });
+  const done = new Promise<number | null>((resolve, reject) => { child.once("error", reject); child.once("close", resolve); });
   return { child, done, output: () => output };
 }
 async function waitForFile(path: string) {
@@ -475,7 +479,7 @@ describe("profile restore continuity", () => {
       assert.equal((JSON.parse(readFileSync(registryPath, "utf8")) as { sessionGeneration: number }).sessionGeneration, beforeGeneration + 1);
       f.machine.release();
       restoreHandle = acquireRuntimeRestoreAdmission({ processLockRoot: f.processLockRoot, pid: process.pid });
-      recovery = acquireRecoveryRuntimeRestore(f.workspace, pending.restore.operationId, restoreHandle);
+      recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, restoreHandle);
       const recoveredAdmission = recovery.admission;
       assert.throws(() => recoveredAdmission.assertWritable());
       assert.throws(() => recoveredAdmission.assertProfileRuntime());
@@ -491,7 +495,7 @@ describe("profile restore continuity", () => {
         manifestPath, outcome: "replaced", processLockRoot: f.processLockRoot, stoppedSystemProof: f.proof(), restoreAdmission: restoreHandle })).state, "settled");
       assert.equal(replacements, 1); assert.equal(existsSync(journalPath), false);
       restoreHandle.release(); restoreHandle = undefined; recovery.admission.release(); recovery = undefined;
-      freshMachine = RuntimeAdmission.acquireMachine(f.workspace, "exclusive");
+      freshMachine = RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime);
       assert.equal(freshMachine.readProfileRegistry().sessionGeneration, beforeGeneration + 1);
       const fresh = freshMachine.admitProfile(createProfileRegistry(freshMachine).storageClaim(f.profileId));
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-recovered-fresh" }); database.close(); fresh.release();
@@ -523,18 +527,22 @@ describe("profile restore continuity", () => {
     } finally { if (archiveCollision !== undefined) rmSync(archiveCollision, { recursive: true }); held?.release(); await f.close(); }
   });
 
-  it.each(["erase", "restore"] as const)("excludes a real concurrent %s owner through the same installation lease", async held => {
+  it.each(["erase", "restore"] as const)("excludes a real concurrent controller during %s through the held kernel listener", async held => {
     const f = await world();
     let owner: ReturnType<typeof childJob> | undefined, competitor: ReturnType<typeof childJob> | undefined;
     const ready = join(f.workspace, "child-ready"), release = join(f.workspace, "child-release");
     try {
       const manifestPath = await f.backup();
       const databaseBytes = readFileSync(f.path);
-      f.machine.release();
+      const port = f.lifetime.port;
+      await f.closeController();
       const imports = `
         import { existsSync,writeFileSync } from 'node:fs';
         import { join } from 'node:path';
         import { acquireEntrypointAdmission } from './src/backend/storage/admission/bootstrap-admission.ts';
+        import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from './src/backend/storage/admission/lifetime-lock.ts';
+        import { composeProfileCredentialRepairInventory } from './src/backend/app/composition/profile-credential-inventory.ts';
+        import { systemClock } from './src/rules/time/clock.ts';
         import { createProfileSession } from './src/backend/profiles/profile-session.ts';
         import { createProfileRegistry } from './src/backend/profiles/registry.ts';
         import { createCredentialStore } from './src/backend/storage/configuration/credential-store.ts';
@@ -542,28 +550,27 @@ describe("profile restore continuity", () => {
         import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
         import { RecoveryStopProofStore } from './src/backend/storage/sqlite/recovery-stop-proof.ts';
         import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from './src/backend/storage/sqlite/runtime-process-locks.ts';
-        const workspace=${JSON.stringify(f.workspace)},profileId=${JSON.stringify(f.profileId)},manifestPath=${JSON.stringify(manifestPath)};
+        const port=${String(port)},workspace=${JSON.stringify(f.workspace)},profileId=${JSON.stringify(f.profileId)},manifestPath=${JSON.stringify(manifestPath)};
         const ready=${JSON.stringify(ready)},release=${JSON.stringify(release)},processLockRoot=${JSON.stringify(f.processLockRoot)};
       `;
       const barrier = `writeFileSync(ready,'ready',{mode:0o600});const deadline=Date.now()+10000;while(!existsSync(release)){if(Date.now()>deadline)throw new Error('barrier-timeout');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);}`;
-      const erase = `const machine=acquireEntrypointAdmission(workspace,'shared');try {
-        const session=createProfileSession({admission:machine,machineRoot:machine.stateRoot,activity:{hasUnquiescedWork:()=>false},backupPaths:()=>[],loginDataPaths:()=>[],credentialHooks:{afterErasureJournal:()=>{${barrier}}}});
-        const active=session.signIn({email:'fixture@example.edu',password:'disposable-fixture-password',at:'2026-10-21T12:00:00.000Z'});
+      const erase = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'shared',lifetime);try {
+        const session=createProfileSession({admission:machine,machineRoot:machine.stateRoot,activity:{hasUnquiescedWork:()=>false},backupPaths:()=>[],loginDataPaths:()=>[],repairInventory:(admission,request,writer,copies)=>composeProfileCredentialRepairInventory({machine,admission,clock:systemClock,hostFacts:{primaryDisplay:null}})(request,writer,copies),credentialHooks:{afterErasureJournal:()=>{${barrier}}}});
+        const active=session.signIn({email:'fixture@ucsd.edu',password:'disposable-fixture-password',at:'2026-10-21T12:00:00.000Z'});
         if(active.state!=='active')throw new Error('activation-refused');
         const result=session.logOut(active.token,{at:'2026-10-21T12:01:00.000Z'});if(result.state!=='wiped')throw new Error('erase-not-wiped');
-      }finally{machine.release();}process.stdout.write('OWNER_DONE');`;
-      const restore = `const machine=acquireEntrypointAdmission(workspace,'exclusive');try {
+      }finally{machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
+      const restore = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'exclusive',lifetime);try {
         const child=machine.admitProfile(createProfileRegistry(machine).storageClaim(profileId));const root=child.stateRoot,path=join(root,'state.db');
         const store=createCredentialStore({admission:child,stateRoot:root,erasureJournalAdmission:machine,erasureJournalPath:join(machine.stateRoot,'machine','erasures',profileId+'.json')});
         const identity=AuthorityDatabase.sourceDatabaseIdentity(path),proofs=new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60000});
         proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:identity}));const proof=proofs.issue({observedBy:'local-operator',sourceDatabaseIdentity:identity});
         const service=new OfflineAuthorityRestoreService(child,{authorityPath:path,suspectDirectory:join(root,'backups','suspects'),busyTimeoutMs:250,processLockRoot,stoppedProofMaxAgeMs:60000},async()=>{${barrier}},undefined,undefined,undefined,store);
         await service.restore({manifestPath,stoppedSystemProof:proof});
-      }finally{machine.release();}process.stdout.write('OWNER_DONE');`;
+      }finally{machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
       owner = childJob(imports + (held === "erase" ? erase : restore));
       await waitForFile(ready);
-      const mode = held === "erase" ? "exclusive" : "shared";
-      competitor = childJob(imports + `let refused=false;try{const machine=acquireEntrypointAdmission(workspace,'${mode}');machine.release();}catch(error){if(error instanceof Error && error.message==='runtime-control: installation lease busy')refused=true;else throw error;}if(!refused)throw new Error('competing-owner-admitted');process.stdout.write('REFUSED');`);
+      competitor = childJob(imports + `let refused=false;try{const candidate=await RuntimeLifetimeLock.acquire(port);try{throw new Error('competing-controller-admitted');}finally{await candidate.close();}}catch(error){if(error instanceof RuntimeAlreadyRunningError)refused=true;else throw error;}if(!refused)throw new Error('competing-controller-admitted');process.stdout.write('REFUSED');`);
       assert.equal(await competitor.done, 0);
       assert.equal(competitor.output(), "REFUSED");
       assert.deepEqual(readFileSync(f.path), databaseBytes);
@@ -572,7 +579,7 @@ describe("profile restore continuity", () => {
       assert.equal(owner.output(), "OWNER_DONE");
     } finally {
       writeFileSync(release, "release", { mode: 0o600 });
-      for (const job of [owner, competitor]) if (job !== undefined && job.child.exitCode === null) { job.child.kill(); await job.done; }
+      for (const job of [owner, competitor]) if (job !== undefined && job.child.exitCode === null && job.child.signalCode === null) { job.child.kill(); await job.done; }
       rmSync(ready, { force: true }); rmSync(release, { force: true });
       await f.close();
     }

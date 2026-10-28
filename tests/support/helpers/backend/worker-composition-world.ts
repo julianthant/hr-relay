@@ -1,5 +1,3 @@
-import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { runtimeLifetimeLock } from "./runtime-lifetime.js";
 import { vi } from "vitest";
 import * as workerLoops from "../../../../src/backend/runtime/workers/worker-loop.js";
 import type { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
@@ -35,7 +33,6 @@ import { ManualScheduler, type SessionFactoryHarness } from "../phase1f-executor
 
 
 export function createWorkerCompositionTestWorld() {
-  const lifetimes = new Map<string, RuntimeLifetimeLock>();
   const profiles = new Map<string, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
 
   const openDatabases: AuthorityDatabase[] = [];
@@ -53,7 +50,6 @@ export function createWorkerCompositionTestWorld() {
     const fixture = await createBoundProfileFixture({ sharedMachine: true });
     const repoRoot = fixture.workspace, stateRoot = fixture.stateRoot;
     profiles.set(repoRoot, fixture);
-    lifetimes.set(repoRoot, await runtimeLifetimeLock());
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "worker-composition-fixture", version: "0.1.0", type: "module" }));
     return { repoRoot, stateRoot, fixture };
   }
@@ -157,7 +153,7 @@ export function createWorkerCompositionTestWorld() {
     lines?: string[];
   }>) {
     ensureBaselineRuntimeConfig(options.repoRoot, options.clock);
-    const lifetimeLock = lifetimes.get(options.repoRoot); assert.ok(lifetimeLock);
+    const lifetimeLock = owner(options.repoRoot).lifetime;
     return {
       lifetimeLock,
       preflightRunnerFactory: healthyRuntimePreflightRunners,
@@ -179,7 +175,7 @@ export function createWorkerCompositionTestWorld() {
   }
   function captureSyntheticClosure(repoRoot: string, clock: TestClock, createStore: typeof createCredentialStore) {
     const fixture = owner(repoRoot);
-    const lifetimeLock = lifetimes.get(repoRoot); assert.ok(lifetimeLock);
+    const lifetimeLock = fixture.lifetime;
     let issued: RuntimeAdmission | undefined, store: ReturnType<typeof createCredentialStore> | undefined;
     let database: AuthorityDatabase | undefined;
     let report: workerLoops.WorkerLoopReport | undefined;
@@ -257,7 +253,7 @@ export function createWorkerCompositionTestWorld() {
     }
   }
   async function concurrentWorkers(repoRoot: string, clock: TestClock) {
-    const children: ChildProcess[] = [], exits: Promise<unknown[]>[] = [];
+    const children: ChildProcess[] = [], exits: Promise<unknown[]>[] = [], closes: Promise<unknown[]>[] = [];
     const replies: Promise<unknown[]>[] = [];
     const message = z.strictObject({ state: z.enum(["ready", "report", "failed"]), detail: z.string() });
     const fixture = owner(repoRoot), expected = statSync(fixture.path), database = open(repoRoot, clock);
@@ -269,11 +265,12 @@ export function createWorkerCompositionTestWorld() {
     let failure: unknown;
     let reports: z.infer<typeof report>[] = [];
     try {
-      const lifetimeLock = await runtimeLifetimeLock();
+      const lifetimeLock = fixture.lifetime;
       for (const index of [1, 2, 3]) {
         const child = spawn(process.execPath, ["--import", "tsx", join(process.cwd(), "tests/support/processes/worker-composition-child.ts"),
           repoRoot, String(index), clock.now().toISOString(), String(lifetimeLock.port)], { cwd: process.cwd(), stdio: ["ignore", "ignore", "ignore", "ipc"] });
         children.push(child);
+        closes.push(once(child, "close"));
         const exited = once(child, "exit"); exits.push(exited);
         const awaitingReady = Promise.race([once(child, "message"), exited.then(() => { throw new Error("worker fixture exited before ready"); })]);
         await lifetimeLock.share(child);
@@ -294,11 +291,13 @@ export function createWorkerCompositionTestWorld() {
       }));
       assert.equal(new Set(reports.map(value => value.pid)).size, 3);
       for (const exit of exits) assert.deepEqual(await exit, [0, null]);
+      for (const close of closes) assert.deepEqual(await close, [0, null]);
     } catch (error) { failure = error; }
     const cleanupFailures: unknown[] = [];
     for (const [index, child] of children.entries()) {
       try {
         if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await exits[index]; }
+        await closes[index];
       } catch (error) { cleanupFailures.push(error); }
     }
     if (failure !== undefined || cleanupFailures.length > 0) throw new AggregateError([...(failure === undefined ? [] : [failure]), ...cleanupFailures], "worker fixture children failed");
@@ -306,7 +305,7 @@ export function createWorkerCompositionTestWorld() {
   }
   const cleanup = async () => {
     closeDatabases();
-    for (const [root, fixture] of profiles) { await fixture.close(); await lifetimes.get(root)?.close(); lifetimes.delete(root); profiles.delete(root); }
+    for (const [root, fixture] of profiles) { await fixture.close(); profiles.delete(root); }
   };
   return { openDatabases, NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, ensureBaselineRuntimeConfig,
     resolvedSettings, profileAdmission, stateRootFor, captureSyntheticClosure, workerLifetime, concurrentWorkers, databaseDescriptors, closeDatabases, composeInput, cleanup };

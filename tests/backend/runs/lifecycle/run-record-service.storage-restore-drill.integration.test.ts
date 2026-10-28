@@ -131,7 +131,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
   CLOCK.advanceWall(60 * 60 * 1000);
   const mutationDb = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-crash-recovery" }, CLOCK);
   try {
-    const recovered = await recoverInterruptedTestRun(mutationDb, CLOCK, before.runId);
+    const recovered = recoverInterruptedTestRun(mutationDb, CLOCK, before.runId, p.lifetime);
     assert.equal(recovered.lifecycle.state, "parked-write");
   } finally { mutationDb.close(); }
   const afterSweep = inspect(p.authorityPath);

@@ -1,4 +1,3 @@
-import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync } from "node:fs";
@@ -51,7 +50,7 @@ it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s aut
   let execution: Promise<unknown> | undefined;
   const failures: unknown[] = [];
   try {
-    dashboard = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
+    dashboard = await composeDashboardRuntime({ lifetimeLock: f.lifetime, admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
       clock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       workerProcess: { spawn: () => { spawns++; throw new Error("unexpected child effect"); } } });
     context = runtime.selectedContext(active.token);

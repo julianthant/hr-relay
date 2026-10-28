@@ -173,8 +173,8 @@ function applied(
 describe("independent credential store", () => {
 afterEach(_afterEachFixture0);
 
-  it("clears a value and makes the sole reader observe missing and later next-use values", () => {
-    const f = fixture();
+  it("clears a value and makes the sole reader observe missing and later next-use values", async () => {
+    const f = await fixture();
     const secretSource = { read: () => f.store.read() };
     applied(f.store, request({
       commandId: COMMAND_1,

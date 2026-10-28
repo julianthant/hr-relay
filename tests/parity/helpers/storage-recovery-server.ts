@@ -1,3 +1,4 @@
+import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
 import { RuntimeAdmission as CanonicalRuntimeAdmission } from '../../../src/backend/storage/admission/admission.js';
 import { rebuildRuntimeIsolation } from '../../../src/backend/app/config/runtime-isolation.js';
@@ -32,10 +33,11 @@ export async function storageRecoveryTarget() {
   const repoRoot = fixture.workspace, profileId = fixture.admission.profileBinding.profileId;
   const held: { fixture: typeof fixture; child?: ReturnType<typeof spawn>; admission?: RuntimeAdmission; machine?: RuntimeAdmission;
     restore?: RestoreAdmissionHandle; server?: Server; shell?: FixtureServer; competing?: RuntimeAdmission;
-    backendLock?: ReturnType<typeof acquireRuntimeProcessLock>; primary?: unknown } = { fixture };
+    backendLock?: ReturnType<typeof acquireRuntimeProcessLock>; lifetime?: RuntimeLifetimeLock; primary?: unknown } = { fixture };
   retainedStorageRecoveryOwners.add(held);
   try {
-  fixture.admission.release(); fixture.machine.release();
+  const port = fixture.lifetime.port;
+  await fixture.closeController();
   const clock = systemClock;
   const sourceUrl = (path: string) => pathToFileURL(join(process.cwd(), path)).href;
   const code = `const { rebuildRuntimeIsolation } = await import(${JSON.stringify(sourceUrl('src/backend/app/config/runtime-isolation.ts'))});
@@ -51,7 +53,9 @@ export async function storageRecoveryTarget() {
     const { PROTECTED_SETTINGS_SCHEMA_HASH } = await import(${JSON.stringify(sourceUrl("src/models/config/protected-settings.ts"))});
     const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/runtime-process-locks.ts"))});
     const { RecoveryStopProofStore } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/recovery-stop-proof.ts"))});
-    const workspace = process.argv[1], machine = RuntimeAdmission.acquireMachine(workspace, 'exclusive');
+    const { RuntimeLifetimeLock } = await import(${JSON.stringify(sourceUrl('src/backend/storage/admission/lifetime-lock.ts'))});
+    const lifetime = await RuntimeLifetimeLock.acquire(Number(process.argv[3]));
+    const workspace = process.argv[1], machine = RuntimeAdmission.acquireMachine(workspace, 'exclusive', lifetime);
     const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(process.argv[2])), root = admission.stateRoot;
     const path = join(root, "state.db"), directory = join(root, "backups", "authority"), processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
     const credentials = createCredentialStore({ admission, stateRoot: root, erasureJournalAdmission: machine, erasureJournalPath: join(machine.stateRoot, "machine", "erasures", \`\${admission.profileBinding.profileId}.json\`) });
@@ -79,7 +83,7 @@ export async function storageRecoveryTarget() {
       }}, undefined, credentials);
     await restore.restore({manifestPath, stoppedSystemProof});
   `;
-  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, repoRoot, profileId],
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, repoRoot, profileId, String(port)],
     { detached: true,cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"]});
   held.child = child;
   const childClosed = new Promise<void>(resolve => child.once('close', () => resolve()));
@@ -113,11 +117,12 @@ export async function storageRecoveryTarget() {
   }
 
   assert.ok(ready);
+  const lifetime = await RuntimeLifetimeLock.acquire(port); held.lifetime = lifetime;
   const {root, authorityPath, manifestPath, stagedPath, operationId, sourceDatabaseIdentity} = ready;
   const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
   const journalPath = join(repoRoot, ".tracker", "control", "journal.json");
   assert.equal(existsSync(journalPath), true);
-  assert.throws(() => { held.competing = acquireEntrypointAdmission(repoRoot, "shared"); }, /unfinished restoring/u);
+  assert.throws(() => { held.competing = acquireEntrypointAdmission(repoRoot, "shared", lifetime); }, /unfinished restoring/u);
   const credentialPath = join(root, "credentials", "protected.json");
   const credentialBytes = readFileSync(credentialPath);
   let diagnosticAdmission: RuntimeAdmission | undefined, diagnosticMachine: RuntimeAdmission | undefined, restoreHandle: RestoreAdmissionHandle | undefined;
@@ -127,10 +132,10 @@ export async function storageRecoveryTarget() {
     if (diagnosticAdmission !== undefined) return diagnosticAdmission;
     if (existsSync(journalPath)) {
       restoreHandle = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock); held.restore = restoreHandle;
-      try { diagnosticAdmission = acquireRecoveryRuntimeRestore(repoRoot, operationId, restoreHandle).admission; held.admission = diagnosticAdmission; }
+      try { diagnosticAdmission = acquireRecoveryRuntimeRestore(repoRoot, lifetime, operationId, restoreHandle).admission; held.admission = diagnosticAdmission; }
       catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
     } else {
-      diagnosticMachine = CanonicalRuntimeAdmission.acquireMachine(repoRoot, 'shared'); held.machine = diagnosticMachine;
+      diagnosticMachine = CanonicalRuntimeAdmission.acquireMachine(repoRoot, 'shared', lifetime); held.machine = diagnosticMachine;
       diagnosticAdmission = diagnosticMachine.admitProfile(diagnosticMachine.issueRegisteredProfileClaim(profileId)); held.admission = diagnosticAdmission;
     }
     return diagnosticAdmission;
@@ -226,7 +231,7 @@ export async function storageRecoveryTarget() {
     assert.equal(server, undefined, "stop the owned service before recovery");
     await stop();
     const settled = await runOfflineAuthorityRestoreRecovery(repoRoot, ["--operation", operationId,
-      "--from", manifestPath, "--outcome", "replaced", "--json"], clock);
+      "--from", manifestPath, "--outcome", "replaced", "--json"], lifetime, clock);
     assert.equal(settled.report.state, "settled");
     assert.equal(existsSync(journalPath), false);
     assert.deepEqual(readFileSync(stagedPath), readFileSync(authorityPath));
@@ -234,7 +239,7 @@ export async function storageRecoveryTarget() {
     rmSync(stagedPath);
     assert.equal(existsSync(stagedPath), false);
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    const machine = CanonicalRuntimeAdmission.acquireMachine(repoRoot, 'shared'); held.machine = machine;
+    const machine = CanonicalRuntimeAdmission.acquireMachine(repoRoot, 'shared', lifetime); held.machine = machine;
     const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(profileId)); held.admission = admission;
     admission.release(); machine.release();
     recoveryCompleted = true;
@@ -255,7 +260,7 @@ export async function storageRecoveryTarget() {
       surroundingFixtures: "All non-storage API responses, shell/settings, SSE and static transport use createFixtureBff/startFixtureServer; static bytes are the bound working-tree production bundle.",
       runtimeScope: "Diagnostic host over disposable storage, not the full production runtime.", pid: process.pid}),
     dispose: async () => {
-      try { await stop(); if (recoveryCompleted) { await fixture.close(); retainedStorageRecoveryOwners.delete(held); } }
+      try { await stop(); if (recoveryCompleted) { await lifetime.close(); await fixture.close(); retainedStorageRecoveryOwners.delete(held); } }
       catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
     }};
 

@@ -119,7 +119,7 @@ describe("graceful teardown with a run in flight", () => {
     assert.equal("workerId" in stranded.lifecycle ? stranded.lifecycle.workerId : undefined, "person-lookup-worker-1");
 
     clock.advanceWall(90_000);
-    const recoveredRun = await recoverInterruptedTestRun(database, clock, runId);
+    const recoveredRun = recoverInterruptedTestRun(database, clock, runId, authority.profile.lifetime);
     assert.ok(recoveredRun.lifecycle.state === "terminal" && recoveredRun.lifecycle.outcome === "failed");
     assert.equal(database.authority.failures.listByRun(runId)[0]?.code, "RUN_INTERRUPTED_BY_CRASH");
 

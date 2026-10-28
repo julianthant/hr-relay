@@ -1,4 +1,3 @@
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync } from "node:fs";
@@ -34,7 +33,7 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
   let report: workerLoop.WorkerLoopReport | undefined, issued: RuntimeAdmission | undefined;
-  const lifetimeLock = await runtimeLifetimeLock();
+  const lifetimeLock = f.lifetime;
   const managers: WorkerSessionManager[] = [];
   let launches = 0, launchFailure: Promise<never> | undefined;
   let closedWorkerDatabase: AuthorityDatabase | undefined, launchedDirectory: string | undefined;
@@ -115,7 +114,7 @@ it("retains database, child and process custody when its actual OCR account cann
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
   const createAccount = accounts.createChatGptAccountService, run = workerLoop.runWorkerLoop;
-  const lifetimeLock = await runtimeLifetimeLock();
+  const lifetimeLock = f.lifetime;
   let workerDatabase: AuthorityDatabase | undefined, credentials: ReturnType<typeof credentialStores.createCredentialStore> | undefined;
   const createStore = credentialStores.createCredentialStore;
   vi.spyOn(credentialStores, "createCredentialStore").mockImplementation(options => {

@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { mkdtempSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,7 +21,8 @@ describe("Explorer SQLite command authority", () => {
 
   it("backs up and restores committed override, command and audit as one authority, then replays exactly", async () => {
     const workspace = mkdtempSync(join(realpathSync(tmpdir()), "explorer-native-restore-"));
-    const admission = acquireEntrypointAdmission(workspace, "exclusive");
+    const lifetime = await runtimeLifetimeLock();
+    const admission = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
     const clock = manualClock(new Date("2026-09-13T10:00:00Z"));
     const path = join(admission.stateRoot, "state.db");
     const f = await explorerAuthorityFixture({ root: admission.stateRoot, path,

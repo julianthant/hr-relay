@@ -1,5 +1,5 @@
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -141,23 +141,24 @@ afterEach(_afterEachFixture0);
 }
 
 {
-const cleanups:(()=>void)[]=[];
-const _afterEachFixture0 = ()=>{effects.credentials=0;effects.browsers=0;for(const cleanup of cleanups.splice(0))cleanup();};
-function fixture() {
-  const root=realpathSync(mkdtempSync(join(tmpdir(),"relay-native-snapshot-"))),stateRoot=join(root,rebuildRuntimeIsolation.stateRoot);
+const cleanups:(()=>Promise<void>)[]=[];
+const _afterEachFixture0 = async()=>{effects.credentials=0;effects.browsers=0;for(const cleanup of cleanups.splice(0))await cleanup();};
+async function fixture() {
+  const profile=await createBoundProfileFixture(),root=profile.workspace,stateRoot=profile.stateRoot;
+  cleanups.push(()=>profile.close());
   copyFileSync("package.json",join(root,"package.json"));
-  mkdirSync(join(root,rebuildRuntimeIsolation.processLockRoot),{recursive:true,mode:0o700});
-  mkdirSync(stateRoot,{recursive:true,mode:0o700});const path=join(stateRoot,"state.db");
-  const admission=RuntimeAdmission.syntheticFixture(path),clock=capturedInstantClock(NOW);
+  const path=profile.path;
+  const admission=profile.admission,clock=capturedInstantClock(NOW);
   const resolved=resolveConfigWithProvenance(initialSettingsFileRecord().settings,hostConfigFacts({}),clock,
-    {stateRoot,artifactRoot:join(root,rebuildRuntimeIsolation.artifactRoot)});
+    {stateRoot,artifactRoot:profile.admission.artifactRoot});
   const snapshot={configSnapshotId:UUID_1,revision:1,fingerprint:resolved.fingerprint,capturedAt:NOW,capturedBy:"local-operator",config:resolved.config,provenance:resolved.provenance};
   const options={path,busyTimeoutMs:5000,migrationOwner:"native-snapshot-proof"};
-  const database=AuthorityDatabase.open(admission,options,clock);database.authority.runtimeConfig.initialize(snapshot);database.close();
-  cleanups.push(()=>{admission.release();rmSync(root,{recursive:true,force:true});});
-  return {root,admission,clock,snapshot,options,path};
+  const database=AuthorityDatabase.open(admission,options,clock);
+  try{database.authority.runtimeConfig.initialize(snapshot);}finally{database.close();}
+  effects.credentials=0;
+  return {root,admission,machine:profile.machine,lifetime:profile.lifetime,clock,snapshot,options,path};
 }
-function applySettings(f:ReturnType<typeof fixture>){
+function applySettings(f:Awaited<ReturnType<typeof fixture>>){
   const database=AuthorityDatabase.open(f.admission,f.options,f.clock);
   try{return database.withAuthorityTransaction(repositories=>{
     const patch={"browser.headless":{set:false}};
@@ -174,8 +175,8 @@ function applySettings(f:ReturnType<typeof fixture>){
 describe("native selected configuration proof",()=>{
 afterEach(_afterEachFixture0);
 
-  it("reads and reopens exact unchanged config bytes through genuine initialized command/audit/snapshot links",()=>{
-    const f=fixture();const database=AuthorityDatabase.open(f.admission,f.options,f.clock);
+  it("reads and reopens exact unchanged config bytes through genuine initialized command/audit/snapshot links",async()=>{
+    const f=await fixture();const database=AuthorityDatabase.open(f.admission,f.options,f.clock);
     try {
       expect(database.authority.configSnapshots.get(UUID_1)).toEqual(f.snapshot);
       expect(database.authority.runtimeConfig.get()?.configFingerprint).toBe(sha256Hex(canonicalJsonStringify(f.snapshot.config)));
@@ -184,7 +185,7 @@ afterEach(_afterEachFixture0);
     const boot=AuthorityBootStore.open(f.admission,f.options,f.clock);try{expect(boot.report().state).toBe("healthy");}finally{boot.close();}
   });
   it("refuses an otherwise-valid changed selected body with untouched saved fingerprint/links before credentials, browser or worker admission",async()=>{
-    const f=fixture();effects.credentials=0;const raw=new DatabaseSync(f.path);
+    const f=await fixture();effects.credentials=0;const raw=new DatabaseSync(f.path);
     try {
       const trigger=raw.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='settings_snapshots_immutable'").get();
       expect(typeof trigger?.sql).toBe("string");
@@ -198,21 +199,21 @@ afterEach(_afterEachFixture0);
       expect(()=>boot.requireWritable("claim")).toThrow(/unavailable/u);
     }finally{boot.close();}
     expect(effects.credentials).toBe(0);
-    await expect(composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(),admission:f.admission,isolation:rebuildRuntimeIsolation,args:["person-lookup","--pool-index","1","--drain"],
+    await expect(composeWorkerRuntime({ lifetimeLock:f.lifetime,admission:f.machine,isolation:rebuildRuntimeIsolation,args:["person-lookup","--pool-index","1","--drain"],
       repoRoot:f.root,clock:f.clock,env:{},sessionFactory:{ probeProfile: async () => undefined,open:async()=>{effects.browsers+=1;throw new Error("unrequested browser effect");}}})).rejects.toThrow(/config-snapshot-fingerprint-mismatch/u);
     expect(effects).toEqual({credentials:0,browsers:0});
     const read=new DatabaseSync(f.path,{readOnly:true});try {
       expect(read.prepare("SELECT * FROM worker_slots").all()).toEqual([]);expect(read.prepare("SELECT * FROM worker_leases").all()).toEqual([]);
     }finally{read.close();}
   });
-  it("admits an unchanged genuine saved revision with its exact ordinary command and audit",()=>{
-    const f=fixture(),saved=applySettings(f);
+  it("admits an unchanged genuine saved revision with its exact ordinary command and audit",async()=>{
+    const f=await fixture(),saved=applySettings(f);
     const database=AuthorityDatabase.open(f.admission,f.options,f.clock);
     try{expect(database.authority.settingsCurrent.get()).toEqual(saved);}finally{database.close();}
     const boot=AuthorityBootStore.open(f.admission,f.options,f.clock);try{expect(boot.report().state).toBe("healthy");}finally{boot.close();}
   });
-  it.each(["wrong-links","missing-current"])("refuses contradictory saved settings at inspection/open/boot before credential effects: %s",fault=>{
-    const f=fixture();applySettings(f);const raw=new DatabaseSync(f.path);
+  it.each(["wrong-links","missing-current"])("refuses contradictory saved settings at inspection/open/boot before credential effects: %s",async fault=>{
+    const f=await fixture();applySettings(f);const raw=new DatabaseSync(f.path);
     try{
       const app=readAppSettings(raw);expect(app?.saved).toBeDefined();if(app===undefined)throw new Error("fixture settings missing");
       if(fault==="missing-current")raw.exec("DELETE FROM settings");

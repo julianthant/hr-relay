@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -70,7 +71,8 @@ afterEach(_afterEachFixture0);
 describe("native notification recovery", () => {
   it("restores exact inbox, source and health metadata through the real backup/restore boundary", async () => {
     const workspace = mkdtempSync(join(realpathSync(tmpdir()), "notification-native-restore-"));
-    const admission = acquireEntrypointAdmission(workspace, "exclusive");
+    const lifetime = await runtimeLifetimeLock();
+    const admission = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
     const root = admission.stateRoot, path = join(root, "state.db");
     const clock = manualClock(new Date("2026-09-10T20:00:00Z"));
     const f = { root, path, clock, input: { processLockRoot: join(root, "locks") } };
@@ -116,7 +118,8 @@ function controlRecord(now: string) {
 describe("native worker control recovery", () => {
   it("preserves pending control identity and browser observations through real backup and restore", async () => {
     const workspace = mkdtempSync(join(realpathSync(tmpdir()), "worker-control-native-"));
-    const admission = acquireEntrypointAdmission(workspace, "exclusive");
+    const lifetime = await runtimeLifetimeLock();
+    const admission = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
     const root = admission.stateRoot;
     const f = {root,path:join(root,"state.db"),clock:manualClock(new Date("2026-09-10T20:00:00Z")),input:{processLockRoot:join(root,"locks")}};
     try {

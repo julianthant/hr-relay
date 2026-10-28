@@ -47,12 +47,12 @@ function assertActivation(before: ReturnType<typeof durableSnapshot>, after: Ret
 it("moves both roots with a stopped WAL-backed domain record and preserves managed bytes", async () => {
   const f = await installation();
   const destination = { stateRoot: join(f.root, "moved-state"), artifactRoot: join(f.root, "moved-artifacts") };
-  const request = plan(f.workspace, destination);
-  leaveStoppedWal(f.workspace, f.authorityPath);
+  const request = plan(f.workspace, f.lifetime, destination);
+  await leaveStoppedWal(f.workspace, f.lifetime, f.authorityPath);
   const before = durableSnapshot(f.authorityPath, f.credentialFile, f.artifactFile);
-  const outcome = await relocate(f.workspace, request.commandId);
+  const outcome = await relocate(f.workspace, f.lifetime, request.commandId);
   assert.equal(outcome.generation, 1);
-  const reopened = acquireSharedRuntimeAdmission(f.workspace);
+  const reopened = acquireSharedRuntimeAdmission(f.workspace, f.lifetime);
   try {
     assert.equal(reopened.stateRoot, destination.stateRoot);
     assert.equal(reopened.artifactRoot, destination.artifactRoot);

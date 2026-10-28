@@ -38,7 +38,7 @@ async function fixture() {
   cleanups.push(async () => { database.close(); admission.release(); await bound.close(); });
   const directory = join(root, "backups", "authority"), clock = capturedInstantClock(NOW);
   const service = new AuthorityBackupService(admission, database, { directory }, clock);
-  return { workspace, root, path, get admission() { return admission; }, get credentials() { return credentials; }, machine: bound.machine,
+  return { workspace, lifetime: bound.lifetime, root, path, get admission() { return admission; }, get credentials() { return credentials; }, machine: bound.machine,
     renewAfterRestore() {
       admission.release();
       admission = bound.machine.admitProfile(createProfileRegistry(bound.machine).storageClaim(profileId));
@@ -159,7 +159,7 @@ describe("native authority backup", () => {
       expect(existsSync(journal.restore.stagedPath)).toBe(true);
       for(const row of before){expect(readFileSync(`${journal.restore.stagedPath}${row.suffix}.live-companion`)).toEqual(row.bytes);
         expect(statSync(`${journal.restore.stagedPath}${row.suffix}.live-companion`).ino).toBe(row.inode);}
-      f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared")).toThrow(/unfinished restoring/u);
+      f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime)).toThrow(/unfinished restoring/u);
     }else{
       expect(existsSync(journalPath)).toBe(false);
       for(const row of before){expect(readFileSync(`${f.path}${row.suffix}`)).toEqual(row.bytes);expect(statSync(`${f.path}${row.suffix}`).ino).toBe(row.inode);}
@@ -190,15 +190,15 @@ describe("native authority backup", () => {
         }}, undefined, f.credentials);
       await expect(restore.restore({manifestPath,stoppedSystemProof:fresh()}),fault).rejects.toMatchObject({authorityState:outcome});
       const journalBytes=readFileSync(journalPath),journal=JSON.parse(journalBytes.toString()) as {restore:{operationId:string}};
-      f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared"),fault).toThrow(/unfinished restoring/u);
+      f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);
       const held=acquireRuntimeRestoreAdmission({processLockRoot,pid:process.pid},f.clock);
-      const recovery=acquireRecoveryRuntimeRestore(f.workspace,journal.restore.operationId,held);
+      const recovery=acquireRecoveryRuntimeRestore(f.workspace, f.lifetime,journal.restore.operationId,held);
       try{
         await expect(settleInterruptedAuthorityRestore({admission:recovery.admission,operationId:journal.restore.operationId,
           manifestPath,outcome,processLockRoot,stoppedSystemProof:fresh(),restoreAdmission:held,clock:f.clock}),fault).rejects.toThrow();
         expect(readFileSync(journalPath),fault).toEqual(journalBytes);
       }finally{recovery.admission.release();held.release();}
-      expect(()=>acquireEntrypointAdmission(f.workspace,"shared"),fault).toThrow(/unfinished restoring/u);
+      expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);
     }
   },30_000);
   it("retains a durable restore barrier after ambiguous replacement and staged disappearance, then settles only the exact verified replacement", async () => {
@@ -220,15 +220,15 @@ describe("native authority backup", () => {
     expect(journal.phase).toBe("restoring"); expect(existsSync(journal.restore.stagedPath)).toBe(true);
     expect(readFileSync(journal.restore.suspectPath)).toEqual(original); expect(readFileSync(manifestPath)).not.toHaveLength(0);
     f.admission.release(); f.machine.release();
-    expect(() => acquireEntrypointAdmission(f.workspace, "shared")).toThrow(/unfinished restoring/u);
+    expect(() => acquireEntrypointAdmission(f.workspace, "shared", f.lifetime)).toThrow(/unfinished restoring/u);
     expect(() => inspectPendingRelocationStatus(f.workspace)).toThrow(/not an owned relocation/u);
     rmSync(journal.restore.stagedPath);
-    expect(() => acquireEntrypointAdmission(f.workspace, "shared")).toThrow(/unfinished restoring/u);
+    expect(() => acquireEntrypointAdmission(f.workspace, "shared", f.lifetime)).toThrow(/unfinished restoring/u);
     const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, f.clock);
     let recovered: ReturnType<typeof acquireRecoveryRuntimeRestore> | undefined;
     try {
-      expect(() => acquireRecoveryRuntimeRestore(f.workspace, "ffffffff-ffff-4fff-8fff-ffffffffffff", restore)).toThrow(/exact offline restore recovery/u);
-      recovered = acquireRecoveryRuntimeRestore(f.workspace, journal.restore.operationId, restore);
+      expect(() => acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, "ffffffff-ffff-4fff-8fff-ffffffffffff", restore)).toThrow(/exact offline restore recovery/u);
+      recovered = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, journal.restore.operationId, restore);
       const currentRecovery = recovered;
       let wrongBindingVerifications = 0;
       expect(() => currentRecovery.admission.settleAuthorityRestore({ ...currentRecovery.input, authorityGeneration: currentRecovery.input.authorityGeneration + 1 },
@@ -249,7 +249,7 @@ describe("native authority backup", () => {
       expect(settled).toEqual({ state: "settled", operationId: journal.restore.operationId, outcome: "replaced" });
       expect(existsSync(journalPath)).toBe(false);
     } finally { recovered?.admission.release(); restore.release(); }
-    const reopened = acquireEntrypointAdmission(f.workspace, "shared");
+    const reopened = acquireEntrypointAdmission(f.workspace, "shared", f.lifetime);
     try { const copy = reopened.verifiedReadOnlyCopy(f.path, createHash("sha256").update(readFileSync(f.path)).digest("hex"));
       try { expect(inspectAuthorityBackupReadOnly(copy, f.path).authorityContentFingerprint).toBe(manifest.authorityContentFingerprint); } finally { copy.release(); } }
     finally { reopened.release(); }

@@ -1,3 +1,5 @@
+import { runtimeLifetimeLock } from "./runtime-lifetime.js";
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import assert from "node:assert/strict";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -22,25 +24,26 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 export function createInstallationControlTestWorld() {
   const workspaces: string[] = [];
 
-  function fixture(): { workspace: string; pair: RuntimePair } {
+  async function fixture(): Promise<{ workspace: string; pair: RuntimePair; lifetime: RuntimeLifetimeLock }> {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "runtime-control-")));
     workspaces.push(root);
+    const lifetime = await runtimeLifetimeLock();
     const workspace = join(root, "workspace");
     mkdirSync(workspace, { mode: 0o700 });
     mkdirSync(join(workspace, ".tracker"), { mode: 0o700 });
-    return { workspace, pair: { stateRoot: join(workspace, ".tracker/data"), artifactRoot: join(workspace, ".tracker/data", "artifacts") } };
+    return { workspace, lifetime, pair: { stateRoot: join(workspace, ".tracker/data"), artifactRoot: join(workspace, ".tracker/data", "artifacts") } };
   }
 
   function restore(workspace: string): RestoreAdmissionHandle {
     return acquireRuntimeRestoreAdmission({ processLockRoot: join(workspace, ".tracker/data", "locks"), pid: process.pid });
   }
 
-  function adoptSynthetic(workspace: string, pair: RuntimePair): ExclusiveInstallationLease {
-    const machine = acquireEntrypointAdmission(workspace, "exclusive");
+  function adoptSynthetic(workspace: string, pair: RuntimePair, lifetime: RuntimeLifetimeLock): ExclusiveInstallationLease {
+    const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
     assert.equal(machine.stateRoot, pair.stateRoot);
     assert.equal(machine.artifactRoot, pair.artifactRoot);
     machine.release();
-    return acquireInstallation(workspace, "exclusive");
+    return acquireInstallation(workspace, "exclusive", lifetime);
   }
 
   function relocationPlan(lease: ExclusiveInstallationLease, destination: RuntimePair): RelocationPlanBinding {

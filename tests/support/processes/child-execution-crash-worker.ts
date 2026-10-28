@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { catalogCodeForThrown } from "../../../src/models/failures/error-catalog.js";
 import { z } from "zod";
 import { join } from "node:path";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
@@ -22,7 +22,7 @@ const [repoRoot, mode, port] = z.tuple([z.string().min(1), z.enum(["checkpoint",
 const controller = new AbortController();
 const lifetimeLock = await receiveRuntimeLifetimeLock(port, () => controller.abort(new Error("fixture-parent-disconnected")));
 stage = "machine";
-const machine = acquireEntrypointAdmission(repoRoot, "shared");
+const machine = acquireSharedRuntimeAdmission(repoRoot, lifetimeLock);
 stage = "profile";
 const registry = createProfileRegistry(machine), selected = registry.read().activeProfileId;
 assert.ok(selected);

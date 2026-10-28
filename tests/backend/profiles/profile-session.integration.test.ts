@@ -1,3 +1,5 @@
+import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { finishProfileOnboarding, readyProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { readAuthenticatedCredentialFixture, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
@@ -44,10 +46,11 @@ function createProfileSession(input: Omit<Parameters<typeof realCreateProfileSes
 
 const roots: string[] = [];
 afterEach(async () => { for (const session of sessionOwners) await session.close(); sessionOwners.clear(); for (const admission of machineAdmissions.values()) admission.release(); machineAdmissions.clear(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function temp(): string {
+async function temp(): Promise<string> {
   const root = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hr-profiles-")));
   roots.push(root);
-  const admission = acquireEntrypointAdmission(root, "shared");
+  const lifetime = await runtimeLifetimeLock();
+  const admission = acquireEntrypointAdmission(root, "shared", lifetime);
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   machineAdmissions.set(admission.stateRoot, admission);
   return admission.stateRoot;
@@ -55,7 +58,7 @@ function temp(): string {
 
 describe("profile session", () => {
   it("keeps profile B from reading profile A, blocks logout while work is active, and refuses a stale token", async () => {
-    const root = temp();
+    const root = await temp();
     let busy = false;
     const session = createProfileSession({
       machineRoot: root,
@@ -110,7 +113,7 @@ describe("profile session", () => {
   });
 
   it("does not claim logout complete while a backup still holds the secret", async () => {
-    const root = temp();
+    const root = await temp();
     const session = createProfileSession({
       machineRoot: root,
       activity: { hasUnquiescedWork: () => false },
@@ -145,7 +148,7 @@ describe("profile session", () => {
   });
 
   it("blocks resumed logout when a schema3 clean copy retains captured secret bytes outside UCPath fields", async () => {
-    const root = temp(), backup = join(root, "inventory-copy.json");
+    const root = await temp(), backup = join(root, "inventory-copy.json");
     const ports = { activity: { hasUnquiescedWork: () => false }, backupPaths: () => existsSync(backup) ? [backup] : [], loginDataPaths: () => [] };
     const session = createProfileSession({ machineRoot: root, ...ports });
     const password = "disposable-inventory-capture-password";
@@ -208,7 +211,7 @@ describe("profile session", () => {
   });
 
   it("does not cancel another profile when this one signs in", async () => {
-    const root = temp();
+    const root = await temp();
     const cancelled: string[] = [];
     const session = createProfileSession({
       machineRoot: root,
@@ -244,7 +247,7 @@ describe("profile session", () => {
   });
 
   it("refuses non-letter initials before creating a profile", async () => {
-    const root = temp();
+    const root = await temp();
     const session = createProfileSession({ machineRoot: root });
     const refused = await finishProfileOnboarding(session, session.signUp({
       firstName: "Émile", lastName: "Rivera", email: "emile@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
@@ -255,7 +258,7 @@ describe("profile session", () => {
   });
 
   it("refuses a decomposed non-ASCII name before creating a profile", async () => {
-    const root = temp();
+    const root = await temp();
     const session = createProfileSession({ machineRoot: root });
     for (const firstName of ["E\u0301mile", "ıvan", "ſmith", "\u212Aelvin"]) {
       const refused = await finishProfileOnboarding(session, session.signUp({
@@ -268,7 +271,7 @@ describe("profile session", () => {
   });
 
   it("does not erase when no activity port can close work", async () => {
-    const root = temp();
+    const root = await temp();
     const session = createProfileSession({ machineRoot: root });
     const alex = await finishProfileOnboarding(session, session.signUp({
       firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
@@ -281,7 +284,7 @@ describe("profile session", () => {
   });
 
   it("resumes a logout from the retained operation after restart", async () => {
-    const root = temp();
+    const root = await temp();
     let busy = true;
     const activity = { hasUnquiescedWork: () => busy };
     const session = createProfileSession({ machineRoot: root, activity, backupPaths: () => [], loginDataPaths: () => [] });
@@ -303,7 +306,7 @@ describe("profile session", () => {
   });
 
   it("refuses logout completion when the erasure journal resolves inside the profile", async () => {
-    const root = temp();
+    const root = await temp();
     const session = createProfileSession({
       machineRoot: root,
       activity: { hasUnquiescedWork: () => false },
@@ -336,7 +339,7 @@ describe("profile session", () => {
   });
 
   it("strips a restored profile file with the external erasure journal", async () => {
-    const root = temp();
+    const root = await temp();
     const backup = join(root, "held-backup.bin");
     const session = createProfileSession({
       machineRoot: root,
@@ -367,7 +370,7 @@ describe("profile session", () => {
   });
 
   it("does not publish a profile when credential apply fails before commit", async () => {
-    const root = temp();
+    const root = await temp();
     let renames = 0;
     const session = createProfileSession({
       machineRoot: root,
@@ -380,7 +383,7 @@ describe("profile session", () => {
   });
 
   it("publishes one sign-up when the credential commit is uncertain", async () => {
-    const root = temp();
+    const root = await temp();
     let renames = 0;
     const session = createProfileSession({
       machineRoot: root,
@@ -408,8 +411,8 @@ describe("profile session", () => {
     assert.equal(document.history.length, 1);
   });
 
-  it("does not follow an operation symlink", () => {
-    const root = temp();
+  it("does not follow an operation symlink", async () => {
+    const root = await temp();
     const session = createProfileSession({ machineRoot: root });
     const operations = join(root, "machine", "operations");
     mkdirSync(operations, { recursive: true, mode: 0o700 });
@@ -421,7 +424,7 @@ describe("profile session", () => {
   });
 
   it("holds the profile lock until the current operation finishes", async () => {
-    const root = temp();
+    const root = await temp();
     let nested = false;
     const session = createProfileSession({
       machineRoot: root,
@@ -445,7 +448,7 @@ describe("profile session", () => {
   }, 20_000);
 
   it("replaces a dead profile lock before sign-up", async () => {
-    const root = temp();
+    const root = await temp();
     const machine = join(root, "machine");
     mkdirSync(machine, { mode: 0o700, recursive: true });
     writeFileSync(join(machine, ".profile-ops.lock"), `${JSON.stringify({
@@ -459,7 +462,7 @@ describe("profile session", () => {
   });
 
   it("does not sign in another profile while a logout operation is still open", async () => {
-    const root = temp();
+    const root = await temp();
     const session = createProfileSession({ machineRoot: root, activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
     const alex = await finishProfileOnboarding(session, session.signUp({
       firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
@@ -485,7 +488,7 @@ describe("profile session", () => {
   });
 
   it("does not save a different password over an already applied sign-up command", async () => {
-    const root = temp();
+    const root = await temp();
     const session = createProfileSession({ machineRoot: root });
     const alex = await finishProfileOnboarding(session, session.signUp({
       firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
@@ -552,7 +555,7 @@ describe("profile session", () => {
   });
 
   it("writes the supplied password again when an old command survives logout", async () => {
-    const root = temp();
+    const root = await temp();
     const session = createProfileSession({
       machineRoot: root,
       activity: { hasUnquiescedWork: () => false },
@@ -609,7 +612,7 @@ describe("durable profile authority regressions", () => {
   const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
   const at = "2026-09-06T12:07:00.000Z";
   it("advances activation after restart and revokes the independent old instance", async () => {
-    const root = temp();
+    const root = await temp();
     const first = createProfileSession({ machineRoot: root });
     const a = await finishProfileOnboarding(first, first.signUp(fields));
     assert.equal(a.state, "active"); if (a.state !== "active") return;
@@ -623,7 +626,7 @@ describe("durable profile authority regressions", () => {
     assert.ok(restarted.readFile(b.token, "note.txt") instanceof Uint8Array);
   });
   it("refuses a second sign-up before publishing credentials or selection", async () => {
-    const root = temp();
+    const root = await temp();
     const first = createProfileSession({ machineRoot: root });
     assert.equal((await finishProfileOnboarding(first, first.signUp(fields))).state, "active");
     const second = createProfileSession({ machineRoot: root });
@@ -632,7 +635,7 @@ describe("durable profile authority regressions", () => {
     assert.equal(registry.profiles.length, 1);
   });
   it("revokes an independent token before cancellation callback or erasure", async () => {
-    const root = temp();
+    const root = await temp();
     const first = createProfileSession({ machineRoot: root });
     const a = await finishProfileOnboarding(first, first.signUp(fields));
     assert.equal(a.state, "active"); if (a.state !== "active") return;
@@ -658,7 +661,7 @@ describe("durable profile authority regressions", () => {
 
 
 it("captures and freshly revalidates each independent authority constituent on the same admitted setup", async () => {
-  const root = temp();
+  const root = await temp();
   const issuedChildren: RuntimeAdmission[] = [];
   let account: ChatGptAccountAuthority = { revision: 1, attemptGeneration: 0, availability: "available" };
   const record = initialSettingsFileRecord();
@@ -720,7 +723,7 @@ it("captures and freshly revalidates each independent authority constituent on t
 });
 
 it("rechecks profile revocation and settings changes across account awaits", async () => {
-  const root = temp();
+  const root = await temp();
   let settle!: () => void;
   let gate = Promise.resolve();
   const account: ChatGptAccountAuthority = { revision: 1, attemptGeneration: 0, availability: "available" };
@@ -745,9 +748,9 @@ it("rechecks profile revocation and settings changes across account awaits", asy
 });
 
 it("refuses missing or corrupt established selection and foreign or released admissions", async () => {
-  const root = temp();
+  const root = await temp();
   const admission = machineAdmissions.get(root); assert.ok(admission);
-  const foreign = temp(), foreignAdmission = machineAdmissions.get(foreign); assert.ok(foreignAdmission);
+  const foreign = await temp(), foreignAdmission = machineAdmissions.get(foreign); assert.ok(foreignAdmission);
   assert.throws(() => realCreateProfileSession({ machineRoot: root, admission: foreignAdmission }));
   const session = createProfileSession({ machineRoot: root });
   const active = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" }));
@@ -768,22 +771,24 @@ it("refuses missing or corrupt established selection and foreign or released adm
 
 
 it("allocates distinct durable activation generations under cross-process exclusion", async () => {
-  const root = temp();
+  const root = await temp();
   const session = createProfileSession({ machineRoot: root });
   const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
   const first = await finishProfileOnboarding(session, session.signUp(fields)); assert.equal(first.state, "active"); if (first.state !== "active") return;
   const source = `
     import { createProfileSession } from ${JSON.stringify(new URL("../../../src/backend/profiles/profile-session.ts", import.meta.url).href)};
-    import { acquireEntrypointAdmission } from ${JSON.stringify(new URL("../../../src/backend/storage/admission/bootstrap-admission.ts", import.meta.url).href)};
+    import { acquireSharedRuntimeAdmission } from ${JSON.stringify(new URL("../../../src/backend/storage/admission/admission.ts", import.meta.url).href)};
+    import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(new URL("../../../src/backend/storage/admission/lifetime-lock.ts", import.meta.url).href)};
     import { resolve } from 'node:path';
     const { createInterface } = await import('node:readline');
     const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
     const firstLine = await lines.next();
     const { root, fields } = JSON.parse(firstLine.value);
-    let admission;
+    const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
+    let admission, session;
     try {
-      admission = acquireEntrypointAdmission(resolve(root, "../.."), "shared");
-      const session = createProfileSession({ machineRoot: root, admission });
+      admission = acquireSharedRuntimeAdmission(resolve(root, "../.."), lifetime);
+      session = createProfileSession({ machineRoot: root, admission });
       process.stdout.write('ready\\n');
       const activation = await lines.next();
       if (activation.value !== 'activate') throw new Error('activation-barrier-invalid');
@@ -797,12 +802,18 @@ it("allocates distinct durable activation generations under cross-process exclus
       }
       process.stdout.write(JSON.stringify({ state: 'diagnostic', code }));
       process.exitCode = 1;
-    } finally { admission?.release(); process.stdin.destroy(); }
+    } finally { await session?.closeOnboarding(); session?.close(); admission?.release(); await lifetime.close(); process.stdin.destroy(); process.disconnect(); }
   `;
+  const controller = machineAdmissions.get(root);
+  assert.ok(controller);
+  const lifetime = controller.lifetime;
+  if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("fixture-root-lifetime-required");
   const activate = () => {
     let readyResolve: (() => void) | undefined, readyReject: ((error: Error) => void) | undefined;
     const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
-    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", source], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", source, String(lifetime.port)], { stdio: ["pipe", "pipe", "pipe", "ipc"] });
+    const input = child.stdin;
+    assert.ok(input && child.stdout && child.stderr);
     let stdout = "";
     child.stdout.on("data", bytes => {
       stdout += String(bytes);
@@ -825,9 +836,12 @@ it("allocates distinct durable activation generations under cross-process exclus
         }
       });
     });
-    child.stdin.write(`${JSON.stringify({ root, fields })}\n`);
+    input.write(`${JSON.stringify({ root, fields })}\n`);
+    void (async () => { await lifetime.share(child); })().catch(error => {
+      child.kill("SIGKILL"); readyReject?.(error instanceof Error ? error : new Error("fixture lifetime transfer failed", { cause: error }));
+    });
     void result.catch(() => undefined);
-    return { ready, result, go: () => child.stdin.end("activate\n") };
+    return { ready, result, go: () => input.end("activate\n") };
   };
   const firstChild = activate();
   await firstChild.ready;
@@ -842,7 +856,7 @@ it("allocates distinct durable activation generations under cross-process exclus
 
 
 it("quarantines a version-one registry and refuses missing established version evidence", async () => {
-  const root = temp();
+  const root = await temp();
   mkdirSync(join(root, "machine"), { mode: 0o700, recursive: true });
   const path = join(root, "machine", "profiles.json");
   const session = createProfileSession({ machineRoot: root });
@@ -860,7 +874,7 @@ it("quarantines a version-one registry and refuses missing established version e
 
 
 it("keeps authority unavailable without account and Settings sources", async () => {
-  const session = createProfileSession({ machineRoot: temp() });
+  const session = createProfileSession({ machineRoot: await temp() });
   assert.equal((await session.readCurrentAuthority("unissued")).state, "refused");
   const active = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" }));
   assert.equal(active.state, "active"); if (active.state !== "active") return;
@@ -870,7 +884,7 @@ it("keeps authority unavailable without account and Settings sources", async () 
 
 
 it("joins the real token-free account source with the exact admitted profile root without OAuth", async () => {
-  const root = temp();
+  const root = await temp();
   const record = initialSettingsFileRecord();
   const settings: SettingsRuntimeSnapshot = { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, "a".repeat(64)) } };
   const session = createProfileSession({ machineRoot: root, settings: { read: () => settings }, account: {
@@ -904,7 +918,7 @@ it("joins the real token-free account source with the exact admitted profile roo
 
 
 it("checks independently changed durable selection, generation and lifecycle before file preparation", async () => {
-  const root = temp();
+  const root = await temp();
   const session = createProfileSession({ machineRoot: root });
   const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
   assert.equal((await finishProfileOnboarding(session, session.signUp(fields))).state, "active");
@@ -931,7 +945,7 @@ it("checks independently changed durable selection, generation and lifecycle bef
 });
 
 async function readIsolationFixture() {
-  const root = temp();
+  const root = await temp();
   const session = createProfileSession({ machineRoot: root, activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
   const a = await finishProfileOnboarding(session, session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" }));
   assert.equal(a.state, "active"); assert.ok(a.state === "active");

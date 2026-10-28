@@ -61,12 +61,16 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
     lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt, stoppedAt: now, reason: "shutdown" }, now });
   const owner = async (authorityPath = join(h.root, "state.db"), onSpawn?: (child: ChildProcess) => void) => {
     const child = options?.fenceInOwner === true
-      ? spawn(process.execPath, ["--import", "tsx", fileURLToPath(new URL("../../../support/processes/write-fence-owner.ts", import.meta.url)), authorityPath], { stdio: ["pipe", "pipe", "inherit"] })
+      ? spawn(process.execPath, ["--import", "tsx", fileURLToPath(new URL("../../../support/processes/write-fence-owner.ts", import.meta.url)), authorityPath, String(h.lifetime.port)], { stdio: ["pipe", "pipe", "inherit", "ipc"] })
       : spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", env: {} });
     children.push(child);
     onSpawn?.(child);
     await once(child, "spawn");
-    if (options?.fenceInOwner === true) await readOwnerLine(child);
+    if (options?.fenceInOwner === true) {
+      const ready = readOwnerLine(child);
+      await h.lifetime.share(child);
+      await ready;
+    }
     if (child.pid === undefined) throw new Error("missing actual child pid");
     return { child, pid: child.pid };
   };

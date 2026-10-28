@@ -153,7 +153,7 @@ it("executes two real children and a nested child with one actual home process a
   });
   cleanup.push(() => observer.mockRestore());
   runtimeAttempted = true;
-  const report = await composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: profile.machine, isolation: rebuildRuntimeIsolation,
+  const report = await composeWorkerRuntime({ lifetimeLock: profile.lifetime, admission: profile.machine, isolation: rebuildRuntimeIsolation,
     repoRoot: profile.workspace, args: [childExecutionRoot.descriptor.id, "--pool-index", "1", "--drain"], env: {},
     executionRegistry: { resolve: id => childExecutionModules.find(module => module.descriptor.id === id), stores: childExecutionStores,
       manifest: childExecutionBuildManifest },

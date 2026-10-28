@@ -1,4 +1,3 @@
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { WireErrorSchema } from "../../../../src/models/dashboard/primitives.js";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { isDeepStrictEqual } from "node:util";
@@ -256,16 +255,18 @@ it("refuses a missing direct-admission audit instead of treating its retained ID
 });
 
 
+const retainedNativeRetirementFixtures: object[] = [];
 it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after canonical %s retirement of the exact origin member", async kind => {
   const f = await createBoundProfileFixture({ sharedMachine: true });
   const wall = manualClock(systemClock.now());
   const tick = () => { wall.setWall(new Date(Math.max(systemClock.nowMs(), wall.nowMs() + 1))); return wall.now(); };
   const clock = { ...systemClock, now: tick, nowMs: () => tick().getTime() };
   const children: ReturnType<typeof spawn>[] = [];
+  const childClosures: Promise<unknown[]>[] = [];
   const faults: string[] = [];
   const failures: unknown[] = [];
   let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
-  const lifetimeLock = await runtimeLifetimeLock();
+  const lifetimeLock = f.lifetime;
   const profile = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
   try {
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
@@ -278,8 +279,12 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
         launch: { command: process.execPath, prefixArgs: ["--import", "tsx", join(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), f.workspace],
           environment: {}, cwd: process.cwd() },
         spawn: request => {
-          const child = spawn(request.command, [...request.args], { cwd: request.cwd, detached: true, stdio: ["ignore", "pipe", "pipe", "ipc"] });
-          void lifetimeLock.share(child).catch(error => { child.kill("SIGKILL"); child.emit("error", error); });
+          const child = spawn(request.command, [...request.args, "--fixture-lock-port", String(lifetimeLock.port)], { cwd: request.cwd, detached: true, stdio: ["ignore", "pipe", "pipe", "ipc"] });
+          childClosures.push(once(child, "close"));
+          let transfer: Promise<void>;
+          try { transfer = lifetimeLock.share(child); }
+          catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
+          void transfer.catch(error => { child.kill("SIGKILL"); child.emit("error", error); });
           children.push(child); assert.ok(child.stdout); assert.ok(child.stderr); child.stdout.resume(); child.stderr.resume();
           return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
         }, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => { faults.push(line); },
@@ -369,15 +374,19 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
     await dashboard.stop(); dashboard = undefined;
   } catch (error) { failures.push(error); }
   finally {
+    let closed = true;
     for (const child of children) if (child.exitCode === null && child.signalCode === null) {
       try {
         const exit = once(child, "exit");
         assert.ok(child.pid); process.kill(-child.pid, "SIGKILL"); await exit;
-      } catch (error) { failures.push(error); }
+      } catch (error) { failures.push(error); closed = false; }
     }
-    try { await dashboard?.stop(); } catch (error) { failures.push(error); }
-    try { await profile.close(); } catch (error) { failures.push(error); }
-    try { await f.close(); } catch (error) { failures.push(error); }
+    try { await dashboard?.stop(); } catch (error) { failures.push(error); closed = false; }
+    const closures = await Promise.allSettled(childClosures);
+    for (const result of closures) if (result.status === "rejected") { failures.push(result.reason); closed = false; }
+    if (closed) { try { await profile.close(); } catch (error) { failures.push(error); closed = false; } }
+    if (closed) { try { await f.close(); } catch (error) { failures.push(error); closed = false; } }
+    if (!closed) retainedNativeRetirementFixtures.push({ f, profile, dashboard, children });
   }
   if (failures.length > 0) throw new AggregateError(failures, "canonical retirement proof failed");
 }, 60_000);
@@ -399,7 +408,7 @@ it("refuses a real other-workflow plan bound to a previously valid stopped slot 
 
 it("authenticates canonical verification pending and exact retired provenance through both readers", async () => {
   const f = await fixture();
-  const lock = await runtimeLifetimeLock();
+  const lock = f.lifetime;
   try {
     const grantCommandId = randomUUID(), now = f.input.clock.now().toISOString();
     const slot = f.context.database.admitVerificationWorker({ ...f.admission.profileBinding,

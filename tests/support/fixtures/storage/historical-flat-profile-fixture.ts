@@ -1,3 +1,4 @@
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -23,8 +24,9 @@ import { retainedHistoricalData } from "./retained-historical-data.js";
 
 export const historicalFlatFields = Object.freeze({ firstName: "Flat", lastName: "Fixture", email: "flat-fixture@ucsd.edu", password: "disposable-flat-owner-password" });
 
-export function createHistoricalFlatProfileFixture(options: { unknownWrite?: boolean; laterProtectedChange?: boolean; closedBrowser?: boolean; unretiredWorker?: boolean } = {}) {
+export async function createHistoricalFlatProfileFixture(options: { unknownWrite?: boolean; laterProtectedChange?: boolean; closedBrowser?: boolean; unretiredWorker?: boolean } = {}) {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "flat-profile-claim-")));
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(workspace, name));
   const stateRoot = join(workspace, ".tracker", "data"), artifactRoot = join(stateRoot, "artifacts"), processLockRoot = join(stateRoot, "locks");
   mkdirSync(artifactRoot, { recursive: true, mode: 0o700 }); mkdirSync(processLockRoot, { mode: 0o700 });
@@ -111,16 +113,17 @@ export function createHistoricalFlatProfileFixture(options: { unknownWrite?: boo
   }
   const protectedPath = join(credentials, "protected.json");
   writeFileSync(protectedPath, JSON.stringify({ schemaVersion: 2, record, history }), { mode: 0o600 });
-  const machine = RuntimeAdmission.acquireInitial(workspace, (pair, inspection) => {
+  const machine = RuntimeAdmission.acquireInitial(workspace, lifetime, (pair, inspection) => {
     const facts = withAuthorityDatabaseReadOnly(inspection, databasePath, database => inspectNativeAuthority(database, 6));
     return { kind: "verified-existing", pair, authorityGeneration: facts.authorityGeneration, databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(databasePath) };
   }, () => { throw new Error("existing flat fixture must never initialize fresh data"); });
   assert.equal(machine.locator.stateRoot, stateRoot); machine.release();
-  return { workspace, stateRoot, artifactRoot, processLockRoot, databasePath, protectedPath, artifact, reportPath, record, request, browser,
-    close() {
+  return { workspace, lifetime, stateRoot, artifactRoot, processLockRoot, databasePath, protectedPath, artifact, reportPath, record, request, browser,
+    async close() {
       const closed = spawnSync("/usr/sbin/lsof", ["-nP", "+D", workspace, "-Fn"], { encoding: "utf8" });
       assert.equal(closed.error, undefined); assert.equal(closed.status, 1, "historical flat fixture closure unproved");
       assert.equal(closed.stdout, ""); assert.equal(closed.stderr, "");
+      await lifetime.close();
       rmSync(workspace, { recursive: true });
     } };
 }

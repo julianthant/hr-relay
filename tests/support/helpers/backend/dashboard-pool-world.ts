@@ -1,4 +1,5 @@
 import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 
 import type { AuthorityDatabase as PoolAuthorityDatabase } from "../admission-fixture.js";
@@ -28,6 +29,7 @@ import { createRunWorkerCapacity } from "../../../../src/backend/runs/commands/r
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 
 export interface ControlHarness {
+  readonly lifetime: RuntimeLifetimeLock;
   readonly root: string;
   readonly authorityPath: string;
   readonly processLockRoot: string;
@@ -211,7 +213,7 @@ export function createDashboardPoolTestWorld() {
         }),
       },
     });
-    return { root, authorityPath: profile.path, processLockRoot, database, clock, scheduler, kernel, control, children, spawnRequests, faults, auditFault };
+    return { root, lifetime: profile.lifetime, authorityPath: profile.path, processLockRoot, database, clock, scheduler, kernel, control, children, spawnRequests, faults, auditFault };
   }
 
   let commandSequence = 0;

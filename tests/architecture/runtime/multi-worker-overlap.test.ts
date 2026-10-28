@@ -267,7 +267,7 @@ describe("interrupted-run recovery overlaps a live heartbeat", () => {
     heartbeat.fire();
 
     assert.equal(database.authority.runs.get(staleRunId)?.lifecycle.state, "claimed");
-    const recovered = await recoverInterruptedTestRun(database, clock, staleRunId);
+    const recovered = recoverInterruptedTestRun(database, clock, staleRunId, authority.profile.lifetime);
     assert.ok(recovered.lifecycle.state === "terminal" && recovered.lifecycle.outcome === "failed");
     assert.equal(database.authority.failures.listByRun(staleRunId)[0]?.code, "RUN_INTERRUPTED_BY_CRASH");
 

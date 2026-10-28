@@ -20,10 +20,10 @@ import { createInstallationControlTestWorld } from "../../../support/helpers/bac
 const { fixture, adoptSynthetic, restore, relocationPlan, prepareDestination, staged, cleanup } = createInstallationControlTestWorld();
 afterEach(cleanup);
 it("admits a completed schema-3 relocation and upgrades with an exact verified backup without rewriting history", async () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "retained artifact");
-  const lease = acquireInstallation(workspace, "exclusive"), held = restore(workspace);
+  const lease = acquireInstallation(workspace, "exclusive", lifetime), held = restore(workspace);
   const destination = { stateRoot: join(dirname(workspace), "relocated-state"), artifactRoot: join(dirname(workspace), "relocated-artifacts") };
   let completed!: RelocationCompletionReceipt;
   try {
@@ -34,7 +34,7 @@ it("admits a completed schema-3 relocation and upgrades with an exact verified b
     lease.recordVerifiedStage(verify); lease.fenceRelocationSource(); lease.retainRelocationSources();
     lease.switchRelocationLocator(verify); lease.settleRelocation(verify);
   } finally { lease.release(); held.release(); }
-  const reader = acquireInstallation(workspace, 'shared');
+  const reader = acquireInstallation(workspace, 'shared', lifetime);
   try { completed = reader.readRelocationReceipts()[0]; } finally { reader.release(); }
   const receiptDirectory = join(workspace, ".tracker/control/relocation-receipts");
   const receiptPath = join(receiptDirectory, readdirSync(receiptDirectory)[0]);
@@ -72,7 +72,7 @@ it("admits a completed schema-3 relocation and upgrades with an exact verified b
     raw.prepare("INSERT INTO database_upgrades VALUES(?,'fresh','baseline',NULL,?,?)").run(baseline.recordKey, JSON.stringify(baseline), baseline.recordedAt);
     createSettingsActivationRepositories({ database: raw, mutate: work => work().result, readRecord: () => undefined }).runtimeConfig.initialize(CONFIG_SNAPSHOT);
   } finally { raw.close(); }
-  const admission = acquireEntrypointAdmission(workspace, "exclusive");
+  const admission = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
   try {
     assert.deepEqual(admission.readInstallationContext()?.receipts, [historical]);
     const source = AuthorityDatabase.sourceDatabaseIdentity(path);
@@ -93,21 +93,21 @@ it("admits a completed schema-3 relocation and upgrades with an exact verified b
       const invalid = structuredClone(historical);
       Reflect.set(invalid[section], section === "preparation" ? "sourceSchemaVersion" : "authorityVersion", version);
       writeFileSync(receiptPath, canonicalJsonStringify(invalid));
-      try { assert.throws(() => acquireEntrypointAdmission(workspace, "exclusive"), /sourceSchemaVersion|authorityVersion/); }
+      try { assert.throws(() => acquireEntrypointAdmission(workspace, "exclusive", lifetime), /sourceSchemaVersion|authorityVersion/); }
       finally { writeFileSync(receiptPath, historicalBytes); }
     }
   }
   const tampered = structuredClone(historical);
   tampered.preparation.backupFileSha256 = '9'.repeat(64);
   writeFileSync(receiptPath, canonicalJsonStringify(tampered));
-  try { assert.throws(() => acquireEntrypointAdmission(workspace, 'exclusive'), /fence|tombstone|binding/); }
+  try { assert.throws(() => acquireEntrypointAdmission(workspace, 'exclusive', lifetime), /fence|tombstone|binding/); }
   finally { writeFileSync(receiptPath, historicalBytes); }
 });
-it("refuses schema-3 preparation and stage evidence for a new relocation", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("refuses schema-3 preparation and stage evidence for a new relocation", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact");
-  const lease = acquireInstallation(workspace, "exclusive"), held = restore(workspace);
+  const lease = acquireInstallation(workspace, "exclusive", lifetime), held = restore(workspace);
   try {
     const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
     const plan = relocationPlan(lease, destination), operationId = lease.beginRelocation(destination, plan, held);

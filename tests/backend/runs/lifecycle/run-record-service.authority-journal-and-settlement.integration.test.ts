@@ -529,17 +529,16 @@ describe("canonical run-record service", () => {
 
   for (const kind of ["create", "claim"] as const) {
     it(`${kind === "create" ? "#1" : "#4"} ${kind} serializes independent connections across a held reservation`, async () => {
-      const { root, request, service, runtimeConfig, database, clock } = await fixture();
+      const { root, lifetime, request, service, runtimeConfig, database, clock } = await fixture();
       if (kind === "claim") {
         testWorkerPorts(database, clock, { path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex: 2 });
         created(service, request);
       }
-      const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
       const connections: Awaited<ReturnType<typeof raceConnection>>[] = [];
       try {
-        for (const [index, release] of releases.entries()) {
+        for (const index of [0, 1]) {
           connections.push(await raceConnection({
-            path: join(root, "state.db"), now: NOW, release,
+            path: join(root, "state.db"), now: NOW,
             runId: `c0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
             operation: kind === "create" ? { kind, request: { ...request,
               commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
@@ -548,26 +547,25 @@ describe("canonical run-record service", () => {
               workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, index + 1).workerLifetime,
               commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
             } },
-          }));
+          }, lifetime));
         }
         const [first, second] = connections;
         assert.deepEqual(first.ready, { type: "ready" });
         assert.deepEqual(second.ready, { type: "ready" });
-        first.worker.postMessage("run");
+        first.run();
         assert.deepEqual(await first.next(), { type: "reserved" });
-        second.worker.postMessage("run");
+        second.run();
         const blocked = await second.next();
         assert.equal(blocked.type, "error", "second connection crossed the reservation before first commit");
         if (blocked.type !== "error") throw new Error("second connection did not block");
         assert.match(blocked.message, /database is locked/);
-        Atomics.store(new Int32Array(releases[0]), 0, 1);
-        Atomics.notify(new Int32Array(releases[0]), 0);
+        await first.release();
         const firstResult = await first.next();
         assert.equal(firstResult.type, "result");
         if (firstResult.type !== "result") throw new Error("first connection did not finish");
         assert.equal(firstResult.outcome.state, "applied");
-        Atomics.store(new Int32Array(releases[1]), 0, 1);
-        second.worker.postMessage("run");
+        await second.release();
+        second.run();
         if (kind === "create") assert.deepEqual(await second.next(), { type: "reserved" });
         const secondResult = await second.next();
         assert.equal(secondResult.type, "result");
@@ -580,7 +578,7 @@ describe("canonical run-record service", () => {
           assert.deepEqual([firstResult.outcome.run.runNumber, secondResult.outcome.run.runNumber], [1, 2]);
         }
       } finally {
-        await closeRaceConnections(connections, releases);
+        await closeRaceConnections(connections);
       }
     });
   }

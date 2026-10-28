@@ -49,17 +49,18 @@ async function finishPublicSignUp(base: string): Promise<Response> {
   return post("/api/v1/profile/onboarding/complete", { operationId: draft.operationId }, cookie);
 }
 
-function fixture() {
+async function fixture(lifetime?: Parameters<typeof acquireEntrypointAdmission>[2]) {
+  const controller = lifetime ?? await runtimeLifetimeLock();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "public-profile-shell-")));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
-  const machine = acquireEntrypointAdmission(root, "exclusive");
+  const machine = acquireEntrypointAdmission(root, "exclusive", controller);
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
-  return { root, machine };
+  return { root, lifetime: controller, machine };
 }
 
 for (const closeFails of [false, true]) it(`preserves startup recovery failure and ${closeFails ? "unproved" : "proved"} profile closure under the held controller`, async () => {
   const controllerLock=await runtimeLifetimeLock();
-  const f = fixture(), primary = new Error("fixture recovery failed"), cleanup = new Error("fixture profile close failed");
+  const f = await fixture(controllerLock), primary = new Error("fixture recovery failed"), cleanup = new Error("fixture profile close failed");
   const actual = await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js");
   let profile: ReturnType<typeof storageCompose.composeProfileRuntime> | undefined;
   const spy = vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
@@ -82,11 +83,11 @@ for (const closeFails of [false, true]) it(`preserves startup recovery failure a
 });
 
 it("serves public profile state without minting a selected profile, actor or authority database", async () => {
-  const f = fixture();
+  const f = await fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
 
-    runtime = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const response = await fetch(`${base}/api/v1/profile/state`);
@@ -138,7 +139,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
   mkdirSync(physicalTemp, { mode: 0o700 });
   symlinkSync(physicalTemp, aliasedTemp, "dir");
   for (const key of ["TMPDIR", "TMP", "TEMP"] as const) process.env[key] = aliasedTemp;
-  const f = fixture();
+  const f = await fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
     const keyCapture: { capability?: DraftDuoCapability } = {};
@@ -166,7 +167,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
       },
       async cancel() { providerActive = false; closedAttempts += 1; return { state: "closed" }; },
     };
-    runtime = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     assert.ok(runtime.port > 0);
     const base = `http://127.0.0.1:${String(runtime.port)}`;
@@ -243,10 +244,10 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
 });
 
 it("aborts an unpublished pre-enrollment draft through erasure before accepting changed Details", async () => {
-  const f = fixture();
+  const f = await fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
-    runtime = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
@@ -276,7 +277,7 @@ it("aborts an unpublished pre-enrollment draft through erasure before accepting 
 
 for (const fault of ["prior-request", "profile-close"] as const) it(`fences and drains real public transfers before retaining ${fault} shutdown failure`, async () => {
   const controllerLock=await runtimeLifetimeLock();
-  const f = fixture(), primary = new Error("fixture custody failure");
+  const f = await fixture(controllerLock), primary = new Error("fixture custody failure");
   const entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   const actualStart = (await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js")).startDashboardHttpServer;
   const actualProfile = (await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js")).composeProfileRuntime;
@@ -353,7 +354,7 @@ for (const fault of ["prior-request", "profile-close"] as const) it(`fences and 
 
 for (const fault of ["prior-request", "transport-cancellation"] as const) it(`drains genuine selected producers despite ${fault} while retaining profile custody`, async () => {
   const controllerLock=await runtimeLifetimeLock();
-  const f = fixture(), primary = new Error("fixture selected custody failure");
+  const f = await fixture(controllerLock), primary = new Error("fixture selected custody failure");
   const entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   const actualStart = (await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js")).startDashboardHttpServer;
   const actualProfile = (await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js")).composeProfileRuntime;
@@ -426,7 +427,7 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
 
 
 it("revokes retained selected producers before a genuine in-flight public transport drains", async () => {
-  const f = fixture(), entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const f = await fixture(), entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   const crossed = Promise.withResolvers<unknown>();
   const actualProfile = (await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js")).composeProfileRuntime;
   const actualStart = (await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js")).startDashboardHttpServer;
@@ -448,7 +449,7 @@ it("revokes retained selected producers before a genuine in-flight public transp
   });
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined, stopping: Promise<void> | undefined;
   try {
-    runtime = await composeDashboardApplication({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {} });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const signup = await finishPublicSignUp(base);

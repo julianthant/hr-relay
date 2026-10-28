@@ -33,14 +33,14 @@ export async function startSettingsActivationServer() {
     }
     mkdirSync(join(root, "dist"));
     cpSync(PARITY_DIST_DIR, join(root, "dist", "dashboard"), { recursive: true });
-    const machine = acquireEntrypointAdmission(root, "shared");
+    const machine = acquireEntrypointAdmission(root, "shared", fixture.lifetime);
     held.machine = machine;
     const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
     held.profile = profile;
     const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     if (active.state !== 'active') throw new Error('parity-profile-sign-in-refused');
     if (active.profileId !== fixture.admission.profileBinding.profileId) throw new Error('parity-profile-binding-mismatch');
-    const lock = await RuntimeLifetimeLock.acquire(0);
+    const lock = fixture.lifetime;
     held.lock = lock;
     const runtime = await composeDashboardRuntime({ lifetimeLock: lock, admission: machine, profile: { runtime: profile, token: active.token }, clock,
       isolation: rebuildRuntimeIsolation,
@@ -70,7 +70,6 @@ export async function startSettingsActivationServer() {
             await profile.close();
             machine.release();
             await fixture.close();
-            await lock.close();
             retainedSettingsParityOwners.delete(held);
           } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
         })();

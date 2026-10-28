@@ -34,7 +34,7 @@ for (const startupFailure of [false, true]) it(`drains a pending HTTP completion
   assert.equal(active.state, "active");
   const primary = new Error("synthetic post-listen failure");
   try {
-    const composed = composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token }, clock, repoRoot, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
+    const composed = composeDashboardRuntime({ lifetimeLock: profile.lifetime, admission: profile.machine, profile: { runtime, token: active.token }, clock, repoRoot, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       httpServerStarter: async input => {
         const { app } = input;
@@ -79,7 +79,7 @@ for (const startupFailure of [false, true]) it(`drains a pending HTTP completion
 
 it("retains actual account, database and controller custody when cleanup refuses after the pending HTTP wait drains", async () => {
   const controllerLock=await runtimeLifetimeLock();
-  const profile = await createBoundProfileFixture(), repoRoot = profile.workspace;
+  const profile = await createBoundProfileFixture({ lifetime: controllerLock }), repoRoot = profile.workspace;
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), file), join(repoRoot, file));
   const primary = new Error("synthetic account cleanup refusal"), errors: unknown[] = [];

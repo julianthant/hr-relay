@@ -1,4 +1,3 @@
-import { runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import { workerPoolMember } from "../../../../../src/models/run/worker-slot.js";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -197,7 +196,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("publishes a lease-only worker card from the real tail tick, before any span exists", async () => {
     const profile = await createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
     const repoRoot = profile.workspace;
-    const lifetimeLock = await runtimeLifetimeLock();
+    const lifetimeLock = profile.lifetime;
     const runtime = await composeDashboardRuntime({ lifetimeLock,
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
@@ -369,7 +368,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const fixture = await committedExplorer(); journalExplorer(fixture);
     for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) writeFileSync(`${fixture.path}${suffix}`, "unrelated bytes");
     const sql = observeExplorerSnapshot(join(fixture.profile.stateRoot, "state.db"));
-    const lifetimeLock = await runtimeLifetimeLock();
+    const lifetimeLock = fixture.profile.lifetime;
     const runtime = await composeDashboardRuntime({ lifetimeLock, ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
       clock: manualClock(new Date(fixture.request.requestedAt)) });
     try {
@@ -397,7 +396,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const fixture = await committedExplorer(); journalExplorer(fixture);
     let committed: (() => void) | undefined;
     observeExplorerSnapshot(join(fixture.profile.stateRoot, "state.db"), () => committed?.());
-    const lifetimeLock = await runtimeLifetimeLock();
+    const lifetimeLock = fixture.profile.lifetime;
     const runtime = await composeDashboardRuntime({ lifetimeLock, ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
       clock: manualClock(new Date(fixture.request.requestedAt)) });
     try {
@@ -433,7 +432,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
 
   it("applies and replays the complete Explorer command after a real runtime restart", async () => {
     const fixture = await committedExplorer();
-    let runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
+    let runtime = await composeDashboardRuntime({ lifetimeLock: fixture.profile.lifetime, ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
       clock: manualClock(new Date(fixture.request.requestedAt)) });
     const send = (request: unknown) => {
       const baseUrl = `http://127.0.0.1:${String(runtime.port)}`;
@@ -444,7 +443,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       await runtime.stop();
       for (const suffix of ["", ".claim"]) writeFileSync(`${fixture.path}${suffix}`, "retired malformed file");
       await fixture.profile.restart();
-      runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
+      runtime = await composeDashboardRuntime({ lifetimeLock: fixture.profile.lifetime, ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
         clock: manualClock(new Date(fixture.request.requestedAt)) });
       const replay = await send(fixture.request); assert.equal(replay.status, 200); assert.equal(CommandResultSchema.parse(await replay.json()).state, "already-applied");
       const divergent = await send({ ...fixture.request, reason: "Changed envelope" }); assert.equal(divergent.status, 500);
@@ -457,7 +456,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const profile = await createProfileFixture(clock);
     const repoRoot = profile.workspace;
-    const lifetimeLock = await runtimeLifetimeLock();
+    const lifetimeLock = profile.lifetime;
     const runtime = await composeDashboardRuntime({ lifetimeLock,
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
@@ -502,7 +501,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const profile = await createProfileFixture(clock);
     const repoRoot = profile.workspace;
-    let runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(),
+    let runtime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime,
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -543,7 +542,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
 
     await runtime.stop();
     await profile.restart();
-    runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(),
+    runtime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime,
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,

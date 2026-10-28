@@ -21,7 +21,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
   async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
     return composeProductionDashboardRuntime({
       ...input,
-      admission: input.admission ?? installationAdmission(input.repoRoot ?? process.cwd()),
+      admission: input.admission ?? installationAdmission(input.repoRoot ?? process.cwd(), input.lifetimeLock),
       backendPortOverride: 0,
       frontendPortOverride: 0,
     });
@@ -36,7 +36,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
     });
     copyRuntimePackageFixture(fixture.workspace);
     function selectProfile() {
-      const machine = acquireEntrypointAdmission(fixture.workspace, "shared");
+      const machine = acquireEntrypointAdmission(fixture.workspace, "shared", fixture.lifetime);
       const storage: { admission?: RuntimeAdmission } = {};
       let runtime: ReturnType<typeof composeProfileRuntime> | undefined = undefined;
       let closed = false;
@@ -61,6 +61,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
     let selected = selectProfile();
     return {
       workspace: fixture.workspace,
+      lifetime: fixture.lifetime,
       stateRoot: fixture.stateRoot,
       get artifactRoot() { return selected.admission.artifactRoot; },
       get dashboardInput() {

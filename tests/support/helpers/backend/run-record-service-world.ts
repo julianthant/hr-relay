@@ -1,5 +1,4 @@
-import { runtimeLifetimeLock } from "./runtime-lifetime.js";
-import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { randomUUID } from "node:crypto";
 import { detachBoundFixtureWorkers } from "../synthetic-database-admission.js";
 import { createBoundProfileFixture } from "../admission-fixture.js";
@@ -24,7 +23,7 @@ import { testWorkerLifetime, testWorkerPorts, testRunService } from "../../fixtu
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { AuthorityDatabase, type AuthorityLifecycleHooks, type AuthorityTerminalizationHooks } from "../synthetic-storage-admission.js";
 import { on, once } from "node:events";
-import { Worker } from "node:worker_threads";
+import { fork, type Serializable } from "node:child_process";
 import { z } from "zod";
 
 
@@ -32,14 +31,14 @@ import { z } from "zod";
 export const CANONICAL_WORKER_ID = "person-lookup-worker-1";
 const WORKER_ID = CANONICAL_WORKER_ID;
 
-export async function recoverInterruptedTestRun(database: AuthorityDatabase, clock: Clock, runId: string) {
+export function recoverInterruptedTestRun(database: AuthorityDatabase, clock: Clock, runId: string, lifetime: RuntimeLifetimeLock) {
   const run = database.authority.runs.get(runId);
   assert.ok(run);
   const claim = runClaim(run);
   assert.ok(claim);
   return requireLifecycleApplied(testRunService(database, clock).recoverCrash({ commandId: randomUUID(), runId,
     expectedVersion: run.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
-    ...database.crashRunRecoveryIdentity(runId), now: clock.now().toISOString() }, await runtimeLifetimeLock()));
+    ...database.crashRunRecoveryIdentity(runId), now: clock.now().toISOString() }, lifetime));
 }
 
 export function createRunRecordServiceTestWorld() {
@@ -62,11 +61,17 @@ export function createRunRecordServiceTestWorld() {
       terminalizationHooks,
       lifecycleHooks,
     );
-    cleanups.push(() => {
-      if (options?.interrupted === true) detachBoundFixtureWorkers(database);
-      else releaseSeededWriteOwners(database, clock.now().toISOString());
-      database.close();
-    });
+    let databaseClosed = false, databaseCloseFailure: { error: unknown } | undefined;
+    const closeDatabase = () => {
+      if (databaseCloseFailure !== undefined) throw databaseCloseFailure.error;
+      if (databaseClosed) return;
+      try {
+        if (options?.interrupted === true) detachBoundFixtureWorkers(database);
+        else releaseSeededWriteOwners(database, clock.now().toISOString());
+        database.close(); databaseClosed = true;
+      } catch (error) { databaseCloseFailure = { error }; throw error; }
+    };
+    cleanups.push(closeDatabase);
     const active = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     testWorkerPorts(database,clock,{path:join(root,"state.db"),descriptor:personLookupDescriptor,poolIndex:1});
     const runtimeConfig = RuntimeConfigClaimTokenSchema.parse({
@@ -96,13 +101,13 @@ export function createRunRecordServiceTestWorld() {
       priority: "bulk", shape: "single", dryRun: true,
       input: QUEUED_RUN.input, runtimeConfig,
     };
-    return { database, service, clock, request, runtimeConfig, published, root, admission: profile.admission, machine: profile.machine };
+    return { database, service, clock, request, runtimeConfig, published, root, lifetime: profile.lifetime, admission: profile.admission, machine: profile.machine,
+      async closeController() { closeDatabase(); await profile.closeController(); } };
   }
 
   async function interruptedFixture() {
     const f = await fixture(undefined, undefined, { interrupted: true });
-    const lock = await RuntimeLifetimeLock.acquire(0);
-    cleanups.push(() => lock.close());
+    const lock = f.lifetime;
     const run = runningRun(f.service, f.request, f.runtimeConfig);
     const claim = RunRecordSchema.parse(run).lifecycle;
     if (!("workerLifetime" in claim) || claim.workerLifetime === undefined) throw new Error("fixture-worker-lifetime-required");
@@ -188,20 +193,42 @@ export function createRunRecordServiceTestWorld() {
     ]) }),
   ]);
 
-  async function raceConnection(data: unknown) {
-    const worker = new Worker(new URL("../../../support/processes/run-record-race-worker.ts", import.meta.url), { workerData: data, execArgv: ["--import", "tsx"] });
+  async function raceConnection(data: Serializable, lifetime: RuntimeLifetimeLock) {
+    const worker = fork(new URL("../../../support/processes/run-record-race-worker.ts", import.meta.url), [String(lifetime.port)], {
+      execArgv: ["--import", "tsx"], stdio: ["pipe", "pipe", "pipe", "ipc"],
+    });
+    worker.stdout?.resume(); worker.stderr?.resume();
     const events = on(worker, "message");
+    const closed = once(worker, "close").then(values => ({ values }), (error: unknown) => ({ error }));
+    let released = false;
     const connection = {
-      worker,
+      run: () => { worker.send("run"); },
+      release: async () => {
+        if (released || worker.exitCode !== null || worker.signalCode !== null) return;
+        const input = worker.stdin;
+        if (input === null) throw new Error("race worker release pipe missing");
+        await new Promise<void>((resolve, reject) => {
+          const failed = (error: Error): void => { reject(error); };
+          input.once("error", failed);
+          input.write(Buffer.from([1]), error => {
+            if (error !== null && error !== undefined) reject(error);
+            else { input.removeListener("error", failed); resolve(); }
+          });
+        });
+        released = true;
+      },
       close: async () => {
         try {
-          if (worker.threadId === -1) throw new Error("race worker exited before close");
-          const exited = once(worker, "exit");
-          worker.postMessage("close");
-          const [code] = z.tuple([z.number().int()]).parse(await exited);
-          assert.equal(code, 0, "race worker close failed");
+          if (worker.exitCode !== null || worker.signalCode !== null) throw new Error("race worker exited before close");
+          worker.send("close");
+          const result = await closed;
+          if ("error" in result) throw result.error;
+          const [code, signal] = z.tuple([z.number().int().nullable(), z.string().nullable()]).parse(result.values);
+          assert.equal(code, 0, "race worker close failed"); assert.equal(signal, null, "race worker close failed");
         } catch (error) {
-          await worker.terminate();
+          if (worker.exitCode === null && worker.signalCode === null) worker.kill("SIGKILL");
+          const cleanup = await closed;
+          if ("error" in cleanup) throw new AggregateError([error, cleanup.error], "race worker and owned process closure failed", { cause: error });
           throw error;
         } finally {
           const closeEvents = events.return?.bind(events);
@@ -216,20 +243,30 @@ export function createRunRecordServiceTestWorld() {
       },
     };
     try {
+      await lifetime.share(worker);
+      const inherited = await events.next();
+      assert.equal(inherited.done, false);
+      assert.deepEqual(inherited.value?.[0], { type: "inherited" });
+      worker.send(data);
       return { ...connection, ready: await connection.next() };
     } catch (error) {
-      await worker.terminate();
+      if (worker.exitCode === null && worker.signalCode === null) worker.kill("SIGKILL");
+      const cleanup = await closed;
+      if ("error" in cleanup) throw new AggregateError([error, cleanup.error], "race fixture startup and owned process closure failed", { cause: error });
+      await events.return?.();
       throw error;
     }
   }
 
-  async function closeRaceConnections(connections: Awaited<ReturnType<typeof raceConnection>>[], releases: SharedArrayBuffer[]) {
-    for (const release of releases) {
-      Atomics.store(new Int32Array(release), 0, 1);
-      Atomics.notify(new Int32Array(release), 0);
-    }
+  async function closeRaceConnections(connections: Awaited<ReturnType<typeof raceConnection>>[]) {
+    const released = await Promise.allSettled(connections.map(connection => connection.release()));
     const closed = await Promise.allSettled(connections.map(connection => connection.close()));
-    for (const result of closed) if (result.status === "rejected") throw result.reason;
+    const failures = [...released, ...closed].flatMap(result => {
+      if (result.status !== "rejected") return [];
+      const failure: unknown = result.reason;
+      return [failure];
+    });
+    if (failures.length !== 0) throw new AggregateError(failures, "race fixture process closure failed", { cause: failures[0] });
   }
 
   function failureTerminalRequest(run: RunRecord, commandId: string) {

@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import * as browserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
@@ -75,7 +76,8 @@ it("composes actual selected resources without transport and revokes retained or
 
 it("issues a genuine tuple through real profile composition, refuses open-context relogin, and awaits synthetic logout scheduling", async () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "profile-runtime-composed-")));
-  const machine = acquireEntrypointAdmission(workspace, "exclusive"), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const lifetime = await runtimeLifetimeLock();
+  const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const transport = vi.spyOn(globalThis, "fetch").mockImplementation(() => { throw new Error("composed profile proof forbids transport"); });
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });

@@ -4,7 +4,6 @@ import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { withSmokeWorker, SmokeSessionClosureError } from "../../../scripts/verify/browser-login.js";
-import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { boundProfileAdmission } from "../../support/helpers/synthetic-database-admission.js";
 import { RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
@@ -37,7 +36,7 @@ describe("native verification reservation exclusion", () => {
         repositories.workerControls.transition(pending.commandId, "admitted", { state: "executing", startedAt: world.NOW });
       });
       const before = harness.database.authority.workerPools.get("person-lookup");
-      const lock = await runtimeLifetimeLock();
+      const lock = harness.lifetime;
       const verification = { lock, ...boundProfileAdmission(join(harness.root, "state.db")).profileBinding,
         profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: FingerprintSchema.parse("ab".repeat(32)) };
       try {
@@ -47,7 +46,7 @@ describe("native verification reservation exclusion", () => {
         expect(harness.database.authority.workerPools.get("person-lookup")).toEqual(before);
         expect(harness.database.authority.workerSlots.list()).toHaveLength(1);
         expect(harness.database.authority.workerControls.get(pending.commandId)?.phase.state).toBe("executing");
-      } finally { await lock.close(); }
+      } finally { lock.assertHeld(); }
     } finally { await world.cleanup(); }
   });
 
@@ -55,7 +54,7 @@ describe("native verification reservation exclusion", () => {
     const world = createDashboardPoolTestWorld();
     try {
       const harness = await world.openControlHarness();
-      const lock = await runtimeLifetimeLock();
+      const lock = harness.lifetime;
       const verification = { lock, ...boundProfileAdmission(join(harness.root, "state.db")).profileBinding,
         profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: FingerprintSchema.parse("ab".repeat(32)) };
       try {
@@ -125,7 +124,7 @@ describe("native verification reservation exclusion", () => {
         expect(harness.database.withAuthorityTransaction(repositories => retireWorkerVerification(repositories,
           original.request, randomUUID()))).toEqual(retired);
         expect(harness.database.getMeta().authorityGeneration).toBe(generation);
-      } finally { await lock.close(); }
+      } finally { lock.assertHeld(); }
     } finally { await world.cleanup(); }
   });
 
@@ -133,7 +132,7 @@ describe("native verification reservation exclusion", () => {
     const world = createDashboardPoolTestWorld();
     try {
       const harness = await world.openControlHarness();
-      const lock = await runtimeLifetimeLock();
+      const lock = harness.lifetime;
       const verification = { lock, ...boundProfileAdmission(join(harness.root, "state.db")).profileBinding,
         profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: FingerprintSchema.parse("ab".repeat(32)) };
       try {
@@ -141,9 +140,9 @@ describe("native verification reservation exclusion", () => {
           verification)).rejects.toBeInstanceOf(RuntimeCustodyUncertainError);
         harness.clock.advanceWall(600_000);
         expect(harness.database.authority.workerSlots.verifications("person-lookup")).toHaveLength(1);
-      } finally { await lock.close(); }
+      } finally { lock.assertHeld(); }
       const other = await world.openControlHarness();
-      const otherLock = await runtimeLifetimeLock();
+      const otherLock = other.lifetime;
       const otherVerification = { lock: otherLock, ...boundProfileAdmission(join(other.root, "state.db")).profileBinding,
         profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: FingerprintSchema.parse("ab".repeat(32)) };
       try {
@@ -157,7 +156,7 @@ describe("native verification reservation exclusion", () => {
         }, other.clock, otherVerification)).rejects.toMatchObject({ code: "LIVE_SMOKE_VERIFICATION_REFUSED", errors: [{ message: "worker-control-unresolved-effect" }] });
         expect(other.database.authority.workerPools.get("person-lookup")).toMatchObject({ desiredWorkers: 1, version: 1 });
         expect(other.database.authority.workerSlots.verifications("person-lookup")).toHaveLength(1);
-      } finally { await otherLock.close(); }
+      } finally { otherLock.assertHeld(); }
     } finally { await world.cleanup(); }
   });
 });

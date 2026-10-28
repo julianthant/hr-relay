@@ -49,7 +49,7 @@ async function installation(options: { pending?: "storage" } = {}) {
     CURRENT_AUTHORITY_SCHEMA_VERSION);
   const processLockRoot = join(profile.machine.stateRoot, "locks");
   profile.admission.release(); profile.machine.release();
-  return { workspace, stateRoot, profileId, processLockRoot, backupDirectory: join(stateRoot, "backups", "authority"),
+  return { workspace, lifetime: profile.lifetime, stateRoot, profileId, processLockRoot, backupDirectory: join(stateRoot, "backups", "authority"),
     run: () => spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],
       { cwd: workspace, encoding: "utf8", timeout: 20_000 }) };
 }
@@ -70,7 +70,7 @@ it("backs up a current installation through real bootstrap admission and persist
   assert.equal(manifest.profileId, fixture.profileId);
   assert.deepEqual(readFileSync(join(fixture.stateRoot, "state.db")), source);
   assert.ok(result.stdout.includes(manifest.backupFileName));
-  const machine = acquireEntrypointAdmission(fixture.workspace, "exclusive");
+  const machine = acquireEntrypointAdmission(fixture.workspace, "exclusive", fixture.lifetime);
   const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(fixture.profileId));
   try {
     const verified = await verifyBackupManifestAtPath(admission, manifestPath,
@@ -84,7 +84,7 @@ for (const change of ["no-selection", "unfinished", "foreign-binding"] as const)
   it(`refuses a current CLI backup for ${change} without creating or changing authority`, async () => {
     const fixture = await installation(change === "unfinished" ? { pending: "storage" } : {});
     if (change === "no-selection") {
-      const machine = acquireEntrypointAdmission(fixture.workspace, "exclusive");
+      const machine = acquireEntrypointAdmission(fixture.workspace, "exclusive", fixture.lifetime);
       try { createProfileRegistry(machine).advanceSession(null); } finally { machine.release(); }
     }
     const path = join(fixture.stateRoot, "state.db");
@@ -112,7 +112,7 @@ for (const change of ["no-selection", "unfinished", "foreign-binding"] as const)
 }
 
 it("refuses a selected profile generation change during backup instead of reporting success", async () => {
-  const fixture = await installation(), machine = acquireEntrypointAdmission(fixture.workspace, "exclusive");
+  const fixture = await installation(), machine = acquireEntrypointAdmission(fixture.workspace, "exclusive", fixture.lifetime);
   const registry = createProfileRegistry(machine), rename = nativeFs.renameSync.bind(nativeFs);
   const path = join(fixture.stateRoot, "state.db"), before = readFileSync(path); let changed = false;
   const spy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, target) => {
@@ -131,7 +131,7 @@ it("refuses a selected profile generation change during backup instead of report
 
 for (const uncertain of [false, true]) {
   it(`keeps actual selected backup child and bootstrap parent custody correct after source closure uncertainty ${uncertain}`, async () => {
-    const fixture = await installation(), machine = acquireEntrypointAdmission(fixture.workspace, "exclusive");
+    const fixture = await installation(), machine = acquireEntrypointAdmission(fixture.workspace, "exclusive", fixture.lifetime);
     const inspect = AuthorityDatabase.inspectStoppedUpgrade.bind(AuthorityDatabase);
     const open = nativeFs.openSync.bind(nativeFs), close = nativeFs.closeSync.bind(nativeFs), argv = process.argv.slice();
     let issued: RuntimeAdmission | undefined, armed = false, fired = false;
@@ -213,8 +213,8 @@ it.each(["server", "workers", "geocode"] as const)("refuses a CLI backup while %
   } finally { lock.release(); }
 });
 
-it("runs the unchanged explicit CLI backup on a stopped adopted flat source without login or profile publication", () => {
-  const f = createHistoricalFlatProfileFixture();
+it("runs the unchanged explicit CLI backup on a stopped adopted flat source without login or profile publication", async () => {
+  const f = await createHistoricalFlatProfileFixture();
   try {
     cpSync(join(repositoryRoot, "src"), join(f.workspace, "src"), { recursive: true });
     mkdirSync(join(f.workspace, "scripts", "dev"), { recursive: true });
@@ -233,5 +233,5 @@ it("runs the unchanged explicit CLI backup on a stopped adopted flat source with
     for (const [index, path] of paths.entries()) assert.deepEqual(readFileSync(path), before[index]);
     for (const path of [join(f.stateRoot, "profiles"), join(f.stateRoot, "machine"), join(f.workspace, ".tracker", "control", "profile-registry.json"),
       join(f.workspace, ".tracker", "control", "profile-owner-claims"), join(f.workspace, ".tracker", "control", "profile-flat-claim.json")]) assert.equal(existsSync(path), false);
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });

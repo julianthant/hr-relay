@@ -227,7 +227,7 @@ for (const failSync of [false, true]) it(`retains the real sync descriptor and p
 it("reads a closed incomplete profile inventory without changing source database identity", async () => {
   const f = await createHistoricalIncompleteProfileFixture();
   await using _fixture = { async [Symbol.asyncDispose]() { await f.close(); } };
-  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   using _machine = { [Symbol.dispose]() { machine.release(); } };
   const admission = machine.forStoppedIncompleteProfileInventory(f.profileId);
   using _admission = { [Symbol.dispose]() { admission.release(); } };
@@ -256,7 +256,7 @@ it("withdraws a genuine incomplete profile while preserving safe SQLite 0644 cus
       modified: String(value.mtimeNs), changed: String(value.ctimeNs), digest: digest(path) }) };
   });
   const before = capture(), key = digest(f.keyPath), protectedDocument = digest(f.protectedPath);
-  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   using _machine = { [Symbol.dispose]() { machine.release(); } };
   await machine.reclassifyIncompleteProfileAsDraft(f.profileId);
   assert.equal(machine.readProfileRegistry().profiles.length, 0);

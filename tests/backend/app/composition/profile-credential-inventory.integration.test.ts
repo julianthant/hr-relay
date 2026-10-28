@@ -1,6 +1,5 @@
 import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { withSmokeWorker } from "../../../../scripts/verify/browser-login.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
@@ -462,7 +461,7 @@ it('refuses retargeting a setup receipt to historical eight without the matching
 });
 
 for(const purpose of ["logout","backup"] as const)it(`accepts completed verification cleanup with removed scratch directory for ${purpose}`,async()=>{
-  const f=await fixture(),lock=await runtimeLifetimeLock(),profileRunId=randomUUID();
+  const f=await fixture(),lock=f.lifetime,profileRunId=randomUUID();
   const smokeRoot=join(f.stateRoot,"scratch","live-smoke",profileRunId,"browsers");
   const native=createBrowserSessionFactoryFixtures(f.clock,randomUUID(),{schedule:()=>({cancel(){}})}).fakeLauncher();
   let settlement:ReturnType<typeof f.erase>|undefined,stopped:RuntimeAdmission|undefined,restore:ReturnType<typeof acquireRuntimeRestoreAdmission>|undefined;

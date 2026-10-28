@@ -1,3 +1,4 @@
+import { runInheritedRuntimeChild } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import assert from "node:assert/strict";
@@ -69,7 +70,6 @@ import { historyWorld } from "../../../support/helpers/storage/transaction-histo
 /** Activity shape stays stable; confirmed database history replaces file folding. */
 /** Activity shape stays stable; confirmed database history replaces file folding. */
 /** Activity shape stays stable; confirmed database history replaces file folding. */
-import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { expect } from "vitest";
@@ -278,31 +278,33 @@ describe("SQLite timeline delivery", () => {
 afterEach(_afterEachFixture0);
 
   it("reads durable events from a separate producer process after lost notification and restart", async () => {
-    const path = (await profileFixture()).path;
+    const profile = await profileFixture(), path = profile.path;
     const first = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "timeline-process-test" }, manualClock(new Date(ts)));
     const script = `
       import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
-      import { acquireEntrypointAdmission } from './src/backend/storage/admission/bootstrap-admission.ts';
+      import { acquireSharedRuntimeAdmission } from './src/backend/storage/admission/admission.ts';
+      import { WorkerRuntimeLifetimeLock } from './src/backend/storage/admission/lifetime-lock.ts';
       import { createProfileRegistry } from './src/backend/profiles/registry.ts';
       import { basename, dirname, resolve } from 'node:path';
       import { createTimelineEmitter } from './src/backend/storage/events/timeline-emitter.ts';
       import { manualClock } from './src/rules/time/clock.ts';
-      const clock = manualClock(new Date(process.argv[2]));
-      const path = process.argv[1];
-      const machine = acquireEntrypointAdmission(resolve(dirname(path), '../../../..'), 'shared');
+      const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
+      const clock = manualClock(new Date(process.argv[3]));
+      const path = process.argv[2];
+      const machine = acquireSharedRuntimeAdmission(resolve(dirname(path), '../../../..'), lifetime);
       const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(path))));
       const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 500, migrationOwner: 'timeline-child' }, clock);
       try {
         const writer = createTimelineEmitter({ repository: db.authority.timelineEvents, clock });
-        writer.emit({ t: 'span.started', kind: 'worker', workflow: 'person-lookup', ts: process.argv[2],
+        writer.emit({ t: 'span.started', kind: 'worker', workflow: 'person-lookup', ts: process.argv[3],
           workerId: 'child-worker', spanPath: 'worker/child-worker', name: 'Child worker' });
-        writer.emit({ t: 'span.ended', kind: 'worker', workflow: 'person-lookup', ts: process.argv[2],
+        writer.emit({ t: 'span.ended', kind: 'worker', workflow: 'person-lookup', ts: process.argv[3],
           workerId: 'child-worker', spanPath: 'worker/child-worker', outcome: 'done' });
-      } finally { db.close(); admission.release(); machine.release(); }
+      } finally { db.close(); admission.release(); machine.release(); await lifetime.close(); process.disconnect(); }
     `;
     try {
-      const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, path, "2026-09-08T00:30:00.000Z"],
-        { cwd: process.cwd(), env: { ...process.env, TZ: "America/Los_Angeles" }, encoding: "utf8", timeout: 20_000 });
+      const child = await runInheritedRuntimeChild(profile.lifetime, script, [path, "2026-09-08T00:30:00.000Z"],
+        { cwd: process.cwd(), env: { ...process.env, TZ: "America/Los_Angeles" }, timeout: 20_000 });
       expect(child.status, child.stderr).toBe(0);
       const rows = first.authority.timelineEvents.page({});
       expect(rows.length).toBe(2);

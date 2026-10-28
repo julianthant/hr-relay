@@ -814,7 +814,7 @@ export function auditSoleRunnerInvocation(
       if (ts.isIfStatement(node) && ts.isBlock(node.parent) && ts.isTryStatement(node.parent.parent) && compact(node.expression) === '!bootDiagnostics&&!(entrypoint==="cli"&&(entrypointArgs[0]==="storage"||entrypointArgs[0]==="test-data"))'
         && compact(node.thenStatement) === '{(dependencies.assertEnvironment??(()=>assertNoMigratedEnvironmentKeys()))();}' && node.elseStatement === undefined) keyRefusal += 1;
       if (ts.isVariableDeclaration(node) && node.name.getText(source) === "admission" && node.initializer !== undefined
-        && compact(node.initializer) === 'await(dependencies.acquireAdmission??((requested)=>entrypoint==="cli"&&entrypointArgs[0]==="worker"?RuntimeAdmission.acquireWorker(workspace):bootDiagnostics?acquireExclusiveRuntimeAdmission(workspace):entrypoint==="cli"&&entrypointArgs[0]==="dashboard"?acquireDashboardEntrypointAdmission(workspace,requested):storageCommand==="backup"?acquireStorageBackupEntrypointAdmission(workspace):acquireEntrypointAdmission(workspace,requested)))(mode)') mainAdmission += 1;
+        && compact(node.initializer) === 'await(dependencies.acquireAdmission??((requested)=>entrypoint==="cli"&&entrypointArgs[0]==="worker"?RuntimeAdmission.acquireWorker(workspace,workerLifetime()):bootDiagnostics?acquireExclusiveRuntimeAdmission(workspace,rootLifetime()):entrypoint==="cli"&&entrypointArgs[0]==="dashboard"?acquireDashboardEntrypointAdmission(workspace,requested,rootLifetime()):storageCommand==="backup"?acquireStorageBackupEntrypointAdmission(workspace,rootLifetime()):acquireEntrypointAdmission(workspace,requested,rootLifetime())))(mode,lifetime.lock)') mainAdmission += 1;
       ts.forEachChild(node, topology);
     };
     topology(source);
@@ -822,8 +822,8 @@ export function auditSoleRunnerInvocation(
     const selectorValid = selector !== undefined && ts.isFunctionDeclaration(selector) && selector.body?.statements.length === 2
       && ts.isIfStatement(selector.body.statements[0]) && compact(selector.body.statements[0].expression) === 'selector==="cli"||selector==="test-target-document-number"'
       && compact(selector.body.statements[0].thenStatement) === 'returnselector;' && selector.body.statements[0].elseStatement === undefined && ts.isThrowStatement(selector.body.statements[1]);
-    const machineAdmissions = runtimeAdmissionCalls.filter(call => compact(call) === "acquireEntrypointAdmission(workspace,requested)");
-    const exclusiveAdmission = runtimeAdmissionCalls.filter(call => compact(call) === "acquireExclusiveRuntimeAdmission(workspace)");
+    const machineAdmissions = runtimeAdmissionCalls.filter(call => compact(call) === "acquireEntrypointAdmission(workspace,requested,rootLifetime())");
+    const exclusiveAdmission = runtimeAdmissionCalls.filter(call => compact(call) === "acquireExclusiveRuntimeAdmission(workspace,rootLifetime())");
     const admittedCall = invocations.filter(call => call.runner === "runCli").find(call => compact(call.node) === 'runCli(admission,()=>{if(entrypointArgs[0]!=="dashboard"||dashboardOwnsAdmission)thrownewError("dashboardadmissionownershipunavailable");dashboardOwnsAdmission=true;},lifetime)');
     const exclusiveImport = source.statements.some(statement => ts.isImportDeclaration(statement)
       && ts.isStringLiteral(statement.moduleSpecifier) && resolvedModule(path, statement.moduleSpecifier.text) === "src/backend/storage/admission/admission.ts"

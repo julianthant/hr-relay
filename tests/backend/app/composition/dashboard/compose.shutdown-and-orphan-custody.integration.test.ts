@@ -1,4 +1,3 @@
-import { runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import { createDashboardChildTestWorld, type RealChildRecord } from "../../../../support/helpers/backend/dashboard-child-world.js";
 import { workerPoolMember } from "../../../../../src/models/run/worker-slot.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
@@ -46,15 +45,15 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
       assert.equal(active.state, "active");
       if (active.state !== "active") throw new Error("fixture-profile-sign-in-refused");
       const context = profileRuntime.selectedContext(active.token);
-      const runtime: DashboardRuntime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: profile.machine, profile: { runtime: profileRuntime, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      const runtime: DashboardRuntime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime, admission: profile.machine, profile: { runtime: profileRuntime, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners,
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
         frontendPortOverride: 0,
         env: {},
         repoRoot,
         workerProcess: {
-          launch: stubLaunch(dbPath, lockRoot, "installed", process.execPath),
-          spawn: realStubSpawner(records),
+          launch: stubLaunch(dbPath, lockRoot, "installed", process.execPath, profile.lifetime),
+          spawn: realStubSpawner(records, profile.lifetime),
           birth: { pollMs: 50, timeoutMs: 30_000 },
           faultSink: (line) => {
             faultLines.push(line);

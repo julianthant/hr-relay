@@ -72,7 +72,7 @@ describe("composition-reads-no-environment-leaf", () => {
       const hostile = environment("UNRELATED_HOSTILE_NOISE");
       const env = noisy ? hostile.env : {};
       const common = { isolation: rebuildRuntimeIsolation, repoRoot: root, env, clock: profileClock };
-      if (profile !== undefined && active?.state === "active") dashboard = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), ...common, admission: f.machine, profile: { runtime: profile, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners, backendPortOverride: 0, frontendPortOverride: 0 });
+      if (profile !== undefined && active?.state === "active") dashboard = await composeDashboardRuntime({ lifetimeLock: f.lifetime, ...common, admission: f.machine, profile: { runtime: profile, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners, backendPortOverride: 0, frontendPortOverride: 0 });
       const selectedContext = context;
       const path = join(f.stateRoot, "state.db");
       const readConfig = () => {
@@ -94,7 +94,7 @@ describe("composition-reads-no-environment-leaf", () => {
         assert.deepEqual(before, clean);
       } finally { database.close(); }
       if (role === "worker") {
-      const worker = await composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(), ...common, admission: f.machine, preflightRunnerFactory: healthyRuntimePreflightRunners, args: ["person-lookup", "--pool-index", "1", "--drain"],
+      const worker = await composeWorkerRuntime({ lifetimeLock: f.lifetime, ...common, admission: f.machine, preflightRunnerFactory: healthyRuntimePreflightRunners, args: ["person-lookup", "--pool-index", "1", "--drain"],
         duoCeremony: duoCeremonyGatesOver(selectedContext.database, profileClock, new ManualScheduler(profileClock)),
         sessionFactory: { probeProfile: async () => undefined, open: () => { throw new Error("no browser may open for idle proof"); } }, write: () => undefined });
       assert.deepEqual(worker.outcomes, []);

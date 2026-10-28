@@ -33,9 +33,10 @@ it("plans, reads, retries, conflicts, and cancels through a real admitted dashbo
         migrationOwner: "unit-test" }, clock);
       database.close();
     } finally { fixtureAdmission.release(); }
-    const admission = acquireEntrypointAdmission(workspace, "shared");
+    const lifetime = await runtimeLifetimeLock();
+    const admission = acquireEntrypointAdmission(workspace, "shared", lifetime);
     try {
-      const runtime = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission, isolation: rebuildRuntimeIsolation, repoRoot: workspace,
+      const runtime = await composeDashboardRuntime({ lifetimeLock: lifetime, admission, isolation: rebuildRuntimeIsolation, repoRoot: workspace,
         env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
       try {
         const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });

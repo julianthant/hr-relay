@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
@@ -28,8 +29,8 @@ it("prepares a genuine offline relocation fixture with settings, protected data 
 try {
 
   const f = await installation();
-  const request = plan_m0(f.workspace, { stateRoot: join(f.root, "new-state"), artifactRoot: join(f.root, "new-artifacts") });
-  const admission = acquireSharedRuntimeAdmission(f.workspace);
+  const request = plan_m0(f.workspace, f.lifetime, { stateRoot: join(f.root, "new-state"), artifactRoot: join(f.root, "new-artifacts") });
+  const admission = acquireSharedRuntimeAdmission(f.workspace, f.lifetime);
   try {
     const database = AuthorityDatabase.open(admission, { path: f.authorityPath, busyTimeoutMs: 250,
       migrationOwner: "offline-relocation-fixture" }, clock_m0);
@@ -42,7 +43,7 @@ try {
       assert.ok(readFileSync(f.credentialFile).byteLength > 0);
     } finally { database.close(); }
   } finally { admission.release(); }
-  const walNotificationId = leaveStoppedWal(f.workspace, f.authorityPath);
+  const walNotificationId = await leaveStoppedWal(f.workspace, f.lifetime, f.authorityPath);
   const before = durableSnapshot(f.authorityPath, f.credentialFile, f.artifactFile);
   assert.equal(before.notifications.length, 1);
   const notification = NotificationRecordSchema.parse(JSON.parse(before.notifications[0] ?? "null") as unknown);
@@ -63,14 +64,15 @@ _afterEachFixture0();
 const cleanups: Array<() => void> = [];
 const _afterEachFixture0 = () => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); };
 
-function fixture() {
+async function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "relocation-plan-")));
   const workspace = join(root, "workspace");
   mkdirSync(workspace, { mode: 0o700 });
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const pair = { stateRoot: join(workspace, ".tracker/data"), artifactRoot: join(workspace, ".tracker/data", "artifacts") };
-  const adoption = acquireEntrypointAdmission(workspace, "exclusive"); adoption.release();
-  const lease = acquireInstallation(workspace, "shared"); cleanups.push(() => lease.release());
+  const lifetime = await runtimeLifetimeLock();
+  const adoption = acquireEntrypointAdmission(workspace, "exclusive", lifetime); adoption.release();
+  const lease = acquireInstallation(workspace, "shared", lifetime); cleanups.push(() => lease.release());
   const admission = RuntimeAdmission.fromInstallationLease(lease);
   const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
   const database = AuthorityDatabase.open(admission, { path: join(pair.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
@@ -81,10 +83,10 @@ function fixture() {
   const producer = createStorageRelocationPlanReader({ authority: database, admission, workspace });
   const execute = (value: unknown) => executeStorageRelocationCommand({ authority: database, clock,
     ids: { uuid: randomUUID }, storageRelocationPlans: producer }, value);
-  return { workspace, pair, lease, admission, clock, database, producer, execute };
+  return { workspace, lifetime, pair, lease, admission, clock, database, producer, execute };
 }
 
-type PlanContext = Pick<ReturnType<typeof fixture>, "workspace" | "lease" | "clock" | "producer">;
+type PlanContext = Pick<Awaited<ReturnType<typeof fixture>>, "workspace" | "lease" | "clock" | "producer">;
 function target(f: PlanContext, expectedRevision: number) {
   return { installationId: f.lease.locator.installationId, sourceGeneration: f.lease.locator.generation,
     sourcePair: { stateRoot: f.lease.locator.stateRoot, artifactRoot: f.lease.locator.artifactRoot }, expectedRevision };
@@ -109,13 +111,13 @@ function cancel(f: PlanContext, expectedRevision: number, pending: NonNullable<R
   return StorageRelocationCommandRequestSchema.parse({ ...request, payload: { ...request.payload,
     requestFingerprint: storageRelocationRequestFingerprint(request) } });
 }
-async function activateArtifactPlan(f: ReturnType<typeof fixture>, request: StorageRelocationCommandRequest) {
+async function activateArtifactPlan(f: Awaited<ReturnType<typeof fixture>>, request: StorageRelocationCommandRequest) {
   if (request.type !== "plan-storage-relocation") throw new Error("expected plan");
   f.database.close();
   f.lease.release();
-  await relocate(f.workspace, request.commandId);
+  await relocate(f.workspace, f.lifetime, request.commandId);
   const destination = request.payload.desiredPair;
-  const lease = acquireInstallation(f.workspace, "shared");
+  const lease = acquireInstallation(f.workspace, "shared", f.lifetime);
   cleanups.push(() => lease.release());
   const admission = RuntimeAdmission.fromInstallationLease(lease);
   const database = AuthorityDatabase.open(admission, { path: join(destination.stateRoot, "state.db"),
@@ -130,7 +132,7 @@ async function activateArtifactPlan(f: ReturnType<typeof fixture>, request: Stor
 it("persists immutable planned intent, exact retry, cancel revision, and readback without changing the locator", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const first = plan(f, 0);
   if (first.type !== "plan-storage-relocation") throw new Error("test fixture is not a plan");
   expect(f.execute(first)).toMatchObject({ state: "applied", commandId: first.commandId });
@@ -156,7 +158,7 @@ _afterEachFixture0();
 it("refuses stale CAS, reused write identity, and mismatched request or desired digest without a row", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const first = plan(f, 0); f.execute(first);
   const stale = plan(f, 0);
   expect(f.execute(stale)).toMatchObject({ state: "conflict", currentVersion: 1 });
@@ -181,7 +183,7 @@ _afterEachFixture0();
 it("refuses divergent command identity and cancellation of a different plan", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const first = plan(f, 0); f.execute(first);
   const altered = plan(f, 1);
   const duplicateId = StorageRelocationCommandRequestSchema.parse({ ...altered, commandId: first.commandId,
@@ -207,7 +209,7 @@ _afterEachFixture0();
 it("admits artifact-only intent and refuses stranded nested artifacts or unsafe path overlap", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const artifactOnly = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "new-artifacts") });
   expect(f.execute(artifactOnly).state).toBe("applied");
   const nestedArtifactOnly = plan(f, 1, { stateRoot: f.pair.stateRoot, artifactRoot: join(f.pair.stateRoot, "new-artifacts") });
@@ -228,7 +230,7 @@ _afterEachFixture0();
 it("refuses incomplete and divergent immutable history, including locator identity drift", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const orphan = plan(f, 0);
   f.database.withAuthorityTransaction((repositories) => { repositories.commands.insert(orphan); });
   expect(() => f.producer.read()).toThrow(/missing command audit/u);
@@ -244,12 +246,12 @@ _afterEachFixture0();
 it("refuses duplicate or gap revisions", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const first = plan(f, 0); f.execute(first);
   const duplicate = plan(f, 0);
   f.database.withAuthorityTransaction((repositories) => { repositories.commands.insert(duplicate); });
   expect(() => f.producer.read()).toThrow(/duplicate or gap plan revision/u);
-  const g = fixture();
+  const g = await fixture();
   const gap = plan(g, 2);
   g.database.withAuthorityTransaction((repositories) => { repositories.commands.insert(gap); });
   expect(() => g.producer.read()).toThrow(/duplicate or gap plan revision/u);
@@ -262,7 +264,7 @@ _afterEachFixture0();
 it("refuses mismatched or multiple command audits", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const command = plan(f, 0);
   f.database.withAuthorityTransaction((repositories) => {
     repositories.commands.insert(command);
@@ -273,7 +275,7 @@ try {
       affectedDependencyIds: [] });
   });
   expect(() => f.producer.read()).toThrow(/command audit mismatch/u);
-  const g = fixture();
+  const g = await fixture();
   const valid = plan(g, 0); g.execute(valid);
   const audit = g.database.authority.commandAudits.findByCommand(valid.commandId);
   if (audit === undefined) throw new Error("expected audit");
@@ -291,7 +293,7 @@ _afterEachFixture0();
 it("projects one global command revision across a completed receipt and new plan and cancel", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const destination = { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "moved-artifacts") };
   const first = plan(f, 0, destination);
   expect(f.execute(first).state).toBe("applied");
@@ -318,7 +320,7 @@ _afterEachFixture0();
 it("refuses a receipt bound to a different plan despite a valid control receipt chain", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const first = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "moved-artifacts") });
   f.execute(first);
   const active = await activateArtifactPlan(f, first);
@@ -337,7 +339,7 @@ _afterEachFixture0();
 it("refuses missing receipts and corrupt historical audits after activation", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const first = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "moved-artifacts") });
   f.execute(first);
   const active = await activateArtifactPlan(f, first);
@@ -362,7 +364,7 @@ _afterEachFixture0();
 it("refuses duplicate or rewound control receipts before projecting command history", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const first = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "moved-artifacts") });
   f.execute(first);
   const active = await activateArtifactPlan(f, first);
@@ -388,7 +390,7 @@ _afterEachFixture0();
 it("checks admission liveness for read, project, and validate", async () => {
 try {
 
-  const f = fixture();
+  const f = await fixture();
   const request = plan(f, 0);
   f.lease.release();
   expect(() => f.producer.read()).toThrow(/released/u);
@@ -404,7 +406,7 @@ it("refuses a missing, malformed, or drifting locator after plan reader creation
 try {
 
   for (const failure of ["missing", "malformed", "drift"] as const) {
-    const f = fixture();
+    const f = await fixture();
     expect(f.producer.read()).toMatchObject({ revision: 0, pending: null });
     const locatorPath = join(f.workspace, ".tracker/control", "locator.json");
     if (failure === "missing") unlinkSync(locatorPath);

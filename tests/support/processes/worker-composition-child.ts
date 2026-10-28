@@ -5,7 +5,7 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { z } from "zod";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { captureSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
 import { composeWorkerRuntime } from "../../../src/backend/app/composition/worker-compose.js";
@@ -23,7 +23,7 @@ const root = z.string().min(1).parse(process.argv[2]), poolIndex = z.coerce.numb
 const clock = manualClock(new Date(z.string().datetime().parse(process.argv[4])));
 const controller = new AbortController();
 const lifetimeLock = await receiveRuntimeLifetimeLock(z.coerce.number().int().positive().parse(process.argv[5]), () => controller.abort(new Error("fixture-parent-disconnected")));
-const machine = acquireEntrypointAdmission(root, "shared");
+const machine = acquireSharedRuntimeAdmission(root, lifetimeLock);
 let child: ReturnType<typeof machine.admitProfile> | undefined, database: AuthorityDatabase | undefined;
 let entered = false, proved = false;
 try {

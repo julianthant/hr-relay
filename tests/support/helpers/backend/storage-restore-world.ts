@@ -1,4 +1,4 @@
-import { runtimeLifetimeLock } from "./runtime-lifetime.js";
+import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
@@ -26,6 +26,7 @@ import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/b
 
 export interface DrillPaths {
   readonly repoRoot: string;
+  readonly lifetime: RuntimeLifetimeLock;
   readonly admission: RuntimeAdmission;
   readonly stateRoot: string;
   readonly authorityPath: string;
@@ -42,7 +43,7 @@ export function createStorageRestoreTestWorld() {
 
   const roots: string[] = [];
 
-  const admissions = new Map<string, Pick<Awaited<ReturnType<typeof createBoundProfileFixture>>, 'admission' | 'close'>>();
+  const admissions = new Map<string, Pick<Awaited<ReturnType<typeof createBoundProfileFixture>>, 'admission' | 'close' | 'lifetime'>>();
   const attemptChildren = new Map<ReturnType<typeof spawn>, Promise<readonly PromiseSettledResult<unknown>[]>>();
   const retainedAttemptScratch = new Set<string>();
   const attemptDatabases = new Map<string, { database: AuthorityDatabase; closeDatabase: () => void }>();
@@ -57,7 +58,7 @@ export function createStorageRestoreTestWorld() {
     admissions.set(repoRoot, fixture);
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "drill", version: "0.1.0" }));
     return {
-      repoRoot,
+      repoRoot, lifetime: fixture.lifetime,
       get admission() { return fixture.admission; },
       get credentials() { return boundProfileCredentials(fixture.admission); },
       renewAfterRestore() { fixture.renewAfterRestore(); },
@@ -72,8 +73,10 @@ export function createStorageRestoreTestWorld() {
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'relay-restore-attempt-')));
     retainedAttemptScratch.add(scratch);
     const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
-    const lifetimeLock = await runtimeLifetimeLock();
-    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(lifetimeLock.port)], {
+    const portOwner = await RuntimeLifetimeLock.acquire(0), port = portOwner.port;
+    await portOwner.close();
+    let lifetimeLock: RuntimeLifetimeLock | undefined;
+    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(port)], {
       cwd: sourceRoot, env: { ...process.env, TMPDIR: scratch }, detached: true,
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -99,7 +102,6 @@ export function createStorageRestoreTestWorld() {
       const awaitingReceipt = Promise.race([once(child, 'message'), ending.then(() => {
         throw new Error('storage-restore-attempt-worker-exited-before-checkpoint');
       })]);
-      await lifetimeLock.share(child);
       const message: unknown = (await awaitingReceipt)[0];
       const receipt = z.strictObject({ state: z.literal('attempting'), workspace: z.string().min(1),
         stateRoot: z.string().min(1), authorityPath: z.string().min(1), profileId: z.string().min(1),
@@ -112,7 +114,11 @@ export function createStorageRestoreTestWorld() {
       assert.equal(dirname(receipt.workspace), scratch);
       assert.equal(receipt.processLockRoot, join(receipt.workspace, rebuildRuntimeIsolation.processLockRoot));
       assert.equal(receipt.authorityPath, join(receipt.stateRoot, "state.db"));
-      lifetimeLock.assertHeld();
+      await assert.rejects(async () => {
+        const competing = await RuntimeLifetimeLock.acquire(port);
+        try { assert.fail("attempt controller listener was not retained"); }
+        finally { await competing.close(); }
+      }, RuntimeAlreadyRunningError);
       assert.equal(child.exitCode, null); assert.equal(child.signalCode, null);
       process.kill(-receipt.pid, 0);
       assert.equal(child.kill('SIGKILL'), true);
@@ -133,20 +139,21 @@ export function createStorageRestoreTestWorld() {
       assert.equal(descriptors.stderr, '');
       attemptChildren.delete(child);
       workspace = receipt.workspace;
-      machine = acquireEntrypointAdmission(receipt.workspace, 'exclusive');
+      lifetimeLock = await RuntimeLifetimeLock.acquire(port);
+      machine = acquireEntrypointAdmission(receipt.workspace, 'exclusive', lifetimeLock);
       admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(receipt.profileId));
       assert.equal(admission.stateRoot, receipt.stateRoot);
       registerBoundProfile(admission, machine); registered = true;
-      const heldMachine = machine;
+      const heldMachine = machine, heldLifetime = lifetimeLock;
       let heldAdmission = admission;
-      const fixture = { get admission() { return heldAdmission; }, async close() {
-        unregisterBoundProfile(heldAdmission); heldAdmission.release(); heldMachine.release();
+      const fixture = { lifetime: heldLifetime, get admission() { return heldAdmission; }, async close() {
+        unregisterBoundProfile(heldAdmission); heldAdmission.release(); heldMachine.release(); await heldLifetime.close();
         rmSync(scratch, { recursive: true, force: true }); retainedAttemptScratch.delete(scratch);
       } };
       admissions.set(receipt.workspace, fixture);
       roots.push(receipt.workspace);
       writeFileSync(join(receipt.workspace, "package.json"), JSON.stringify({ name: "drill", version: "0.1.0" }));
-      const paths: DrillPaths = { repoRoot: receipt.workspace, get admission() { return heldAdmission; },
+      const paths: DrillPaths = { repoRoot: receipt.workspace, lifetime: heldLifetime, get admission() { return heldAdmission; },
         get credentials() { return boundProfileCredentials(heldAdmission); }, stateRoot: receipt.stateRoot,
         authorityPath: receipt.authorityPath, backupDirectory: join(receipt.stateRoot, "backups", "authority"),
         processLockRoot: receipt.processLockRoot, renewAfterRestore() {
@@ -167,19 +174,20 @@ export function createStorageRestoreTestWorld() {
       writeFileSync(join(scratch, 'child.stdout'), Buffer.concat(stdout), { mode: 0o600 });
       writeFileSync(join(scratch, 'child.stderr'), Buffer.concat(stderr), { mode: 0o600 });
       if (error instanceof AuthoritySourceClosureUnprovedError) {
-        attemptClosureFailures.add(error); throw error;
+        const retained = retainAuthoritySourceClosure([error], { database, admission, directory: { machine, child, scratch, lifetimeLock } });
+        attemptClosureFailures.add(retained); throw retained;
       }
       try { closeDatabase(); }
       catch (closeError) {
-        const retained = retainAuthoritySourceClosure([error, closeError], { database, admission, directory: { machine, child, scratch } });
+        const retained = retainAuthoritySourceClosure([error, closeError], { database, admission, directory: { machine, child, scratch, lifetimeLock } });
         attemptClosureFailures.add(retained); throw retained;
       }
       try {
         if (registered && admission !== undefined) unregisterBoundProfile(admission);
-        admission?.release(); machine?.release();
+        admission?.release(); machine?.release(); await lifetimeLock?.close();
       } catch (cleanupError) {
         const retained = retainAuthoritySourceClosure([error, cleanupError], { database, admission,
-          directory: { machine, child, scratch } });
+          directory: { machine, child, scratch, lifetimeLock } });
         attemptClosureFailures.add(retained); throw retained;
       }
       if (workspace !== undefined) { admissions.delete(workspace); attemptDatabases.delete(workspace); }

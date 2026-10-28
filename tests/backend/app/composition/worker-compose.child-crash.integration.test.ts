@@ -1,5 +1,4 @@
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -172,7 +171,7 @@ it("reconciles an actual child OS crash after its committed read checkpoint with
   let closureProved = false;
   let primary: { error: unknown } | undefined;
   try {
-    const lifetimeLock = await runtimeLifetimeLock();
+    const lifetimeLock = f.profile.lifetime;
     const child = await launch(f.profile.workspace, "checkpoint", lifetimeLock); children.push(child);
     const message = await next(child);
     assert.equal(message.kind, "checkpoint"); assert.ok(message.kind === "checkpoint");
@@ -245,7 +244,7 @@ it("parks a real attempting child after its owned OS process dies without retry 
   let retainedUnknownProved = false;
   let primary: { error: unknown } | undefined;
   try {
-    const lifetimeLock = await runtimeLifetimeLock();
+    const lifetimeLock = f.profile.lifetime;
     const child = await launch(f.profile.workspace, "attempting", lifetimeLock); children.push(child);
     const message = await next(child);
     assert.equal(message.kind, "attempting"); assert.ok(message.kind === "attempting");

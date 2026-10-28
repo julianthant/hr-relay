@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -52,7 +53,7 @@ it("concurrent repository owners cannot race a rotating-token transaction", asyn
 it("shared admission refuses stale lock cleanup without changing credentials", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-credential-shared-")));
   try {
-    initializeAdmissionFixture(root);
+    initializeAdmissionFixture(root, await runtimeLifetimeLock());
     const admission = fixtureAdmission(root), stateRoot = admission.stateRoot;
     const repository = createChatGptCredentialRepository({ admission, stateRoot });
     const directory = join(stateRoot, "credentials"), path = join(directory, "chatgpt-account.json");
@@ -80,7 +81,7 @@ it("exclusive runtime admission recovers a stale credential writer and stage", a
   const root = realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-credential-exclusive-")));
   try {
     mkdirSync(join(root, rebuildRuntimeIsolation.artifactRoot), { recursive: true, mode: 0o700 });
-    const admission = acquireEntrypointAdmission(root, "exclusive");
+    const admission = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
     try {
       admission.assertExclusive();
       const stateRoot = admission.stateRoot, repository = createChatGptCredentialRepository({ admission, stateRoot });

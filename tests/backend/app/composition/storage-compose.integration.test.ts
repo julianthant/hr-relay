@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_IMPL_FINGERPRINT, WriteFixtureProofSchema, writeFixtureDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
@@ -714,7 +715,7 @@ describe("storage recover-chatgpt-lock", () => {
     const root = realpathSync(mkdtempSync(join_m0(tmpdir(), "storage-chatgpt-lock-")));
     try {
       mkdirSync(join_m0(root, rebuildRuntimeIsolation.artifactRoot), { recursive: true, mode: 0o700 });
-      const admission = acquireEntrypointAdmission(root, "exclusive");
+      const admission = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
       try {
         const stateRoot = admission.stateRoot, repository = createChatGptCredentialRepository({ admission, stateRoot });
         const run = () => composeStorageCommand_m0(rebuildRuntimeIsolation, ["recover-chatgpt-lock"], manualClock(new Date("2026-10-15T12:00:00.000Z")), root, admission);

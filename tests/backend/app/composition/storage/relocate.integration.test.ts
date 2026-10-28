@@ -1,3 +1,4 @@
+import type { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { default as assert } from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -18,10 +19,10 @@ import { parseRelocationCommand } from "../../../../../src/backend/app/compositi
 
 const _afterEachFixture0 = cleanupFixtureRoots;
 
-async function interruptAfterActivation(workspace: string, commandId: string): Promise<string> {
-  const admission = acquireExclusiveRuntimeAdmission(workspace);
+async function interruptAfterActivation(workspace: string, lifetime: RuntimeLifetimeLock, commandId: string): Promise<string> {
+  const admission = acquireExclusiveRuntimeAdmission(workspace, lifetime);
   try {
-    await assert.rejects(runOfflineStorageRelocation({ workspace,
+    await assert.rejects(runOfflineStorageRelocation({ workspace, lifetime,
       command: { kind: "plan", id: commandId, json: false }, admission, clock: clock_m0, hostFacts: hostConfigFacts({}),
       faults: { afterActivationWrite: () => { throw new Error("synthetic-activation-interruption"); } } }), (error) => {
       assert.ok(error instanceof StorageRelocationIncompleteError);
@@ -34,8 +35,8 @@ async function interruptAfterActivation(workspace: string, commandId: string): P
   return status.operationId;
 }
 
-async function assertTamperedResumeRefuses(workspace: string, operationId: string, pattern: RegExp): Promise<void> {
-  await assert.rejects(runOfflineStorageRelocation({ workspace,
+async function assertTamperedResumeRefuses(workspace: string, lifetime: RuntimeLifetimeLock, operationId: string, pattern: RegExp): Promise<void> {
+  await assert.rejects(runOfflineStorageRelocation({ workspace, lifetime,
     command: { kind: "resume", id: operationId, json: false }, clock: clock_m0, hostFacts: hostConfigFacts({}) }), (error) => {
     assert.ok(error instanceof StorageRelocationIncompleteError);
     assert.match(String(error.cause), pattern);
@@ -47,17 +48,17 @@ it("refuses an unrelated authority row changed after committed activation", asyn
 try {
 
   const fixture = await installation();
-  leaveStoppedWal(fixture.workspace, fixture.authorityPath);
+  await leaveStoppedWal(fixture.workspace, fixture.lifetime, fixture.authorityPath);
   const destination = { stateRoot: join(fixture.root, "new-state"), artifactRoot: join(fixture.root, "new-artifacts") };
-  const request = plan(fixture.workspace, destination);
-  const operationId = await interruptAfterActivation(fixture.workspace, request.commandId);
+  const request = plan(fixture.workspace, fixture.lifetime, destination);
+  const operationId = await interruptAfterActivation(fixture.workspace, fixture.lifetime, request.commandId);
   const raw = new DatabaseSync(join(destination.stateRoot, "state.db"));
   try {
     const changed = raw.prepare("UPDATE notifications SET payload_json=json_set(payload_json,'$.title','Tampered notice') WHERE id=(SELECT id FROM notifications LIMIT 1)")
       .run();
     assert.equal(changed.changes, 1);
   } finally { raw.close(); }
-  await assertTamperedResumeRefuses(fixture.workspace, operationId, /unrelated authority rows changed.*notifications/u);
+  await assertTamperedResumeRefuses(fixture.workspace, fixture.lifetime, operationId, /unrelated authority rows changed.*notifications/u);
 
 } finally {
 _afterEachFixture0();
@@ -69,8 +70,8 @@ try {
 
   const fixture = await installation();
   const destination = { stateRoot: join(fixture.root, "new-state"), artifactRoot: join(fixture.root, "new-artifacts") };
-  const request = plan(fixture.workspace, destination);
-  const operationId = await interruptAfterActivation(fixture.workspace, request.commandId);
+  const request = plan(fixture.workspace, fixture.lifetime, destination);
+  const operationId = await interruptAfterActivation(fixture.workspace, fixture.lifetime, request.commandId);
   const raw = new DatabaseSync(join(destination.stateRoot, "state.db"));
   try {
     const source = raw.prepare("SELECT payload_json,captured_at,revision,fingerprint FROM settings_snapshots ORDER BY rowid DESC LIMIT 1").get() as
@@ -81,7 +82,7 @@ try {
     raw.prepare("INSERT INTO settings_snapshots(id,revision,fingerprint,payload_json,captured_at) VALUES (?,?,?,?,?)")
       .run(id,source.revision,source.fingerprint, canonicalJsonStringify({ ...snapshot, configSnapshotId: id }), source.captured_at);
   } finally { raw.close(); }
-  await assertTamperedResumeRefuses(fixture.workspace, operationId, /activation snapshot history changed/u);
+  await assertTamperedResumeRefuses(fixture.workspace, fixture.lifetime, operationId, /activation snapshot history changed/u);
 
 } finally {
 _afterEachFixture0();
@@ -93,14 +94,14 @@ try {
 
   const fixture = await installation();
   const destination = { stateRoot: join(fixture.root, "new-state"), artifactRoot: join(fixture.root, "new-artifacts") };
-  const request = plan(fixture.workspace, destination);
-  const operationId = await interruptAfterActivation(fixture.workspace, request.commandId);
+  const request = plan(fixture.workspace, fixture.lifetime, destination);
+  const operationId = await interruptAfterActivation(fixture.workspace, fixture.lifetime, request.commandId);
   const raw = new DatabaseSync(join(destination.stateRoot, "state.db"));
   try {
     const changed = raw.prepare("UPDATE database_states SET search_generation=999,search_state='invalid' WHERE id=1").run();
     assert.equal(changed.changes, 1);
   } finally { raw.close(); }
-  await assertTamperedResumeRefuses(fixture.workspace, operationId, /search publication differs from activation transaction/u);
+  await assertTamperedResumeRefuses(fixture.workspace, fixture.lifetime, operationId, /search publication differs from activation transaction/u);
 
 } finally {
 _afterEachFixture0();

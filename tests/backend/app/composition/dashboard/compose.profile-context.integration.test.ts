@@ -1,4 +1,3 @@
-import { runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import * as filesystem from "node:fs/promises";
 import * as artifactReaders from "../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import * as explorerComposition from "../../../../../src/backend/app/composition/dashboard/explorer.js";
@@ -34,11 +33,26 @@ async function fixture() {
   const signIn = () => runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   const active = signIn(); assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("synthetic active profile required");
-  const input = { lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace, clock,
+  const input = { lifetimeLock: f.lifetime, admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace, clock,
     isolation: rebuildRuntimeIsolation, backendPortOverride: 0 as const, frontendPortOverride: 0 as const, env: {},
     preflightRunnerFactory: healthyRuntimePreflightRunners };
   return { ...f, clock, runtime, active, signIn, input };
 }
+
+it("refuses another profile controller before opening dashboard storage or changing its current context", async () => {
+  const f = await fixture(), other = await fixture();
+  const context = f.runtime.selectedContext(f.active.token), generation = context.database.getMeta().authorityGeneration;
+  const before = context.database.readProfileResourceCustody();
+  const open = vi.spyOn(AuthorityDatabase, "open");
+  try {
+    await assert.rejects(composeDashboardRuntime({ ...f.input, lifetimeLock: other.lifetime }), /runtime-lifetime-admission-mismatch/u);
+    assert.equal(open.mock.calls.length, 0);
+    context.assertCurrent();
+    assert.equal(context.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(context.database.readProfileResourceCustody(), before);
+    f.lifetime.assertHeld(); other.lifetime.assertHeld();
+  } finally { open.mockRestore(); await f.runtime.close(); await other.runtime.close(); await f.close(); await other.close(); }
+});
 
 it("starts the actual dashboard from the same token-owned context and proves resource/child/process/parent shutdown", async () => {
   const f = await fixture();

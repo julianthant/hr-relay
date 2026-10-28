@@ -2,7 +2,7 @@ import { duoCeremonyGatesOver } from '../helpers/duo-ceremony-fixtures.js';
 import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import assert from "node:assert/strict";
 import type { BrowserProfileAuthority } from "../../../src/backend/app/composition/worker/run-resources.js";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 /** Real worker loop and Chromium; every network request is fulfilled with synthetic HTML. */
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
@@ -32,7 +32,7 @@ const args = workerArgs.slice(0, -2);
 const controller = new AbortController();
 const lifetimeLock = await receiveRuntimeLifetimeLock(port, () => controller.abort(new Error("fixture-parent-disconnected")));
 if (root === undefined || marker !== "worker") throw new Error("fixture-worker-arguments");
-const machine = acquireEntrypointAdmission(root, "shared");
+const machine = acquireSharedRuntimeAdmission(root, lifetimeLock);
 const contexts = new Set<BrowserContext>();
 let admission: ReturnType<typeof machine.admitProfile> | undefined;
 let database: AuthorityDatabase | undefined;

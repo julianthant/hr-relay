@@ -7,12 +7,12 @@ import { acquireInstallation } from "../../../../src/backend/storage/admission/i
 const {fixture, restore, adoptSynthetic, relocationPlan, prepareDestination, staged, cleanup } = createInstallationControlTestWorld();
 afterEach(cleanup);
 
-it("refuses a duplicate managed entry in a partially retained lock shell", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("refuses a duplicate managed entry in a partially retained lock shell", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "source");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact");
-  const lease = acquireInstallation(workspace, "exclusive");
+  const lease = acquireInstallation(workspace, "exclusive", lifetime);
   const held = restore(workspace);
   const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
   const plan = relocationPlan(lease, destination);
@@ -33,13 +33,13 @@ it("refuses a duplicate managed entry in a partially retained lock shell", () =>
   lease.release(); held.release();
 });
 
-it("recovers empty and first-witness retained shells, but refuses foreign entries", () => {
+it("recovers empty and first-witness retained shells, but refuses foreign entries", async () => {
   for (const partial of ["empty", "marker", "foreign"] as const) {
-    const { workspace, pair } = fixture();
-    const initial = adoptSynthetic(workspace, pair); initial.release();
+    const { workspace, pair, lifetime } = await fixture();
+    const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
     writeFileSync(join(pair.stateRoot, "state.db"), "source");
     writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact");
-    const lease = acquireInstallation(workspace, "exclusive");
+    const lease = acquireInstallation(workspace, "exclusive", lifetime);
     const held = restore(workspace);
     const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
     const plan = relocationPlan(lease, destination);
@@ -57,7 +57,7 @@ it("recovers empty and first-witness retained shells, but refuses foreign entrie
     if (partial === "foreign") writeFileSync(join(retained, "foreign"), "unknown");
     lease.release(); held.release();
     const recoveredHeld = restore(workspace);
-    const recovered = acquireInstallation(workspace, "exclusive", { recoverRelocation: {
+    const recovered = acquireInstallation(workspace, "exclusive", lifetime, { recoverRelocation: {
       installationId: initial.locator.installationId, fromGeneration: 0, operationId, restoreAdmission: recoveredHeld,
     } });
     if (partial === "foreign") {
@@ -73,12 +73,12 @@ it("recovers empty and first-witness retained shells, but refuses foreign entrie
   }
 });
 
-it("refuses unknown managed state entries before source fencing", () => {
-  const { workspace, pair } = fixture();
-  const initial = adoptSynthetic(workspace, pair); initial.release();
+it("refuses unknown managed state entries before source fencing", async () => {
+  const { workspace, pair, lifetime } = await fixture();
+  const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "source");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact");
-  const lease = acquireInstallation(workspace, "exclusive");
+  const lease = acquireInstallation(workspace, "exclusive", lifetime);
   const held = restore(workspace);
   const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
   const plan = relocationPlan(lease, destination);

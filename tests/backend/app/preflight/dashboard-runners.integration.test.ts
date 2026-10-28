@@ -478,13 +478,11 @@ afterEach(_afterEachFixture0);
     roots.push(root);
     const stateRoot = join(root, ".tracker");
     const artifactRoot = join(stateRoot, "artifacts");
-    const processLockRoot = join(stateRoot, "locks");
     mkdirSync(artifactRoot, { recursive: true });
     const runners = createDashboardPreflightRunners({
       repoRoot: process.cwd(),
       stateRoot,
       artifactRoot,
-      processLockRoot,
       backendPort: 0,
       frontendPort: 0,
       backendOwned: () => false,

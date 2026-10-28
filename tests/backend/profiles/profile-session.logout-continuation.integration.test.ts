@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory } from "../../../src/backend/app/composition/profile-credential-inventory.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -15,7 +16,8 @@ import { LogoutOperationSchema } from "../../../src/models/profiles/profile.js";
 const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-22T12:01:00.000Z" };
 async function fixture(withForeign = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "profile-logout-continuation-")));
-  const machine = acquireEntrypointAdmission(root, "shared");
+  const lifetime = await runtimeLifetimeLock();
+  const machine = acquireEntrypointAdmission(root, "shared", lifetime);
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   let busy = true;
   const owners: ReturnType<typeof createProfileSession>[] = [];

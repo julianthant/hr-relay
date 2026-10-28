@@ -27,8 +27,8 @@ afterEach(async () => {
 });
 
 describe("credential history plaintext", () => {
-  it("does not keep a cleared password in protected.json", () => {
-    const stored = fixture();
+  it("does not keep a cleared password in protected.json", async () => {
+    const stored = await fixture();
     const applied = stored.store.apply(request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -83,8 +83,8 @@ describe("credential history plaintext", () => {
       expectedRevision: stored.readErasure().revision, commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: NOW })));
   });
 
-  it("refuses an implicit version-two conversion outside an admitted conversion intent", () => {
-    const stored = versionTwoFixture();
+  it("refuses an implicit version-two conversion outside an admitted conversion intent", async () => {
+    const stored = await versionTwoFixture();
     const bytes = `${JSON.stringify(stored.document)}\n`;
     writeFileSync(stored.path, bytes, { mode: 0o600 });
     assert.throws(() => stored.store.read());
@@ -174,8 +174,8 @@ it("refuses a missing established erasure anchor and accepts the same restored a
 });
 
 
-it("keeps genuine private profile reads and writes beneath a sticky workspace while released authority refuses", () => {
-  const stored = fixture();
+it("keeps genuine private profile reads and writes beneath a sticky workspace while released authority refuses", async () => {
+  const stored = await fixture();
   try {
     assert.equal(stored.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
       expectedRevision: 1, entries: { ucpathPassword: { set: SECRET } } })).state, "applied");
@@ -204,8 +204,8 @@ it("refuses a substituted local journal ancestor before treating missing files a
 });
 
 
-function versionTwoFixture() {
-  const stored = fixture();
+async function versionTwoFixture() {
+  const stored = await fixture();
   const original = request({ commandId: COMMAND_1, writeId: WRITE_1,
     expectedRevision: 1, entries: { ucpathPassword: { set: SECRET } } });
   assert.equal(stored.store.apply(original).state, "applied");
@@ -217,8 +217,8 @@ function versionTwoFixture() {
   return { ...stored, original, document, password, lastApplied: record.lastApplied };
 }
 
-it("requires explicit conversion before ordinary version-two read or replay", () => {
-  const stored = versionTwoFixture();
+it("requires explicit conversion before ordinary version-two read or replay", async () => {
+  const stored = await versionTwoFixture();
   const bytes = `${JSON.stringify(stored.document)}\n`;
   writeFileSync(stored.path, bytes, { mode: 0o600 });
   assert.throws(() => stored.store.read());
@@ -228,8 +228,8 @@ it("requires explicit conversion before ordinary version-two read or replay", ()
 });
 
 it.each(["value", "timestamp", "commandFingerprint", "expectedRevision", "protectedSchemaHash"] as const)(
-  "refuses version-two %s corruption through ordinary reads and unadmitted conversion", corruption => {
-    const stored = versionTwoFixture();
+  "refuses version-two %s corruption through ordinary reads and unadmitted conversion", async corruption => {
+    const stored = await versionTwoFixture();
     const record = corruption === "value" || corruption === "timestamp"
       ? { ...stored.document.record, entries: { ...stored.document.record.entries,
         ucpathPassword: { ...stored.password, ...(corruption === "value"
@@ -247,8 +247,8 @@ it.each(["value", "timestamp", "commandFingerprint", "expectedRevision", "protec
   });
 
 it.each(["commandFingerprint", "expectedRevision", "protectedSchemaHash"] as const)(
-  "refuses legacy version-three lastApplied %s without ordinary compatibility reads", field => {
-    const stored = versionTwoFixture();
+  "refuses legacy version-three lastApplied %s without ordinary compatibility reads", async field => {
+    const stored = await versionTwoFixture();
     const record = { ...stored.document.record, lastApplied: { ...stored.lastApplied,
       ...(field === "commandFingerprint" ? { commandFingerprint: "9".repeat(64) }
         : field === "expectedRevision" ? { expectedRevision: 2 } : { protectedSchemaHash: "9".repeat(64) }) } };

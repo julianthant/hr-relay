@@ -1,4 +1,4 @@
-import { receiveRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { runClaim } from '../../../src/models/run/record.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -16,9 +16,9 @@ import { fenceWriteFixture } from '../helpers/write-fence-fixture.js';
 import { ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, CONFIG_SNAPSHOT, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from '../fixtures/phase1c-contract-fixtures.js';
 import { manualClock } from '../../../src/rules/time/clock.js';
 
-const lifetimeLock = await receiveRuntimeLifetimeLock(Number(process.argv[2]), () => { process.exitCode = 1; });
+const lifetimeLock = await RuntimeLifetimeLock.acquire(Number(process.argv[2]));
 const clock = manualClock(new Date(NOW));
-const profile = await createBoundProfileFixture();
+const profile = await createBoundProfileFixture({ lifetime: lifetimeLock });
 const authorityPath = realpathSync(profile.path);
 const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
 const workflow = WRITE_INTENT_ATTEMPTING.workflowId;

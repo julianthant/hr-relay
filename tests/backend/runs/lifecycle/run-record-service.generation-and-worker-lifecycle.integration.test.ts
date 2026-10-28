@@ -396,33 +396,32 @@ it("competing connections cannot accept conflicting failure settlements", async 
   const secondRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000052");
   secondRequest.terminal.failure.failureId = UUID_5;
   secondRequest.terminal.authorization.failureId = UUID_5;
-  const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
   const connections: Awaited<ReturnType<typeof raceConnection>>[] = [];
   try {
-    for (const [index, request] of [firstRequest, secondRequest].entries()) {
+    for (const request of [firstRequest, secondRequest]) {
       connections.push(await raceConnection({
-        path: join(f.root, "state.db"), now: NOW, release: releases[index], runId: running.envelope.runId,
+        path: join(f.root, "state.db"), now: NOW, runId: running.envelope.runId,
         operation: { kind: "terminal-failure", request: { commandId: request.commandId, terminal: request.terminal } },
-      }));
+      }, f.lifetime));
     }
-    const [first, second] = connections; assert.ok(first && second && releases[0] && releases[1]);
+    const [first, second] = connections; assert.ok(first && second && typeof first.release === "function" && typeof second.release === "function");
     assert.deepEqual(first.ready, { type: "ready" }); assert.deepEqual(second.ready, { type: "ready" });
-    first.worker.postMessage("run"); assert.deepEqual(await first.next(), { type: "reserved" });
-    second.worker.postMessage("run"); const busy = await second.next(); assert.equal(busy.type, "error");
+    first.run(); assert.deepEqual(await first.next(), { type: "reserved" });
+    second.run(); const busy = await second.next(); assert.equal(busy.type, "error");
     if (busy.type !== "error") throw new Error("competing settlement did not encounter held transaction");
     assert.match(busy.message, /locked|busy/);
     assert.deepEqual(f.database.authority.runs.get(running.envelope.runId), running);
-    Atomics.store(new Int32Array(releases[0]), 0, 1); Atomics.notify(new Int32Array(releases[0]), 0);
+    await first.release();
     const accepted = await first.next(); assert.equal(accepted.type, "result");
     if (accepted.type !== "result") throw new Error("winning settlement missing");
     assert.equal(accepted.outcome.state, "applied");
-    Atomics.store(new Int32Array(releases[1]), 0, 1); second.worker.postMessage("run");
+    await second.release(); second.run();
     assert.deepEqual(await second.next(), { type: "result", outcome: { state: "refused", refusal: { reason: "lost" } } });
     assert.equal(f.database.authority.failures.listByRun(running.envelope.runId).length, 1);
     assert.equal(f.database.authority.failures.get(UUID_5), undefined);
     assert.equal(f.database.authority.lifecycleJournal.getCommand(secondRequest.commandId), undefined);
   } finally {
-    await closeRaceConnections(connections, releases);
+    await closeRaceConnections(connections);
   }
 });
 

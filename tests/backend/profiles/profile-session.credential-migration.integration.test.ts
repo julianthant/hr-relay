@@ -3,6 +3,7 @@ import { credentialKeyCustody } from "../../../src/backend/storage/configuration
 import { createDuoCredentialStore } from "../../../src/backend/storage/configuration/duo-credential-store.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { readProfilePublicationRegistry, type ProfilePublicationRead } from "../../../src/backend/storage/admission/installation.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -19,15 +20,32 @@ import { CompleteProtectedSettingsPatchSchema, type CompleteProtectedSettingsPat
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 
-for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt of (["intent", "digest-missing", "orphan-stage", "stage-substitution", "stage-extra-copy", "stage-external-lock", "stage-child-release", "stage-parent-release", "stage-source-change", "stage-registry-change", "legacy-value-tamper", "legacy-timestamp-tamper", "legacy-commandFingerprint-tamper", "legacy-expectedRevision-tamper", "legacy-protectedSchemaHash-tamper", "stage-journal", "stage-intent", "key", "key-phase", "document-phase", "key-substitution", "key-malformed", "key-foreign", "anchor"] as const).filter(boundary => mode === "prove-v2" || !boundary.startsWith("legacy-"))) it(`converts ${mode} through verified sign-in and resumes exact ${interruptedAt} publication without reviving a peer`, async () => {
+for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt of (["intent", "digest-missing", "orphan-stage", "stage-substitution", "stage-extra-copy", "stage-external-lock", "stage-child-release", "stage-parent-release", "stage-source-change", "stage-registry-change", "legacy-value-tamper", "legacy-timestamp-tamper", "legacy-commandFingerprint-tamper", "legacy-expectedRevision-tamper", "legacy-protectedSchemaHash-tamper", "stage-journal", "stage-intent", "key", "key-phase", "document-phase", "key-substitution", "key-malformed", "key-foreign", "anchor", "retained-duo"] as const).filter(boundary => (mode === "prove-v2" || !boundary.startsWith("legacy-")) && (mode === "replace-v3" || boundary !== "retained-duo"))) it(interruptedAt === "retained-duo" ? "refuses retained physical Duo before staging a historical credential conversion" : `converts ${mode} through verified sign-in and resumes exact ${interruptedAt} publication without reviving a peer`, async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z")), hostFacts = { primaryDisplay: null };
   const initial = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
     credentials: boundProfileCredentials(f.admission), clock, hostFacts });
   await initial.account.close(); initial.database.close();
   let initializationChild: RuntimeAdmission | undefined;
+  const anchorScopes: ProfilePublicationRead[] = [];
+  let retainedInventory: Readonly<{ control: Buffer; operations: readonly { name: string; bytes: Buffer }[] }> | undefined;
   const initializationInventory: NonNullable<Parameters<typeof createProfileSession>[0]["initializationInventory"]> = (child, operation, writer, copies) => {
     initializationChild = child;
-    return composeProfileCredentialInitializationInventory({ machine: f.machine, admission: child, clock, hostFacts })(operation, writer, copies);
+    if (interruptedAt === "retained-duo") {
+      const directory = join(f.machine.stateRoot, "machine", "operations");
+      retainedInventory = { control: readFileSync(join(f.workspace, ".tracker", "control", "profile-registry.json")),
+        operations: readdirSync(directory).map(name => ({ name, bytes: readFileSync(join(directory, name)) })) };
+    }
+    const inventory = composeProfileCredentialInitializationInventory({ machine: f.machine, admission: child, clock, hostFacts })(operation, writer, copies);
+    return { ...inventory, revalidate(current) {
+      const revalidate = inventory.revalidate(current);
+      return scope => {
+        revalidate(scope);
+        if (scope === undefined) return;
+        scope.assertOperation(f.machine.stateRoot, operation.operationId);
+        assert.equal(readProfilePublicationRegistry(scope).profiles.some(profile => profile.profileId === operation.profileId), true);
+        anchorScopes.push(scope);
+      };
+    } };
   };
   const peer = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot, initializationInventory });
   const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() };
@@ -44,9 +62,9 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
     duo: { profileId: string; state: string; revision: number }[] };
   const row = continuity.erasures.find(value => value.profileId === active.profileId); assert.ok(row !== undefined);
   delete row.credentialKey;
-  continuity.duo = continuity.duo.map(entry => entry.profileId === active.profileId ? { profileId: active.profileId, state: "never-initialized", revision: 0 } : entry);
+  if (interruptedAt !== "retained-duo") continuity.duo = continuity.duo.map(entry => entry.profileId === active.profileId ? { profileId: active.profileId, state: "never-initialized", revision: 0 } : entry);
   writeFileSync(continuityPath, JSON.stringify(continuity), { mode: 0o600 });
-  unlinkSync(join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`));
+  if (interruptedAt !== "retained-duo") unlinkSync(join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`));
   credentialKeyCustody.delete({ installationId: f.machine.locator.installationId, profileId: active.profileId });
   unlinkSync(join(f.machine.stateRoot, "machine", "credential-keys", `${active.profileId}.json`));
   assert.ok(record.lastApplied !== undefined);
@@ -56,6 +74,30 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
     marked: Object.fromEntries(Object.keys(record.entries).map(name => [name, { set: "<set>" }])),
     setValueIds: Object.fromEntries(Object.entries(record.entries).map(([name, entry]) => [name, entry.valueId])),
   }] }), { mode: 0o600 });
+  if (interruptedAt === "retained-duo") {
+    const duoPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`);
+    const duoBytes = readFileSync(duoPath), source = readFileSync(path);
+    const keyDirectory = join(f.machine.stateRoot, "machine", "credential-keys"), keyFiles = readdirSync(keyDirectory);
+    const operationDirectory = join(f.machine.stateRoot, "machine", "operations");
+    const keys = FakeKeyringEntry.snapshot();
+    let staged = 0;
+    const migrator = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot, initializationInventory,
+      credentialHooks: { beforeInitialKey: () => { staged++; } } });
+    const replacement = CompleteProtectedSettingsPatchSchema.parse({ ucpathUserId: { set: fields.email }, ucpathPassword: { set: fields.password },
+      timekeeperName: { clear: true }, sharepointOnboardingRosterUrl: { clear: true }, activityPersonPseudonym: { clear: true } });
+    try {
+      assert.throws(() => migrator.signIn({ ...fields, credentialMigration: { kind: "replace-v3", entries: replacement } }));
+      assert.ok(retainedInventory, "the genuine migration must reach its physical-copy inventory before refusal");
+      assert.equal(staged, 0);
+      assert.deepEqual(readFileSync(duoPath), duoBytes);
+      assert.deepEqual(readFileSync(continuityPath), retainedInventory.control);
+      assert.deepEqual(readFileSync(path), source);
+      assert.deepEqual(readdirSync(keyDirectory), keyFiles);
+      assert.deepEqual(readdirSync(operationDirectory).map(name => ({ name, bytes: readFileSync(join(operationDirectory, name)) })), retainedInventory.operations);
+      assert.deepEqual(FakeKeyringEntry.snapshot(), keys);
+    } finally { migrator.close(); peer.close(); child.release(); await f.close(); }
+    return;
+  }
   if (mode === "prove-v2") {
     const registration = f.machine.readProfileRegistry().profiles.find(value => value.profileId === active.profileId)?.registration;
     assert.ok(registration !== undefined);
@@ -170,6 +212,8 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
     }
     const resumed = restarted.signIn({ ...fields, credentialMigration: mode === "replace-v3" ? { kind: "replace-v3", entries: replacement } : { kind: "prove-v2" } });
     assert.equal(resumed.state, "active");
+    const anchorScope = anchorScopes[0]; assert.ok(anchorScope);
+    for (const scope of anchorScopes) assert.throws(() => readProfilePublicationRegistry(scope), /profile-publication-read-expired/u);
     assert.equal(f.machine.readProfileRegistry().sessionGeneration, epoch + 2);
     assert.equal(peer.prepareCurrentStorage(active.token).state, "refused");
     const current = f.machine.admitProfile(createProfileRegistry(f.machine).storageClaim(active.profileId));

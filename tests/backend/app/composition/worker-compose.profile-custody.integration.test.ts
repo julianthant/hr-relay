@@ -1,4 +1,3 @@
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { copyFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import * as artifactWriters from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -45,7 +44,7 @@ for (const failure of ["none", "artifact", "artifact-and-close"] as const) it(`o
       throw error;
     }) };
   });
-  const lifetimeLock = await runtimeLifetimeLock();
+  const lifetimeLock = f.lifetime;
   let opened: AuthorityDatabase | undefined;
   try {
     const running = composeWorkerRuntime({ lifetimeLock, admission: f.machine, repoRoot: f.workspace, isolation: rebuildRuntimeIsolation,
