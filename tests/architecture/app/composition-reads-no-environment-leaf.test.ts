@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../support/helpers/backend/dashboard-lifetime.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { composeProfileRuntime, composeSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
 import { ManualScheduler } from "../../support/helpers/phase1f-executor-harness.js";
@@ -72,7 +73,7 @@ describe("composition-reads-no-environment-leaf", () => {
       const hostile = environment("UNRELATED_HOSTILE_NOISE");
       const env = noisy ? hostile.env : {};
       const common = { isolation: rebuildRuntimeIsolation, repoRoot: root, env, clock: profileClock };
-      if (profile !== undefined && active?.state === "active") dashboard = await composeDashboardRuntime({ ...common, admission: f.machine, profile: { runtime: profile, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners, backendPortOverride: 0, frontendPortOverride: 0 });
+      if (profile !== undefined && active?.state === "active") dashboard = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), ...common, admission: f.machine, profile: { runtime: profile, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners, backendPortOverride: 0, frontendPortOverride: 0 });
       const selectedContext = context;
       const path = join(f.stateRoot, "state.db");
       const readConfig = () => {
@@ -127,7 +128,7 @@ describe("composition-reads-no-environment-leaf", () => {
       ? `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json, so remove it`
       : `migrated environment key ${key} is refused; set it in Settings, then remove it`;
     const refuse = (error: unknown): boolean => error instanceof Error && error.message === expected;
-    await assert.rejects(composeDashboardRuntime({ ...common, backendPortOverride: 0, frontendPortOverride: 0 }), refuse);
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), ...common, backendPortOverride: 0, frontendPortOverride: 0 }), refuse);
     await assert.rejects(composeWorkerRuntime({ ...common, args: ["person-lookup", "--pool-index", "1", "--drain"] }), refuse);
     assert.equal(hostile.reads(), 0);
     assert.deepEqual(readdirSync(root), ["package.json"]);

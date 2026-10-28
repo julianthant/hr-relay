@@ -1,3 +1,4 @@
+import { RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import { CanonicalCrashRecoveryRequestSchema } from "./run-store-contracts.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
@@ -10,7 +11,7 @@ import { terminalDelegationDependencyRecord } from "../../../models/run/result.j
 import { delegationJoinDisposition } from "../../../rules/workflow/dependencies.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
-import { readStartupProcessClosure, readProcessCustodyFile, WorkerProcessLockFileSchema, authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, type RuntimeProcessLockHandle, type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
+import { authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, type RuntimeProcessLockHandle, type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
@@ -2514,38 +2515,64 @@ export class AuthorityDatabase implements Disposable {
       || this.#database.prepare("SELECT 1 FROM run_checkpoints WHERE run_id=? LIMIT 1").get(runId) !== undefined) throw new Error("startup-stale-queue-custody-unproved");
   }
 
-  crashRunRecoveryProof(runId: string) {
+  crashRunRecoveryIdentity(runId: string) {
     return this.withAuthorityReadSnapshot(() => {
       const run = this.#readRunRow(RunIdSchema.parse(runId));
       const claim = run === undefined ? undefined : runClaim(run);
-      if (run === undefined || claim === undefined || !("workerLifetime" in run.lifecycle) || run.lifecycle.workerLifetime === undefined) throw new Error("crash-recovery-claim-unproved");
-      const custody = this.workerLifetimeCustody(claim.workerId);
-      if (custody.state !== "dead" && custody.state !== "released") throw new Error("crash-recovery-owner-unproved");
-      if (run.lifecycle.workerLifetime.leaseGeneration !== custody.birth.leaseGeneration
-        || run.lifecycle.workerLifetime.membershipRevision !== custody.birth.member.membershipRevision) throw new Error("crash-recovery-lifetime-changed");
-      const originalFile = readProcessCustodyFile(join(custody.birth.processLockRoot, "workers", `${custody.birth.owner.acquisitionId}.lock.json`));
-      const original = WorkerProcessLockFileSchema.parse(JSON.parse(originalFile.bytes.toString("utf8")));
-      if (canonicalJsonStringify({ ...original, releasedAt: null }) !== canonicalJsonStringify(custody.birth.owner)) throw new Error("crash-recovery-original-changed");
-      const receipt = readStartupProcessClosure(custody.birth.processLockRoot, original);
-      const meta = this.getMeta();
-      if (receipt === undefined || receipt.authorityPath !== resolve(this.#path) || receipt.installationId !== meta.installationId
-        || receipt.profileId !== meta.profileId || !receipt.browserRoots.includes(join(dirname(this.#path), "browsers"))) throw new Error("crash-recovery-process-closure-unproved");
-      return { birth: custody.birth, originalFile: originalFile.witness, closureDigest: receipt.digest };
+      const lifetime = run !== undefined && "workerLifetime" in run.lifecycle ? run.lifecycle.workerLifetime : undefined;
+      if (run === undefined || claim === undefined || lifetime === undefined) throw new Error("crash-recovery-claim-unproved");
+      const slot = this.authority.workerSlots.get(claim.workerId), lease = this.authority.workerLeases.get(claim.workerId);
+      if (slot === undefined || slot.retiredAt !== null || lease === undefined
+        || lifetime.leaseGeneration !== lease.leaseGeneration || lifetime.membershipRevision !== slot.membershipRevision
+        || slot.workflow !== run.envelope.workflow || lease.workflow !== slot.workflow) throw new Error("crash-recovery-lifetime-changed");
+      return { workerLifetime: lifetime };
     });
   }
 
-  recoverCrashedRun(input: unknown): RunRecord {
+  settleInterruptedWorker(lock: RuntimeLifetimeLock, workerId: string, leaseGeneration: number, now: string) {
+    return this.withAuthorityTransaction(repositories => {
+      const lease = repositories.workerLeases.get(workerId);
+      if (lease === undefined || lease.leaseGeneration !== leaseGeneration) throw new Error("crash-recovery-lifetime-changed");
+      if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("crash-recovery-lock-required");
+      lock.assertHeld();
+      const released: { kind: "lease" | "browser" | "duo"; id: string; generation: number }[] = [];
+      for (const browser of repositories.workerControls.browsers(workerId)) {
+        if (browser.health === "closed") continue;
+        if (browser.leaseGeneration > leaseGeneration) throw new Error("crash-recovery-browser-generation-changed");
+        repositories.workerControls.observe({ ...browser, health: "closed", observedAt: now });
+        released.push({ kind: "browser", id: browser.sessionId, generation: browser.leaseGeneration });
+      }
+      for (const row of this.#database.prepare("SELECT * FROM auth_leases WHERE holder_worker_id=? AND state='held'").all(workerId)) {
+        const current = this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema);
+        this.#writeDuoCeremonyLease(DuoCeremonyLeaseRecordSchema.parse({ ...current, state: "released", releasedAt: now,
+          version: current.version + 1, updatedAt: now }), "update");
+        released.push({ kind: "duo", id: current.credentialKey, generation: current.generation });
+      }
+      if (lease.lifecycle.state !== "stopped") {
+        const result = repositories.workerLeases.reportLifecycle({ workerId, leaseGeneration,
+          lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt, stoppedAt: now, reason: "crashed" }, now });
+        if (result.state !== "applied") throw new Error("crash-recovery-lifetime-changed");
+        released.push({ kind: "lease", id: workerId, generation: leaseGeneration });
+      }
+      return released;
+    });
+  }
+
+  recoverCrashedRun(input: unknown, lock: RuntimeLifetimeLock): RunRecord {
     const request = CanonicalCrashRecoveryRequestSchema.parse(input);
     return this.withAuthorityTransaction(repositories => {
       const current = this.#readRunRow(request.runId), claim = current === undefined ? undefined : runClaim(current);
       if (current === undefined || current.version !== request.expectedVersion || claim?.workerId !== request.claim.workerId
         || claim.claimGeneration !== request.claim.claimGeneration || Date.parse(request.now) < Date.parse(current.envelope.enqueuedAt)) throw new Error("crash-recovery-claim-changed");
-      const proof = this.crashRunRecoveryProof(request.runId);
-      if (canonicalJsonStringify(proof) !== canonicalJsonStringify({ birth: request.birth, originalFile: request.originalFile, closureDigest: request.closureDigest })) throw new Error("crash-recovery-proof-changed");
+      if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("crash-recovery-lock-required");
+      lock.assertHeld();
+      const identity = this.crashRunRecoveryIdentity(request.runId);
+      if (canonicalJsonStringify(identity.workerLifetime) !== canonicalJsonStringify(request.workerLifetime)) throw new Error("crash-recovery-lifetime-changed");
       const intents = repositories.writeIntents.listByRun(request.runId);
-      const unfinished = intents.find(intent => intent.status !== "committed" && intent.status !== "observed-present");
+      const unfinishedIntents = intents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present");
+      const unfinished = unfinishedIntents[0];
       if (unfinished !== undefined) {
-        if (unfinished.status !== "attempting" && unfinished.status !== "parked") throw new Error("crash-recovery-write-outcome-unproved");
+        if (unfinishedIntents.length !== 1 || unfinished.status !== "attempting" && unfinished.status !== "parked") throw new Error("crash-recovery-write-outcome-unproved");
         const parked = RunRecordSchema.parse({ ...current, version: current.version + 1, updatedAt: request.now,
           lifecycle: { state: "parked-write", writeIntentId: unfinished.writeIntentId, intentGeneration: unfinished.generation,
             parkedAt: request.now, code: "unknown", message: `RUN_CRASH_WRITE_UNRESOLVED: ${ERROR_CATALOG.RUN_CRASH_WRITE_UNRESOLVED.text}` } });

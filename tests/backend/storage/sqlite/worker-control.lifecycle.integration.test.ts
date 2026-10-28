@@ -81,6 +81,7 @@ async function owned(h: Awaited<ReturnType<typeof fixture>>, workerId: string, e
   const gates: { beforeBirth: () => Promise<void>; beforeClose: () => Promise<void>; close?: (commandId: string) => Promise<void> } = { beforeBirth: async () => undefined, beforeClose: async () => undefined };
   const faults: Error[] = [];
   const supervisor = createDashboardWorkerProcessSupervisor({
+    onExit: () => undefined,
     launch: { command: "/node", environment: {}, prefixArgs: [], cwd: "/test-owned-worker" },
     clock: h.authority.clock, scheduler: h.scheduler, birth: { pollMs: 50, timeoutMs: 1000 },
     spawn: () => {
@@ -346,6 +347,7 @@ describe("exact lifecycle reservation", () => {
   it("refuses unowned or wrong-phase lifecycle requests before command or control mutation", async () => {
     const h = await fixture();
     const unowned = createDashboardWorkerProcessSupervisor({
+    onExit: () => undefined,
       birth: { pollMs: 50, timeoutMs: 1000 }, launch: { command: "/node", environment: {}, prefixArgs: [], cwd: "/test" }, clock: h.authority.clock, scheduler: h.scheduler,
       spawn: () => { throw new Error("must not spawn"); }, leases: { observe: () => undefined },
       gracefulStop: { request: () => { throw new Error("must not stop"); } }, proveRetirement: () => { throw new Error("must not retire"); }, onFault: error => { throw error; },

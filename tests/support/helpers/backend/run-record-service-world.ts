@@ -1,3 +1,6 @@
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { randomUUID } from "node:crypto";
+import { detachBoundFixtureWorkers } from "../synthetic-database-admission.js";
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
@@ -35,6 +38,7 @@ export function createRunRecordServiceTestWorld() {
   async function fixture(
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
+    options?: { interrupted: boolean },
   ) {
     const profile = await createBoundProfileFixture({ sharedMachine: true });
     const root = profile.stateRoot;
@@ -48,7 +52,8 @@ export function createRunRecordServiceTestWorld() {
       lifecycleHooks,
     );
     cleanups.push(() => {
-      releaseSeededWriteOwners(database, clock.now().toISOString());
+      if (options?.interrupted === true) detachBoundFixtureWorkers(database);
+      else releaseSeededWriteOwners(database, clock.now().toISOString());
       database.close();
     });
     const active = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -81,6 +86,18 @@ export function createRunRecordServiceTestWorld() {
       input: QUEUED_RUN.input, runtimeConfig,
     };
     return { database, service, clock, request, runtimeConfig, published, root, admission: profile.admission, machine: profile.machine };
+  }
+
+  async function interruptedFixture() {
+    const f = await fixture(undefined, undefined, { interrupted: true });
+    const lock = await RuntimeLifetimeLock.acquire(0);
+    cleanups.push(() => lock.close());
+    const run = runningRun(f.service, f.request, f.runtimeConfig);
+    const claim = RunRecordSchema.parse(run).lifecycle;
+    if (!("workerLifetime" in claim) || claim.workerLifetime === undefined) throw new Error("fixture-worker-lifetime-required");
+    return { ...f, lock, run, recoveryRequest: { commandId: randomUUID(), runId: run.envelope.runId,
+      expectedVersion: run.version, claim: { workerId: WORKER_ID, claimGeneration: run.claimGeneration },
+      workerLifetime: claim.workerLifetime, now: f.clock.now().toISOString() } };
   }
 
   function created(service: RunRecordService, request: CreateRunRequest) {
@@ -254,5 +271,5 @@ export function createRunRecordServiceTestWorld() {
     }
     if (failures.length !== 0) throw new AggregateError(failures, "run-service-fixture-closure-unproved");
   };
-  return { cleanups, fixture, created, runningRun, parkedWriteIntent, raceConnection, closeRaceConnections, failureTerminalRequest, cleanup };
+  return { cleanups, fixture, interruptedFixture, created, runningRun, parkedWriteIntent, raceConnection, closeRaceConnections, failureTerminalRequest, cleanup };
 }

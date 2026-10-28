@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../../../support/helpers/backend/dashboard-lifetime.js";
 import assert from "node:assert/strict";
 import { copyFileSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,7 +27,7 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
   if (active.state !== "active") throw new Error("synthetic selected context required");
   let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
   try {
-    dashboard = await composeDashboardRuntime({ admission: profile.machine, profile: { runtime, token: active.token },
+    dashboard = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token },
       repoRoot: profile.workspace, clock: transport.clock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
       httpServerStarter: async input => { app = input.app; return { port: 12345, close: async () => undefined }; } });
     assert.ok(app); assert.ok(account);

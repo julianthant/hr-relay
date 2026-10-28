@@ -11,7 +11,8 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 export const ERROR_CATALOG = Object.freeze({
   RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
   RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another runtime or storage command.", EmptyParametersSchema),
-  STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Crash cleanup could not prove ownership or resource closure. Preserve the held resources and resolve custody before starting work.", EmptyParametersSchema),
+  RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
+  STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Saved runs and writes could not be reconciled after interruption. Preserve their state and resolve the refusal before starting work.", EmptyParametersSchema),
   RUN_INTERRUPTED_BY_CRASH: catalogEntry("The run was interrupted by a crash and ended as failed. Review the result before starting another run.", EmptyParametersSchema),
   RUN_CRASH_WRITE_UNRESOLVED: catalogEntry("The run was interrupted by a crash with an unresolved write. The write remains held for operator resolution and will not be retried.", EmptyParametersSchema),
   RUN_STALE_QUEUE_CANCELLED: catalogEntry("The never-claimed run was queued on a previous local day and was cancelled during startup.", EmptyParametersSchema),

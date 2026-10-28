@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../../support/helpers/backend/dashboard-lifetime.js";
 import nativeFirstBootFs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { retainAuthoritySourceClosure as retainFirstBootSourceClosure } from "../../../../src/backend/storage/source-closure.js";
@@ -10,7 +11,7 @@ import { createProfileRegistry } from "../../../../src/backend/profiles/registry
 import { default as assert } from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -49,7 +50,7 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
     if (active.state !== "active") throw new Error("actual profile sign-in required");
     assert.equal(existsSync(join(profile.machine.stateRoot, "state.db")), false);
     assert.equal(existsSync(authorityPath), true);
-    dashboard = await composeDashboardRuntime({ admission: profile.machine, profile: { runtime, token: active.token },
+    dashboard = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission: profile.machine, profile: { runtime, token: active.token },
       isolation: rebuildRuntimeIsolation, repoRoot: workspace, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0,
       preflightRunnerFactory: healthyRuntimePreflightRunners });
     const response = await fetch(`http://127.0.0.1:${String(dashboard.port)}/api/v1/settings/storage-relocation`);

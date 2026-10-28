@@ -34,6 +34,7 @@ function actualReplacement(f: Awaited<ReturnType<typeof fixture>>, commandId: st
   let spawns = 0;
   const faults: Error[] = [];
   const supervisor = createDashboardWorkerProcessSupervisor({
+    onExit: () => undefined,
     launch: { command: process.execPath, environment: {}, prefixArgs: [], cwd: f.root }, clock: f.clock, scheduler,
     birth: { pollMs: 50, timeoutMs: 1000 },
     spawn: () => {

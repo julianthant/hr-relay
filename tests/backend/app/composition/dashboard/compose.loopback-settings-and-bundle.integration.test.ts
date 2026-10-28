@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../../../support/helpers/backend/dashboard-lifetime.js";
 import { storageTree } from "../../../../support/helpers/integration/storage-recovery-fixture.js";
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
@@ -77,7 +78,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const profile = await createProfileFixture(clock);
     const repoRoot = profile.workspace;
     const writeId = "77777777-7777-4777-8777-777777777777";
-    let runtime = await composeDashboardRuntime({
+    let runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -108,7 +109,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     await runtime.stop();
     assert.deepEqual(readFileSync(protectedPath), firstCommittedBytes);
     await profile.restart();
-    runtime = await composeDashboardRuntime({
+    runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -144,7 +145,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("creates the artifact root as an owner-only directory", async () => {
     const profile = await createProfileFixture(manualClock(new Date()));
     const repoRoot = profile.workspace;
-    const runtime = await composeDashboardRuntime({
+    const runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -178,7 +179,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       },
     } as const;
 
-    const first = await composeDashboardRuntime({
+    const first = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
       ...profile.dashboardInput,
       frontendPortOverride: 0,
       isolation: rebuildRuntimeIsolation,
@@ -209,7 +210,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     }
 
     await profile.restart();
-    const restarted = await composeDashboardRuntime({
+    const restarted = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
       ...profile.dashboardInput,
       frontendPortOverride: 0,
       isolation: rebuildRuntimeIsolation,
@@ -233,7 +234,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     const repoRoot = profile.workspace;
 
     reportRealPortPhase("startup", "begin");
-    const runtime: DashboardRuntime = await composeDashboardRuntime({
+    const runtime: DashboardRuntime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -344,7 +345,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
 
     // Missing bundle must not alter the existing profile authority.
     await assert.rejects(
-      composeDashboardRuntime({
+      composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
         ...profile.dashboardInput,
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
@@ -365,7 +366,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     writeFileSync(join(repoRoot, "dist", "dashboard", "index.html"), "<!doctype html><title>built</title>");
     writeFileSync(join(dist, "app.f00d.js"), "export const built = true;");
     writeDashboardBuildIdentity({ repoRoot, distDir: join(repoRoot, "dist", "dashboard") });
-    const runtime = await composeDashboardRuntime({
+    const runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -402,7 +403,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
   it("vite-dev mode (the default) serves no bundle bytes: an unrouted path stays a JSON 404", async () => {
     const profile = await createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
     const repoRoot = profile.workspace;
-    const runtime = await composeDashboardRuntime({
+    const runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(),
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,

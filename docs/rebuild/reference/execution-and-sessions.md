@@ -92,31 +92,28 @@ external write.
 
 ### 3.0 Startup claim recovery
 
-Before supervisor construction or worker admission, `startup-crash-recovery.ts` reconciles the
-selected profile. It proves dead ownership from retained process birth and the exact original file,
-and uses the offline recovery's strict OS process, open-file and working-directory absence proof
-across installation browser roots. Live owners are left alone; uncertain identity or closure refuses
-with `STARTUP_CRASH_RECOVERY_REFUSED` before claiming work.
-A singleton claim whose PID now has a different start identity has a gone original owner. Worker
-records require the PID itself to be gone; a reused identity still refuses.
+The controller holds the exclusive runtime lifetime listener before selecting a profile. Workers
+hold duplicated handles until exit, so a successor cannot acquire the listener while an earlier
+worker survives. Before supervisor construction, `startup-crash-recovery.ts` reconciles every
+claimed run in the selected profile. Workers never perform startup reconciliation themselves.
+The controller also reconciles one exact worker generation synchronously on its child's OS exit.
+A failed exit reconciliation blocks replacement and successful shutdown.
 
-Immutable receipts in `startup-process-closure/` settle process custody only; original claims and
-worker files stay untouched. Receipts bind installation witnesses, physical roots, original file
-identity and digest, authority/profile identity, and the recovering process. Unresolved writes are
-recorded as `HELD`; a process receipt never authorizes resubmission or proves native resource closure.
+The explicit `recover-crash` lifecycle door requires the held controller and fences the exact run
+version, claim generation, worker membership and lease generation. A run with no unfinished write
+ends failed with `RUN_INTERRUPTED_BY_CRASH`, a structured failure and terminal result. One attempting
+or parked write keeps its original intent and attempt and surfaces as `parked-write` with
+`RUN_CRASH_WRITE_UNRESOLVED`. Other unproved write states refuse with
+`STARTUP_CRASH_RECOVERY_REFUSED` before any cleanup commits. Normal worker terminalization continues
+to require current execution authority.
 
-The explicit `recover-crash` lifecycle door fences the exact version, claim and retained worker birth,
-and journals the process-closure receipt digest. A run with no unfinished write ends failed with
-`RUN_INTERRUPTED_BY_CRASH`, a structured failure and terminal result. An attempting or parked write
-keeps its original intent and attempt and surfaces as `parked-write` with
-`RUN_CRASH_WRITE_UNRESOLVED`. Other unproved write states refuse. Normal worker terminalization
-continues to require current live execution authority. Proved-dead leases are stopped as crashed.
-
-Never-claimed, ownerless queues from a previous local calendar day are cancelled through the normal
-lifecycle transition after checking that no intent or checkpoint exists. The cancellation records
-`RUN_STALE_QUEUE_CANCELLED`; today's queues and previously claimed queues are preserved. Each cleanup
-action publishes a durable notification; lifecycle events and failure/park messages feed Logs and Queue.
-Repeated reconciliation preserves existing receipts, settled runs and notification identities.
+Interrupted worker leases stop as crashed, their browser observations close, and held Duo leases
+release in the same transaction. Never-claimed, ownerless queues from a previous local calendar day
+are cancelled through the normal lifecycle transition after checking that no intent or checkpoint
+exists. The cancellation records `RUN_STALE_QUEUE_CANCELLED`; today's queues and previously claimed
+queues are preserved. Each cleanup publishes a durable notification; lifecycle events and
+failure/park messages feed Logs and Queue. Repeated reconciliation preserves settled runs, writes
+and notification identities.
 
 Periodic claim maintenance still uses `sweepWorkerClaims` with `staleBefore`, preserving write checks.
 

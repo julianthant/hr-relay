@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../../support/helpers/backend/dashboard-lifetime.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync,mkdirSync,mkdtempSync,realpathSync,rmSync } from "node:fs";
@@ -34,7 +35,7 @@ it("plans, reads, retries, conflicts, and cancels through a real admitted dashbo
     } finally { fixtureAdmission.release(); }
     const admission = acquireEntrypointAdmission(workspace, "shared");
     try {
-      const runtime = await composeDashboardRuntime({ admission, isolation: rebuildRuntimeIsolation, repoRoot: workspace,
+      const runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission, isolation: rebuildRuntimeIsolation, repoRoot: workspace,
         env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
       try {
         const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });

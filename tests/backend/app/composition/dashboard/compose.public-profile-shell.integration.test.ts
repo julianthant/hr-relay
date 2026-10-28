@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../../../support/helpers/backend/dashboard-lifetime.js";
 import { request as httpRequest } from "node:http";
 import { randomBytes, createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
@@ -62,7 +63,7 @@ function fixture() {
 }
 
 for (const boundary of ["profile-construction", "listener-start"] as const) it(`retains genuine machine and server custody when ${boundary} startup cleanup cannot release its role claim`, async () => {
-  const f = fixture(), argv = [...process.argv];
+  const f = fixture(), argv = [...process.argv], lifetimeLock = await dashboardLifetimeLock();
   const processLockRoot = join(f.root, rebuildRuntimeIsolation.processLockRoot);
   const injected = new Error("fixture profile construction failed");
   const occupied = createServer();
@@ -102,8 +103,9 @@ for (const boundary of ["profile-construction", "listener-start"] as const) it(`
     }
     await assert.rejects(runSecureEnvironmentBootstrap(["cli", "dashboard"], {
       acquireAdmission: () => f.machine,
+      acquireLifetimeLock: async () => lifetimeLock,
       assertEnvironment: () => undefined,
-      runCli: async admission => { await composeDashboardApplication({ admission, isolation: rebuildRuntimeIsolation,
+      runCli: async admission => { await composeDashboardApplication({ lifetimeLock, admission, isolation: rebuildRuntimeIsolation,
         repoRoot: f.root, backendPortOverride: 0, frontendPortOverride: 0, env }); },
     }), error => {
       assert.ok(error instanceof storageCompose.RuntimeCustodyUncertainError);
@@ -118,6 +120,7 @@ for (const boundary of ["profile-construction", "listener-start"] as const) it(`
     });
     assert.equal(profileCloses, boundary === "listener-start" ? 1 : 0);
     f.machine.assertLive();
+    lifetimeLock.assertHeld();
     assert.equal(actualLocks.runtimeProcessLockIsActive(processLockRoot, "server"), true);
     assert.ok(claimPath);
     assert.equal(existsSync(join(processLockRoot, "server-claims", `${String(held?.generation)}-${held?.acquisitionId}.release.json`)), false);
@@ -148,7 +151,7 @@ for (const closeFails of [false, true]) it(`preserves startup recovery failure a
       async close() { if (closeFails) throw cleanup; await current.close(); } };
   });
   try {
-    await assert.rejects(composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation,
+    await assert.rejects(composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation,
       repoRoot: f.root, backendPortOverride: 0, frontendPortOverride: 0, env: {} }), error => {
       if (!closeFails) { assert.equal(error, primary); return true; }
       assert.ok(error instanceof storageCompose.RuntimeCustodyUncertainError);
@@ -166,7 +169,7 @@ it("serves public profile state without minting a selected profile, actor or aut
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
 
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const response = await fetch(`${base}/api/v1/profile/state`);
@@ -246,7 +249,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
       },
       async cancel() { providerActive = false; closedAttempts += 1; return { state: "closed" }; },
     };
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     assert.ok(runtime.port > 0);
     const base = `http://127.0.0.1:${String(runtime.port)}`;
@@ -326,7 +329,7 @@ it("aborts an unpublished pre-enrollment draft through erasure before accepting 
   const f = fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
@@ -377,7 +380,7 @@ for (const fault of ["prior-request", "profile-close"] as const) it(`fences and 
     return fault === "profile-close" ? { ...profile, async close() { injectedCloseCalls++; throw primary; } } : profile;
   });
   try {
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     if (fault === "prior-request") {
@@ -461,7 +464,7 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
   });
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined;
   try {
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const signup = await finishPublicSignUp(base);
@@ -526,7 +529,7 @@ it("revokes retained selected producers before a genuine in-flight public transp
   });
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined, stopping: Promise<void> | undefined;
   try {
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {} });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const signup = await finishPublicSignUp(base);

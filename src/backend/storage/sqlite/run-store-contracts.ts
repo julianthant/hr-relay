@@ -7,7 +7,7 @@
 
 import { WorkerLifecycleBindingSchema } from "../../../models/run/worker-control.js";
 import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../../../models/run/worker-slot.js";
-import { RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, ProcessCustodyFileSchema } from "./runtime-process-locks.js";
+import { RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema } from "./runtime-process-locks.js";
 import { ParkedWriteResolutionBindingSchema } from "../../../rules/write-safety/write-safety.js";
 
 import { z } from "zod";
@@ -460,7 +460,7 @@ export const WorkerLifetimeBirthSchema = z.strictObject({
 
 export const CanonicalCrashRecoveryRequestSchema = z.strictObject({
   commandId: CommandIdSchema, runId: RunIdSchema, expectedVersion: PositiveIntSchema, claim: RunClaimTokenSchema,
-  birth: WorkerLifetimeBirthSchema, originalFile: ProcessCustodyFileSchema, closureDigest: FingerprintSchema,
+  workerLifetime: WorkerClaimLifetimeSchema,
   now: IsoInstantSchema,
 });
 

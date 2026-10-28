@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../../support/helpers/backend/dashboard-lifetime.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -21,7 +22,7 @@ it("confirms immutable Sessions intent through HTTP ingress, kernel storage and 
   try {
     copyFileSync("package.json", join(root, "package.json"));
     copyFileSync("package-lock.json", join(root, "package-lock.json"));
-    runtime = await composeDashboardRuntime({ admission: installationAdmission(root), preflightRunnerFactory: healthyRuntimePreflightRunners,
+    runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission: installationAdmission(root), preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, clock, repoRoot: root,
       workerProcess: { spawn: () => { throw new Error("plan must not spawn a worker"); } } });
     const origin = `http://127.0.0.1:${runtime.port}`;

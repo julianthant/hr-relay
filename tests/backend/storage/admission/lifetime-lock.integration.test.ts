@@ -45,11 +45,10 @@ if (process.argv[2] === 'worker') {
   parent.stderr?.on("data", chunk => { stderr += String(chunk); });
   let workerPid: number | undefined;
   try {
-    const [message] = await Promise.race([
-      once(parent, "message"),
-      once(parent, "exit").then(([code]) => { throw new Error(`lifetime fixture exited ${String(code)}: ${stderr}`); }),
+    const ready = await Promise.race([
+      once(parent, "message").then(values => ReadySchema.parse(values[0])),
+      once(parent, "exit").then(values => { const [code] = z.tuple([z.number().nullable(), z.string().nullable()]).parse(values); throw new Error(`lifetime fixture exited ${String(code)}: ${stderr}`); }),
     ]);
-    const ready = ReadySchema.parse(message);
     workerPid = ready.workerPid;
     return { parent, ...ready, async close() {
       killOwned(workerPid);

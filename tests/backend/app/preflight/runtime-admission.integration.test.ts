@@ -313,7 +313,8 @@ try {
   });
   const slot = roster.selected[0]; assert.ok(slot);
   const workerId = slot.workerId;
-  const control = composeWorkerProcessControl({ processLockRoot:join(h.stateRoot,"locks"),profileRoot:join(h.repoRoot,rebuildRuntimeIsolation.browserProfileRoot), database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
+  const control = composeWorkerProcessControl({
+    onExit: () => undefined, processLockRoot:join(h.stateRoot,"locks"),profileRoot:join(h.repoRoot,rebuildRuntimeIsolation.browserProfileRoot), database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
     preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
     spawn: () => {
       spawns += 1;
@@ -538,7 +539,8 @@ try {
 
   const h = await harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
   let workerId = "";
-  const control = composeWorkerProcessControl({ profileRoot: h.f.input.config.paths.browserProfileRoot, processLockRoot: join(h.f.stateRoot, "locks"), database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
+  const control = composeWorkerProcessControl({
+    onExit: () => undefined, profileRoot: h.f.input.config.paths.browserProfileRoot, processLockRoot: join(h.f.stateRoot, "locks"), database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
     preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
     spawn: () => {
       spawns += 1;

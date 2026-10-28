@@ -1,4 +1,4 @@
-import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
+import { reconcileStartupCrash, reconcileExitedWorker } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
@@ -77,7 +77,7 @@ import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResoluti
 import { createWorkerPoolRuntimeExecutor } from "../../../runtime/workers/worker-loop.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
 import { isLiveWorker } from "../../../../models/run/worker.js";
-import { createDashboardWorkerProcessSupervisor, type DashboardWorkerProcessSupervisor, type WorkerCliLaunchSpec, type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
+import { createDashboardWorkerProcessSupervisor, type DashboardWorkerProcessSupervisor, type DashboardWorkerSupervisorDependencies, type WorkerCliLaunchSpec, type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
 import { RunRecordService, runContinuationPort } from "../../../runs/lifecycle/run-record-service.js";
 import { createStorageRelocationPlanReader } from "../../../storage/maintenance/storage-relocation-plans.js";
 import { createWriteResolutionExecutor } from "../../../runtime/writes/write-recovery.js";
@@ -128,7 +128,7 @@ export const DashboardFrontendModeSchema = z.enum(["vite-dev", "built-bundle"]);
 export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
-  readonly lifetimeLock?: RuntimeLifetimeLock;
+  readonly lifetimeLock: RuntimeLifetimeLock;
   readonly onboardingDuo?: ProfileOnboardingDuoProvider;
   readonly admission?: RuntimeAdmission;
   readonly profile?: Readonly<{ runtime: ReturnType<typeof composeProfileRuntime>; token: string }>;
@@ -192,6 +192,7 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
 const WORKER_BIRTH_TIMEOUT_MS = 60_000;
 
 export interface WorkerProcessControlInput {
+  readonly onExit: DashboardWorkerSupervisorDependencies["onExit"];
   readonly profileRoot: string;
   readonly processLockRoot: string;
   readonly database: AuthorityDatabase;
@@ -212,6 +213,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
 }> {
   const browserChannel = createWorkerBrowserChannel(input);
   const supervisor = createDashboardWorkerProcessSupervisor({
+    onExit: input.onExit,
     launch: input.launch,
     spawn: input.spawn,
     browserControl: browserChannel,
@@ -363,17 +365,10 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
   });
 }
 
-export function reconcileDeadWorkerLifetimes(database: AuthorityDatabase, clock: Clock, onUnavailable: (error: Error) => void): void {
-  for (const member of database.authority.workerSlots.list().filter(slot => slot.retiredAt === null)) {
-    try { database.settleDeadWorkerLifetime(member.workerId, clock.now().toISOString()); }
-    catch (error) { onUnavailable(error instanceof Error ? error : new Error(String(error))); }
-  }
-}
-
 // Spawn absolute argv without a shell; inherited stderr keeps bootstrap failures visible.
-function realWorkerProcessSpawner(lock: RuntimeLifetimeLock | undefined): WorkerProcessSpawner {
+function realWorkerProcessSpawner(lock: RuntimeLifetimeLock): WorkerProcessSpawner {
   return (request) => {
-    if (lock === undefined) throw new Error("runtime-lifetime-lock-required-before-worker-spawn");
+    lock.assertHeld();
     const child = spawnChildProcess(request.command, [...request.args], {
       cwd: request.cwd,
       env: request.environment,
@@ -425,6 +420,7 @@ async function unwindDashboardStartup(
 }
 
 export async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
+  input.lifetimeLock.assertHeld();
   const startupCleanups: StartupCleanup[] = [];
   const custody: StartupCustody = { failedClosures: [] };
   try {
@@ -626,7 +622,10 @@ async function composeDashboardRuntimeStartup(
       spanWriter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
     },
   });
-  try { reconcileStartupCrash({ machine: machineAdmission, admission, database, lifecycle, processLockRoot, clock }); }
+  try {
+    reconcileStartupCrash({ machine: machineAdmission, admission, database, lifecycle, lock: input.lifetimeLock,
+      clock });
+  }
   catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) custody.failedClosures.push(error);
     throw error;
@@ -710,7 +709,6 @@ async function composeDashboardRuntimeStartup(
     runLogsHub.poll();
     // Lease transitions need authority polling because they need not emit spans.
     database.reconcileWorkerControlMilestones(clock.now().toISOString());
-    reconcileDeadWorkerLifetimes(database, clock, reportSupervisorFault);
     projection.reconcileWorkerAuthority();
   }, TIMELINE_POLL_MS);
   timelineTimer.unref();
@@ -742,6 +740,16 @@ async function composeDashboardRuntimeStartup(
   };
   profile.runtime.beginSupervisorConstruction(profile.token);
   const workerControl = composeWorkerProcessControl({
+    onExit: (member, pid, valid) => {
+      const lease = database.authority.workerLeases.get(member.workerId);
+      if (lease === undefined) return;
+      const slot = database.authority.workerSlots.get(member.workerId);
+      if (lease.processId !== pid || slot?.membershipRevision !== member.membershipRevision) throw new Error("worker-exit-lifetime-changed");
+      input.lifetimeLock.assertHeld();
+      if (!valid()) throw new Error("worker-exit-record-changed");
+      reconcileExitedWorker({ machine: machineAdmission, admission, database, lifecycle, clock,
+        workerId: member.workerId, leaseGeneration: lease.leaseGeneration, lock: input.lifetimeLock });
+    },
     profileRoot: resolved.config.paths.browserProfileRoot,
     processLockRoot,
     database,
@@ -763,7 +771,6 @@ async function composeDashboardRuntimeStartup(
   });
   ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
   database.reconcileWorkerControlMilestones(clock.now().toISOString());
-  reconcileDeadWorkerLifetimes(database, clock, reportSupervisorFault);
   // Ref write-safety's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
 
@@ -864,8 +871,9 @@ async function composeDashboardRuntimeStartup(
     projection,
     startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority,
       reconcileWorker: workerId => {
-        const lease = database.settleDeadWorkerLifetime(workerId, clock.now().toISOString());
-        return lease !== undefined && isLiveWorker(lease);
+        const lease = database.authority.workerLeases.get(workerId);
+        return lease !== undefined && isLiveWorker(lease)
+          && workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
       } }),
   });
 
@@ -1030,6 +1038,7 @@ async function composeDashboardRuntimeStartup(
 
 
 export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; failure: Promise<never>; stop(): Promise<void> }>> {
+  input.lifetimeLock.assertHeld();
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const initial = requireRuntimeAdmission(input.admission);

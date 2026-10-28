@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../../../support/helpers/backend/dashboard-lifetime.js";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
@@ -627,7 +628,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     const children: FakeWorkerChild[] = [];
     let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
     try {
-      runtime = await composeDashboardApplication({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      runtime = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
         isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, clock, repoRoot,
         workerProcess: { scheduler: new ManualScheduler(clock, 0), spawn: () => {
           const child = new FakeWorkerChild(7002); children.push(child); return child;
@@ -668,7 +669,7 @@ const retainedCapacityCustody: {
       assert.ok(record); return record;
     };
     // Port 0 asks the OS for an ephemeral port, isolating this proof from a running dashboard.
-    const runtime = await composeDashboardApplication({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
+    const runtime = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       frontendPortOverride: 0,

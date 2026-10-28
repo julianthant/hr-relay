@@ -171,6 +171,7 @@ function openSoakHarness(options?: SoakHarnessOptions): SoakHarness {
   const events: PoolEffectEvent[] = [];
   let nextPid = 7000;
   const control = composeWorkerProcessControl({
+    onExit: () => undefined,
     profileRoot: join(root, "browsers"), processLockRoot: join(root, "locks"),
     database,
     clock,

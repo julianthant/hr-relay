@@ -1,4 +1,3 @@
-import { reconcileStartupCrash } from "../../runs/lifecycle/startup-crash-recovery.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { createChatGptOcrAdapter, CHATGPT_OCR_MODEL } from "../../processing/providers/chatgpt-ocr-adapter.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
@@ -528,7 +527,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
       assertCurrent();
       readSettings(repositories);
-      reconcileStartupCrash({ machine, admission, database, lifecycle: new RunRecordService({ database, clock, ids, buildManifest, publishQueued: () => { throw new Error("startup-recovery-cannot-enqueue"); } }), processLockRoot, clock });
       if (launch === undefined) {
         const before = repositories.workerPools.get(workflowId);
         return admitDirectWorker(repositories, { commandId: ids.uuid(), workflow: workflowId, poolIndex,

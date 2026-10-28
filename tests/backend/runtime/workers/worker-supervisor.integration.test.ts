@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../../support/helpers/backend/dashboard-lifetime.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { writePrivateStage } from '../../../../src/backend/storage/configuration/credential-safe-file.js';
 import { workerProfileDirectory } from '../../../../src/backend/runtime/browser/browser-session-factory.js';
@@ -50,6 +51,7 @@ it.each(["poolIndex", "membershipRevision"] as const)("refuses an altered same-i
   const effects: string[] = [];
   let spawned = false;
   const supervisor = createDashboardWorkerProcessSupervisor({
+    onExit: () => undefined,
     launch: { command: process.execPath, prefixArgs: [], cwd: fixture.root, environment: {} },
     spawn: () => { spawned = true; return ({ pid: process.pid, kill: signal => { effects.push(signal); return true; },
       onExit: listener => { onExit = listener; }, onError: () => undefined });
@@ -139,7 +141,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
   };
   try {
-    runtime = await composeDashboardRuntime({ ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
+    runtime = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
       workerProcess: { launch: { environment: {}, command: process.execPath, prefixArgs: ["--import", "tsx", join_m1(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), root], cwd: process.cwd() }, spawn: spawnWorker, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => output.push(line) } });
     const duoDirectory = join_m1(root, `physical-duo-${randomUUID()}`);
     mkdirSync(duoDirectory, { mode: 0o700 });
@@ -280,7 +282,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
 
 {
 
-const { WORKFLOW, NOW, stopReceipt, openHarness, stopRequest, planRequest } = createWorkerSupervisionTestWorld();
+const { WORKFLOW, NOW, stopReceipt, stopDirective, openHarness, stopRequest, planRequest } = createWorkerSupervisionTestWorld();
 
 
 function member(poolIndex: number): WorkerPoolMember {
@@ -291,6 +293,33 @@ function member(poolIndex: number): WorkerPoolMember {
     workerId: `${WORKFLOW}-worker-${index}`, ordinal: index, membershipRevision: 1,
   });
 }
+
+it("reports only actual child exit and invalidates its retained record on replacement", async () => {
+  const exits: { worker: WorkerPoolMember; pid: number | undefined; valid: () => boolean }[] = [];
+  const harness = openHarness({ onExit: (worker, pid, valid) => exits.push({ worker, pid, valid }) }), target = member(1);
+  await harness.supervisor.execute({ command: "spawn-worker", commandId: randomUUID(), member: target });
+  assert.equal(exits.length, 0);
+  harness.leases.delete(target.workerId);
+  harness.children[0]?.emitExit(null, "SIGKILL");
+  assert.equal(exits.length, 1);
+  assert.deepEqual(exits[0]?.worker, target);
+  assert.equal(exits[0]?.pid, harness.children[0]?.pid);
+  assert.equal(exits[0]?.valid(), true);
+  await harness.supervisor.execute({ command: "spawn-worker", commandId: randomUUID(), member: target });
+  assert.equal(exits[0]?.valid(), false);
+});
+
+it("retains a failed exit reconciliation and refuses replacement and shutdown success", async () => {
+  const failure = new Error("synthetic crash reconciliation refusal");
+  const harness = openHarness({ onExit: () => { throw failure; } }), target = member(1);
+  await harness.supervisor.execute({ command: "spawn-worker", commandId: randomUUID(), member: target });
+  harness.leases.delete(target.workerId);
+  harness.children[0]?.emitExit(null, "SIGKILL");
+  assert.deepEqual(harness.faults, [failure]);
+  await assert.rejects(harness.supervisor.execute({ command: "spawn-worker", commandId: randomUUID(), member: target }), error => error === failure);
+  await assert.rejects(harness.supervisor.drainOwnedChildren(stopDirective(NOW)), AggregateError);
+  assert.equal(harness.children.length, 1);
+});
 
 /* ── spawn: exact argv and birth proof ───────────────────────────────────── */
 

@@ -33,7 +33,7 @@ export class RuntimeLifetimeLock {
   #closing: Promise<void> | undefined;
   private constructor(server: Server, readonly port: number) { this.#server = server; }
 
-  static async acquire(port: number): Promise<RuntimeLifetimeLock> {
+  static async acquire(this: void, port: number): Promise<RuntimeLifetimeLock> {
     z.number().int().nonnegative().max(65535).parse(port);
     const server = createServer(socket => socket.destroy());
     await new Promise<void>((resolve, reject) => {
@@ -73,7 +73,7 @@ export class WorkerRuntimeLifetimeLock {
   #closing: Promise<void> | undefined;
   private constructor(server: Server, readonly port: number) { this.#server = server; }
 
-  static receive(port: number, onDisconnect: () => void): Promise<WorkerRuntimeLifetimeLock> {
+  static receive(this: void, port: number, onDisconnect: () => void): Promise<WorkerRuntimeLifetimeLock> {
     LockMessageSchema.parse({ kind: "runtime-lifetime-lock", port });
     if (process.send === undefined || !process.connected) return Promise.reject(new Error("runtime-parent-channel-required"));
     return new Promise<WorkerRuntimeLifetimeLock>((resolve, reject) => {

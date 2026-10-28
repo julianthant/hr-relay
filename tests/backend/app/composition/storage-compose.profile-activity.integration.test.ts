@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../../support/helpers/backend/dashboard-lifetime.js";
 import { WireErrorSchema } from "../../../../src/models/dashboard/primitives.js";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { isDeepStrictEqual } from "node:util";
@@ -297,7 +298,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
     const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
     assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("retirement-fixture-sign-in-required");
-    dashboard = await composeDashboardRuntime({ admission: f.machine, profile: { runtime: profile, token: active.token },
+    dashboard = await composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, profile: { runtime: profile, token: active.token },
       clock, isolation: rebuildRuntimeIsolation, repoRoot: f.workspace, env: {}, backendPortOverride: 0, frontendPortOverride: 0,
       preflightRunnerFactory: healthyRuntimePreflightRunners, workerProcess: {
         launch: { command: process.execPath, prefixArgs: ["--import", "tsx", join(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), f.workspace],

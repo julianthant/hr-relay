@@ -1,4 +1,5 @@
 import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
+import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { WorkerControlRefusal, WorkerResetBindingSchema } from "../../../models/run/worker-control.js";
 import { authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
@@ -625,8 +626,10 @@ export class RunRecordService {
     });
   }
 
-  recoverCrash(input: unknown): RunMutationOutcome {
+  recoverCrash(input: unknown, lock: RuntimeLifetimeLock): RunMutationOutcome {
     const request = CanonicalCrashRecoveryRequestSchema.parse(input);
+    if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("crash-recovery-lock-required");
+    lock.assertHeld();
     return this.dependencies.database.withAuthorityTransaction(repositories => {
       const journal = this.inspectJournal(repositories, "recover-crash", request, {
         kind: "terminal", expectedVersion: request.expectedVersion, ...request.claim });
@@ -634,7 +637,7 @@ export class RunRecordService {
       if (journal.state === "replay") return this.replayRun(journal.result);
       const previous = this.read(request.runId);
       if (previous.state !== "present") return refused({ reason: "lost" });
-      const run = this.dependencies.database.recoverCrashedRun(request);
+      const run = this.dependencies.database.recoverCrashedRun(request, lock);
       this.recordJournal(repositories, journal.command, journalRun(run), previous.run.lifecycle);
       return { state: "applied", run };
     });

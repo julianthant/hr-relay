@@ -1,3 +1,4 @@
+import { dashboardLifetimeLock } from "../../../../support/helpers/backend/dashboard-lifetime.js";
 import sourceFiles from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { AuthoritySourceClosureUnprovedError } from "../../../../../src/backend/storage/source-closure.js";
@@ -144,7 +145,7 @@ it("commits authenticated refusal, stops, upgrades with backup, restarts the pub
   let closureProved = false;
   const cleanupFailures: unknown[] = [];
   try {
-    application = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0,
+    application = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0,
       frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
@@ -244,7 +245,7 @@ it("drains the actual notification health writer before preparing profile invent
   let primary: { error: unknown } | undefined, closureProved = false;
   const cleanupFailures: unknown[] = [];
   try {
-    application = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0,
+    application = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0,
       frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
@@ -335,7 +336,7 @@ it("retains credential source custody when authenticated upgrade capture cannot 
   let primary: { error: unknown } | undefined, released = false;
   const cleanupFailures: unknown[] = [];
   try {
-    application = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation,
+    application = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const liveBefore = sourceTree();
     for (const original of before) assert.deepEqual(liveBefore.find(entry => entry.name === original.name), original);
@@ -433,7 +434,7 @@ it("drains startup producers before inventory when the real HTTP listener cannot
     const active = runtime.session.signIn({ ...login, at: systemClock.now().toISOString() });
     assert.ok(active.state === "active");
     const context = runtime.selectedContext(active.token);
-    startup = composeDashboardRuntime({ admission: f.machine, profile: { runtime, token: active.token }, isolation: rebuildRuntimeIsolation,
+    startup = composeDashboardRuntime({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, profile: { runtime, token: active.token }, isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       httpServerStarter: async input => {
         starterCalls++;
@@ -547,7 +548,7 @@ it("surfaces an actual restart failure after exclusive readback without claiming
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   let proved = false;
   try {
-    application = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0,
+    application = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0,
       frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
@@ -611,7 +612,7 @@ it("retains a real competing shared owner and surfaces exclusive reacquisition r
   });
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, proved = false;
   try {
-    application = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
+    application = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
     let failure: unknown;
@@ -741,7 +742,7 @@ for (const control of ["verifier", "key", "source"] as const) it(`releases the a
   });
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, proved = false;
   try {
-    application = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
+    application = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
     assert.equal(response.headers.has("set-cookie"), false);
@@ -804,7 +805,7 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
   });
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, proved = false;
   try {
-    application = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
+    application = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
     assert.equal(response.headers.has("set-cookie"), false);
@@ -893,7 +894,7 @@ for (const fault of ["unproved-close", "closed-link-refusal"] as const) it(`reta
   const start = vi.spyOn(http, "startDashboardHttpServer").mockImplementation(input => { starts++; return actualHttp.startDashboardHttpServer(input); });
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, proved = false;
   try {
-    application = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
+    application = await composeDashboardApplication({ lifetimeLock: await dashboardLifetimeLock(), admission: f.machine, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {} });
     const response = await post(application.port);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_UPGRADE_STARTING" });
     assert.equal(response.headers.has("set-cookie"), false);
