@@ -433,7 +433,7 @@ async function duoChild(f: Awaited<ReturnType<typeof setup>>) {
     return { pid: ready.pid,
       async reserve() {
         child.send("reserve"); const result = await event();
-        assert.equal(result.type, "reserved", result.type === "failed" ? `Duo reservation diagnostic: ${JSON.stringify(result)}` : undefined);
+        assert.equal(result.type, "reserved", result.type === "failed" ? `Duo reservation diagnostic: ${JSON.stringify(result)}` : "Duo fixture child reservation required");
         if (result.type !== "reserved") throw new Error("Duo fixture child reservation required");
         return result;
       },
