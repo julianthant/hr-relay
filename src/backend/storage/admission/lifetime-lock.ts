@@ -1,9 +1,11 @@
+import { realpathSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 import type { ChildProcess } from "node:child_process";
 import { createServer, Server } from "node:net";
 import { z } from "zod";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
-const LockMessageSchema = z.strictObject({ kind: z.literal("runtime-lifetime-lock"), port: z.number().int().positive().max(65535) });
+const LockMessageSchema = z.strictObject({ kind: z.literal("runtime-lifetime-lock"), port: z.number().int().positive().max(65535), workspace: z.string().min(1) });
 
 export class RuntimeAlreadyRunningError extends Error {
   readonly code = "RUNTIME_ALREADY_RUNNING";
@@ -32,6 +34,10 @@ export class RuntimeLifetimeLock {
   readonly #server: Server;
   #closing: Promise<void> | undefined;
   readonly #port: number;
+  readonly #children = new Set<ChildProcess>();
+  #exclusiveAdmission = false;
+  #workspace: string | undefined;
+  #startup: "initializing" | "ready" | "failed" | undefined;
   private constructor(server: Server, port: number) { this.#server = server; this.#port = port; }
   get port(): number { return this.#port; }
 
@@ -57,10 +63,56 @@ export class RuntimeLifetimeLock {
     if (!this.#server.listening) throw new RuntimeLifetimeLockReleasedError();
   }
 
+  initializeWorkspace(workspace: string, startup: () => void): void {
+    this.assertHeld();
+    if (resolvePath(workspace) !== workspace || realpathSync(workspace) !== workspace) throw new Error("runtime-lifetime-workspace-invalid");
+    if (this.#startup !== undefined) { this.assertWorkspace(workspace); return; }
+    this.#workspace = workspace;
+    this.#startup = "initializing";
+    try {
+      const completed: unknown = startup();
+      if (completed !== undefined) throw new Error("runtime-lifetime-startup-must-be-synchronous");
+      this.assertHeld(); this.#startup = "ready";
+    }
+    catch (error) { this.#startup = "failed"; throw error; }
+  }
+
+  assertWorkspace(workspace: string): void {
+    this.assertHeld();
+    if (this.#startup !== "ready" || this.#workspace !== workspace) throw new Error("runtime-lifetime-workspace-unproved");
+  }
+
+  assertExclusiveWorkspace(workspace: string): void {
+    this.assertWorkspace(workspace);
+    if (this.#children.size !== 0) throw new Error("runtime-lifetime-owned-children-unclosed");
+  }
+
+  retainExclusiveAdmission(workspace: string): () => void {
+    this.assertExclusiveWorkspace(workspace);
+    if (this.#exclusiveAdmission) throw new Error("installation lease busy");
+    this.#exclusiveAdmission = true;
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      this.#exclusiveAdmission = false;
+    };
+  }
+
+  assertStartupWorkspace(workspace: string): void {
+    this.assertHeld();
+    if (this.#startup !== "initializing" || this.#workspace !== workspace) throw new Error("runtime-lifetime-startup-unproved");
+  }
+
   share(child: ChildProcess): Promise<void> {
     this.assertHeld();
+    if (this.#startup !== "ready" || this.#workspace === undefined) throw new Error("runtime-lifetime-workspace-unproved");
+    if (this.#exclusiveAdmission) throw new Error("runtime-lifetime-exclusive-lease-held");
+    if (!child.connected || child.exitCode !== null || child.signalCode !== null || this.#children.has(child)) throw new Error("runtime-lifetime-child-transfer-invalid");
+    this.#children.add(child);
+    child.once("close", () => { this.#children.delete(child); });
     return new Promise<void>((resolve, reject) => {
-      child.send({ kind: "runtime-lifetime-lock", port: this.port }, this.#server, error => {
+      child.send({ kind: "runtime-lifetime-lock", port: this.port, workspace: this.#workspace }, this.#server, error => {
         if (error !== null) reject(error);
         else resolve();
       });
@@ -74,11 +126,12 @@ export class WorkerRuntimeLifetimeLock {
   readonly #server: Server;
   #closing: Promise<void> | undefined;
   readonly #port: number;
-  private constructor(server: Server, port: number) { this.#server = server; this.#port = port; }
+  readonly #workspace: string;
+  private constructor(server: Server, port: number, workspace: string) { this.#server = server; this.#port = port; this.#workspace = workspace; }
   get port(): number { return this.#port; }
 
   static receive(this: void, port: number, onDisconnect: () => void): Promise<WorkerRuntimeLifetimeLock> {
-    LockMessageSchema.parse({ kind: "runtime-lifetime-lock", port });
+    z.number().int().positive().max(65535).parse(port);
     if (process.send === undefined || !process.connected) return Promise.reject(new Error("runtime-parent-channel-required"));
     return new Promise<WorkerRuntimeLifetimeLock>((resolve, reject) => {
       const failed = (): void => {
@@ -107,7 +160,10 @@ export class WorkerRuntimeLifetimeLock {
         }
         handle.on("connection", socket => socket.destroy());
         process.removeListener("message", received);
-        resolve(new WorkerRuntimeLifetimeLock(handle, port));
+        try {
+          if (resolvePath(parsed.data.workspace) !== parsed.data.workspace || realpathSync(parsed.data.workspace) !== parsed.data.workspace) throw new Error("runtime-lifetime-workspace-invalid");
+        } catch { handle.close(); failed(); return; }
+        resolve(new WorkerRuntimeLifetimeLock(handle, port, parsed.data.workspace));
       };
       process.once("disconnect", disconnected);
       process.on("message", received);
@@ -116,6 +172,11 @@ export class WorkerRuntimeLifetimeLock {
 
   assertHeld(): void {
     if (!this.#server.listening) throw new RuntimeLifetimeLockReleasedError();
+  }
+
+  assertWorkspace(workspace: string): void {
+    this.assertHeld();
+    if (workspace !== this.#workspace) throw new Error("runtime-lifetime-workspace-unproved");
   }
 
   close(): Promise<void> { return this.#closing ??= closeListener(this.#server); }

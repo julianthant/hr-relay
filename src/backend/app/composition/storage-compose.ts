@@ -1,3 +1,4 @@
+import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { assertProfileBrowserRoot, composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeProfilePendingLogoutInventory, composeProfileCredentialInventory } from "./profile-credential-inventory.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
@@ -712,7 +713,9 @@ function rebuildStagedProjections(
   };
 }
 
-export async function runOfflineAuthorityRestoreRecovery(workspace: string, args: readonly string[], clock: Clock = systemClock) {
+export async function runOfflineAuthorityRestoreRecovery(workspace: string, args: readonly string[], lifetime: RuntimeLifetimeLock, clock: Clock = systemClock) {
+  if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+  lifetime.assertHeld();
   const fields = new Map<string, string>(); let json = false;
   for (let index = 0; index < args.length; index += 1) {
     const field = args[index];
@@ -729,7 +732,7 @@ export async function runOfflineAuthorityRestoreRecovery(workspace: string, args
   const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
   let admission: RuntimeAdmission | undefined;
   try {
-    const recovered = acquireRecoveryRuntimeRestore(workspace, operationId, restore);
+    const recovered = acquireRecoveryRuntimeRestore(workspace, lifetime, operationId, restore);
     admission = recovered.admission;
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(recovered.input.authorityPath);
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: RESTORE_STOPPED_PROOF_MAX_AGE_MS }, clock);

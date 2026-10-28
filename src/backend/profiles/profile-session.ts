@@ -1,3 +1,4 @@
+import type { ProfilePublicationRead } from "../storage/admission/installation.js";
 import { deleteOwnedBrowserProfile } from "../runtime/browser/browser-session-factory.js";
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
@@ -169,7 +170,7 @@ export function createProfileSession(input: {
   readonly loginDataPaths?: (profileId: string) => readonly string[];
   readonly credentialHooks?: CredentialStoreHooks;
   readonly repairInventory?: (admission: RuntimeAdmission, ...args: Parameters<NonNullable<CredentialStoreOptions["repairInventory"]>>) => ReturnType<NonNullable<CredentialStoreOptions["repairInventory"]>>;
-  readonly initializationInventory?: (admission: RuntimeAdmission, operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(operation: SignUpOperation): () => void; revalidateBeforeKeyIntent(): void }>;
+  readonly initializationInventory?: (admission: RuntimeAdmission, operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(operation: SignUpOperation): (scope?: ProfilePublicationRead) => void; revalidateBeforeKeyIntent(scope?: ProfilePublicationRead): void }>;
   readonly credentialsFor?: (admission: RuntimeAdmission, purpose: "ordinary" | "settlement") => CredentialStore;
   readonly prepareLogout?: (profileId: string, admission: RuntimeAdmission) => void;
   readonly preparePendingLogout?: (operation: LogoutOperation, admission: RuntimeAdmission, credentials: CredentialStore) => void;

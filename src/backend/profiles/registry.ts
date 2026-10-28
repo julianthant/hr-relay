@@ -5,13 +5,10 @@ import { z } from "zod";
 import {
   CREDENTIAL_DIRECTORY_MODE,
   noSymlinkAncestry,
-  createPrivateLock,
   readPrivateFile,
-  removeExactPath,
+  withPrivateFileLock,
   ensureChildDirectory,
-  fsyncPath,
   statDirectory,
-  type DirectoryIdentity,
 } from "../storage/configuration/credential-safe-file.js";
 import {
   ProfileRegistryDocumentSchema,
@@ -21,11 +18,8 @@ import {
 } from "../../models/profiles/profile.js";
 import { SignUpOperationSchema, type SignUpOperation } from "../../models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { systemClock } from "../../rules/time/clock.js";
-import { observeProcessIdentity } from "../storage/sqlite/runtime-process-locks.js";
 import { createCredentialStore, captureCommittedCredentialReplay } from "../storage/configuration/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../models/config/protected-settings.js";
-import { encodePrivate } from "../../rules/validation/private-equal.js";
 
 
 
@@ -43,79 +37,11 @@ function ensureProfileRoot(root: string, profileId: string): string {
   return profileRoot;
 }
 
-const ProfileOpLockSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  kind: z.literal("profile-ops"),
-  pid: z.number().int().positive(),
-  platform: z.string().min(1),
-  startToken: z.string().min(1),
-});
-
-function profileLockBytes(): Uint8Array {
-  const observation = observeProcessIdentity(process.pid);
-  if (observation.state !== "alive") throw new Error("profile operation lock owner is unavailable");
-  return encodePrivate(ProfileOpLockSchema.parse({
-    schemaVersion: 1,
-    kind: "profile-ops",
-    pid: process.pid,
-    platform: observation.identity.platform,
-    startToken: observation.identity.startToken,
-  }));
-}
-
-function heldByLiveOwner(bytes: Buffer): boolean {
-  const parsed = ProfileOpLockSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
-  if (!parsed.success) throw new Error("profile operation lock is malformed");
-  const observation = observeProcessIdentity(parsed.data.pid);
-  return observation.state === "alive"
-    && observation.identity.platform === parsed.data.platform
-    && observation.identity.startToken === parsed.data.startToken;
-}
-
 export function withProfileLock<T>(machineRoot: string, body: () => T, name: ".profile-ops.lock" | ".profile-registry.lock" = ".profile-ops.lock"): T {
   const directory = join(machineRoot, "machine");
   noSymlinkAncestry(machineRoot, new Map());
   ensureChildDirectory(machineRoot, directory, "profile registry", CREDENTIAL_DIRECTORY_MODE, CREDENTIAL_DIRECTORY_MODE);
-  const path = join(directory, name);
-  const bytes = profileLockBytes();
-  const deadline = systemClock.monotonicMs() + 10_000;
-  let identity: DirectoryIdentity | undefined;
-  for (;;) {
-    const created = createPrivateLock(path, directory, bytes, () => {
-      const file = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
-      return file !== undefined && Buffer.from(file.bytes).equals(Buffer.from(bytes));
-    });
-    if (created) {
-      const own = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
-      if (own === undefined || !own.bytes.equals(Buffer.from(bytes))) throw new Error("profile operation lock changed before acquisition");
-      identity = own.identity;
-      break;
-    }
-    const held = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
-    if (held !== undefined && heldByLiveOwner(held.bytes)) {
-      if (systemClock.monotonicMs() > deadline) throw new Error("profile operation lock is unavailable");
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
-      continue;
-    }
-    if (held !== undefined) {
-      removeExactPath(path, held.identity, false, "profile operation lock changed before recovery");
-      fsyncPath(directory);
-    }
-  }
-  let outcome: { readonly kind: "value"; readonly value: T } | { readonly kind: "error"; readonly error: unknown };
-  try { outcome = { kind: "value", value: body() }; }
-  catch (error) { outcome = { kind: "error", error }; }
-  try {
-    const file = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
-    if (file === undefined || identity === undefined || !file.bytes.equals(Buffer.from(bytes))) throw new Error("profile operation lock changed before release");
-    removeExactPath(path, identity, false, "profile operation lock changed before release");
-    fsyncPath(directory);
-  } catch (error) {
-    if (outcome.kind === "error") throw new AggregateError([outcome.error, error], "profile operation and lock release failed", { cause: error });
-    throw error;
-  }
-  if (outcome.kind === "error") throw outcome.error;
-  return outcome.value;
+  return withPrivateFileLock(directory, name, body);
 }
 
 export function createProfileRegistry(admission: RuntimeAdmission) {

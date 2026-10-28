@@ -47,6 +47,7 @@ function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLoc
     admission.assertProfileRuntime(); machine.assertLive();
     if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("crash-recovery-lock-required");
     lock.assertHeld();
+    if (machine.lifetime !== lock || admission.lifetime !== lock) throw new Error("crash-recovery-controller-mismatch");
     database.withAuthorityTransaction(() => {
       const facts = database.readProfileResourceCustody();
       for (const run of facts.runs) {

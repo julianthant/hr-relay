@@ -372,7 +372,10 @@ function realWorkerProcessSpawner(lock: RuntimeLifetimeLock, nominatim: ReturnTy
       stdio: ["inherit", "inherit", "inherit", "ipc"],
     });
     nominatim.attach(child);
-    void lock.share(child).catch(error => {
+    let transfer: Promise<void>;
+    try { transfer = lock.share(child); }
+    catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
+    void transfer.catch(error => {
       child.kill("SIGKILL");
       child.emit("error", error);
     });
@@ -450,6 +453,7 @@ async function composeDashboardRuntimeStartup(
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
   const machineAdmission = requireRuntimeAdmission(input.admission);
+  if (machineAdmission.lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
   const installation = machineAdmission.readInstallationContext();
   if (installation === undefined) throw new Error("profile-application-installation-required");
   const profile = input.profile;
@@ -1027,6 +1031,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const initial = requireRuntimeAdmission(input.admission);
+  if (initial.lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
   const context = initial.readInstallationContext();
   if (context === undefined) throw new ProfileSessionRefusedError("PROFILE_UPGRADE_UNAVAILABLE");
   const clock = input.clock ?? systemClock;
@@ -1047,7 +1052,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       const port = current.port, facts = current.hostFacts;
       await current.stop();
       if (shutdownRequested) return;
-      const exclusive = acquireExclusiveRuntimeAdmission(context.workspace);
+      const exclusive = acquireExclusiveRuntimeAdmission(context.workspace, input.lifetimeLock);
       exclusiveOwner = exclusive;
       try {
         const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
@@ -1063,7 +1068,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       exclusive.release();
       exclusiveOwner = undefined;
       if (shutdownRequested) return;
-      const shared = acquireSharedRuntimeAdmission(context.workspace);
+      const shared = acquireSharedRuntimeAdmission(context.workspace, input.lifetimeLock);
       try { current = await composeDashboardApplicationInstance({ ...input, admission: shared, env }, schedule, port); }
       catch (error) {
         if (error instanceof RuntimeCustodyUncertainError) throw error;

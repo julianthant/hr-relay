@@ -420,6 +420,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   qualify(module, []);
   const resolveDescriptor = (id: string) => resolveModule(id)?.descriptor;
   const machine = requireRuntimeAdmission(input.admission);
+  if (machine.lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
   const selected = captureSelectedProfileStorage(machine);
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;

@@ -1,3 +1,4 @@
+import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { probeStoppedProfileBrowsersClosed } from "../../../storage/maintenance/profile-inventory.js";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, copyFileSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, unlinkSync } from "node:fs";
@@ -257,11 +258,13 @@ async function verifyStageEvidence(operation: RuntimeRelocationOperation, destin
   return evidence;
 }
 
-export async function runOfflineStorageRelocation(input: Readonly<{ workspace: string; command: RelocationCommand;
+export async function runOfflineStorageRelocation(input: Readonly<{ workspace: string; lifetime: RuntimeLifetimeLock; command: RelocationCommand;
   admission?: RuntimeAdmission; clock?: Clock; hostFacts?: HostConfigFacts;
   faults?: Readonly<{ afterNativePublish?(): void; afterActivationIntent?(): void; beforeActivationTransaction?(): void;
     afterActivationWrite?(): void; afterFinalBackup?(): void;
     afterVerifiedStage?(): void; afterFence?(): void; afterRetention?(): void; afterSwitch?(): void }> }>): Promise<Readonly<{ operationId: string; generation: number }>> {
+  if (!(input.lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+  input.lifetime.assertHeld();
   const workspace = resolve(input.workspace);
   const clock = input.clock ?? systemClock;
   input.admission?.assertStorageRelocationSupported();
@@ -274,7 +277,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
     let operation: RuntimeRelocationOperation;
     if (input.command.kind === "resume") {
       const binding = inspectPendingRelocationRecovery(workspace, input.command.id, restore);
-      const recovered = acquireRecoveryRuntimeRelocation(workspace, binding, restore);
+      const recovered = acquireRecoveryRuntimeRelocation(workspace, input.lifetime, binding, restore);
       admission = recovered.admission;
       ownedAdmission = true;
       operation = recovered.operation;

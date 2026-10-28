@@ -237,7 +237,7 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
   const headed = process.argv.includes("--headed");
   if (process.argv.includes("--worker")) throw new Error("live-smoke-worker-selection-unavailable: the check allocates its own worker slot");
   const workspace = fileURLToPath(new URL("../..", import.meta.url));
-  const machine = acquireEntrypointAdmission(workspace, "shared");
+  const machine = acquireEntrypointAdmission(workspace, "shared", lock);
   let admission: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined, operationFailure: { error: unknown } | undefined;
   try {
     const selected = captureSelectedProfileStorage(machine);

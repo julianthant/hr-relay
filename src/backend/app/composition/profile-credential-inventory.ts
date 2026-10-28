@@ -23,7 +23,7 @@ import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.j
 import { DuoDocumentEnvelopeSchema } from "../../../models/config/duo-credential-store.js";
 import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
 
-import { requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
+import { readProfilePublicationRegistry, requireStoppedControlProfileInventory, type ProfilePublicationRead, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
 import { RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -210,8 +210,8 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
   return (writer: Readonly<{ acquisitionId: string; pid: number }> | undefined, copies: CredentialInitializationCopyInspection) => {
     const { admission } = input;
     authorize();
-    const authorityWitness = () => owner.kind === "ordinary"
-      ? canonicalJsonStringify(input.machine.readProfileRegistry())
+    const authorityWitness = (scope?: ProfilePublicationRead) => owner.kind === "ordinary"
+      ? canonicalJsonStringify(scope === undefined ? input.machine.readProfileRegistry() : readProfilePublicationRegistry(scope))
       : canonicalJsonStringify({ binding: requireStoppedControlProfileInventory(owner.claim).binding, locator: requireStoppedControlProfileInventory(owner.claim).locator });
     const registry = authorityWitness();
     const installation = owner.kind === "ordinary" ? input.machine.readInstallationContext() : admission.readInstallationContext();
@@ -256,7 +256,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
     const before = enumerate();
     const root = admission.stateRoot, profileId = admission.profileBinding.profileId;
     const duoRoot = owner.kind === "ordinary" ? input.machine.stateRoot : requireStoppedControlProfileInventory(owner.claim).machineRoot;
-    const physicalMembership = (): string => {
+    const physicalMembership = (scope?: ProfilePublicationRead): string => {
       const entries: (ReturnType<typeof inventoryFileIdentity> | { path: string; absent: true })[] = [];
       const visit = (path: string): void => {
         if (lstatSync(path, { throwIfNoEntry: false }) === undefined) { entries.push({ path, absent: true }); return; }
@@ -267,14 +267,14 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       const duoBackups = join(duoRoot, "machine", "duo-purpose-backups");
       for (const path of [root, processLockRoot, duoDocument, duoBackups]) visit(path);
       if (lstatSync(duoDocument, { throwIfNoEntry: false })?.isFile()) {
-        if (authorityWitness() !== registry) throw new Error("credential-maintenance-inventory-changed");
+        if (authorityWitness(scope) !== registry) throw new Error("credential-maintenance-inventory-changed");
         const file = readPrivateFile(duoDocument, { label: "Duo credential", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
         if (file === undefined) throw new Error("duo-document-required");
         let envelope: ReturnType<typeof DuoDocumentEnvelopeSchema.parse>;
         try { envelope = DuoDocumentEnvelopeSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes))); }
         catch { throw new Error("duo-purpose-plaintext-refused"); }
         if (envelope.installationId !== admission.profileBinding.installationId || envelope.profileId !== profileId) throw new Error("duo-envelope-binding-mismatch");
-        if (authorityWitness() !== registry) throw new Error("credential-maintenance-inventory-changed");
+        if (authorityWitness(scope) !== registry) throw new Error("credential-maintenance-inventory-changed");
       }
       return canonicalJsonStringify(entries);
     };
@@ -292,13 +292,13 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
         backupPaths: [], loginDataPaths: membership.loginDataPaths, capturedSecrets: copies.capturedSecrets, capturedSecretsComplete: copies.capturedSecretsComplete });
       if (enumerate() !== before) throw new Error("credential-maintenance-inventory-changed");
       return assessment;
-    }, revalidateBeforeKeyIntent: () => {
-      if (physicalMembership() !== beforeKeyIntent) throw new Error("credential-maintenance-inventory-changed");
+    }, revalidateBeforeKeyIntent: (scope?: ProfilePublicationRead) => {
+      if (physicalMembership(scope) !== beforeKeyIntent) throw new Error("credential-maintenance-inventory-changed");
     }, revalidate: () => {
       authorize();
       if (authorityWitness() !== registry || enumerate() !== before) throw new Error("credential-maintenance-inventory-changed");
       const publicationMembership = physicalMembership();
-      return () => { if (physicalMembership() !== publicationMembership) throw new Error("credential-maintenance-inventory-changed"); };
+      return (scope?: ProfilePublicationRead) => { if (physicalMembership(scope) !== publicationMembership) throw new Error("credential-maintenance-inventory-changed"); };
     } });
   };
 }

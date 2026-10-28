@@ -1,5 +1,5 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
-import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, type RuntimeLifetimeLock, type WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
+import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { fileURLToPath } from "node:url";
 
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
@@ -24,7 +24,7 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly runCli?: (admission: RuntimeAdmission, acceptDashboardAdmission: (() => void) | undefined, lifetime: RuntimeLifetime) => Promise<void>;
   readonly acquireLifetimeLock?: (port: number) => Promise<RuntimeLifetimeLock>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
-  readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
+  readonly acquireAdmission?: (mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock) => RuntimeAdmission;
   readonly validateDashboardBundle?: (workspace: string) => void;
   readonly runRelocation?: (input: Readonly<{ workspace: string; args: readonly string[];
     admission?: RuntimeAdmission }>) => Promise<Readonly<{ operationId: string; generation: number }>>;
@@ -73,15 +73,25 @@ async function runAdmittedEnvironmentBootstrap(
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
   const workspace = fileURLToPath(new URL("../../../..", import.meta.url));
+  const workerLifetime = (): WorkerRuntimeLifetimeLock => {
+    if (!(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) throw new Error("inherited-worker-lifetime-required");
+    lifetime.lock.assertHeld();
+    return lifetime.lock;
+  };
+  const rootLifetime = (): RuntimeLifetimeLock => {
+    if (!(lifetime.lock instanceof RuntimeLifetimeLock)) throw new Error("exclusive-root-lifetime-required");
+    lifetime.lock.assertHeld();
+    return lifetime.lock;
+  };
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "cancel-queued-runs") {
     const { runOfflineQueuedRunCancellation } = await import("../../storage/maintenance/cancel-queued-runs.js");
-    const { report, json } = await runOfflineQueuedRunCancellation(workspace, entrypointArgs.slice(2));
+    const { report, json } = await runOfflineQueuedRunCancellation(workspace, entrypointArgs.slice(2), rootLifetime());
     process.stdout.write(json ? `${JSON.stringify(report)}\n` : `storage queued runs: ${report.state}; ${String(report.runIds.length)} runs\n`);
     return;
   }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-restore") {
     const { runOfflineAuthorityRestoreRecovery } = await import("../composition/storage-compose.js");
-    const { report, json } = await runOfflineAuthorityRestoreRecovery(workspace, entrypointArgs.slice(2));
+    const { report, json } = await runOfflineAuthorityRestoreRecovery(workspace, entrypointArgs.slice(2), rootLifetime());
     process.stdout.write(json ? `${JSON.stringify(report)}\n`
       : `storage restore: verified ${report.outcome} operation ${report.operationId} settled\n`);
     return;
@@ -98,12 +108,12 @@ async function runAdmittedEnvironmentBootstrap(
       return;
     }
     const admission = command.kind === "plan"
-      ? (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested)))("exclusive")
+      ? (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested, rootLifetime())))("exclusive", lifetime.lock)
       : undefined;
     try {
       try {
         const result = dependencies.runRelocation === undefined
-          ? await runOfflineStorageRelocation({ workspace, command, ...(admission === undefined ? {} : { admission }) })
+          ? await runOfflineStorageRelocation({ workspace, lifetime: rootLifetime(), command, ...(admission === undefined ? {} : { admission }) })
           : await dependencies.runRelocation({ workspace, args: entrypointArgs.slice(2),
             ...(admission === undefined ? {} : { admission }) });
         process.stdout.write(command.json ? `${JSON.stringify(result)}\n`
@@ -128,7 +138,7 @@ async function runAdmittedEnvironmentBootstrap(
   const duoPublicationRecovery = storageCommand === "recover-duo-publication";
   if (machineControlMaintenance || duoPublicationRecovery) {
     if (duoPublicationRecovery && entrypointArgs.length !== 2) throw new Error("unsupported storage recover-duo-publication argument");
-    const admission = RuntimeAdmission.acquireStoppedMachineControlMaintenance(workspace);
+    const admission = RuntimeAdmission.acquireStoppedMachineControlMaintenance(workspace, rootLifetime());
     let retainCustody = false;
     try {
       if (duoPublicationRecovery) {
@@ -155,10 +165,10 @@ async function runAdmittedEnvironmentBootstrap(
     && !["doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
   const admission = await (dependencies.acquireAdmission ?? ((requested) => entrypoint === "cli" && entrypointArgs[0] === "worker"
-    ? RuntimeAdmission.acquireWorker(workspace) : bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
-    : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(workspace, requested)
-    : storageCommand === "backup" ? acquireStorageBackupEntrypointAdmission(workspace)
-    : acquireEntrypointAdmission(workspace, requested)))(mode);
+    ? RuntimeAdmission.acquireWorker(workspace, workerLifetime()) : bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace, rootLifetime())
+    : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(workspace, requested, rootLifetime())
+    : storageCommand === "backup" ? acquireStorageBackupEntrypointAdmission(workspace, rootLifetime())
+    : acquireEntrypointAdmission(workspace, requested, rootLifetime())))(mode, lifetime.lock);
   let shutdown: "release" | "retain" = "release";
   let dashboardOwnsAdmission = false;
   try {

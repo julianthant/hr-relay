@@ -1,3 +1,4 @@
+import type { ProfilePublicationRead } from "../admission/installation.js";
 import { credentialKeyCustody } from "./credential-key-custody.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../source-closure.js';
 import {
@@ -383,7 +384,7 @@ export interface CredentialStoreOptions {
   readonly erasureJournalAdmission?: RuntimeAdmission;
   readonly repairInventory?: (request: CredentialEraseInput, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(): void; dispose(): void }>;
   readonly pendingLogoutInventory?: (purpose: RuntimeAdmission, operation: LogoutOperation, copies: CredentialInitializationCopyInspection & Readonly<{ entriesAbsent: boolean }>) => Readonly<{ assessment: CredentialInventory; revalidate(): void }>;
-  readonly initializationInventory?: (operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(operation: SignUpOperation): () => void; revalidateBeforeKeyIntent(): void }>;
+  readonly initializationInventory?: (operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(operation: SignUpOperation): (scope?: ProfilePublicationRead) => void; revalidateBeforeKeyIntent(scope?: ProfilePublicationRead): void }>;
   readonly ids?: CredentialStoreIds;
   readonly hooks?: CredentialStoreHooks;
 }
@@ -807,7 +808,7 @@ const stoppedControlAttestations = new WeakMap<StoppedControlCredentialAttestati
 }>();
 
 export function attestStoppedControlCredentials(admission: RuntimeAdmission, claim: StoppedControlProfileInventory,
-  assess: (copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(): () => void; revalidateBeforeKeyIntent(): void }>): StoppedControlCredentialAttestation {
+  assess: (copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(): () => void; revalidateBeforeKeyIntent(scope?: ProfilePublicationRead): void }>): StoppedControlCredentialAttestation {
   const source = requireRuntimeAdmission(admission).readStoppedControlCredentialInventorySource(claim);
   const capture = captureProfileCredentialsForControlUpgrade(source.machineRoot, source.binding, source.key, source.head);
   const capturedSecrets = SECRET_NAMES.flatMap(name => { const entry = capture.document.record.entries[name]; return entry === undefined ? [] : [entry.value]; });
@@ -1157,7 +1158,7 @@ export const CredentialKeyStagePublicationSchema = z.strictObject({ registry: Pr
   operation: SignUpOperationSchema, key: CredentialKeyWitnessSchema });
 export type CredentialKeyStagePublication = z.infer<typeof CredentialKeyStagePublicationSchema>;
 export interface CommittedCredentialKeyStage { readonly operationId: string; }
-const committedKeyStages = new WeakMap<CommittedCredentialKeyStage, Readonly<{ capture: CredentialKeyStagePublication; revalidate(): void; afterIntent?: () => void }>>();
+const committedKeyStages = new WeakMap<CommittedCredentialKeyStage, Readonly<{ capture: CredentialKeyStagePublication; revalidate(scope: ProfilePublicationRead): void; afterIntent?: () => void }>>();
 export function assertCredentialKeyStageTransition(capture: Pick<CredentialKeyStagePublication, "priorOperation" | "operation" | "key">): void {
   const prior = capture.priorOperation, next = capture.operation, binding = capture.key.binding;
   if (prior.profileId !== binding.profileId || next.profileId !== prior.profileId || next.operationId !== prior.operationId
@@ -1185,10 +1186,11 @@ export function observeCredentialKeyStageIntent(witness: CommittedCredentialKeyS
   if (issued === undefined) throw new Error("credential-key-stage-witness-unissued");
   issued.afterIntent?.();
 }
-export function verifyCommittedCredentialKeyStage(witness: CommittedCredentialKeyStage, stateRoot: string): CredentialKeyStagePublication {
+export function verifyCommittedCredentialKeyStage(witness: CommittedCredentialKeyStage, stateRoot: string, scope: ProfilePublicationRead): CredentialKeyStagePublication {
   const issued = committedKeyStages.get(witness);
   if (issued === undefined) throw new Error("credential-key-stage-witness-unissued");
-  issued.revalidate();
+  scope.assertOperation(stateRoot, issued.capture.operation.operationId);
+  issued.revalidate(scope);
   assertCredentialKeyStagePublication(stateRoot, issued.capture);
   return issued.capture;
 }
@@ -1198,7 +1200,7 @@ export const CredentialInitializationPublicationSchema = z.strictObject({ operat
   document: ErasureFileEvidenceSchema });
 export type CredentialInitializationPublication = z.infer<typeof CredentialInitializationPublicationSchema>;
 export interface CommittedCredentialInitialization { readonly operationId: string; }
-const initializedCredentials = new WeakMap<CommittedCredentialInitialization, Readonly<{ capture: CredentialInitializationPublication; revalidate(): void }>>();
+const initializedCredentials = new WeakMap<CommittedCredentialInitialization, Readonly<{ capture: CredentialInitializationPublication; revalidate(scope: ProfilePublicationRead): void }>>();
 export function assertCredentialInitializationPublication(stateRoot: string, journalPath: string, input: CredentialInitializationPublication): void {
   const capture = CredentialInitializationPublicationSchema.parse(input), operation = capture.operation;
   if (operation.phase !== "applying" || operation.credentialInitialization?.phase !== "document-published"
@@ -1216,10 +1218,11 @@ export function assertCredentialInitializationPublication(stateRoot: string, jou
     || createHash("sha256").update(file.bytes).digest("hex") !== capture.document.digest) throw new Error("credential-initialization-document-changed");
   readAuthenticatedDocument(path, credentialKeyCustody.read(parseCredentialJson(keyFile.bytes)), capture.key.binding);
 }
-export function verifyCommittedCredentialInitialization(witness: CommittedCredentialInitialization, stateRoot: string, journalPath: string): CredentialInitializationPublication {
+export function verifyCommittedCredentialInitialization(witness: CommittedCredentialInitialization, stateRoot: string, journalPath: string, scope: ProfilePublicationRead): CredentialInitializationPublication {
   const issued = initializedCredentials.get(witness);
   if (issued === undefined) throw new Error("credential-initialization-witness-unissued");
-  issued.revalidate();
+  scope.assertOperation(stateRoot, issued.capture.operation.operationId);
+  issued.revalidate(scope);
   assertCredentialInitializationPublication(stateRoot, journalPath, issued.capture);
   return issued.capture;
 }
@@ -2223,7 +2226,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       if (initialization.mode === "replace-v3" && replacement === undefined) throw new Error("credential-complete-replacement-required");
       initializationRecovery = { operation, ...(replacement === undefined ? {} : { replacement }) };
       let publicationStarted = false;
-      let publicationInventory: Readonly<{ revalidate(operation: SignUpOperation): () => void; revalidateBeforeKeyIntent(): void }> | undefined;
+      let publicationInventory: Readonly<{ revalidate(operation: SignUpOperation): (scope?: ProfilePublicationRead) => void; revalidateBeforeKeyIntent(scope?: ProfilePublicationRead): void }> | undefined;
       try { withLock(writer => {
         const originalFile = readPrivateFile(protectedPath, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
         const original: unknown = originalFile === undefined ? undefined : parseCredentialJson(originalFile.bytes);
@@ -2256,9 +2259,9 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
           const witness = Object.freeze({ operationId: operation.operationId });
           const revalidateMembership = inventory.revalidate(operation);
           const stageHead = observeErasureHead(journalPath, loadJournal().epoch);
-          committedKeyStages.set(witness, { capture: pendingStage, revalidate: () => {
+          committedKeyStages.set(witness, { capture: pendingStage, revalidate: scope => {
             journalAdmission.assertProfileCredentialKeyStageOwner(admission, pendingStage.operation);
-            revalidateMembership();
+            revalidateMembership(scope);
             assertCredentialErasureHeadFiles(journalPath, stageHead);
             const currentSource = readPrivateFile(protectedPath, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
             if (originalFile === undefined ? currentSource !== undefined : currentSource === undefined || !sameBytes(currentSource.bytes, originalFile.bytes)
@@ -2358,9 +2361,9 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
             operation = { ...operation, credentialInitialization: initialization };
             const capture = CredentialKeyStagePublicationSchema.parse({ registry: registryBeforeStage, priorOperation, operation, key: capturedKey });
             const witness = Object.freeze({ operationId: operation.operationId });
-            committedKeyStages.set(witness, { capture, afterIntent: hooks.afterKeyStageJournal, revalidate: () => {
+            committedKeyStages.set(witness, { capture, afterIntent: hooks.afterKeyStageJournal, revalidate: scope => {
               journalAdmission.assertProfileCredentialKeyStageOwner(admission, operation);
-              inventory.revalidateBeforeKeyIntent();
+              inventory.revalidateBeforeKeyIntent(scope);
               assertCredentialErasureHeadFiles(journalPath, head);
               const currentSource = readPrivateFile(protectedPath, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
               if (source === undefined ? currentSource !== undefined : currentSource === undefined || !sameBytes(currentSource.bytes, source.bytes)
@@ -2402,9 +2405,9 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
           const inventory = publicationInventory;
           if (inventory === undefined) throw new Error("credential-initialization-inventory-required");
           const revalidateMembership = inventory.revalidate(currentOperation);
-          initializedCredentials.set(witness, { capture, revalidate: () => {
+          initializedCredentials.set(witness, { capture, revalidate: scope => {
             journalAdmission.assertProfileCredentialKeyStageOwner(admission, currentOperation);
-            revalidateMembership();
+            revalidateMembership(scope);
           } });
           journalAdmission.publishProfileCredentialInitialization(admission, witness);
           hooks.afterCredentialAnchor?.();

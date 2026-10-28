@@ -1,3 +1,4 @@
+import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { captureIncompleteProfileDraft, CredentialErasureHeadSchema, erasureRequestIdentity } from "../configuration/credential-store.js";
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
@@ -800,6 +801,14 @@ export class RuntimeAdmission {
   }
   get stateRoot(): string { this.assertLive(); return this.#stateRoot; }
   get artifactRoot(): string { this.assertLive(); return this.#artifactRoot; }
+  get lifetime(): RuntimeLifetimeLock | WorkerRuntimeLifetimeLock {
+    requireRuntimeAdmission(this);
+    if (this.#profileParent !== undefined) return this.#profileParent.lifetime;
+    if (this.#scope !== "installation") throw new Error("runtime-lifetime-installation-required");
+    const lifetime = (this.#authority as InstallationLease).lifetime;
+    lifetime.assertHeld();
+    return lifetime;
+  }
   readInstallationContext(): Readonly<{ workspace: string; locator: RuntimeLocator;
     receipts: readonly RelocationCompletionReceipt[] }> | undefined {
     this.assertLive();
@@ -1343,13 +1352,21 @@ export class RuntimeAdmission {
     this.assertLive();
     return requireStoppedControlProfileInventory(claim);
   }
+  #installationRootLifetime(): RuntimeLifetimeLock {
+    this.assertLive();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    const lifetime = (this.#authority as InstallationLease).lifetime;
+    if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("exclusive-root-lifetime-required");
+    lifetime.assertHeld();
+    return lifetime;
+  }
   beginStoppedMachineControlUpgrade(restore: RestoreAdmissionHandle): StoppedProfileControlUpgradeAdmission {
     this.assertLive();
     this.assertExclusive();
     if (this.#scope !== "installation") throw new Error("profile-control-upgrade-machine-membership-unknown");
     const context = this.readInstallationContext();
     if (context === undefined) throw new Error("profile-control-upgrade-machine-membership-unknown");
-    return acquireStoppedProfileControlUpgrade(context.workspace, restore, this.#authority as InstallationLease);
+    return acquireStoppedProfileControlUpgrade(context.workspace, restore, this.#installationRootLifetime(), this.#authority as InstallationLease);
   }
   static fromInstallationLease(lease: InstallationLease): RuntimeAdmission {
     assertInstallationLease(lease);
@@ -1469,8 +1486,10 @@ export class RuntimeAdmission {
     const claim = this.issueStoppedDuoPublicationRecovery();
     return this.completeStoppedDuoPublicationRecovery(claim);
   }
-  static async prepareStoppedDeviceContinuityRecertification(workspace: string): Promise<StoppedDeviceRecertification & { release(): void }> {
+  static async prepareStoppedDeviceContinuityRecertification(workspace: string, lifetime: RuntimeLifetimeLock): Promise<StoppedDeviceRecertification & { release(): void }> {
     const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+    if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+    lifetime.assertHeld();
     const canonical = realpathSync(workspace);
     if (canonical !== resolve(workspace)) throw new Error("device-recertification-workspace-invalid");
     const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(canonical, rebuildRuntimeIsolation.processLockRoot), pid: process.pid });
@@ -1498,7 +1517,7 @@ export class RuntimeAdmission {
       closed = true;
     };
     try {
-      const held = acquireInstallation(canonical, "exclusive"); lease = held;
+      const held = acquireInstallation(canonical, "exclusive", lifetime); lease = held;
       const prepared = prepareStoppedDeviceRecertification(held, restore, (profileId, assertHeld) => {
         const root = join(held.locator.stateRoot, "profiles", profileId);
         const admission = new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => held.readInstallationContext() },
@@ -1522,13 +1541,15 @@ export class RuntimeAdmission {
       throw error;
     }
   }
-  static acquireStoppedMachineControlMaintenance(workspace: string): RuntimeAdmission {
+  static acquireStoppedMachineControlMaintenance(workspace: string, lifetime: RuntimeLifetimeLock): RuntimeAdmission {
+    if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+    lifetime.assertHeld();
     const canonical = realpathSync(workspace);
     const processLockRoot = join(canonical, rebuildRuntimeIsolation.processLockRoot);
     const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
     let lease: InstallationLease | undefined;
     try {
-      lease = acquireInstallation(canonical, "exclusive");
+      lease = acquireInstallation(canonical, "exclusive", lifetime);
       assertStoppedMachineMaintenance(lease, restore);
     } catch (error) {
       if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { restore, admission: lease });
@@ -1546,10 +1567,12 @@ export class RuntimeAdmission {
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
     return (this.#authority as InstallationLease).requiresFlatStoreMigration();
   }
-  static acquireDashboard(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
+  static acquireDashboard(workspace: string, mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock): RuntimeAdmission {
+    if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+    lifetime.assertHeld();
     const canonical = realpathSync(workspace);
-    if (!existsSync(join(canonical, ".tracker", "control", "installation.json"))) return RuntimeAdmission.acquireMachine(canonical, mode);
-    const lease = mode === "exclusive" ? acquireInstallation(canonical, "exclusive") : acquireInstallation(canonical, "shared");
+    if (!existsSync(join(canonical, ".tracker", "control", "installation.json"))) return RuntimeAdmission.acquireMachine(canonical, mode, lifetime);
+    const lease = mode === "exclusive" ? acquireInstallation(canonical, "exclusive", lifetime) : acquireInstallation(canonical, "shared", lifetime);
     try { lease.requiresFlatStoreMigration(); return RuntimeAdmission.fromInstallationLease(lease); }
     catch (error) {
       if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: lease });
@@ -1558,37 +1581,43 @@ export class RuntimeAdmission {
       throw error;
     }
   }
-  static acquireWorker(workspace: string): RuntimeAdmission {
+  static acquireWorker(workspace: string, lifetime: WorkerRuntimeLifetimeLock): RuntimeAdmission {
+    if (!(lifetime instanceof WorkerRuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+    lifetime.assertHeld();
     const canonical = realpathSync(workspace);
-    return RuntimeAdmission.fromInstallationLease(acquireInstallation(canonical, "shared", { machine: true, readonlyControl: true }));
+    return RuntimeAdmission.fromInstallationLease(acquireInstallation(canonical, "shared", lifetime, { machine: true, readonlyControl: true }));
   }
-  static acquireMachine(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
+  static acquireMachine(workspace: string, mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock): RuntimeAdmission {
+    if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+    lifetime.assertHeld();
     const canonical = realpathSync(workspace);
     const control = join(canonical, ".tracker/control/installation.json");
     if (lstatSync(control, { throwIfNoEntry: false }) === undefined) {
-      const lease = acquireInstallation(canonical, "exclusive", { machine: true, defaultPair: {
+      const lease = acquireInstallation(canonical, "exclusive", lifetime, { machine: true, defaultPair: {
         stateRoot: resolve(canonical, rebuildRuntimeIsolation.stateRoot), artifactRoot: resolve(canonical, rebuildRuntimeIsolation.artifactRoot),
       } });
       if (mode === "exclusive") return RuntimeAdmission.fromInstallationLease(lease);
       lease.release();
     }
-    const lease = mode === "exclusive" ? acquireInstallation(canonical, "exclusive", { machine: true })
-      : acquireInstallation(canonical, "shared", { machine: true });
+    const lease = mode === "exclusive" ? acquireInstallation(canonical, "exclusive", lifetime, { machine: true })
+      : acquireInstallation(canonical, "shared", lifetime, { machine: true });
     return RuntimeAdmission.fromInstallationLease(lease);
   }
 
-  static acquireInitial(workspace: string,
+  static acquireInitial(workspace: string, lifetime: RuntimeLifetimeLock,
     verifyExisting: (pair: RuntimePair, inspection: RuntimeAdmission) => ExistingAuthorityEvidence,
     initializeFresh: (pair: RuntimePair, initialization: RuntimeAdmission) => void): RuntimeAdmission {
+    if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+    lifetime.assertHeld();
     const canonical = realpathSync(workspace);
     const defaults = Object.freeze({
       stateRoot: resolve(canonical, rebuildRuntimeIsolation.stateRoot),
       artifactRoot: resolve(canonical, rebuildRuntimeIsolation.artifactRoot),
     });
-    const lease = acquireInstallation(canonical, "exclusive", {
+    const lease = acquireInstallation(canonical, "exclusive", lifetime, {
       defaultPair: defaults,
       verifyExisting: (pair) => {
-        const inspection = new RuntimeAdmission(issuanceToken, { assertHeld() {}, release() {} }, pair.stateRoot, pair.artifactRoot,
+        const inspection = new RuntimeAdmission(issuanceToken, { assertHeld: () => lifetime.assertWorkspace(canonical), release() {} }, pair.stateRoot, pair.artifactRoot,
           [join(pair.stateRoot, "state.db")], "adoption-inspection", "exclusive");
         try { return verifyExisting(pair, inspection); }
         finally { inspection.release(); }
@@ -1642,24 +1671,24 @@ export class RuntimeAdmission {
 }
 Object.freeze(RuntimeAdmission.prototype);
 
-export function acquireSharedRuntimeAdmission(workspace: string): RuntimeAdmission {
-  return RuntimeAdmission.fromInstallationLease(acquireInstallation(workspace, "shared"));
+export function acquireSharedRuntimeAdmission(workspace: string, lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock): RuntimeAdmission {
+  return RuntimeAdmission.fromInstallationLease(acquireInstallation(workspace, "shared", lifetime));
 }
 
-export function acquireExclusiveRuntimeAdmission(workspace: string): RuntimeAdmission {
-  return RuntimeAdmission.fromInstallationLease(acquireInstallation(workspace, "exclusive"));
+export function acquireExclusiveRuntimeAdmission(workspace: string, lifetime: RuntimeLifetimeLock): RuntimeAdmission {
+  return RuntimeAdmission.fromInstallationLease(acquireInstallation(workspace, "exclusive", lifetime));
 }
 
-export function acquireInitialRuntimeAdmission(workspace: string,
+export function acquireInitialRuntimeAdmission(workspace: string, lifetime: RuntimeLifetimeLock,
   verifyExisting: (pair: RuntimePair, inspection: RuntimeAdmission) => ExistingAuthorityEvidence,
   initializeFresh: (pair: RuntimePair, initialization: RuntimeAdmission) => void): RuntimeAdmission {
-  return RuntimeAdmission.acquireInitial(workspace, verifyExisting, initializeFresh);
+  return RuntimeAdmission.acquireInitial(workspace, lifetime, verifyExisting, initializeFresh);
 }
 
-export function acquireRecoveryRuntimeRelocation(workspace: string,
+export function acquireRecoveryRuntimeRelocation(workspace: string, lifetime: RuntimeLifetimeLock,
   binding: Readonly<{ installationId: string; fromGeneration: number; operationId: string }>,
   restore: RestoreAdmissionHandle): Readonly<{ admission: RuntimeAdmission; operation: RuntimeRelocationOperation }> {
-  const lease = acquireInstallation(workspace, "exclusive", { recoverRelocation: { ...binding, restoreAdmission: restore } });
+  const lease = acquireInstallation(workspace, "exclusive", lifetime, { recoverRelocation: { ...binding, restoreAdmission: restore } });
   try {
     const admission = RuntimeAdmission.fromInstallationLease(lease);
     return Object.freeze({ admission, operation: admission.resumeRelocation(binding.operationId) });
@@ -1669,9 +1698,9 @@ export function acquireRecoveryRuntimeRelocation(workspace: string,
   }
 }
 
-export function acquireRecoveryRuntimeRestore(workspace: string, operationId: string,
+export function acquireRecoveryRuntimeRestore(workspace: string, lifetime: RuntimeLifetimeLock, operationId: string,
   restore: RestoreAdmissionHandle): Readonly<{ admission: RuntimeAdmission; input: AuthorityRestoreInput }> {
-  const lease = acquireInstallation(workspace, "exclusive", { recoverAuthorityRestore: { operationId, restoreAdmission: restore } });
+  const lease = acquireInstallation(workspace, "exclusive", lifetime, { recoverAuthorityRestore: { operationId, restoreAdmission: restore } });
   try {
     const admission = RuntimeAdmission.fromInstallationLease(lease);
     return Object.freeze({ admission: admission.resumeProfileAuthorityRestore(operationId, restore), input: lease.readAuthorityRestore(operationId) });

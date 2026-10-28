@@ -1,3 +1,4 @@
+import { RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import { authoritySourceDatabaseIdentity } from "../sqlite/database-identity.js";
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
@@ -62,7 +63,9 @@ async function capture(workspace: string, clock: Clock) {
   return { installation, inventory, captureDigest: processCustodyDigest(body) };
 }
 
-export async function runOfflineQueuedRunCancellation(workspacePath: string, args: readonly string[], clock: Clock = systemClock) {
+export async function runOfflineQueuedRunCancellation(workspacePath: string, args: readonly string[], lifetime: RuntimeLifetimeLock, clock: Clock = systemClock) {
+  if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+  lifetime.assertHeld();
   const command = parseQueuedRunCancellation(args), workspace = realpathSync(workspacePath);
   if (workspace !== resolve(workspacePath)) throw new Error("queued-run-cancellation-workspace-unsafe");
   const planned = await capture(workspace, clock);
@@ -78,7 +81,7 @@ export async function runOfflineQueuedRunCancellation(workspacePath: string, arg
   };
   try {
     restore = acquireRuntimeRestoreAdmission({ processLockRoot: planned.installation.processLockRoot, pid: process.pid }, clock);
-    lease = acquireInstallation(workspace, "exclusive");
+    lease = acquireInstallation(workspace, "exclusive", lifetime);
     proveProfileRootsUnused([...planned.installation.roots.slice(0, 2).map(root => root.path), join(workspace, "data")]);
     if ((await capture(workspace, clock)).captureDigest !== planned.captureDigest) throw new Error("queued-run-cancellation-capture-changed");
     await AuthorityDatabase.cancelQueuedRunsNative6(lease, restore, planned.inventory.digest, clock);
