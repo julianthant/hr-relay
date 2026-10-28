@@ -34,7 +34,7 @@ async function fixture() {
     workerId: slot.workerId, expectedRevision: slot.membershipRevision,
     expectedPoolVersion: f.database.authority.workerPools.get(slot.workflow)?.version, now, cleanup: "interrupted" };
   const reconcile = () => reconcileStartupCrash({ ...f, lifecycle: f.service, lock });
-  return { ...f, lock, slot, hold, request, reconcile, credentialKey, profileRunId, now };
+  return { ...f, lock, slot, hold, retirementRequest: request, reconcile, credentialKey, profileRunId, now };
 }
 
 it("retires an abandoned verification reservation without a worker lease and records cleanup once", async () => {
@@ -67,7 +67,7 @@ it("retires an abandoned verification reservation without a worker lease and rec
 for (const field of ["controller", "member", "revision", "reservation", "installation", "pool"] as const) {
   it(`refuses changed verification ${field} with zero effects`, async () => {
     const f = await fixture(), other = await runtimeLifetimeLock();
-    const request = { ...f.request,
+    const request = { ...f.retirementRequest,
       ...(field === "member" ? { workerId: "person-lookup-worker-999" } : {}),
       ...(field === "revision" ? { expectedRevision: f.slot.membershipRevision + 1 } : {}),
       ...(field === "reservation" ? { grantCommandId: randomUUID() } : {}),
@@ -142,7 +142,7 @@ it("refuses unexpected run ownership in a verification-only member without retir
         columns.lifecycle_json, columns.id).changes, 1);
   } finally { raw.close(); }
   const before = f.database.readProfileResourceCustody(), generation = f.database.getMeta().authorityGeneration;
-  assert.throws(() => f.database.retireVerificationWorker(f.request, f.lock), /worker-verification-unexpected-run-owner/u);
+  assert.throws(() => f.database.retireVerificationWorker(f.retirementRequest, f.lock), /worker-verification-unexpected-run-owner/u);
   assert.deepEqual(f.database.readProfileResourceCustody(), before);
   assert.equal(f.database.getMeta().authorityGeneration, generation);
   assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);

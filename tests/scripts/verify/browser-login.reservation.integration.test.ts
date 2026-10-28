@@ -1,3 +1,4 @@
+import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
@@ -38,7 +39,7 @@ describe("native verification reservation exclusion", () => {
       const before = harness.database.authority.workerPools.get("person-lookup");
       const lock = await runtimeLifetimeLock();
       const verification = { lock, ...boundProfileAdmission(join(harness.root, "state.db")).profileBinding,
-        profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: "ab".repeat(32) };
+        profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: FingerprintSchema.parse("ab".repeat(32)) };
       try {
         let effects = 0;
         await expect(withSmokeWorker(harness.database, async () => { effects += 1; }, harness.clock, verification)).rejects.toMatchObject({ code: "LIVE_SMOKE_VERIFICATION_REFUSED", errors: [{ message: "worker-control-unresolved-effect" }] });
@@ -56,7 +57,7 @@ describe("native verification reservation exclusion", () => {
       const harness = await world.openControlHarness();
       const lock = await runtimeLifetimeLock();
       const verification = { lock, ...boundProfileAdmission(join(harness.root, "state.db")).profileBinding,
-        profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: "ab".repeat(32) };
+        profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: FingerprintSchema.parse("ab".repeat(32)) };
       try {
         const admission = { commandId: world.nextCommandId(), workflow: "person-lookup", expectedPoolVersion: 0,
           ...boundProfileAdmission(join(harness.root, "state.db")).profileBinding, lockPort: lock.port,
@@ -134,7 +135,7 @@ describe("native verification reservation exclusion", () => {
       const harness = await world.openControlHarness();
       const lock = await runtimeLifetimeLock();
       const verification = { lock, ...boundProfileAdmission(join(harness.root, "state.db")).profileBinding,
-        profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: "ab".repeat(32) };
+        profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: FingerprintSchema.parse("ab".repeat(32)) };
       try {
         await expect(withSmokeWorker(harness.database, async () => { throw new SmokeSessionClosureError([new Error("controlled closure unknown")]); }, harness.clock,
           verification)).rejects.toBeInstanceOf(RuntimeCustodyUncertainError);
@@ -144,7 +145,7 @@ describe("native verification reservation exclusion", () => {
       const other = await world.openControlHarness();
       const otherLock = await runtimeLifetimeLock();
       const otherVerification = { lock: otherLock, ...boundProfileAdmission(join(other.root, "state.db")).profileBinding,
-        profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: "ab".repeat(32) };
+        profileRunId: randomUUID(), system: "ucpath" as const, credentialKey: FingerprintSchema.parse("ab".repeat(32)) };
       try {
         await expect(withSmokeWorker(other.database, async slot => {
           const pending = pendingSpawn(world, other, slot.workerId);

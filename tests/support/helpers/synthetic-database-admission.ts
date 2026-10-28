@@ -108,7 +108,7 @@ export function boundFixtureWorker(database: RealAuthorityDatabase, path: string
   const owner = [...entry.workers].find(worker => worker.database === database && worker.workerId === workerId);
   if (owner === undefined) return false;
   const lease = database.authority.workerLeases.get(workerId), slot = database.authority.workerSlots.get(workerId);
-  return slot?.retiredAt === null && lease?.leaseGeneration === owner.generation && lease.processId === owner.processId
+  return slot?.retiredAt === null && lease !== undefined && lease.leaseGeneration === owner.generation && lease.processId === owner.processId
     && lease.lifecycle.state !== "stopped";
 }
 

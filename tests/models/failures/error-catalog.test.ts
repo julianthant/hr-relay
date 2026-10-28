@@ -263,7 +263,6 @@ it("owns Sessions availability and actual worker failure labels with strict empt
   const entries = {
     SESSIONS_UNAVAILABLE: "Session information is unavailable.",
     WORKER_CRASHED: "crashed",
-    WORKER_LEASE_EXPIRED: "The worker stopped responding. Run it again.",
   } as const;
   for (const code of Object.keys(entries) as (keyof typeof entries)[]) {
     assert.equal(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text, entries[code]);

@@ -58,14 +58,14 @@ describe("same-lifetime durable reset settlement", () => {
         pendingReset: observer, activeWorkReset: () => observer() !== undefined,
         browserObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration: lease.leaseGeneration }); },
         resetControl: createWorkerResetControl({ database, workerId, leaseGeneration: lease.leaseGeneration, clock: h.authority.clock, lifecycle }),
-        claimNext: request => {
+        claimNext: (request, sessions) => {
           if (resetCommandId !== undefined) {
             expect(database.authority.workerControls.get(resetCommandId)?.phase.state).toBe("succeeded");
             expect(database.authority.workerLeases.get(workerId)?.lifecycle.state).toBe("idle");
             expect(h.stop.signal.aborted).toBe(false);
             claimedAfterReset = true;
           }
-          return h.deps.claimNext(request);
+          return h.deps.claimNext(request, sessions);
         },
       });
       try {
@@ -134,12 +134,12 @@ describe("same-lifetime durable reset settlement", () => {
         resetOwner: record.reset === undefined ? undefined : { member: record.reset.member, lifetime: record.reset.lifetime },
         pendingReset: () => database.authority.workerControls.resetForWorker(workerId)?.reset,
         resetControl: createWorkerResetControl({ database, workerId, leaseGeneration: lease.leaseGeneration, clock: h.authority.clock, lifecycle }),
-        claimNext: request => {
+        claimNext: (request, sessions) => {
           expect(database.authority.workerControls.get(record.commandId)).toMatchObject({ phase: { state: "succeeded", acknowledgement: { kind: "reset" } } });
           expect(database.authority.commandAudits.findByCommand(record.commandId)?.result.state).toBe("applied");
           expect(database.authority.workerLeases.get(workerId)).toMatchObject({ leaseGeneration: lease.leaseGeneration, lifecycle: { state: "idle" }, control: { directive: "run" } });
           observedMilestone = true;
-          return h.deps.claimNext(request);
+          return h.deps.claimNext(request, sessions);
         },
       });
       expect(observedMilestone).toBe(true);

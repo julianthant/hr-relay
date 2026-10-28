@@ -55,6 +55,7 @@ export function createLoginContractTestWorld() {
     const discards: unknown[] = [];
     const page = { url: () => "https://app.example/" } as unknown as Page;
     const factory: WorkerBrowserSessionFactory = {
+      probeProfile: async () => undefined,
       async open(input) {
         opens += 1;
         let ceremonyCompleted = false;

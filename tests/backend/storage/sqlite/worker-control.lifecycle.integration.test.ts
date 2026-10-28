@@ -283,11 +283,11 @@ describe("exact lifecycle reservation", () => {
       resetControl: createWorkerResetControl({ database: h.database, workerId: h.deps.workerId, leaseGeneration: f.lease.leaseGeneration, clock: h.authority.clock, lifecycle }),
       initialize: (sessions, signal) => initializeRetryWorker({ database: h.database, commandId: f.record.commandId, leaseGeneration: f.lease.leaseGeneration,
         descriptor: personLookupDescriptor, configFingerprint, sessions, signal, clock: h.authority.clock, scheduler: h.scheduler }),
-      claimNext: request => {
+      claimNext: (request, sessions) => {
         expect(h.database.authority.workerControls.get(f.record.commandId)?.readiness).toMatchObject({ state: "cancelled", leaseGeneration: f.lease.leaseGeneration });
         expect(h.database.authority.workerControls.get(resetId)?.phase.state).toBe("succeeded");
         claimedAfterReset = true;
-        return h.deps.claimNext(request);
+        return h.deps.claimNext(request, sessions);
       },
     });
     await authenticating;

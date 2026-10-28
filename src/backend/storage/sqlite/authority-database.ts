@@ -2548,7 +2548,7 @@ export class AuthorityDatabase implements Disposable {
       const hold = repositories.workerSlots.verification(request.workerId);
       if (hold === undefined || hold.request.lockPort !== lock.port || hold.command.commandId !== request.grantCommandId || hold.slot.membershipRevision !== request.expectedRevision
         || hold.request.installationId !== request.installationId || hold.request.profileId !== request.profileId
-        || repositories.workerPools.get(hold.slot.workflow)?.version !== request.expectedPoolVersion) throw new Error("worker-verification-authority-unavailable");
+        || workerPoolVersion(repositories.workerPools.get(hold.slot.workflow)) !== request.expectedPoolVersion) throw new Error("worker-verification-authority-unavailable");
       if (repositories.workerLeases.get(request.workerId) !== undefined || repositories.runs.listByWorker(request.workerId).length !== 0
         || this.#database.prepare("SELECT 1 FROM commands WHERE family='run-lifecycle' AND json_extract(request_json,'$.operation')='claim-next' AND json_extract(request_json,'$.request.workerId')=? LIMIT 1").get(request.workerId) !== undefined) throw new Error("worker-verification-unexpected-run-owner");
       const facts = this.readProfileResourceCustody();

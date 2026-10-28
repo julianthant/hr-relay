@@ -793,7 +793,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         browserObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration }); },
         configFingerprint: resolved.fingerprint,
         // The SQLite claim transaction fences settings and runtime tokens; the filesystem check fences its inode.
-        claimNext: (request) => {
+        claimNext: (request, sessions) => {
           assertCurrent();
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
           prepareRun: async (run, signal) => {

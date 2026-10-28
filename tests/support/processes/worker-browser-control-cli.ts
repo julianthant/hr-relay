@@ -137,7 +137,7 @@ try {
     cleanupFailures.push(...results.flatMap(value => value.status === 'rejected' ? [value.reason as unknown] : []));
     if (cleanupFailures.length === 0 && database !== undefined) {
       try { database.close(); database = undefined; }
-      catch (error) { cleanupFailures.push(retainAuthoritySourceClosure([...failures, error], { database, admission: machine, lifetimeLock })); }
+      catch (error) { cleanupFailures.push(retainAuthoritySourceClosure([...failures, error], { database, admission: machine, directory: { lifetimeLock } })); }
     }
     if (cleanupFailures.length === 0) {
       for (const close of [() => admission?.release(), () => machine.release()]) {
