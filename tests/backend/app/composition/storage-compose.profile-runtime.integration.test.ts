@@ -1,3 +1,4 @@
+import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import * as browserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
@@ -298,7 +299,7 @@ for(const failure of ["busy","unproved"] as const)it(`retains logout credentials
     await assert.rejects(runtime.awaitClosurePreparation(active.profileId),value=>value===error);
     const operation=runtime.session.logoutOperations()[0];assert.ok(operation);
     assert.equal(runtime.session.resumeLogout(operation.operationId).state,"cancelling");
-    const retained=runtime.session.logoutOperations()[0];assert.ok(retained);
+    const retained=LogoutOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot,"machine","operations",`${operation.operationId}.json`),"utf8")));
     assert.equal(retained.commandId,undefined);assert.equal(retained.writeId,undefined);assert.equal(retained.expectedRevision,undefined);
     assert.deepEqual(readFileSync(protectedPath),protectedBefore);assert.deepEqual(readFileSync(keyPath),keyBefore);assert.equal(existsSync(journalPath),false);
     assert.equal(probe.mock.calls.length,1);

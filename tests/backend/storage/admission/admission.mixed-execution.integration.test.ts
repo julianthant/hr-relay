@@ -30,7 +30,7 @@ it("browser launch forwards retained display and mode through a headless custody
     "browser.headless": { set: false }, "timeouts.taskMs": { set: 90_000 }, "timeouts.sessionAcquireMs": { set: 180_000 } }).state, "applied");
   const next = f.create();
   const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
-  const held = bindWorkerProcessAdmission({  authorityPath: f.path, pid: process.pid, clock: f.clock,
+  const held = bindWorkerProcessAdmission({ processLockRoot:join(f.root,"locks"), authorityPath: f.path, pid: process.pid, clock: f.clock,
     open: () => f.database, close: () => {}, admit: (database) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, { commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
     expectedPoolVersion: repositories.workerPools.get(personLookupDescriptor.id)?.version ?? 0, processId: process.pid,
     now: f.clock.now().toISOString() }, randomUUID()).workerId) });
@@ -41,7 +41,7 @@ it("browser launch forwards retained display and mode through a headless custody
   const ocr=createChatGptOcrAdapter({account:account.service,artifacts,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
   const factory = createRunResourcesFactory({ ocr,assertBrowserRoot: root=>assertProfileBrowserRoot(admission,root), assertProfileOwner: workerId => {
     assert.equal(workerId, held.workerId);
-    assertWorkerProcessCustody({  acquisitionId, pid: process.pid, workerId, authorityPath: f.path });
+    assertWorkerProcessCustody({ processLockRoot:join(f.root,"locks"), acquisitionId, pid: process.pid, workerId, authorityPath: f.path });
   },  authority: f.database.authority, artifacts, clock: systemClock,
     ids: { uuid: randomUUID }, isolation: rebuildRuntimeIsolation, protectedSecrets: createCredentialStore({ stateRoot: f.root }),
     scheduler: createTimeoutDeadlineScheduler(systemClock), environment: {} });

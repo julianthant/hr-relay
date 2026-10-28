@@ -54,7 +54,6 @@ async function liveFixture(){
 }
 function initialize(f:Awaited<ReturnType<typeof liveFixture>>){const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"admission-fixture"},clock);database.close();}
 
-describe("stopped native upgrade admission",()=>{
  async function baselineFixture(version=1){
   const f=await fixture();rmSync(f.path,{force:true});
   const raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
@@ -74,6 +73,8 @@ describe("stopped native upgrade admission",()=>{
   } finally {raw.close();}
   return f;
  }
+
+describe("stopped native upgrade admission",()=>{
  it("upgrades schema 5 retained plans by removing only workers through stopped backup admission",async()=>{
   const f=await baselineFixture(5),raw=new DatabaseSync(f.path);
   const plan={...START_PLAN,workers:8};

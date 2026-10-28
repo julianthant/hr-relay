@@ -280,7 +280,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
         spawn: request => {
           const child = spawn(request.command, [...request.args], { cwd: request.cwd, detached: true, stdio: ["ignore", "pipe", "pipe", "ipc"] });
           void lifetimeLock.share(child).catch(error => { child.kill("SIGKILL"); child.emit("error", error); });
-          children.push(child); child.stdout.resume(); child.stderr.resume();
+          children.push(child); assert.ok(child.stdout); assert.ok(child.stderr); child.stdout.resume(); child.stderr.resume();
           return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
         }, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => { faults.push(line); },
       } });
@@ -350,7 +350,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
       assert.ok(typeof trigger?.sql === "string");
       try {
         raw.exec("DROP TRIGGER worker_slots_identity");
-        assert.ok(retired.slot.retiredAt);
+        assert.ok(retired.retiredAt);
         const altered = { ...retired, retiredAt: new Date(Date.parse(retired.retiredAt) + 1).toISOString() };
         raw.prepare("UPDATE worker_slots SET retired_at=?,payload_json=? WHERE id=?")
           .run(altered.retiredAt, canonicalJsonStringify(altered), retired.workerId);

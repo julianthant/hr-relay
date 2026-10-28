@@ -1,3 +1,4 @@
+import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { withSmokeWorker } from "../../../../scripts/verify/browser-login.js";
@@ -449,7 +450,7 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
   const f=await fixture(),lock=await runtimeLifetimeLock(),profileRunId=randomUUID();
   const smokeRoot=join(f.stateRoot,"scratch","live-smoke",profileRunId,"browsers");
   const native=createBrowserSessionFactoryFixtures(f.clock,randomUUID(),{schedule:()=>({cancel(){}})}).fakeLauncher();
-  let settlement:ReturnType<typeof f.erase>|undefined,stopped:ReturnType<typeof f.admission.forStoppedProfileUpgrade>|undefined;
+  let settlement:ReturnType<typeof f.erase>|undefined,stopped:RuntimeAdmission|undefined;
   try{
     await withSmokeWorker(f.context.database,async slot=>{
       const directory=workerProfileDirectory({profileRoot:smokeRoot,slotOrdinal:slot.ordinal,system:"crm"});
@@ -469,8 +470,8 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
       await f.inventory.prepare();settlement=f.erase();
       assert.equal(f.inventory.assess({...settlement,capturedSecrets:f.capturedSecrets,capturedSecretsComplete:true}).logoutComplete,true);
     }else{
-      f.context.database.close();stopped=f.admission.forStoppedProfileUpgrade();
-      const report=await backupStoppedAuthority(stopped,f.stateRoot,f.clock,join(f.workspace,rebuildRuntimeIsolation.processLockRoot));
+      f.context.database.close();const stoppedAdmission=f.admission.forStoppedProfileUpgrade();stopped=stoppedAdmission;
+      const report=await backupStoppedAuthority(stoppedAdmission,f.stateRoot,f.clock,join(f.workspace,rebuildRuntimeIsolation.processLockRoot));
       assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);
     }
   }finally{stopped?.release();settlement?.admission.release();await f.cleanup();}

@@ -73,7 +73,7 @@ for(const malformed of ["unknown-field","multiple-requests","oversize"] as const
   vi.spyOn(process.stdin,Symbol.asyncIterator).mockImplementation(async function*(){yield Buffer.from(text);return undefined;});
   let output="";const priorExit=process.exitCode;
   const write=vi.spyOn(process.stdout,"write").mockImplementation((chunk,encoding,callback)=>{
-    output+=String(chunk);if(typeof encoding==="function")encoding();else callback?.();return true;
+    output+=String(chunk);const done=[encoding,callback].find(value=>typeof value==="function");if(typeof done==="function")done();return true;
   });
   try{await runNativeProfileProbeChild();}finally{write.mockRestore();process.exitCode=priorExit;}
   const result=NativeProfileProbeResultSchema.parse(JSON.parse(output));

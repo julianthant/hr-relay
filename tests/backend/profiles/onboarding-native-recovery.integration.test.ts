@@ -39,13 +39,15 @@ it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then
     assert.deepEqual(readFileSync(f.operationPath),before.operation);assert.deepEqual(readFileSync(f.keyPath),before.key);
     assert.deepEqual(readFileSync(f.protectedPath),before.protected);assert.deepEqual(readFileSync(f.databasePath),before.database);
     assert.equal(existsSync(join(machine.stateRoot,"machine","erasures",`${f.profileId}.json`)),false);
-    const disconnected=once(browser,"disconnected"),cdp=await browser.newBrowserCDPSession();
+    const ownedBrowser=browser;
+    const disconnected=new Promise<void>(done=>ownedBrowser.once("disconnected",()=>done())),cdp=await ownedBrowser.newBrowserCDPSession();
     await Promise.allSettled([cdp.send("Browser.close"),disconnected]);browser=undefined;
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(ready.directory),false);assert.equal(existsSync(f.profileRoot),false);assert.equal(existsSync(f.operationPath),false);
   }finally{
     if(browser?.isConnected()){
-      const disconnected=once(browser,"disconnected"),cdp=await browser.newBrowserCDPSession();
+      const ownedBrowser=browser;
+    const disconnected=new Promise<void>(done=>ownedBrowser.once("disconnected",()=>done())),cdp=await ownedBrowser.newBrowserCDPSession();
       await Promise.allSettled([cdp.send("Browser.close"),disconnected]);
     }
     if(worker.exitCode===null&&worker.signalCode===null){const exited=once(worker,"exit");worker.send("stop");await exited;}
