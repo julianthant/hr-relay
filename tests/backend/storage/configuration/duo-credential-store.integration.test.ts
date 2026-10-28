@@ -392,10 +392,16 @@ const DuoChildEventSchema = z.discriminatedUnion("type", [
       name: z.enum(["Error", "TypeError", "RangeError", "AggregateError", "ZodError", "DuoCredentialCommitUncertainError",
         "CredentialKeyCustodyError", "PrivateFileLockUnavailableError", "RuntimeLifetimeLockReleasedError", "AuthoritySourceClosureUnprovedError", "unclassified"]),
       code: z.string().refine(value => value === "unclassified" || Object.hasOwn(ERROR_CATALOG, value)),
-      reason: z.enum(["duo-publication-pending", "duo-transaction-unissued", "duo-transaction-not-committed", "duo-document-membership-mismatch",
+      reason: z.enum(["directory-integrity: credential lock is unavailable", "directory-integrity: credential lock permissions or identity are invalid",
+        "directory-integrity: credential lock moved while it was read", "directory-integrity: private lock is malformed",
+        "directory-integrity: private lock parent changed", "directory-integrity: private lock changed",
+        "directory-integrity: credential lock differs after creation", "directory-integrity: credential lock identity changed after creation",
+        "duo-publication-pending", "duo-transaction-unissued", "duo-transaction-not-committed", "duo-document-membership-mismatch",
         "duo-document-custody-changed", "duo-publication-file-changed", "duo-publication-prior-changed", "duo-profile-authority-changed",
         "duo-machine-authority-changed", "duo-document-required", "duo-ready-credential-required", "duo-counter-exhausted",
         "profile-registry-publication-busy", "profile-registry-observation-changed", "profile-registry-continuity-mismatch", "directory-integrity", "unclassified"]),
+      frames: z.array(z.enum(["readPrivateFile", "withPrivateFileLock", "assertPrivateLockBytes", "profileObservation", "readProfileEvidence",
+        "readMachineRegistry", "assertDuoMembership", "assertProfileRuntime", "publishIssuedDuo", "prepareIssuedDuoTransaction", "settleDuoPublication"])).max(11),
     })).min(1).max(6) }),
 ]);
 async function duoChild(f: Awaited<ReturnType<typeof setup>>) {

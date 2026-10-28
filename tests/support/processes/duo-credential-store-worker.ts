@@ -9,17 +9,25 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 function reservationCauses(error: unknown) {
   const names = new Set(["Error", "TypeError", "RangeError", "AggregateError", "ZodError", "DuoCredentialCommitUncertainError",
     "CredentialKeyCustodyError", "PrivateFileLockUnavailableError", "RuntimeLifetimeLockReleasedError", "AuthoritySourceClosureUnprovedError"]);
-  const reasons = ["duo-publication-pending", "duo-transaction-unissued", "duo-transaction-not-committed", "duo-document-membership-mismatch",
+  const reasons = ["directory-integrity: credential lock is unavailable", "directory-integrity: credential lock permissions or identity are invalid",
+    "directory-integrity: credential lock moved while it was read", "directory-integrity: private lock is malformed",
+    "directory-integrity: private lock parent changed", "directory-integrity: private lock changed",
+    "directory-integrity: credential lock differs after creation", "directory-integrity: credential lock identity changed after creation",
+    "duo-publication-pending", "duo-transaction-unissued", "duo-transaction-not-committed", "duo-document-membership-mismatch",
     "duo-document-custody-changed", "duo-publication-file-changed", "duo-publication-prior-changed", "duo-profile-authority-changed",
     "duo-machine-authority-changed", "duo-document-required", "duo-ready-credential-required", "duo-counter-exhausted",
     "profile-registry-publication-busy", "profile-registry-observation-changed", "profile-registry-continuity-mismatch", "directory-integrity"];
-  const causes: { name: string; code: string; reason: string }[] = [];
+  const frames = ["readPrivateFile", "withPrivateFileLock", "assertPrivateLockBytes", "profileObservation", "readProfileEvidence",
+    "readMachineRegistry", "assertDuoMembership", "assertProfileRuntime", "publishIssuedDuo", "prepareIssuedDuoTransaction", "settleDuoPublication"];
+  const causes: { name: string; code: string; reason: string; frames: string[] }[] = [];
   let current = error;
   for (let depth = 0; depth < 6; depth++) {
     const message = current instanceof Error ? current.message : undefined;
+    const stack = current instanceof Error ? current.stack ?? "" : "";
     causes.push({ name: current instanceof Error && names.has(current.name) ? current.name : "unclassified",
       code: current instanceof Error && "code" in current && typeof current.code === "string" && Object.hasOwn(ERROR_CATALOG, current.code) ? current.code : "unclassified",
-      reason: message === undefined ? "unclassified" : reasons.find(reason => message.includes(reason)) ?? "unclassified" });
+      reason: message === undefined ? "unclassified" : reasons.find(reason => message.includes(reason)) ?? "unclassified",
+      frames: frames.filter(frame => stack.includes(frame)) });
     if (!(current instanceof Error) || current.cause === undefined) break;
     current = current.cause;
   }
