@@ -8,7 +8,7 @@ import { defaultRuntimePaths } from "../../../../src/backend/app/config/runtime-
 import { createNominatimGeocodeAdapter } from "../../../../src/backend/processing/providers/geocode-adapters.js";
 import { createProviderClient } from "../../../../src/backend/processing/providers/provider-client.js";
 import { ConfigSchema } from "../../../../src/models/config/schema.js";
-import { ProviderRequestEnvelopeSchema } from "../../../../src/models/providers/providers.js";
+import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema } from "../../../../src/models/providers/providers.js";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { GeocodeOutcomeSchema } from "../../../../src/rules/normalization/geocode.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
@@ -102,12 +102,12 @@ it("cancels a worker queued behind the parent without starting its fetch", async
 it("fails in-flight and queued worker requests when their parent dies without replay", async () => {
   const parent=fork(join(import.meta.dirname,"../../../support/helpers/geocode/nominatim-parent.ts"),[],{execArgv:["--import","tsx"],stdio:["ignore","pipe","pipe","ipc"]});
   cleanups.push(async()=>{if(parent.exitCode===null&&parent.signalCode===null){parent.kill("SIGKILL");await once(parent,"exit");}});
-  let output="";parent.stdout?.on("data",chunk=>{output+=chunk.toString();});
+  let output="";parent.stdout?.on("data",(chunk:unknown)=>{assert.ok(chunk instanceof Uint8Array);output+=Buffer.from(chunk).toString("utf8");});
   await message(parent,"ready");
   const started=message(parent,"fetch-start");parent.send("call");await started;
   parent.send("call");await new Promise<void>(done=>setTimeout(done,50));
   const closed=once(parent,"close");parent.kill("SIGKILL");await closed;
-  const results=output.trim().split("\n").map(line=>JSON.parse(line));
+  const results=output.trim().split("\n").map(line=>ProviderAdapterOutcomeSchema.parse(JSON.parse(line)));
   assert.equal(results.length,2);
   for(const result of results)assert.equal(result.response.state,"unavailable");
   const starts:number[]=[];

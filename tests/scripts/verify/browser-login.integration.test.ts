@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SmokeSessionClosureError, createSmokeProfileAdmission, closeSmokeSessions, smokeErrorDiagnostic, withSmokeWorker as runSmokeWorker } from "../../../scripts/verify/browser-login.js";
+import { SmokeVerificationRefusedError, SmokeSessionClosureError, createSmokeProfileAdmission, closeSmokeSessions, smokeErrorDiagnostic, withSmokeWorker as runSmokeWorker } from "../../../scripts/verify/browser-login.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createDuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
@@ -150,7 +150,10 @@ describe("registered browser-login smoke lifecycle", () => {
     plan(2);
     const before = database.authority.workerPools.get("person-lookup");
     let operated = false;
-    await expect(withSmokeWorker(database, async () => { operated = true; }, clock)).rejects.toMatchObject({ code: "LIVE_SMOKE_VERIFICATION_REFUSED", errors: [{ message: expect.stringMatching(/roster-authority-unavailable/u) }] });
+    await assert.rejects(withSmokeWorker(database, async () => { operated = true; }, clock),error=>{
+      assert.ok(error instanceof SmokeVerificationRefusedError);assert.equal(error.code,"LIVE_SMOKE_VERIFICATION_REFUSED");assert.equal(error.errors.length,1);
+      const cause:unknown=error.errors[0];assert.ok(cause instanceof Error);assert.match(cause.message,/roster-authority-unavailable/u);return true;
+    });
     expect(operated).toBe(false);
     expect(database.authority.workerSlots.list()).toEqual([]);
     expect(database.authority.workerPools.get("person-lookup")).toEqual(before);
@@ -407,10 +410,10 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("re-admits only its exact already-admitted profile once for fresh-profile recovery", async () => {
-    const { root, database } = await fixture();
+    const { database } = await fixture();
     const { lock, profileRunId } = fixtureOwner(database);
     try {
-      const slot = verificationSlot(database);
+      verificationSlot(database);
       const profileRoot = join(fixtureOwner(database).root, "scratch", "live-smoke", profileRunId, "browsers");
       const profileDirectory = workerProfileDirectory({ profileRoot, slotOrdinal: 1, system: "ucpath" });
       const admit = createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root,
@@ -435,7 +438,7 @@ describe("registered browser-login smoke lifecycle", () => {
     const { root, database } = await fixture();
     const { lock, profileRunId } = fixtureOwner(database);
     try {
-      const slot = verificationSlot(database);
+      verificationSlot(database);
       const profileRoot = join(fixtureOwner(database).root, "scratch", "live-smoke", profileRunId, "browsers");
       const profileDirectory = workerProfileDirectory({ profileRoot, slotOrdinal: 1, system: "ucpath" });
       const options = { database, lock, stateRoot: fixtureOwner(database).root,

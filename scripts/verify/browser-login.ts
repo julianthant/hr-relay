@@ -238,7 +238,7 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
   if (process.argv.includes("--worker")) throw new Error("live-smoke-worker-selection-unavailable: the check allocates its own worker slot");
   const workspace = fileURLToPath(new URL("../..", import.meta.url));
   const machine = acquireEntrypointAdmission(workspace, "shared");
-  let admission: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined, operationError: unknown;
+  let admission: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined, operationFailure: { error: unknown } | undefined;
   try {
     const selected = captureSelectedProfileStorage(machine);
     admission = machine.admitProfile(machine.issueRegisteredProfileClaim(selected.profileId));
@@ -353,15 +353,13 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
     () => { deleteOwnedBrowserProfile(smokeProfileRoot, join(smokeProfileRoot, `w${ordinal}`)); }, sessionErrors);
   write("[smoke] every session closed with proof");
   }, systemClock, { lock, ...profileAdmission.profileBinding, profileRunId, system, credentialKey: duoCeremonyCredentialKey(config) });
-  } catch (error) { operationError = error; throw error; }
-  finally {
-    try {
-      if (!(operationError instanceof RuntimeCustodyUncertainError) && !(operationError instanceof AuthoritySourceClosureUnprovedError)) {
-        database?.close(); admission?.release(); machine.release();
-      }
+  } catch (error) { operationFailure = { error }; }
+  try {
+    if (!(operationFailure?.error instanceof RuntimeCustodyUncertainError) && !(operationFailure?.error instanceof AuthoritySourceClosureUnprovedError)) {
+      database?.close(); admission?.release(); machine.release();
     }
-    catch (error) { throw new RuntimeCustodyUncertainError(operationError === undefined ? [error] : [operationError, error]); }
-  }
+  } catch (error) { throw new RuntimeCustodyUncertainError(operationFailure === undefined ? [error] : [operationFailure.error, error]); }
+  if (operationFailure !== undefined) throw operationFailure.error;
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error: unknown) => {

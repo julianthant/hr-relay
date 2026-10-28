@@ -68,11 +68,11 @@ it("requires exact bound full closure and one finite source child before the eff
   assert.equal(spawn.mock.calls.length,1);
 });
 
-for(const malformed of ["unknown-field","multiple-requests","oversize"] as const)it(`launches no browser on ${malformed} stdin`,async()=>{
+for(const malformed of ["unknown-field","multiple-requests","oversize","non-bytes"] as const)it(`launches no browser on ${malformed} stdin`,async()=>{
   const f=fixture();const launch=vi.spyOn(chromium,"launchPersistentContext").mockRejectedValue(new Error("unexpected launch"));
   const request={version:1,nonce:randomUUID(),profiles:[{profileRoot:f.root,profileDirectory:f.directory}],...deadlines};
-  const text=malformed==="unknown-field"?JSON.stringify({...request,unknown:true}):malformed==="multiple-requests"?`${JSON.stringify(request)}\n${JSON.stringify(request)}`:"x".repeat(65537);
-  vi.spyOn(process.stdin,Symbol.asyncIterator).mockImplementation(async function*(){yield Buffer.from(text);return undefined;});
+  const text=malformed==="unknown-field"?JSON.stringify({...request,unknown:true}):malformed==="multiple-requests"?`${JSON.stringify(request)}\n${JSON.stringify(request)}`:malformed==="oversize"?"x".repeat(65537):JSON.stringify(request);
+  vi.spyOn(process.stdin,Symbol.asyncIterator).mockImplementation(async function*(){yield malformed==="non-bytes"?text:Buffer.from(text);return undefined;});
   let output="";const priorExit=process.exitCode;
   const write=vi.spyOn(process.stdout,"write").mockImplementation((chunk,encoding,callback)=>{
     output+=String(chunk);const done=[encoding,callback].find(value=>typeof value==="function");if(typeof done==="function")done();return true;

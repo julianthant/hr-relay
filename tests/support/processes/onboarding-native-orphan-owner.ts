@@ -9,8 +9,9 @@ const directory=onboardingProfileDirectory(root,owner);
 const browser=spawn(chromium.executablePath(),["--headless=new","--no-sandbox","--disable-extensions","--no-first-run","--no-default-browser-check",
   `--user-data-dir=${directory}`,"--remote-debugging-address=127.0.0.1","--remote-debugging-port=0","about:blank"],{stdio:["ignore","ignore","pipe"]});
 let text="",ready=false;
-browser.stderr.on("data",chunk=>{
-  text+=chunk.toString();
+browser.stderr.on("data",(chunk:unknown)=>{
+  if(!(chunk instanceof Uint8Array))throw new Error("native-orphan-stderr-not-bytes");
+  text+=Buffer.from(chunk).toString("utf8");
   const endpoint=/DevTools listening on (ws:\/\/127\.0\.0\.1:[0-9]+\/devtools\/browser\/[^\s]+)/u.exec(text)?.[1];
   if(!ready&&endpoint!==undefined){ready=true;process.send?.({state:"ready",directory,endpoint});text="";}
   if(text.length>65536)text="";

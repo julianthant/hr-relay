@@ -213,10 +213,11 @@ export async function runNativeProfileProbeChild(): Promise<void> {
   try {
     const chunks: Buffer[] = []; let size = 0;
     for await (const chunk of process.stdin) {
-      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      size += bytes.length;
+      const value: unknown = chunk;
+      if (!(value instanceof Uint8Array)) throw new Error("native-profile-request-not-bytes");
+      size += value.byteLength;
       if (size > MAX_PROBE_BYTES) throw new Error("native-profile-request-oversize");
-      chunks.push(bytes);
+      chunks.push(Buffer.from(value));
     }
     request = NativeProfileProbeRequestSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))));
     for (const profile of request.profiles) {

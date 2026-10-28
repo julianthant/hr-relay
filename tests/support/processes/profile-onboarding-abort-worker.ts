@@ -4,14 +4,13 @@ import { join } from "node:path";
 import { z } from "zod";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { composeProfileRuntime } from "../../../src/backend/app/composition/storage-compose.js";
-import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { observeProcessIdentity } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { FakeKeyringEntry } from "../helpers/credential-keychain-fake.js";
 
 const [workspace, boundary] = z.tuple([z.string().min(1), z.enum(["source-fsync", "protected-stage"])]).parse(process.argv.slice(2));
-const machine = acquireEntrypointAdmission(workspace, "exclusive"), processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
+const machine = acquireEntrypointAdmission(workspace, "exclusive");
 let armed = false;
 const fsync = nativeFs.fsyncSync;
 function loseProcess(): never {
