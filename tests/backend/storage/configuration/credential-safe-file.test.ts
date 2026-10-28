@@ -83,6 +83,39 @@ it("retains distinct synchronous locks and expires the exact held witness", () =
   } finally { fs.rmSync(root, { recursive: true }); }
 });
 
+for (const peer of ["mid-create", "release-during-read"] as const) it(`waits for a ${peer} peer without reading its private lock`, () => {
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-lock-contender-"));
+  const path = join(root, ".installation-mutation.lock");
+  const bytes = JSON.stringify({ nonce: "11111111-1111-4111-8111-111111111111" });
+  const open = fs.openSync;
+  let acquired = false, foreignReads = 0, entered = 0;
+  try {
+    fs.chmodSync(root, 0o700);
+    fs.writeFileSync(path, peer === "mid-create" ? "" : bytes, { mode: 0o600, flag: "wx" });
+    vi.spyOn(fs, "openSync").mockImplementation((target, flags, mode) => {
+      const descriptor = open(target, flags, mode);
+      if (target === path && typeof flags === "number") {
+        if ((flags & fs.constants.O_EXCL) !== 0) acquired = true;
+        else if (!acquired && (flags & fs.constants.O_NONBLOCK) !== 0) {
+          foreignReads++;
+          if (peer === "release-during-read") fs.unlinkSync(path);
+        }
+      }
+      return descriptor;
+    });
+    const wait = vi.spyOn(Atomics, "wait").mockImplementation(() => {
+      if (peer === "mid-create") fs.writeFileSync(path, bytes);
+      fs.unlinkSync(path);
+      return "ok";
+    });
+    syncBuiltinESMExports();
+    withPrivateFileLock(root, ".installation-mutation.lock", held => { held.assertHeld(); entered++; });
+    assert.equal(entered, 1); assert.equal(foreignReads, 0);
+    assert.equal(wait.mock.calls.length, 1); assert.equal(wait.mock.calls[0]?.[3], 25);
+    assert.equal(fs.existsSync(path), false);
+  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); fs.rmSync(root, { recursive: true }); }
+});
+
 it("refuses an exact-byte replacement before entering a private mutex", () => {
   const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-lock-identity-"));
   const path = join(root, ".installation-mutation.lock"), original = join(root, "retained-original");

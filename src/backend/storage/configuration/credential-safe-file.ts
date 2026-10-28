@@ -337,8 +337,6 @@ export function withPrivateFileLock<T>(directory: string, name: string, body: (h
       identity = file.identity;
       return true;
     })) break;
-    const existing = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
-    if (existing !== undefined) assertPrivateLockBytes(existing.bytes);
     if (systemClock.monotonicMs() > deadline) throw new PrivateFileLockUnavailableError();
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
   }

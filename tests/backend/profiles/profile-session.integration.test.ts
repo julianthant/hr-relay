@@ -467,7 +467,7 @@ describe("profile session", () => {
     const keys = FakeKeyringEntry.snapshot();
     assert.throws(() => session.signUp({
       firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    }), /private lock is malformed/u);
+    }), PrivateFileLockUnavailableError);
     assert.deepEqual(readFileSync(path), bytes);
     assert.deepEqual(fs.readdirSync(root, { recursive: true }).map(name => {
       const path = join(root, String(name)), info = fs.lstatSync(path);
