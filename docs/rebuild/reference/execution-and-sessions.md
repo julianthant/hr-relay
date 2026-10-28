@@ -538,9 +538,13 @@ retains exact native command outcomes, including retired members and confirmatio
 work, without exposing native lock custody snapshots.
 
 Dashboard composition borrows the held controller lifetime. Bootstrap retains it through HTTP,
-worker and account drains; unproved resource closure retains custody.
+worker and account drains; unproved resource closure retains custody. Composition and crash
+reconciliation require the same capability retained by the installation and profile admission.
 
-Workers receive the controller's listening handle over IPC before authority admission. Lease start
+Workers receive the controller's listening handle, port and canonical workspace over IPC before
+authority admission. The controller retains each transferred child until its actual `close` event.
+Exclusive installation admission refuses while a transferred child remains unclosed; handle transfer
+refuses while an exclusive installation admission is held. Lease start
 records the admitted command as `startCommandId` for replacement and standing recovery. It retains
 exact member, lease-generation, control, settings and reservation fences. The actual supervisor's
 child exit event triggers interrupted-run recovery; heartbeat age does not authorize reassignment.

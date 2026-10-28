@@ -318,6 +318,17 @@ Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 
 0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
 Each record retains its own transaction and recovery contract.
 
+The same private-file primitive serializes installation mutation at
+`<workspace>/.tracker/control/.installation-mutation.lock` and profile operations and registry
+publication at their distinct machine-root `.profile-ops.lock` and `.profile-registry.lock` paths.
+Each file contains only a private nonce; parent identity, file inode, bytes and fsync bind exact
+release. Callbacks are synchronous, with a ten-second wait budget and 25ms polling.
+The first genuine root workspace initialization authenticates and clears only these exact prior
+fixed locks before children or reservations exist. Malformed or unproved evidence remains held;
+the same lifetime never reaps a current lock. Pending publication validation runs without settlement
+effects during that startup inspection. Key-stage and credential-anchor publication reuse the
+held installation mutation through an operation-bound read scope, which expires on callback exit.
+
 Credential envelopes, keys, locks, and other private documents require mode `0600`. SQLite file
 witnesses follow the canonical database policy: an owned, one-link, regular non-symlink file with no
 group or world write permission beneath validated private profile ancestry. A safe `0644` database

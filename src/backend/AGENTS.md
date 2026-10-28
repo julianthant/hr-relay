@@ -8,6 +8,10 @@ task starts at the repository root.
 - A long-lived CLI command owns and awaits shutdown. Keep signal handlers installed throughout
   the drain, retain the lifetime listener through worker shutdown, and propagate a failed stop. Shutdown does not imply
   a backup: backups are explicit-only.
+- Acquire the genuine root lifetime before installation effects and retain that same capability
+  through admissions, composition and recovery. Inherited workers receive it over actual IPC.
+  Prior fixed mutex cleanup runs only during the root's first workspace initialization; synchronous
+  mutation callbacks retain their distinct file locks, and awaited drains stay outside those locks.
 - Admit request identity once, then pass the derived actor to services. Caller-supplied identity
   fields must agree before effects; do not backfill historical actor evidence.
 - Every browser-reachable mutation passes the registered loopback Host/Origin guard before its
