@@ -1,3 +1,4 @@
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { join } from "node:path";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createKernelStubCommandFixtures } from "../../../support/helpers/backend/kernel-stub-command-fixtures.js";
@@ -30,7 +31,7 @@ const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, c
 
 
 afterEach(async () => {
-  for (const database of openDatabases.splice(0)) database.close();
+  for (const database of openDatabases.splice(0)) { releaseSeededWriteOwners(database, NOW); database.close(); }
   for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });

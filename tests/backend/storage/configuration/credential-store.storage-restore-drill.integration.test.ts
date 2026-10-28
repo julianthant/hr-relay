@@ -1,3 +1,4 @@
+import { detachBoundFixtureWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import assert from "node:assert/strict";
@@ -53,6 +54,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     const manifestPath = await takeBackup(database, paths);
 
     database.authority.notifications.create(NOTIFICATION);
+    detachBoundFixtureWorkers(database);
     database.close();
     const before = readFileSync(paths.authorityPath);
 
