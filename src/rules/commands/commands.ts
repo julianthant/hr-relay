@@ -585,6 +585,7 @@ export const RunLifecycleCommandOperationSchema = z.enum([
   "create",
   "claim-next",
   "transition",
+  "recover-crash",
   "renew-claim",
   "worker-transition",
   "worker-admission",

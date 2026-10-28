@@ -35,6 +35,7 @@ import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } fro
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import {
+  CanonicalCrashRecoveryRequestSchema,
   CanonicalCancellationTerminalizeRequestSchema,
   CanonicalWriteResolutionTransitionRequestSchema,
   RunClaimSweepRequestSchema,
@@ -624,6 +625,21 @@ export class RunRecordService {
     });
   }
 
+  recoverCrash(input: unknown): RunMutationOutcome {
+    const request = CanonicalCrashRecoveryRequestSchema.parse(input);
+    return this.dependencies.database.withAuthorityTransaction(repositories => {
+      const journal = this.inspectJournal(repositories, "recover-crash", request, {
+        kind: "terminal", expectedVersion: request.expectedVersion, ...request.claim });
+      if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
+      if (journal.state === "replay") return this.replayRun(journal.result);
+      const previous = this.read(request.runId);
+      if (previous.state !== "present") return refused({ reason: "lost" });
+      const run = this.dependencies.database.recoverCrashedRun(request);
+      this.recordJournal(repositories, journal.command, journalRun(run), previous.run.lifecycle);
+      return { state: "applied", run };
+    });
+  }
+
   terminalize(
     input: unknown,
     descriptor: AnyWorkflowDescriptor,
@@ -1110,7 +1126,7 @@ export class RunRecordService {
 
   private recordLifecycleEvent(repositories: AuthorityRepositories, operation: LifecycleOperation,
     commandId: string, run: RunRecord): void {
-    if (["claim-next", "transition", "worker-transition", "terminalize", "requeue"].includes(operation)) {
+    if (["claim-next", "transition", "worker-transition", "terminalize", "requeue", "recover-crash"].includes(operation)) {
       const lifecycle = run.lifecycle;
       if (lifecycle.state === "parked-write") {
         const intent = repositories.writeIntents.get(lifecycle.writeIntentId);
