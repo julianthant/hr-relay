@@ -1,18 +1,20 @@
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, it, vi } from "vitest";
+import { afterEach, beforeEach, it, vi } from "vitest";
 import { chromium } from "playwright";
 import { assertNativeBrowserProfilesClosed, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError,
   NativeProfileProbeRequestSchema, NativeProfileProbeResultSchema, runNativeProfileProbeChild } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runSecureEnvironmentEntrypoint } from "../../../../scripts/dev/secure-env-bootstrap.js";
 
-const { spawn } = vi.hoisted(() => ({spawn:vi.fn()}));
-vi.mock("node:child_process",async importOriginal=>({...await importOriginal<typeof import("node:child_process")>(),spawnSync:spawn}));
+const spawn=vi.fn();
+beforeEach(()=>{vi.spyOn(childProcess,"spawnSync").mockImplementation(spawn);syncBuiltinESMExports();});
 const roots:string[]=[];
-afterEach(()=>{vi.restoreAllMocks();spawn.mockReset();for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});});
+afterEach(()=>{vi.restoreAllMocks();syncBuiltinESMExports();spawn.mockReset();for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});});
 function fixture(){
   const root=mkdtempSync(join(tmpdir(),"relay-native-profile-"));roots.push(root);
   const directory=join(root,"w1","crm");mkdirSync(directory,{recursive:true,mode:0o700});
