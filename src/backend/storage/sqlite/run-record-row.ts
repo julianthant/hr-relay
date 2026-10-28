@@ -1,5 +1,6 @@
+import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/record.js";
+import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../../../models/run/record.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 
@@ -73,4 +74,20 @@ export function runRecordFromRow(input: unknown): RunRecord {
     if (row[key] !== expected) throw new Error(`run row ${key} does not match its whole-record JSON`);
   }
   return Object.freeze(record);
+}
+
+export function updateRunRecord(database: DatabaseSync, record: RunRecord): number {
+  const entries = Object.entries(runRecordColumns(record)).filter(([key]) => key !== "id");
+  const changed = Number(database.prepare(`UPDATE runs SET ${entries.map(([key]) => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
+    .run(...entries.map(([, value]) => value), record.envelope.runId, record.version - 1).changes);
+  if (changed !== 1) throw new Error("run-version-fence-lost");
+  return changed;
+}
+
+export function transitionRunRecord(current: RunRecord, candidate: RunRecord, now: string): RunRecord {
+  if ("workerId" in current.lifecycle && "workerId" in candidate.lifecycle
+    && canonicalJsonStringify(current.lifecycle.workerLifetime ?? null) !== canonicalJsonStringify(candidate.lifecycle.workerLifetime ?? null)) throw new Error("run-claim-lifetime-immutable");
+  const violation = runTransitionViolation(current.lifecycle, candidate.lifecycle);
+  if (violation !== undefined) throw new Error(`run ${current.envelope.runId}: ${violation}`);
+  return RunRecordSchema.parse({ ...candidate, version: current.version + 1, updatedAt: now });
 }

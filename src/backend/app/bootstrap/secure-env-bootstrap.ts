@@ -47,6 +47,12 @@ export async function runSecureEnvironmentBootstrap(
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
   const workspace = fileURLToPath(new URL("../../../..", import.meta.url));
+  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "cancel-queued-runs") {
+    const { runOfflineQueuedRunCancellation } = await import("../../storage/maintenance/cancel-queued-runs.js");
+    const { report, json } = await runOfflineQueuedRunCancellation(workspace, entrypointArgs.slice(2));
+    process.stdout.write(json ? `${JSON.stringify(report)}\n` : `storage queued runs: ${report.state}; ${String(report.runIds.length)} runs\n`);
+    return;
+  }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-worker-process") {
     const { runOfflineWorkerProcessRecovery } = await import("../../storage/maintenance/worker-process-recovery.js");
     try {
