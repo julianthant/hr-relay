@@ -1,3 +1,4 @@
+import { EidSchema } from "../../../src/rules/identity/ids.js";
 import { compileWorkflow, composeWorkflowModule, defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
@@ -81,3 +82,18 @@ export function childPolicyModules(cascadeCancel: "cascade" | "independent") {
     } }), { manifest });
   return { root: compiled, modules: [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(compiled, plan1Stores.stores)] };
 }
+
+export const childMixedPolicyRoot = compileWorkflow(defineWorkflow({ ...common, id: "fixture-child-mixed-policy", code: "fcm",
+  steps: ({ delegate, result }) => {
+    const children = (["cascade", "independent"] as const).map(cascadeCancel => delegate({ id: cascadeCancel,
+      target: leaf, edgeId: cascadeCancel, cardinality: "one",
+      await: cascadeCancel === "cascade" ? "none" : "terminal", join: cascadeCancel === "cascade" ? "none" : "one",
+      policy: { ...policy, cascadeCancel } }, [], {
+      bind: ({ input }) => ({ ...input, emplId: EidSchema.parse(cascadeCancel === "cascade" ? "10800001" : "10800002") }),
+      deriveChildItemId: (_input, identity) => identity.canonicalItemId,
+    }));
+    return { steps: children.map(child => [{ key: child.id, label: child.id }, [child]]),
+      result: result(Plan1Input, [], ({ input }) => input) };
+  } }), { manifest });
+export const childMixedPolicyModules = [composeWorkflowModule(plan1Leaf, plan1Stores.stores),
+  composeWorkflowModule(childMixedPolicyRoot, plan1Stores.stores)];
