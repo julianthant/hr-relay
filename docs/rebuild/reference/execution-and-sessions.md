@@ -542,6 +542,13 @@ records the admitted command as `startCommandId` for replacement and standing re
 exact member, lease-generation, control, settings and reservation fences. The actual supervisor's
 child exit event triggers interrupted-run recovery; heartbeat age does not authorize reassignment.
 
+The dashboard owns one serial Nominatim service. It accepts requests only over each spawned
+worker's existing IPC channel; workers have no direct Nominatim fetch path. The queue spaces actual
+fetch starts by at least one second, preserves deadlines and cancellation, and never replays a
+request after disconnect. Standalone execution composes its own service while holding the exclusive
+root listener. Shutdown retains the controller until active geocode work drains; failed closure
+refuses release. There are no geocode election, endpoint or PID files.
+
 Standalone browser verification holds the exclusive runtime listener throughout its admitted lifetime.
 Its reservation binds the installation/profile, lock port, fresh scratch profile, browser system and
 Duo credential. Startup retires an interrupted verification-only reservation before new admission,

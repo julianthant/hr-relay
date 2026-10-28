@@ -1,3 +1,4 @@
+import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { reconcileStartupCrash, reconcileExitedWorker } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
@@ -363,7 +364,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
 }
 
 // Spawn absolute argv without a shell; inherited stderr keeps bootstrap failures visible.
-function realWorkerProcessSpawner(lock: RuntimeLifetimeLock): WorkerProcessSpawner {
+function realWorkerProcessSpawner(lock: RuntimeLifetimeLock, nominatim: ReturnType<typeof createNominatimGeocodeAdapter>): WorkerProcessSpawner {
   return (request) => {
     lock.assertHeld();
     const child = spawnChildProcess(request.command, [...request.args], {
@@ -371,6 +372,7 @@ function realWorkerProcessSpawner(lock: RuntimeLifetimeLock): WorkerProcessSpawn
       env: request.environment,
       stdio: ["inherit", "inherit", "inherit", "ipc"],
     });
+    nominatim.attach(child);
     void lock.share(child).catch(error => {
       child.kill("SIGKILL");
       child.emit("error", error);
@@ -736,6 +738,7 @@ async function composeDashboardRuntimeStartup(
     assistantAuthorization.assertEffect(commandId);
   };
   profile.runtime.beginSupervisorConstruction(profile.token);
+  const nominatim = createNominatimGeocodeAdapter({clock});
   const workerControl = composeWorkerProcessControl({
     onExit: (member, pid, valid) => {
       const lease = database.authority.workerLeases.get(member.workerId);
@@ -752,19 +755,21 @@ async function composeDashboardRuntimeStartup(
     clock,
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
     launch: input.workerProcess?.launch ?? productionWorkerLaunch(repoRoot, env),
-    spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(input.lifetimeLock),
+    spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(input.lifetimeLock, nominatim),
     birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
     onFault: reportSupervisorFault,
     preflight: runtimePreflight,
     assertAssistantEffect,
   });
   profile.runtime.bindSupervisor(profile.token, workerControl.supervisor);
-  closeWorkerControl = requiredClosure(() => {
+  const stopWorkerControl = requiredClosure(async () => {
     const evidence = workerControl.supervisor.close();
     if (evidence.length > 0) {
       throw new RuntimeCustodyUncertainError([new Error("dashboard worker closure is unproved")]);
     }
+    await nominatim.stop();
   });
+  closeWorkerControl = stopWorkerControl;
   ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
   database.reconcileWorkerControlMilestones(clock.now().toISOString());
   // Ref write-safety's typed operator resolutions, over the SAME AuthorityDatabase
@@ -1004,7 +1009,7 @@ async function composeDashboardRuntimeStartup(
       if (failures.length === 0) {
         try { requireProducerClosure(); await profile.runtime.awaitClosurePreparation(selected); } catch (error) { failures.push(error); }
       }
-      try { if (workerControl.supervisor.close().length > 0) throw new Error("dashboard worker closure is unproved"); }
+      try { await stopWorkerControl(); }
       catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
     })();

@@ -161,7 +161,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/duo-ceremony-fixtures.ts` | duo ceremony fixtures |
 | `helpers/failure-resolution/fixtures.ts` | fixtures |
 | `helpers/geocode/nominatim-client.ts` | nominatim client |
-| `helpers/geocode/nominatim-election.ts` | nominatim election |
+| `helpers/geocode/nominatim-parent.ts` | parent-owned geocode queue and IPC disconnect |
 | `helpers/integration/journaled-protected-settings.ts` | journaled protected settings |
 | `helpers/integration/storage-recovery-fixture.ts` | storage recovery fixture |
 | `helpers/kuali-finalization-fixtures.ts` | kuali finalization fixtures |

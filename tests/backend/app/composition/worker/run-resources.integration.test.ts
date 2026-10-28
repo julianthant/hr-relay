@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { existsSync,readFileSync } from "node:fs";
-import { join } from "node:path";
+
 import { describe,it } from "vitest";
 import { duoCeremonyGatesOver } from "../../../../support/helpers/duo-ceremony-fixtures.js";
 import { createRunResourcesFactory } from "../../../../../src/backend/app/composition/worker/run-resources.js";
@@ -44,7 +44,7 @@ describe("F actual four-way baseline independence",()=>{
    const writer=artifacts(f);await writer.ready;
    account=await chatGptFixture(admission);
    const ocr=createChatGptOcrAdapter({account:account.service,artifacts:writer,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
-   const factory=createRunResourcesFactory({ocr,assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},processLockRoot:join(f.root,"locks"),authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("c"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("no browser in snapshot proof");}}});
+   const factory=createRunResourcesFactory({ocr,assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("c"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("no browser in snapshot proof");}}});
    const first=factory.forRun(f.run);
    const config=ConfigSchema.parse({...f.snapshot.config,timeouts:{...f.snapshot.config.timeouts,taskMs:f.snapshot.config.timeouts.taskMs+1000,sessionAcquireMs:1000+PositiveIntSchema.parse(f.snapshot.config.timeouts.sessionAcquireMs)},browser:{...f.snapshot.config.browser,headless:!f.snapshot.config.browser.headless}});
    const snapshot={...f.snapshot,configSnapshotId:ConfigSnapshotIdSchema.parse(id(91)),config,fingerprint:FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config)))};f.db.authority.configSnapshots.insert(snapshot);
@@ -92,7 +92,7 @@ it("registers the real account adapter in run resources and persists canonical a
   const claimed=world.claim({database:f.db,clock:f.clock,path:f.path},descriptor);
   const ocr=createChatGptOcrAdapter({account:account.service,artifacts:writer,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
   resources=createRunResourcesFactory({ocr,authority:f.db.authority,artifacts:writer,clock:f.clock,ids:{uuid:randomUUID},isolation:rebuildRuntimeIsolation,
-   processLockRoot:join(f.root,"locks"),protectedSecrets:{read:()=>{throw new Error("OCR cannot read HR credentials");}},scheduler,environment:{},
+   protectedSecrets:{read:()=>{throw new Error("OCR cannot read HR credentials");}},scheduler,environment:{},
    duoCeremony:duoCeremonyGatesOver(f.db,f.clock,new ManualScheduler(f.clock)),
    assertProfileOwner:()=>{throw new Error("OCR cannot acquire a browser profile");},assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root)});
   const selected=resources.forRun(claimed.run);assert.equal(selected.providers?.adapters["ocr.extract"],ocr);

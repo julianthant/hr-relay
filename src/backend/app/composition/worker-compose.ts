@@ -1,3 +1,4 @@
+import { createNominatimGeocodeAdapter } from "../../processing/providers/geocode-adapters.js";
 import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError } from "../../storage/source-closure.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
@@ -571,7 +572,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   ocrAccount = createChatGptAccountService({ admission, stateRoot, clock });
   accountClosureProven = false;
   const ocr = createChatGptOcrAdapter({ account: ocrAccount, artifacts, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
-  resources = createRunResourcesFactory({ocr,processLockRoot:join(repoRoot,input.isolation.processLockRoot),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+  resources = createRunResourcesFactory({ocr,...(input.lifetimeLock instanceof RuntimeLifetimeLock ? {nominatim:createNominatimGeocodeAdapter({clock})} : {}),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
     assertBrowserRoot,
     onDebug: (category, debugWorkerId, event) => {
       debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
