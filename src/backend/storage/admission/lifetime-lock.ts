@@ -63,11 +63,22 @@ export class RuntimeLifetimeLock {
     if (!this.#server.listening) throw new RuntimeLifetimeLockReleasedError();
   }
 
-  initializeWorkspace(workspace: string, startup: () => void): void {
+  bindWorkspace(workspace: string): void {
     this.assertHeld();
     if (resolvePath(workspace) !== workspace || realpathSync(workspace) !== workspace) throw new Error("runtime-lifetime-workspace-invalid");
-    if (this.#startup !== undefined) { this.assertWorkspace(workspace); return; }
+    if (this.#workspace !== undefined && this.#workspace !== workspace) throw new Error("runtime-lifetime-workspace-unproved");
     this.#workspace = workspace;
+  }
+
+  assertExclusiveWorkspaceTarget(workspace: string): void {
+    this.bindWorkspace(workspace);
+    if (this.#startup === "initializing" || this.#startup === "failed") throw new Error("runtime-lifetime-workspace-unproved");
+    if (this.#children.size !== 0) throw new Error("runtime-lifetime-owned-children-unclosed");
+  }
+
+  initializeWorkspace(workspace: string, startup: () => void): void {
+    this.bindWorkspace(workspace);
+    if (this.#startup !== undefined) { this.assertWorkspace(workspace); return; }
     this.#startup = "initializing";
     try {
       const completed: unknown = startup();

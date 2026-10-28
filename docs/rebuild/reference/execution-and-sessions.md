@@ -540,6 +540,8 @@ work, without exposing native lock custody snapshots.
 Dashboard composition borrows the held controller lifetime. Bootstrap retains it through HTTP,
 worker and account drains; unproved resource closure retains custody. Composition and crash
 reconciliation require the same capability retained by the installation and profile admission.
+Restore writers bind the canonical target and exclude retained children before creating restore records;
+that binding does not replace authenticated workspace startup.
 
 Workers receive the controller's listening handle, port and canonical workspace over IPC before
 authority admission. The controller retains each transferred child until its actual `close` event.

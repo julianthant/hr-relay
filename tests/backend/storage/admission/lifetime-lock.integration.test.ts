@@ -2,7 +2,9 @@ import { createAdmissionChildFixtures } from "../../../support/helpers/storage/a
 import assert from "node:assert/strict";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { access, mkdtemp, realpath, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { access, lstat, mkdtemp, realpath, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -12,6 +14,9 @@ import { acquireRuntimeLifetimeLock, RuntimeAlreadyRunningError, RuntimeLifetime
 import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
+import { runOfflineStorageRelocation } from "../../../../src/backend/app/composition/storage/relocate.js";
+import { runOfflineQueuedRunCancellation } from "../../../../src/backend/storage/maintenance/cancel-queued-runs.js";
 
 const ReadySchema = z.strictObject({ kind: z.literal("held"), port: z.number().int().positive(), workerPid: z.number().int().positive() });
 
@@ -381,4 +386,65 @@ for (const capability of ["missing", "released", "foreign-workspace"] as const) 
     assert.deepEqual(before, []);
     await assert.rejects(access(join(directory, ".tracker")), { code: "ENOENT" });
   } finally { await lock.close(); await rm(directory, { recursive: true }); await rm(foreign, { recursive: true }); }
+});
+
+for (const capability of ["foreign-workspace", "retained-child"] as const) it(`refuses ${capability} before effects at every restore writer`, async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "restore-admission-target-")));
+  const foreign = await realpath(await mkdtemp(join(tmpdir(), "restore-admission-foreign-")));
+  const lock = await RuntimeLifetimeLock.acquire(0);
+  let child: ChildProcess | undefined, closed: Promise<unknown[]> | undefined;
+  let primary: { error: unknown } | undefined;
+  try {
+    const initial = acquireEntrypointAdmission(capability === "foreign-workspace" ? foreign : directory, "exclusive", lock);
+    initial.release();
+    if (capability === "retained-child") {
+      const source = new URL("../../../../src/backend/storage/admission/lifetime-lock.ts", import.meta.url).href;
+      child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+        import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(source)};
+        const lock = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
+        process.once("message", () => { void lock.close().then(() => process.disconnect()); });
+        process.send({ state: "ready" });
+      `, String(lock.port)], { stdio: ["ignore", "ignore", "inherit", "ipc"] });
+      closed = once(child, "close");
+      const ready = once(child, "message");
+      await lock.share(child);
+      assert.deepEqual((await ready)[0], { state: "ready" });
+    }
+    const snapshot = async () => Promise.all((await readdir(directory, { recursive: true })).sort().map(async name => {
+      const path = join(directory, name), info = await lstat(path);
+      return { name, device: info.dev, inode: info.ino, mode: info.mode,
+        bytes: info.isFile() ? (await readFile(path)).toString("base64") : null };
+    }));
+    const before = await snapshot();
+    const mutations = [vi.spyOn(fs, "mkdirSync"), vi.spyOn(fs, "openSync"), vi.spyOn(fs, "writeFileSync"),
+      vi.spyOn(fs, "unlinkSync"), vi.spyOn(fs, "renameSync"), vi.spyOn(fs, "linkSync")];
+    syncBuiltinESMExports();
+    const operationId = "11111111-1111-4111-8111-111111111111";
+    const writers: (() => unknown)[] = [
+      () => RuntimeAdmission.acquireStoppedMachineControlMaintenance(directory, lock),
+      () => runOfflineAuthorityRestoreRecovery(directory, ["--operation", operationId, "--from", join(directory, "backup.json"), "--outcome", "unchanged"], lock),
+      () => runOfflineStorageRelocation({ workspace: directory, lifetime: lock, command: { kind: "resume", id: operationId, json: true } }),
+      () => runOfflineQueuedRunCancellation(directory, ["--apply", "--capture", "a".repeat(64)], lock),
+    ];
+    for (const writer of writers) {
+      await assert.rejects(async () => { await writer(); }, capability === "foreign-workspace"
+        ? /runtime-lifetime-workspace-unproved/u : /runtime-lifetime-owned-children-unclosed/u);
+      for (const mutation of mutations) assert.equal(mutation.mock.calls.some(([path]) => typeof path === "string"
+        && (path === directory || path.startsWith(`${directory}/`))), false);
+      assert.deepEqual(await snapshot(), before);
+    }
+  } catch (error) { primary = { error }; }
+  vi.restoreAllMocks(); syncBuiltinESMExports();
+  const failures: unknown[] = [];
+  try {
+    if (child !== undefined && closed !== undefined) {
+      child.send("close");
+      assert.deepEqual(await closed, [0, null]);
+    }
+    await lock.close();
+    await rm(directory, { recursive: true }); await rm(foreign, { recursive: true });
+  } catch (error) { failures.push(error); }
+  if (failures.length !== 0) throw new AggregateError(primary === undefined ? failures : [primary.error, ...failures],
+    "restore admission refusal and owned cleanup failed", { cause: primary?.error ?? failures[0] });
+  if (primary !== undefined) throw primary.error;
 });

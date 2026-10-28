@@ -266,6 +266,11 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
   if (!(input.lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
   input.lifetime.assertHeld();
   const workspace = resolve(input.workspace);
+  input.lifetime.assertExclusiveWorkspaceTarget(workspace);
+  if (input.admission !== undefined) {
+    if (input.admission.lifetime !== input.lifetime) throw new Error("storage-relocation: runtime lifetime mismatch");
+    input.admission.assertExclusive();
+  }
   const clock = input.clock ?? systemClock;
   input.admission?.assertStorageRelocationSupported();
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);

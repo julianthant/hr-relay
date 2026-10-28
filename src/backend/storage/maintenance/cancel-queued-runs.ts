@@ -68,6 +68,7 @@ export async function runOfflineQueuedRunCancellation(workspacePath: string, arg
   lifetime.assertHeld();
   const command = parseQueuedRunCancellation(args), workspace = realpathSync(workspacePath);
   if (workspace !== resolve(workspacePath)) throw new Error("queued-run-cancellation-workspace-unsafe");
+  lifetime.assertExclusiveWorkspaceTarget(workspace);
   const planned = await capture(workspace, clock);
   const runIds = planned.inventory.candidates.map(run => run.envelope.runId);
   if (!command.apply) return { json: command.json, report: { state: "planned", captureDigest: planned.captureDigest, runIds } };

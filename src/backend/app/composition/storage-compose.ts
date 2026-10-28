@@ -716,6 +716,7 @@ function rebuildStagedProjections(
 export async function runOfflineAuthorityRestoreRecovery(workspace: string, args: readonly string[], lifetime: RuntimeLifetimeLock, clock: Clock = systemClock) {
   if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
   lifetime.assertHeld();
+  lifetime.assertExclusiveWorkspaceTarget(workspace);
   const fields = new Map<string, string>(); let json = false;
   for (let index = 0; index < args.length; index += 1) {
     const field = args[index];

@@ -1545,6 +1545,7 @@ export class RuntimeAdmission {
     if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
     lifetime.assertHeld();
     const canonical = realpathSync(workspace);
+    lifetime.assertExclusiveWorkspaceTarget(canonical);
     const processLockRoot = join(canonical, rebuildRuntimeIsolation.processLockRoot);
     const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
     let lease: InstallationLease | undefined;
