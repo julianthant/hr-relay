@@ -122,16 +122,25 @@ it("lets a cooperative worker close its shared handle on parent disconnect", asy
   } finally { await world.close(); }
 });
 
-it("refuses both dashboard and offline commands before admission when another lifetime holds the port", async () => {
+it("uses the configured singleton port for production parents and refuses busy roots before admission", async () => {
   const lock = await acquireRuntimeLifetimeLock(0);
   assert.ok(lock instanceof RuntimeLifetimeLock);
   try {
-    for (const args of [["cli", "dashboard"], ["cli", "storage", "backup"]]) {
+    const config = z.object({ rebuild: z.object({ lockPort: z.number().int().positive() }) }).parse(JSON.parse(
+      await readFile(new URL("../../../../config/runtime-isolation.json", import.meta.url), "utf8")));
+    for (const args of [["cli", "dashboard"], ["cli", "dashboard", "--prod"], ["cli", "storage", "backup"],
+      ["cli", "storage", "restore"], ["cli", "storage", "recover-restore"], ["cli", "storage", "relocate"],
+      ["cli", "storage", "cancel-queued-runs"], ["test-target-document-number"]]) {
       await assert.rejects(runSecureEnvironmentBootstrap(args, {
-        acquireLifetimeLock: () => acquireRuntimeLifetimeLock(lock.port),
+        acquireLifetimeLock: port => { assert.equal(port, config.rebuild.lockPort); return acquireRuntimeLifetimeLock(lock.port); },
+        validateDashboardBundle: () => {},
         acquireAdmission: () => assert.fail("busy lifetime reached storage admission"),
       }), RuntimeAlreadyRunningError);
     }
+    const bootstrap = await readFile(new URL("../../../../src/backend/app/bootstrap/secure-env-bootstrap.ts", import.meta.url), "utf8");
+    assert.match(bootstrap, /receiveRuntimeLifetimeLock\(rebuildRuntimeIsolation\.lockPort,/u);
+    const verification = await readFile(new URL("../../../../scripts/verify/browser-login.ts", import.meta.url), "utf8");
+    assert.match(verification, /acquireRuntimeLifetimeLock\(rebuildRuntimeIsolation\.lockPort\)/u);
   } finally {
     await lock.close();
   }

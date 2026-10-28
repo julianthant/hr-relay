@@ -542,6 +542,7 @@ worker and account drains; unproved resource closure retains custody. Compositio
 reconciliation require the same capability retained by the installation and profile admission.
 Restore writers bind the canonical target and exclude retained children before creating restore records;
 that binding does not replace authenticated workspace startup.
+Production entrypoints use the configured singleton port; fixture-chosen ports do not bind distinct roots to one workspace.
 
 Workers receive the controller's listening handle, port and canonical workspace over IPC before
 authority admission. The controller retains each transferred child until its actual `close` event.
