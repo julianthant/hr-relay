@@ -8,6 +8,7 @@ import { classifyEvidenceLeaf } from "../../../src/models/trust/evidence-classif
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { SeparationsInput, SeparationsCanonicalInput, separationsWorkflow } from "../../../src/workflows/separations/workflow.js";
 import { projectStartSteps } from "../../../src/backend/runs/start/step-selection.js";
+import { KualiDocumentNumberSchema } from "../../../src/models/ui/kuali-document-identity.js";
 
 describe("workflow failure correction declaration", () => {
   const declared = separationsWorkflow.failureCorrections?.[0];
@@ -37,6 +38,19 @@ describe("workflow failure correction declaration", () => {
       assert.throws(() => validateFailureCorrections(SeparationsInput, nodes, [invalid]));
     }
     assert.throws(() => validateFailureCorrections(SeparationsInput, nodes, [declared, declared]));
+  });
+  it("corrects only a missing Action List document with the canonical document-number pattern", () => {
+    const correction = separationsDescriptor.failureCorrections?.find(entry => entry.inputField === "documentNumber");
+    assert.ok(correction);
+    assert.deepEqual(validateFailureCorrections(SeparationsInput, nodes, [correction]), [correction]);
+    assert.deepEqual(correction, { nodeId: "resolve-action", code: "document-not-in-action-list", inputField: "documentNumber",
+      label: "Document number", actionLabel: "Enter document number", pattern: "^\\d{3,8}$" });
+    for (const value of ["123", "4502", "12345678", "12", "123456789", " 4502 ", "abc", ""]) {
+      const accepted = KualiDocumentNumberSchema.safeParse(value).success;
+      assert.equal(rerunInputFieldAccepts(SeparationsInput, correction.inputField, value), accepted);
+      assert.equal(new RegExp(correction.pattern ?? "", "u").test(value), accepted);
+    }
+    assert.equal(separationsDescriptor.protectedInputs?.some(binding => binding.inputPath === correction.inputField), false);
   });
 });
 

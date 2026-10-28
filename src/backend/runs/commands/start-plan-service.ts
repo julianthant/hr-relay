@@ -111,6 +111,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         source?.stepOmissions ?? ingress.stepOmissions);
       if (rerunSource?.failureCorrection === undefined) {
         for (const submission of ingress.submissions) for (const correction of descriptor.failureCorrections ?? []) {
+          if (descriptor.surfaces?.inputRun?.parser.rules.some(rule => rule.emit === correction.inputField)) continue;
           const object = z.record(z.string(), JsonValueSchema).safeParse(submission);
           const prior = source === undefined ? undefined : z.record(z.string(), JsonValueSchema).parse(source.input.value);
           if (object.success && Object.hasOwn(object.data, correction.inputField)

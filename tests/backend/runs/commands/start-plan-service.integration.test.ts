@@ -15,6 +15,9 @@ omissionCascadingDescriptor,
 } from "../../../support/fixtures/start-step-omission-fixtures.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
+import { RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 
 const CLOCK = manualClock(new Date(NOW));
 // Use a different fact EID; repeating the submitted title would make the wire-leak assertion vacuous.
@@ -56,6 +59,7 @@ async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart
     configFingerprint: CONFIG_SNAPSHOT.fingerprint,
     configSnapshotId: UUID_4,
     plannedBy: "local-operator",
+    protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }),
   });
   return { database, service, ids, transactions: () => transactions, descriptor };
 }
@@ -78,6 +82,18 @@ function refusal(run: () => unknown): StartStepOmissionRefusedError {
   }
   return assert.fail("the plan was accepted");
 }
+
+it("keeps document-number starts available while restricting an entered EID to its failure action", async () => {
+  const h = await harnessFor(separationsDescriptor);
+  const input = { workflowId: "separations", submissions: [{ documentNumber: "4502" }], dryRun: true,
+    selectedStepKeys: separationsDescriptor.timeline.map(step => step.key) };
+  const wire = h.service.plan(input);
+  assert.equal(wire.refused.length, 0);
+  assert.equal(wire.planned.length, 1);
+  assert.equal(wire.planned[0]?.matchKey, "separations:4502");
+  assert.throws(() => h.service.plan({ ...input, submissions: [{ documentNumber: "4502", operatorEmployeeId: "10800001" }] }),
+    (error: unknown) => error instanceof RerunRefusedError && error.code === "invalid-value");
+});
 
 describe("start plan recovery", () => {
   it.each([undefined, "restart-from-start"] as const)("retains trusted recovery=%s without exposing public ingress", async recovery => {

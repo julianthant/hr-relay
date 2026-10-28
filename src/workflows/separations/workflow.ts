@@ -465,7 +465,9 @@ export const separationsWorkflow = defineWorkflow({
   category: "separation",
   canonicalInput: SeparationsCanonicalInput,
   failureCorrections: [{ nodeId: JOB_SUMMARY_NODE, code: "employee-not-found", inputField: "operatorEmployeeId",
-    label: "Employee ID", actionLabel: "Enter EID", pattern: EID_PATTERN.source }],
+    label: "Employee ID", actionLabel: "Enter EID", pattern: EID_PATTERN.source },
+  { nodeId: ACTION_NODE, code: "document-not-in-action-list", inputField: "documentNumber",
+    label: "Document number", actionLabel: "Enter document number", pattern: z.toJSONSchema(KualiDocumentNumberSchema).pattern }],
   rerunValues: [
     { nodeId: DATES_NODE, fieldPath: "lastDayWorked", label: "Last day worked", targetStepKey: "kronos-timecard", targetFieldPath: "lastDayWorked" },
     { nodeId: DATES_NODE, fieldPath: "separationDate", label: "Separation date", targetStepKey: "kronos-timecard", targetFieldPath: "separationDate" },

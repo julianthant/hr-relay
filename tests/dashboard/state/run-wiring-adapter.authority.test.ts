@@ -21,6 +21,7 @@ import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from "
 import { ActorIdSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { IdentityApprovalResultSchema } from "../../../src/rules/separations/identity-approval.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
+import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
@@ -344,14 +345,13 @@ function failedAt(selected: LogSelection) {
         rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check", "job-summary"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
     } });
 }
-function failureClient(selected: LogSelection, sent: CommandRequest[], planned: unknown[], execute: (command: CommandRequest) => Promise<unknown>) {
-  const failed = failedAt(selected);
+function failureClient(selected: LogSelection, sent: CommandRequest[], planned: unknown[], execute: (command: CommandRequest) => Promise<unknown>, failed = failedAt(selected)) {
   const client = { artifactUrl: (id: string) => `/artifacts/${id}`,
     runDetail: async () => {
       const detail = detailAt(selected, selected.row.rowRevision, { availableSections: ["logs", "failure"] });
       assert.ok(detail.timeline.steps);
       return { ...detail, timeline: { ...detail.timeline, steps: [...detail.timeline.steps,
-        { key: "job-summary", label: "Job Summary", state: "failed" as const, members: [{ nodeId: "job-summary", categoryKey: "job-summary", label: "Job Summary", state: "failed" as const }] }] } };
+        { key: failed.nodeId, label: "Failed step", state: "failed" as const, members: [{ nodeId: failed.nodeId, categoryKey: failed.nodeId, label: "Failed step", state: "failed" as const }] }] } };
     },
     runSection: async (_run: string, section: string) => section === "logs" ? logs()
       : RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: failed } }),
@@ -369,6 +369,33 @@ function failureClient(selected: LogSelection, sent: CommandRequest[], planned: 
 }
 
 describe("served not-found failure actions", () => {
+  it("projects and submits the declared document-number correction through Logs", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], planned: unknown[] = [], callbacks: (() => void)[] = [];
+    const original = failedAt(selected);
+    assert.ok(original.recovery);
+    const correction = separationsDescriptor.failureCorrections?.find(entry => entry.inputField === "documentNumber");
+    assert.ok(correction);
+    const failed = FailureDetailWireSchema.parse({ ...original, nodeId: correction.nodeId, taskId: "kuali/search-separation-action",
+      code: "DOCUMENT_NOT_IN_ACTION_LIST", native: native(5, correction.nodeId), recovery: { ...original.recovery, correction,
+        confirm: { title: correction.actionLabel, confirmLabel: correction.actionLabel, tone: "neutral" },
+        request: { ...original.recovery.request, rerunSource: { ...original.recovery.request.rerunSource,
+          failureCorrection: { failureId: FAILURE, inputField: correction.inputField } } } } });
+    const fixture = failureClient(selected, sent, planned, async () => { throw new Error("unused"); }, failed);
+    const snapshot = await readRunLogs(fixture.client, selected, new AbortController().signal);
+    const decision = projectRunLogs(snapshot, fixture.client).steps.flatMap(step => step.entries).find(entry => entry.kind === "decision");
+    assert.ok(decision?.kind === "decision");
+    assert.deepEqual(decision.decision.actions?.map(action => action.label), ["Check again", "Enter document number"]);
+    const action = failureLogActions(failed)[1];
+    assert.equal(action.input?.kind, "text");
+    const h = await harness(fixture.client, (_pending, send) => callbacks.push(send)); await h.render(selected);
+    await act(async () => { h.state?.onDecision?.(FAILURE, action, { text: "4502" }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(sent.length, 0);
+    assert.equal(callbacks.length, 1);
+    const request = StartPlanRequestSchema.parse(planned[0]);
+    assert.deepEqual(request.submissions, [{ documentNumber: "4502" }]);
+    assert.deepEqual(request.rerunSource?.failureCorrection, { failureId: FAILURE, inputField: "documentNumber" });
+  });
+
   it("projects only served actions and rejects a contradictory failure join", async () => {
     const selected = selectionAt(3), sent: CommandRequest[] = [], planned: unknown[] = [];
     const fixture = failureClient(selected, sent, planned, async () => { throw new Error("unused"); });

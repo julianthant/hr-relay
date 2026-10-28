@@ -17,13 +17,18 @@ import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { SeparationsCanonicalInput } from "../../../../src/workflows/separations/workflow.js";
 import { runRecordOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { planStart } from "../../../../src/backend/runs/start/plan.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 
 function fixture() {
   const original = { documentNumber: "4510", timekeeperName: "Synthetic Timekeeper", searchTimeoutMs: 15000, reRead: { ordinal: 1, reason: "corrected dates" } };
   const failureId = uuidOf(30);
   const base = runRecordOf({ seed: 1, workflow: "separations", descriptor: separationsDescriptor,
     lifecycle: { state: "terminal", outcome: "failed", endedAt: "2026-08-03T19:00:00.000Z", failureId, errorSummary: "Employee absent" } });
-  const run = RunRecordSchema.parse({ ...base, input: { ...base.input, parsed: { ...base.input.parsed, value: original, protectedBindings: [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: uuidOf(90) }], schemaHash: deriveSchemaHash(SeparationsCanonicalInput, "output") } } });
+  const run = RunRecordSchema.parse({ ...base, envelope: { ...base.envelope, itemId: deriveItemId(separationsDescriptor.id, "separations:4510#re-read-1") },
+    input: { ...base.input, parsed: { ...base.input.parsed, value: original, protectedBindings: [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: uuidOf(90) }], schemaHash: deriveSchemaHash(SeparationsCanonicalInput, "output") } } });
   const failure = FailureRecordSchema.parse({ failureId, fingerprint: "a".repeat(64), runId: run.envelope.runId,
     traceId: run.envelope.traceId, attempt: 1, workflowId: "separations", nodeId: "job-summary", taskId: "ucpath/read-job-summary",
     code: "EMPLOYEE_NOT_FOUND", summary: "Employee absent", transient: false, writeState: "not-attempted",
@@ -89,4 +94,60 @@ it("serves only the declared durable failure and carries its provenance through 
   const consumed = SourceBoundRunSchema.parse({ ...rerun, confirmationCommandId: uuidOf(100) });
   assert.deepEqual(consumed.source, request.rerunSource);
   assert.equal(consumed.source.failureCorrection?.failureId, failure.failureId);
+});
+
+it("replans a missing Kuali document as the corrected item, preserving lineage and reading it afresh", () => {
+  const { original, run, failure: priorFailure, request: priorRequest } = fixture();
+  const failure = FailureRecordSchema.parse({ ...priorFailure, nodeId: "resolve-action", taskId: "kuali/search-separation-action",
+    code: "DOCUMENT_NOT_IN_ACTION_LIST" });
+  const request = StartPlanIngressSchema.parse({ ...priorRequest, submissions: [{ documentNumber: "4502" }],
+    rerunSource: { ...priorRequest.rerunSource, failureCorrection: { failureId: failure.failureId, inputField: "documentNumber" } } });
+  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run, listByItem: () => [] },
+    writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
+    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+  const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
+    withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
+  const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,
+    subject: { state: "absent", reason: "No subject" }, diagnosticBundle: { state: "absent", reason: "None" } });
+  assert.equal(wire.recovery?.correction.actionLabel, "Enter document number");
+  assert.equal(wire.recovery?.retry.label, "Check again");
+  assert.deepEqual(wire.recovery?.request.submissions, [{}]);
+  for (const change of [{ code: "KUALI_UNAVAILABLE" }, { code: "UNEXPECTED_PAGE_STATE" },
+    { code: "AMBIGUOUS_ACTION_LIST_MATCH" }, { code: "UNREADABLE_ACTION_LINK" },
+    { nodeId: "document", code: "DOCUMENT_UNAVAILABLE" }]) {
+    assert.deepEqual(failureRecovery(deps, run, FailureRecordSchema.parse({ ...failure, ...change })), {});
+  }
+  for (const submissions of [[{ documentNumber: "12" }], [{ documentNumber: "4502", operatorEmployeeId: "10800001" }], [{}]]) {
+    assert.throws(() => failureCorrectionSubmission(separationsDescriptor, run, failure, { ...request, submissions }),
+      (error: unknown) => error instanceof RerunRefusedError && error.code === "invalid-value");
+  }
+
+  const submission = failureCorrectionSubmission(separationsDescriptor, run, failure, request);
+  assert.deepEqual(submission, { documentNumber: "4502", searchTimeoutMs: original.searchTimeoutMs, reRead: original.reRead });
+  const plan = planStart({ authority: { authority: repositories }, clock: manualClock(new Date(run.updatedAt)),
+    ids: { uuid: () => uuidOf(100) }, planTtlMs: 600_000 }, {
+    descriptor: separationsDescriptor, submissions: [submission], retainedInputs: [run.input.parsed],
+    dryRun: request.dryRun, priority: run.envelope.priority, shape: "single", plannedBy: "local-operator",
+    configFingerprint: run.envelope.configFingerprint, configSnapshotId: run.envelope.configSnapshotId });
+  assert.deepEqual(plan.refused, []);
+  assert.equal(plan.planned.length, 1);
+  const [planned] = plan.planned;
+  assert.ok(planned);
+  assert.equal(planned.matchKey, "separations:4502#re-read-1");
+  assert.equal(planned.itemId, deriveItemId(separationsDescriptor.id, "separations:4502#re-read-1"));
+  assert.notEqual(planned.itemId, run.envelope.itemId);
+  assert.deepEqual(planned.input.value, { ...original, documentNumber: "4502" });
+  assert.deepEqual(planned.input.protectedBindings, run.input.parsed.protectedBindings);
+  assert.deepEqual(run.input.parsed.value, original);
+  assert.ok(request.rerunSource);
+  const rerun = buildRerunPlan(repositories, separationsDescriptor, request.rerunSource, plan.planned);
+  assert.deepEqual(SourceBoundRunSchema.parse({ ...rerun, confirmationCommandId: uuidOf(101) }).source, request.rerunSource);
+  assert.deepEqual(rerun.source.selectedStepKeys, separationsDescriptor.timeline.map(step => step.key));
+
+  const nodes = descriptorRuntimeNodes(separationsDescriptor);
+  const search = nodes.find(node => node.id === "resolve-action"), document = nodes.find(node => node.id === "document");
+  assert.ok(search?.kind === "task" && document?.kind === "task");
+  assert.deepEqual(search.bind({ input: planned.input.value, outputs: {} }), { documentNumber: "4502" });
+  assert.deepEqual(document.bind({ input: planned.input.value, outputs: { "resolve-action": { actionId: "6a766ae6f0549046f7f0dc06" } } }),
+    { documentNumber: "4502", actionId: "6a766ae6f0549046f7f0dc06" });
 });
