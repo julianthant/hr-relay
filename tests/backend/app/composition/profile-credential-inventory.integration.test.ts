@@ -1,3 +1,4 @@
+import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
@@ -209,7 +210,7 @@ for (const backup of ["none", "clean", "captured-copy", "key-copy", "incomplete-
   let settlement: ReturnType<typeof f.erase> | undefined;
   try {
     if (backup === "captured-copy" || backup === "key-copy") {
-      const key = JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")) as { key: string };
+      const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
       createWorkbookLibraryService({ repository: f.context.database.authority.workbooks, clock: f.clock }).create({
         name: "Synthetic.xlsx", themes: [], hasFormulas: false,
         sheets: [{ id: "sheet", name: "Synthetic", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: backup === "key-copy" ? key.key : f.capturedSecrets[1] }] }] }],
@@ -292,7 +293,7 @@ for (const content of ["clean", "escaped-value", "escaped-key-material", "malfor
     appendEmergencyFault({ stateRoot: f.stateRoot, build: "synthetic", code: "DATABASE_WRITER_UNAVAILABLE", error, now: f.clock.now() });
     const path = join(f.stateRoot, "logs", "boot.jsonl");
     const record = JSON.parse(readFileSync(path, "utf8")) as { payload: { event: { message: string } } };
-    const key = JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")) as { key: string };
+    const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
     const secret = content === "escaped-key-material" ? key.key : f.capturedSecrets[1]; assert.ok(secret);
     if (content === "escaped-value" || content === "escaped-key-material") {
       record.payload.event.message = secret;
@@ -335,7 +336,7 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
       browserMode: "headless", profileDirectory: directory, acceptDownloads: false, exclusive: false, health: "closed",
       observedAt: f.clock.now().toISOString(), openedAt: f.clock.now().toISOString(), profileRevision: 1 });
     mkdirSync(directory, { recursive: true, mode: 0o700 });
-    const key = JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")) as { key: string };
+    const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
     const path = join(directory, "Preferences"), secret = content === "key-material" ? key.key : f.capturedSecrets[1]; assert.ok(secret);
     const escaped = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
     const text = content === "clean" ? '{"profile":{"name":"Synthetic"}}' : content === "malformed" ? "{invalid}" : content === "escaped-shadowed" ? `{"synthetic":"${escaped}","synthetic":"clean"}` : `{"${escaped}":"synthetic"}`;
@@ -352,7 +353,7 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
 for (const encoding of ["raw", "base64", "utf16le", "utf16be"] as const) it(`detects private stable key ${encoding} across the copy chunk boundary`, async () => {
   const f = await fixture(), path = join(f.stateRoot, "synthetic-copy.bin");
   try {
-    const key = JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")) as { key: string };
+    const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
     const bytes = encoding === "raw" ? Buffer.from(key.key, "base64") : Buffer.from(key.key, encoding === "base64" ? "utf8" : "utf16le");
     if (encoding === "utf16be") bytes.swap16();
     writeFileSync(path, Buffer.concat([Buffer.alloc(64 * 1024 - 3, 0x78), bytes, Buffer.alloc(17, 0x79)]), { mode: 0o600 });

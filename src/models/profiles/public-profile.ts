@@ -7,9 +7,6 @@ export const ProfileLoginRequestSchema = z.strictObject({ email: z.string().min(
 export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({ firstName: z.string().min(1).max(64), lastName: z.string().min(1).max(64) });
 export type ProfileLoginRequest = z.infer<typeof ProfileLoginRequestSchema>;
 export type ProfileSignUpRequest = z.infer<typeof ProfileSignUpRequestSchema>;
-export const ProfileOwnerClaimRequestSchema = ProfileSignUpRequestSchema.extend({ claimId: z.uuid().transform(value => value.toLowerCase()), claimExistingData: z.literal(true) });
-export type ProfileOwnerClaimRequest = z.infer<typeof ProfileOwnerClaimRequestSchema>;
-
 export const ProfileOnboardingMethodSchema = z.enum(["key", "touch"]);
 export type ProfileOnboardingMethod = z.infer<typeof ProfileOnboardingMethodSchema>;
 export const ProfileOnboardingMethodStateSchema = z.strictObject({

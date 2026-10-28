@@ -1,5 +1,5 @@
+import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import { chmodSync, cpSync, mkdirSync, statSync, symlinkSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -18,10 +18,7 @@ import { deriveCheckpointOutputDigest } from "../../../../src/models/run/result.
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { captureExistingDataOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createHistoricalFlatProfileFixture, historicalFlatFields } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
+import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 
 beforeEach(() => {
   vi.spyOn(profileProcessQuery, "spawnSync").mockImplementation(command => ({ pid: 0, output: [], stderr: "", status: 0, signal: null,
@@ -40,7 +37,7 @@ function fixture(claimGeneration = 0) {
       try { const current = runRecordFromRow(raw.prepare("SELECT * FROM runs").get());
         updateRunRecord(raw, RunRecordSchema.parse({ ...current, lifecycle: { state: "queued" }, claimGeneration: Number(process.argv[2]), version: current.version + 1 }));
         process.stdout.write(current.envelope.runId); } finally { raw.close(); }`, f.databasePath, String(claimGeneration)],
-    { encoding: "utf8", timeout: 20_000, env: workerBootstrapEnvironment() });
+    { encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
   assert.equal(changed.error, undefined); assert.equal(changed.status, 0, changed.stderr);
   const runId = z.uuid().parse(changed.stdout.trim());
   return { ...f, runId };
@@ -70,19 +67,6 @@ it("plans without source writes, binds the exact capture, cancels with lifecycle
       assert.equal(raw.prepare("SELECT count(*) AS count FROM run_results WHERE run_id=?").get(f.runId)?.count, 1);
     } finally { raw.close(); }
     assert.deepEqual(readFileSync(f.protectedPath), before[1]); assert.deepEqual(readFileSync(f.artifact), before[2]);
-    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
-    try {
-      const owner = captureExistingDataOwner(machine, historicalFlatFields);
-      const claimed = await machine.claimExistingProfileData(owner, randomUUID(), systemClock, { ...historicalFlatFields, createdAt: systemClock.now().toISOString() });
-      const upgraded = new DatabaseSync(join(f.stateRoot, "profiles", claimed.profileId, "state.db"), { readOnly: true });
-      try {
-        inspectNativeAuthority(upgraded, 9);
-        const run = runRecordFromRow(upgraded.prepare("SELECT * FROM runs WHERE id=?").get(f.runId));
-        assert.equal(run.lifecycle.state, "terminal");
-        assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled");
-        assert.equal(run.lifecycle.errorSummary, "cancelled offline: stale queued run");
-      } finally { upgraded.close(); }
-    } finally { machine.release(); }
   } finally { f.close(); }
 });
 
@@ -153,7 +137,7 @@ it("dispatches the actual secure-bootstrap CLI plan and apply against an isolate
     symlinkSync(dirname(dirname(fileURLToPath(import.meta.resolve("tsx/package.json")))), join(f.workspace, "node_modules"));
     const command = (args: string[]) => spawnSync(process.execPath,
       ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "cancel-queued-runs", ...args],
-      { cwd: f.workspace, encoding: "utf8", timeout: 20_000, env: workerBootstrapEnvironment() });
+      { cwd: f.workspace, encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
     const planned = command(["--plan", "--json"]);
     assert.equal(planned.error, undefined); assert.equal(planned.status, 0, planned.stderr);
     const plan = z.object({ state: z.literal("planned"), captureDigest: z.string().length(64), runIds: z.array(z.uuid()) }).parse(JSON.parse(planned.stdout));
@@ -170,7 +154,7 @@ it("cancels before recovering a dead worker record, preserving the original proc
     const module = pathToFileURL(join(process.cwd(), "src/backend/storage/sqlite/runtime-process-locks.ts")).href;
     const owner = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
       `import { acquireRuntimeProcessLock } from ${JSON.stringify(module)}; const lock = acquireRuntimeProcessLock({ processLockRoot: process.argv[1], name: "workers", workerId: "person-lookup-worker-4", pid: process.pid }); process.stdout.write(lock.acquisitionId);`, f.processLockRoot],
-      { encoding: "utf8", timeout: 20_000, env: workerBootstrapEnvironment() });
+      { encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
     assert.equal(owner.error, undefined); assert.equal(owner.status, 0, owner.stderr);
     const acquisition = z.uuid().parse(owner.stdout.trim());
     const path = join(f.processLockRoot, "workers", `${acquisition}.lock.json`), original = readFileSync(path);

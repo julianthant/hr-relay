@@ -15,6 +15,8 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { manualClock, systemClock, type Clock } from "../../../../src/rules/time/clock.js";
 import type { OfflineRestoreAdmissionFactory } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
+import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 import { spawn } from "node:child_process";
 import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
 import assert from "node:assert/strict";
@@ -104,11 +106,17 @@ describe("profile restore continuity", () => {
     const f = await world();
     try {
       const store = f.store(), protectedBefore = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
+      const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.profileId}.json`), metadata = readFileSync(keyPath);
+      const key = credentialKeyCustody.read(JSON.parse(metadata.toString("utf8")));
       const manifestPath = await f.backup();
+      const backupBytes = readFileSync(manifestPath.slice(0, -".manifest.json".length));
+      assert.equal(backupBytes.includes(key.key), false); assert.equal(backupBytes.includes(Buffer.from(key.key, "base64")), false);
+      assert.equal("key" in JSON.parse(metadata.toString("utf8")), false);
       const before = f.machine.readProfileRegistry().sessionGeneration;
       const old = f.current();
       const result = await f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() });
       assert.equal(result.state, "restored");
+      assert.deepEqual(readFileSync(keyPath), metadata);
       assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), protectedBefore);
       assert.equal(f.machine.readProfileRegistry().sessionGeneration, before + 1);
       assert.throws(() => store.read());
@@ -118,6 +126,20 @@ describe("profile restore continuity", () => {
       assert.equal(database.getMeta().profileId, f.profileId); database.close();
       assert.ok(f.store().read().entries.ucpathPassword);
     } finally { await f.close(); }
+  });
+
+  it("refuses ordinary SQLite restore before effects when its retained OS entry is missing", async () => {
+    const f = await world();
+    const binding = f.current().profileBinding, entry = new FakeKeyringEntry("Relay", `${binding.installationId}:${binding.profileId}`);
+    const key = entry.getPassword(); assert.ok(key !== null);
+    try {
+      const manifestPath = await f.backup(), authority = readFileSync(f.path), protectedBefore = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
+      credentialKeyCustody.delete(binding);
+      await assert.rejects(async () => f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() }), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
+      assert.deepEqual(readFileSync(f.path), authority);
+      assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), protectedBefore);
+      assert.equal(entry.getPassword(), null);
+    } finally { entry.setPassword(key); await f.close(); }
   });
 
   it("preserves genuine saved settings and safely parked UNKNOWN write identities through canonical restore", async () => {

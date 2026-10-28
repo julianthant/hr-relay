@@ -1,3 +1,6 @@
+import { readyProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
+import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { execFileSync, fork, spawnSync } from "node:child_process";
 import nativeChildProcess from "node:child_process";
@@ -237,13 +240,14 @@ it("recovers a draft's durable counter intent through stopped authenticated main
   admission.release(); maintenance.release(); rmSync(f.root, { recursive: true });
 });
 
-for (const boundary of ["source", "journal", "erase", "intent", "source-unlink", "key-unlink", "operation-unlink"] as const) {
+for (const boundary of ["source", "journal", "erase", "intent", "source-unlink", "key-unlink", "keychain-before-delete", "keychain-after-delete", "operation-unlink", "root-removal"] as const) {
   it(`resumes actual unpublished cancellation across ${boundary} with original encrypted custody retained`, async () => {
     const f = privateDraftFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
     const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`);
+    const keyMetadata: unknown = JSON.parse(readFileSync(keyPath, "utf8"));
     const protectedPath = join(f.machine.stateRoot, "profiles", f.draft.profileId, "credentials", "protected.json");
     const intentPath = join(f.root, ".tracker", "control", "profile-publication.json");
-    const failure = new Error("fixture draft abort boundary"), rename = nativeFs.renameSync, unlink = nativeFs.unlinkSync, write = nativeFs.writeFileSync;
+    const failure = new Error("fixture draft abort boundary"), rename = nativeFs.renameSync, unlink = nativeFs.unlinkSync, write = nativeFs.writeFileSync, remove = nativeFs.rmSync;
     let fired = false;
     const renameSpy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
       rename(source, destination);
@@ -262,25 +266,65 @@ for (const boundary of ["source", "journal", "erase", "intent", "source-unlink",
       if (!fired && (boundary === "source-unlink" && target.includes(`.protected.${f.draft.operationId}.`) && target.endsWith(".tmp")
         || boundary === "key-unlink" && target === keyPath || boundary === "operation-unlink" && target === operationPath)) { fired = true; throw failure; }
     });
+    const removeSpy = vi.spyOn(nativeFs, "rmSync").mockImplementation((path, options) => {
+      remove(path, options);
+      if (!fired && boundary === "root-removal" && String(path) === join(f.machine.stateRoot, "profiles", f.draft.profileId)) { fired = true; throw failure; }
+    });
+    const keyEntry = new FakeKeyringEntry("Relay", `${f.machine.locator.installationId}:${f.draft.profileId}`);
+    const deletePassword = keyEntry.deletePassword.bind(keyEntry);
+    const keychainSpy = vi.spyOn(FakeKeyringEntry.prototype, "deletePassword").mockImplementation(() => {
+      if (!fired && boundary === "keychain-before-delete") { fired = true; throw failure; }
+      const deleted = deletePassword();
+      if (!fired && boundary === "keychain-after-delete") { fired = true; throw failure; }
+      return deleted;
+    });
     syncBuiltinESMExports();
     try { await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId)); }
-    finally { renameSpy.mockRestore(); writeSpy.mockRestore(); unlinkSpy.mockRestore(); syncBuiltinESMExports(); }
+    finally { renameSpy.mockRestore(); writeSpy.mockRestore(); unlinkSpy.mockRestore(); removeSpy.mockRestore(); keychainSpy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(fired, true);
     await f.profile.close(); f.machine.release();
     const machine = acquireEntrypointAdmission(f.root, "exclusive");
     const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
     const registry = machine.readProfileRegistry(); assert.equal(registry.profiles.length, 0); assert.equal(registry.activeProfileId, null);
-    if (existsSync(operationPath)) {
-      const resumed = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
-        password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
-      if (resumed.state !== "onboarding") throw new Error("fixture exact abort authentication required");
-      assert.equal(resumed.operationId, f.draft.operationId);
-      assert.deepEqual(await profile.session.cancelOnboarding(resumed.token, resumed.operationId), { state: "signed-out" });
-    }
+    await profile.session.recoverOnboarding();
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(keyPath), false); assert.equal(existsSync(intentPath), false);
-    assert.equal(existsSync(protectedPath), true);
+    assert.throws(() => credentialKeyCustody.read(keyMetadata), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
+    assert.equal(existsSync(protectedPath), false);
     assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true });
+  });
+}
+
+for (const changed of ["registry", "continuity"] as const) {
+  it(`refuses changed ${changed} after interrupted draft operation removal`, async () => {
+    const f = privateDraftFixture(), root = join(f.machine.stateRoot, "profiles", f.draft.profileId);
+    const operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
+    const controlPath = join(f.root, ".tracker", "control", "profile-registry.json");
+    const registryPath = join(f.machine.stateRoot, "machine", "profiles.json");
+    const intentPath = join(f.root, ".tracker", "control", "profile-publication.json");
+    const unlink = nativeFs.unlinkSync;
+    let interrupted = false;
+    const spy = vi.spyOn(nativeFs, "unlinkSync").mockImplementation(path => {
+      unlink(path);
+      if (String(path) === operationPath) { interrupted = true; throw new Error("fixture operation removed"); }
+    });
+    syncBuiltinESMExports();
+    try { await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId)); }
+    finally { spy.mockRestore(); syncBuiltinESMExports(); }
+    assert.equal(interrupted, true);
+    await f.profile.close(); f.machine.release();
+    const path = changed === "registry" ? registryPath : controlPath;
+    const document = JSON.parse(readFileSync(path, "utf8")) as { sessionGeneration: number; generation: number };
+    if (changed === "registry") document.sessionGeneration++;
+    else document.generation++;
+    writeFileSync(path, JSON.stringify(document), { mode: 0o600 });
+    const control = readFileSync(controlPath), intent = readFileSync(intentPath);
+    try {
+      assert.throws(() => acquireEntrypointAdmission(f.root, "exclusive"), /profile-draft-abort-control-changed/);
+      assert.equal(existsSync(root), true);
+      assert.deepEqual(readFileSync(controlPath), control);
+      assert.deepEqual(readFileSync(intentPath), intent);
+    } finally { rmSync(f.root, { recursive: true }); }
   });
 }
 
@@ -352,15 +396,10 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
     const published = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId);
     if (published === undefined) {
       assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 0);
-      const resumed = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
-        password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
-      if (resumed.state !== "onboarding") throw new Error("fixture genuine Finish resume required");
-      assert.equal(resumed.operationId, f.draft.operationId);
-      assert.equal((await profile.session.completeOnboarding(resumed.token, resumed.operationId)).state, "active");
-    } else {
-      const signedIn = profile.session.signIn({ email: "draft-recovery@ucsd.edu", password: "disposable-draft-recovery", at: new Date().toISOString() });
-      assert.equal(signedIn.state, "active");
     }
+    await profile.session.recoverOnboarding();
+    const signedIn = profile.session.signIn({ email: "draft-recovery@ucsd.edu", password: "disposable-draft-recovery", at: new Date().toISOString() });
+    assert.equal(signedIn.state, "active");
     const row = machine.readProfileRegistry().profiles.find(entry => entry.profileId === f.draft.profileId);
     assert.equal(row?.registration.onboardingCompletion?.finishId, finishId);
     assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 1);
@@ -436,7 +475,8 @@ for (const boundary of ["source-fsync", "protected-stage"] as const) {
       { execArgv: ["--disable-warning=ExperimentalWarning", "--import", "tsx"], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
     const retained = { root: f.root, child }; retainedProcessLossFixtures.add(retained);
     const closed = once(child, "close"); let stderrBytes = 0; child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; });
-    const ready = z.object({ type: z.literal("ready"), pid: z.number().int().positive() }).parse((await once(child, "message"))[0]);
+    const ready = z.object({ type: z.literal("ready"), pid: z.number().int().positive(), keychain: z.array(z.tuple([z.string(), z.string()])) }).parse((await once(child, "message"))[0]);
+    FakeKeyringEntry.import(ready.keychain);
     assert.equal(ready.pid, child.pid);
     const identity = observeProcessIdentity(ready.pid); assert.equal(identity.state, "alive");
     if (identity.state !== "alive") throw new Error("fixture owned child identity required");
@@ -452,13 +492,9 @@ for (const boundary of ["source-fsync", "protected-stage"] as const) {
     assert.equal(fds.error, undefined); assert.equal(fds.signal, null); assert.equal(fds.status, 1); assert.equal(fds.stdout.trim(), "");
     const machine = acquireEntrypointAdmission(f.root, "exclusive"), profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot,
       hostFacts: { primaryDisplay: null }, clock: systemClock });
-    const resumed = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
-      password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
-    if (resumed.state !== "onboarding") throw new Error("fixture actual dead-writer resume required");
-    assert.equal(resumed.operationId, f.draft.operationId);
-    assert.deepEqual(await profile.session.cancelOnboarding(resumed.token, resumed.operationId), { state: "signed-out" });
+    await profile.session.recoverOnboarding();
     const credentials = join(machine.stateRoot, "profiles", f.draft.profileId, "credentials");
-    assert.equal(existsSync(join(credentials, ".protected.lock")), false); assert.equal(readdirSync(credentials).some(name => name.endsWith(".tmp")), false);
+    assert.equal(existsSync(credentials), false);
     assert.equal(machine.readProfileRegistry().profiles.length, 0);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true }); retainedProcessLossFixtures.delete(retained);
   });
@@ -494,3 +530,74 @@ for (const change of ["same-length", "replacement"] as const) {
     await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
   });
 }
+
+it("removes an unfinished sign-up at startup through the existing cancellation path", async () => {
+  const f = privateDraftFixture(); await f.profile.close(); f.machine.release();
+  const machine = acquireEntrypointAdmission(f.root, "exclusive");
+  const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  try {
+    await profile.session.recoverOnboarding();
+    assert.equal(existsSync(join(machine.stateRoot, "profiles", f.draft.profileId)), false);
+    assert.equal(existsSync(join(machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`)), false);
+    assert.deepEqual(machine.readProfileRegistry().profiles, []);
+  } finally { await profile.close(); machine.release(); rmSync(f.root, { recursive: true }); }
+});
+
+it("removes a sign-up interrupted before its profile or credentials were initialized", async () => {
+  const f = privateDraftFixture();
+  const original = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), "utf8")));
+  await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId);
+  const draft = f.machine.beginProfileSignUp({ emailKey: original.emailKey, firstName: original.firstName, lastName: original.lastName,
+    createdAt: original.createdAt, commandFingerprint: original.commandFingerprint });
+  assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), false);
+  await f.profile.close(); f.machine.release();
+  const machine = acquireEntrypointAdmission(f.root, "exclusive");
+  const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  try {
+    await profile.session.recoverOnboarding();
+    assert.equal(existsSync(join(machine.stateRoot, "profiles", draft.profileId)), false);
+    assert.equal(existsSync(join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`)), false);
+    assert.equal(existsSync(join(machine.stateRoot, "machine", "credential-keys", `${draft.profileId}.json`)), false);
+    assert.deepEqual(machine.readProfileRegistry().profiles, []);
+  } finally { await profile.close(); machine.release(); rmSync(f.root, { recursive: true }); }
+});
+
+it("cancels a ready sign-up, deleting local Duo material while preserving the remote enrollment", async () => {
+  const f = privateDraftFixture(syntheticOnboardingDuo(() => "draft-recovery@ucsd.edu"));
+  try {
+    await readyProfileOnboarding(f.profile.session, f.draft);
+    assert.deepEqual(await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId), { state: "signed-out" });
+    assert.equal(existsSync(join(f.machine.stateRoot, "profiles", f.draft.profileId)), false);
+    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`)), false);
+    assert.deepEqual(f.machine.readProfileRegistry().profiles, []);
+  } finally { await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true }); }
+});
+
+it("completes a recorded Finish at startup without reopening its draft", async () => {
+  const f = privateDraftFixture(syntheticOnboardingDuo(() => "draft-recovery@ucsd.edu"));
+  await readyProfileOnboarding(f.profile.session, f.draft);
+  const rename = nativeFs.renameSync, operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
+  let interrupted = false;
+  const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
+    rename(source, destination);
+    if (!interrupted && String(destination) === operationPath && SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).phase === "publishing") {
+      interrupted = true; throw new Error("fixture Finish publication interrupted");
+    }
+  });
+  syncBuiltinESMExports();
+  try { await assert.rejects(f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId)); }
+  finally { fault.mockRestore(); syncBuiltinESMExports(); }
+  assert.equal(interrupted, true);
+  const duoPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`), duoBytes = readFileSync(duoPath);
+  await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId));
+  assert.deepEqual(readFileSync(duoPath), duoBytes);
+  await f.profile.close(); f.machine.release();
+  const machine = acquireEntrypointAdmission(f.root, "exclusive");
+  const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  try {
+    await profile.session.recoverOnboarding();
+    const row = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId); assert.ok(row?.registration.onboardingCompletion);
+    assert.equal(existsSync(join(machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`)), false);
+    assert.equal(existsSync(join(machine.stateRoot, "profiles", f.draft.profileId, "credentials", "protected.json")), true);
+  } finally { await profile.close(); machine.release(); rmSync(f.root, { recursive: true }); }
+});

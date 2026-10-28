@@ -1,4 +1,4 @@
-import nativeFs, { existsSync, fstatSync, openSync, closeSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import nativeFs, { existsSync, readdirSync, fstatSync, openSync, closeSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime
 import { observeProcessIdentity } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
+import { FakeKeyringEntry } from "../helpers/credential-keychain-fake.js";
 
 const [workspace, boundary] = z.tuple([z.string().min(1), z.enum(["source-fsync", "protected-stage"])]).parse(process.argv.slice(2));
 const machine = acquireEntrypointAdmission(workspace, "exclusive"), processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
@@ -23,9 +24,10 @@ function loseProcess(): never {
 }
 const profile = composeProfileRuntime({ admission: machine, processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock,
   credentialHooks: { beforeRename() { if (armed && boundary === "protected-stage") loseProcess(); } } });
-const draft = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
-  password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
-if (draft.state !== "onboarding") process.exit(96);
+const operations = join(machine.stateRoot, "machine", "operations");
+const names = readdirSync(operations).filter(name => name.endsWith(".json"));
+if (names.length !== 1 || names[0] === undefined) process.exit(96);
+const draft = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(operations, names[0]), "utf8")));
 const credentials = join(machine.stateRoot, "profiles", draft.profileId, "credentials"), operationPath = join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
 nativeFs.fsyncSync = descriptor => {
   fsync(descriptor);
@@ -39,6 +41,6 @@ syncBuiltinESMExports();
 process.on("message", (message: unknown) => {
   if (message !== "cancel") process.exit(96);
   armed = true;
-  void profile.session.cancelOnboarding(draft.token, draft.operationId).then(() => process.exit(96), () => process.exit(96));
+  void profile.session.recoverOnboarding().then(() => process.exit(96), () => process.exit(96));
 });
-process.send?.({ type: "ready", pid: process.pid });
+process.send?.({ type: "ready", pid: process.pid, keychain: FakeKeyringEntry.snapshot() });

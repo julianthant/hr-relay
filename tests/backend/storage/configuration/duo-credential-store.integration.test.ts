@@ -10,6 +10,7 @@ import { on, once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { acquireStoppedProfileControlUpgrade } from "../../../../src/backend/storage/admission/installation.js";
 import { releaseStoppedMachineControlUpgrade, upgradeStoppedMachineControl } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
@@ -18,7 +19,8 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import assert from "node:assert/strict";
 import { randomBytes, createHash, generateKeyPairSync, randomUUID } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, realpathSync, rmSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { createDuoCredentialStore, createDraftDuoCredentialStore, DuoCredentialCommitUncertainError, DuoPublicationCaptureSchema, duoStagePath } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
@@ -45,7 +47,8 @@ async function setup(options: { sharedMachine?: true } = {}) {
 }
 
 it("durably stages pending enrollment before acknowledgement and holds signing until exact confirmation", async () => {
-  const pending = await createBoundProfileFixture({ pending: true });
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "duo-pending-enrollment-")));
+  const machine = acquireEntrypointAdmission(workspace, "exclusive");
   const clock = manualClock(new Date());
   const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu",
       password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
@@ -54,15 +57,18 @@ it("durably stages pending enrollment before acknowledgement and holds signing u
   const session = createProfileSession({ onboardingDuo: { ...provider,
       async start(attempt, bind, reportFailure) {
         if (attempt.method === 'key') {
-          const store = createDraftDuoCredentialStore(pending.admission, pending.machine, attempt.operationId, attempt.generation, clock);
-          assert.deepEqual(store.read(), { state: 'never-initialized', revision: 0, credentials: [] });
+          const child = machine.admitProfile(machine.issueRegisteredProfileClaim(attempt.profileId));
+          try {
+            const store = createDraftDuoCredentialStore(child, machine, attempt.operationId, attempt.generation, clock);
+            assert.deepEqual(store.read(), { state: 'never-initialized', revision: 0, credentials: [] });
+          } finally { child.release(); }
           observedNeverInitialized = true;
         }
         await provider.start(attempt, bind, reportFailure);
-      } }, admission: pending.machine, machineRoot: pending.machine.stateRoot,
-    initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: pending.machine, admission: child,
+      } }, admission: machine, machineRoot: machine.stateRoot,
+    initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine, admission: child,
       clock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
-    repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine: pending.machine, admission: child,
+    repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine, admission: child,
       clock, hostFacts: { primaryDisplay: null } })(request, writer, copies) });
   try {
     const draft = session.signUp(fields);
@@ -70,7 +76,7 @@ it("durably stages pending enrollment before acknowledgement and holds signing u
     if (draft.state !== 'onboarding') throw new Error('draft-not-issued');
     await session.startOnboardingDuo(draft.token, draft.operationId, 'key');
     assert.equal(observedNeverInitialized, true);
-  } finally { await session.close(); await pending.close(); }
+  } finally { await session.close(); machine.release(); rmSync(workspace, { recursive: true }); }
   const f = await setup();
   try {
     const registry = readFileSync(join(f.machine.stateRoot, "machine", "profiles.json"));
@@ -284,21 +290,25 @@ it("refuses an attestation from another genuinely issued stopped profile", async
 });
 
 it("does not apply retained-engine disposition to ordinary credential initialization", async () => {
-  const f = await createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
-  const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot,
-    initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine, admission: child,
-      clock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
-    repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine: f.machine, admission: child,
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "duo-ordinary-initialization-")));
+  const machine = acquireEntrypointAdmission(workspace, "exclusive"), clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
+  let path: string | undefined, bytes: Buffer | undefined;
+  const session = createProfileSession({ admission: machine, machineRoot: machine.stateRoot,
+    initializationInventory: (child, operation, writer, copies) => {
+      path = join(child.stateRoot, "credentials", "duo-webauthn.json");
+      writeFileSync(path, JSON.stringify(retainedCredential), { mode: 0o600 });
+      bytes = readFileSync(path);
+      return composeProfileCredentialInitializationInventory({ machine, admission: child,
+        clock, hostFacts: { primaryDisplay: null } })(operation, writer, copies);
+    },
+    repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine, admission: child,
       clock, hostFacts: { primaryDisplay: null } })(request, writer, copies) });
   try {
-    const path = join(f.stateRoot, "credentials", "duo-webauthn.json");
-    mkdirSync(join(f.stateRoot, "credentials"), { recursive: true, mode: 0o700 });
-    writeFileSync(path, JSON.stringify(retainedCredential), { mode: 0o600 });
-    const bytes = readFileSync(path);
     await assert.rejects(async () => await finishProfileOnboarding(session, session.signUp({ firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu", password: "disposable-fixture-password",
       createdAt: clock.now().toISOString() })), /credential-maintenance-copy-capture-incomplete/u);
+    assert.ok(path !== undefined && bytes !== undefined);
     assert.equal(readFileSync(path).equals(bytes), true);
-  } finally { await session.close(); await f.close(); }
+  } finally { await session.close(); machine.release(); rmSync(workspace, { recursive: true }); }
 });
 
 it("issues only finite read-only stopped-control inventory and preserves database and control bytes", async () => {
@@ -797,7 +807,7 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
   try {
     const planned = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(planned.state, "planned");
-    assert.equal(planned.runtimeAccess, "owner-claim-required");
+    assert.equal(planned.runtimeAccess, "onboarding-incomplete");
     assertUnchanged(paths);
     execFileSync("/usr/bin/chflags", ["uchg", paths.controlPath]);
     await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
@@ -818,7 +828,7 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     writeFileSync(stagePath, stageBytes);
     const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(upgraded.state, "upgraded");
-    assert.equal(upgraded.runtimeAccess, "owner-claim-required");
+    assert.equal(upgraded.runtimeAccess, "onboarding-incomplete");
     const names = readdirSync(backupDirectory).sort();
     const operationNames = names.filter((name) => name.endsWith(".control.before.json"));
     assert.equal(operationNames.length, 1);
@@ -836,7 +846,7 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
     const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(current.state, "current");
-    assert.equal(current.runtimeAccess, "owner-claim-required");
+    assert.equal(current.runtimeAccess, "onboarding-incomplete");
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
   } finally { maintenance.release(); await fixture.close(); }
 });
@@ -853,7 +863,7 @@ it("recovers a machine-control publication stopped between the control and marke
     assert.equal(readFileSync(paths.markerPath).equals(paths.markerBytes), true);
     const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(upgraded.state, "upgraded");
-    assert.equal(upgraded.runtimeAccess, "owner-claim-required");
+    assert.equal(upgraded.runtimeAccess, "onboarding-incomplete");
     assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 3);
     const backupDirectory = join(fixture.workspace, ".tracker/control", "profile-control-upgrades");
     const controlName = readdirSync(backupDirectory).find((name) => name.endsWith(".control.before.json"));
