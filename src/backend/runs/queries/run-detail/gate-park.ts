@@ -1,3 +1,4 @@
+import { acceptsRecheckTransactionId } from "../../../../rules/write-safety/parked-resolution.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
 import { ParkedWriteCheckTargetSchema } from "../../../../rules/commands/commands.js";
 import { requireParkedWriteCheckTarget } from "../../../runtime/writes/write-recovery.js";
@@ -206,21 +207,20 @@ function parkedWriteActions(
     writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest };
   return [
     {
-      key: "resolve-write-present",
-      label: "I confirmed it IS there",
-      detail: "Record the transaction you found, with its proof. The run settles as committed and never clicks again.",
+      key: "recheck-write",
+      label: "Check again",
+      detail: "Read the target system again. A verified transaction continues the run; uncertainty keeps the write parked.",
       intent: "warning",
       icon: "resolve",
       placement: ["banner", "footer"],
       kind: "command",
-      command: "resolve-write-present",
+      command: "recheck-write",
       expectedVersion: authority.version,
       confirm: {
-        title: "Confirm the transaction exists",
-        body: `This files ${intent.system} transaction ${intent.writeIntentId} as committed on this run's `
-          + "evidence. If it is not actually there, the run finishes reporting work nobody did.",
-        confirmLabel: "It is there",
-        tone: "destructive",
+        title: "Check the target system again",
+        body: `Relay reads ${intent.system} again and submits nothing. If it finds this write, the run continues to its next step.`,
+        confirmLabel: "Check again",
+        tone: "neutral",
       },
       writeTarget,
     },
@@ -345,10 +345,10 @@ function buildIdentityGatePayload(
   if (found === undefined) throw new Error(`gate "${gate.nodeId}" evidence disappeared mid-projection`);
   const packet = protectIdentityEvidencePacket(found.packet, retainedRunProtectedBindings(authority));
   const evidenceDigest = deriveIdentityEvidenceDigest(packet);
-  if (packet.emplIdSource !== "name-resolved") {
+  if (packet.emplIdSource !== "name-resolved" && packet.emplIdSource !== "operator-entered") {
     return missing(
       `gate "${gate.nodeId}" is parked on ${packet.emplIdSource} evidence, but this build requires an `
-      + "operator decision only for a name-resolved EID; this historical run cannot be resolved under the current contract",
+      + "operator decision only for a name-resolved or operator-entered EID; this historical run cannot be resolved under the current contract",
     );
   }
   const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
@@ -474,6 +474,12 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
   if (native !== undefined && (native.runId !== runId || native.attempt !== intent.runAttempt
     || native.traceId !== authority.envelope.traceId || native.workflow !== authority.envelope.workflow
     || intent.bindingProof.afterPrepareSpanPath !== `${native.traceId}/${native.nodeId}/prepare`)) throw new LogIdentityRefusedError("RUN_LOG_WRITE_NATIVE_IDENTITY_MISMATCH");
+  const descriptor = deps.canonical?.descriptors.resolve(authority.envelope.workflow);
+  const acceptsTransactionId = descriptor !== undefined
+    && descriptor.version === authority.envelope.descriptorVersion
+    && descriptor.contractFingerprint === authority.envelope.contractFingerprint
+    && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction"
+      && node.commit.uses.id === intent.taskId && acceptsRecheckTransactionId(node.commit.uses.writeSafety.completion));
   const repositories = deps.canonical?.database.authority;
   let check: unknown = { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" };
   if (repositories !== undefined && deps.authorityIdentity !== undefined && native !== undefined && authority.envelope.workflow === "separations"
@@ -511,7 +517,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     && record.request.target.runVersion === authority.version && record.request.target.intentVersion === intent.version);
   const lastCheck = latest?.phase.state === "succeeded" && latest.phase.acknowledgement.kind === "parked-write-check"
     ? latest.phase.acknowledgement.result : undefined;
-  return ParkedWriteDetailWireSchema.parse({ check, ...(lastCheck === undefined ? {} : { lastCheck }),
+  return ParkedWriteDetailWireSchema.parse({ acceptsTransactionId, check, ...(lastCheck === undefined ? {} : { lastCheck }),
     ...(native === undefined || nativeEvent === undefined ? {} : { native: {
       eventId: nativeEvent.eventId, order: nativeEvent.cursor, runId: native.runId,
       attempt: native.attempt, traceId: native.traceId, nodeId: native.nodeId,

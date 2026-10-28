@@ -9,7 +9,7 @@ import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID } from "../../../../src/bac
 import { backupStoppedAuthority, upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 
 export async function storageRecoveryFixture(version = 0) {
-  const fixture = await createBoundProfileFixture({ pending: true });
+  const fixture = await createBoundProfileFixture({ pending: "storage" });
   const root = fixture.stateRoot, path = fixture.path;
   const clock = manualClock(new Date("2026-09-10T20:00:00Z"));
   if (version > 0) {
@@ -23,7 +23,7 @@ export async function storageRecoveryFixture(version = 0) {
     } finally { database.close(); }
   }
   const input = { stateRoot: root, processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot), environmentFile: join(root, ".env"), plan: false };
-  return { root, path, clock, input, get admission() { return fixture.admission; }, finish: async () => await fixture.finish(),
+  return { root, path, clock, input, get admission() { return fixture.admission; },
     backup: () => backupStoppedAuthority(fixture.admission, root, clock, input.processLockRoot),
     run: (plan = false) => upgradeStorage(fixture.admission, { ...input, plan }, clock),
     dispose: async () => await fixture.close() };

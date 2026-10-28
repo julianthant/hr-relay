@@ -465,7 +465,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
   /* workflow:separations/match-identity — the gate's decision packet. */
   ...identityPacketLeaves(MATCH_IDENTITY, "packet"),
-  ...open(MATCH_IDENTITY, "evidenceDigest"),
+  ...open(MATCH_IDENTITY, "evidenceDigest", "approvalRequired"),
 
         /* These are carried forward past the gate so the terminal result has no pre-gate ancestry. */
   ...open(VERIFY_IDENTITY_APPROVAL, "documentNumber"),
@@ -582,7 +582,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...savedFinalizationLeaves(KUALI_FINALIZATION_RESULT, "finalization.proof"),
 
         /* This names one action id, the timekeeper who files it, the search bound, and how the document was reached — the READ, never the person. */
-  ...person(SEPARATIONS_INPUT, "timekeeperName"),
+  ...person(SEPARATIONS_INPUT, "timekeeperName", "operatorEmployeeId"),
   ...open(SEPARATIONS_INPUT, "documentNumber", "searchTimeoutMs",
     "reRead.ordinal", "reRead.reason"),
 

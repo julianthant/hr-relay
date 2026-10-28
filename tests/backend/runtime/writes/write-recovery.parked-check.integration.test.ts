@@ -247,7 +247,7 @@ describe("held-only parked write checks", () => {
       configIdentity: { configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId },
       descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined },
       intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-      writeResolution: { resolvePresent: unused, resolveAbsent: unused },
+      writeResolution: { recheck: unused, resolveAbsent: unused },
       workerRuntime: { pool: { assertResetOwner: (id, revision, lifetime) => {
         assert.equal(id, workerId); assert.equal(revision, slot.membershipRevision); assert.equal(lifetime.processId, lease.processId);
       }, checkParkedWrite: context => { deliveries++; return channel.check(context.command.commandId); },

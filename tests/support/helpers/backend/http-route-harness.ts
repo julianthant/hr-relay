@@ -308,7 +308,7 @@ export async function harness(options: {
     ids,
     descriptors,
     writeResolution: {
-      resolvePresent: () => {
+      recheck: () => {
         throw new Error("write resolution is not wired in this harness");
       },
       resolveAbsent: () => {

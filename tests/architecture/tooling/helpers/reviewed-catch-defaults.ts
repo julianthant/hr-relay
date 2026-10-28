@@ -2,6 +2,11 @@
  * New code and direct negative controls remain unexcepted. */
 export const REVIEWED_CATCH_DEFAULTS = [
   {
+    "path": "src/backend/runs/queries/run-detail/receipts-failures.ts",
+    "sha256": "7776f5d9c84f281e4b130ccda95dbb5959d0dc3732e6b616f677741d411d77ba",
+    "reason": "Only the canonical typed RerunRefusedError suppresses an unavailable recovery action; it grants no correction or retry. Unexpected snapshot, custody or validation failures propagate. Separate negative controls verify typed refusal and original unexpected-error propagation."
+  },
+  {
     "path": "src/backend/profiles/onboarding-duo-provider.ts",
     "sha256": "9af03823e468c469cd4298c9636ce27f8b0f7e46ca7614ce0f3e2777017106ce",
     "reason": "A failed UNKNOWN-retention or failure-report callback marks closure unproved and retains the original and retention errors. Closure propagates that stored failure with both causes, keeps the active attempt and browser uncertain, and refuses replacement or relaunch; it never reports successful cleanup. Worker stop failure remains uncertain while pump/report settlement is awaited, and the enclosing browser close retains both causes."
@@ -13,7 +18,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "d5e31fe1756d8c320ab82256fcfdfe5b610419ead7e4be459d4707d0e7bd6101",
+    "sha256": "45f030b422ace6c57625843d92449fee85f2b7154f345caa66a32772e42faed9",
     "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure. The maintenance tick retains its first error, stops rescheduling, signals the worker stop controller, and compose surfaces it as a failed report."
   },
   {
@@ -108,7 +113,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "e5369327b06f70b4fee52bcd921dbe25f6b8746905685fc46fad4d706b281da4",
+    "sha256": "73028be2a839bdd4b8f638bbb040ef3fe826449ac7184035cd97274d1ec5da62",
     "reason": "The empty rollback-failure accumulator cannot settle migration success: rollback failure retains database custody with the original error, and successful rollback rethrows that error. Failed external validation clears only its admission cache and throws the mutation error or run-search-index-rebuild-required. Malformed diagnostics remain explicit; stopped inspection and upgrade retain failed source closure and original causes. Finite native6 queued cancellation rolls back on failure and retains original plus rollback or database-close failures before installation or restore custody can release."
   },
   {

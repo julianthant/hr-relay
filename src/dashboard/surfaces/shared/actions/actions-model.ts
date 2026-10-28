@@ -50,7 +50,7 @@ export const intentPill = (intent: ActionIntent, size: "sm" | "md"): string =>
     INTENT_PILL[intent],
   );
 
-const PARK_COMMANDS: ReadonlySet<string> = new Set(["resolve-write-present", "resolve-write-absent"]);
+const PARK_COMMANDS: ReadonlySet<string> = new Set(["recheck-write", "resolve-write-absent"]);
 
 function isParkCommand(action: ActionDescriptorWire): boolean {
   return action.kind === "command" && PARK_COMMANDS.has(action.command);

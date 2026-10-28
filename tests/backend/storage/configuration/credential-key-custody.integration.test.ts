@@ -1,3 +1,4 @@
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -8,7 +9,7 @@ import { createCredentialKeyCustody, credentialKeyCustody, type CredentialKeyMig
 import { encodePrivate } from "../../../../src/rules/validation/private-equal.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { boundProfileCredentials, createBoundProfileFixture, createSyntheticProfileSession } from "../../../support/helpers/admission-fixture.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
@@ -18,6 +19,18 @@ import { upgradeStoppedMachineControl } from "../../../../src/backend/storage/ma
 import { composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { createHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
+
+function initializePendingCredentials(f: Awaited<ReturnType<typeof createBoundProfileFixture>>, hooks?: Parameters<typeof createCredentialStore>[0]["hooks"]): void {
+  if (!existsSync(f.path)) AuthorityDatabase.initializeProfile(f.admission);
+  const operationPath = join(f.machine.stateRoot, "machine", "operations");
+  const name = readdirSync(operationPath)[0]; assert.ok(name);
+  const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(operationPath, name), "utf8")));
+  const store = createCredentialStore({ hooks, admission: f.admission, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
+    erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${f.admission.profileBinding.profileId}.json`),
+    initializationInventory: (current, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine,
+      admission: f.admission, clock: systemClock, hostFacts: { primaryDisplay: null } })(current, writer, copies) });
+  store.migrateHistory({ operation });
+}
 
 function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "relay-key-custody-"))), entries = new Map<string, string>();
@@ -137,7 +150,7 @@ it("migrates a stopped installation at startup, retains readable ciphertext and 
 });
 
 for (const retained of ["none", "witness", "ciphertext"] as const) it(`handles OS entry publication before metadata staging with ${retained} retained`, async () => {
-  const f = await createBoundProfileFixture({ pending: true });
+  const f = await createBoundProfileFixture({ pending: "storage" });
   const binding = f.admission.profileBinding, keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`);
   const entry = new FakeKeyringEntry("Relay", `${binding.installationId}:${binding.profileId}`);
   const setPassword = entry.setPassword.bind(entry);
@@ -146,7 +159,7 @@ for (const retained of ["none", "witness", "ciphertext"] as const) it(`handles O
     throw new Error("synthetic exit after OS publication");
   });
   try {
-    try { await assert.rejects(f.finish(), { code: "CREDENTIAL_KEYCHAIN_UNCERTAIN" }); }
+    try { assert.throws(() => initializePendingCredentials(f), { code: "CREDENTIAL_KEYCHAIN_UNCERTAIN" }); }
     finally { spy.mockRestore(); }
     assert.equal(existsSync(keyPath), false);
     const directory = join(f.machine.stateRoot, "machine", "credential-keys");
@@ -159,14 +172,14 @@ for (const retained of ["none", "witness", "ciphertext"] as const) it(`handles O
     assert.ok(operation.credentialInitialization !== undefined);
     if (retained === "witness") {
       f.machine.publishProfileOperation({ ...operation, credentialInitialization: { ...operation.credentialInitialization, keyDocumentDigest: "f".repeat(64) } });
-      await assert.rejects(f.finish(), /credential-initialization-intended-key-missing/u);
+      assert.throws(() => initializePendingCredentials(f), /credential-initialization-intended-key-missing/u);
     } else if (retained === "ciphertext") {
       mkdirSync(join(f.stateRoot, "credentials"), { recursive: true, mode: 0o700 });
       writeFileSync(join(f.stateRoot, "credentials", "protected.json"), encodePrivate({ schemaVersion: 4, algorithm: "aes-256-gcm", ...binding,
         keyId: operation.credentialInitialization.keyId, nonce: Buffer.alloc(12).toString("base64"), tag: Buffer.alloc(16).toString("base64"), ciphertext: "AAAA" }), { mode: 0o600 });
-      await assert.rejects(f.finish(), /credential-key-required/u);
+      assert.throws(() => initializePendingCredentials(f), /credential-key-required/u);
     } else {
-      await f.finish();
+      initializePendingCredentials(f);
       assert.equal(credentialKeyCustody.read(JSON.parse(readFileSync(keyPath, "utf8"))).key, key);
     }
     assert.equal(entry.getPassword(), key);
@@ -202,15 +215,11 @@ for (const changed of ["key", "keyId", "filename", "inode"] as const) it(`refuse
 });
 
 for (const boundary of ["journal", "intent"] as const) for (const changed of (boundary === "journal" ? [false, true, "capture", "capture-journal"] as const : [false, true] as const)) it(`admits only original legacy stage custody after ${boundary}, changed=${changed}`, async () => {
-  const f = await createBoundProfileFixture({ pending: true }), binding = f.admission.profileBinding;
-  const session = createSyntheticProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot,
-    initializationInventory: (admission, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine, admission,
-      clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
-    credentialHooks: { [boundary === "journal" ? "afterKeyStageJournal" : "afterKeyStageIntent"]: () => { throw new Error("synthetic stage migration boundary"); } } });
+  const f = await createBoundProfileFixture({ pending: "storage" }), binding = f.admission.profileBinding;
   try {
-    assert.throws(() => session.signUp({ firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu",
-      password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" }));
-    await session.close();
+    assert.throws(() => initializePendingCredentials(f, {
+      [boundary === "journal" ? "afterKeyStageJournal" : "afterKeyStageIntent"]: () => { throw new Error("synthetic stage migration boundary"); },
+    }));
     const directory = join(f.machine.stateRoot, "machine", "credential-keys"), name = readdirSync(directory)[0];
     assert.ok(name?.startsWith(".credential-key."));
     const path = join(directory, name), bytes = readFileSync(path), key = credentialKeyCustody.read(JSON.parse(bytes.toString("utf8"))), legacy = Buffer.from(encodePrivate(key));
@@ -254,7 +263,7 @@ for (const boundary of ["journal", "intent"] as const) for (const changed of (bo
         assert.equal(readFileSync(path).includes(key.key), false);
       } finally { machine.release(); }
     }
-  } finally { await session.close(); await f.close(); }
+  } finally { await f.close(); }
 });
 
 
@@ -285,7 +294,7 @@ it("migrates an original schema-1 key before supported stopped prior-control con
       try {
         const upgraded = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory);
         assert.equal(upgraded.state, "upgraded");
-        assert.equal(upgraded.runtimeAccess, "owner-claim-required");
+        assert.equal(upgraded.runtimeAccess, "onboarding-incomplete");
       } finally { cold.release(); }
       for (const source of before) assert.equal(readFileSync(source.path).equals(source.bytes), true);
     } finally { maintenance.release(); }

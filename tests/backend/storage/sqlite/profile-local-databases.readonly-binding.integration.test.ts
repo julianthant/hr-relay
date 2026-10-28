@@ -18,7 +18,7 @@ import { createBoundProfileFixture } from "../../../support/helpers/admission-fi
 const actualSpawn = childProcesses.spawnSync;
 
 it("preserves the exact stopped-backup source witness after pending profile initialization", async () => {
-  const f = await createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture({ pending: "storage" }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   copyFileSync("package.json", join(f.workspace, "package.json"));
   try {
     const input = (args: readonly string[]) => composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission);

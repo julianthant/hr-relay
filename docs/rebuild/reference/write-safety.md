@@ -97,7 +97,7 @@ A source-bound rerun can carry exact server-owned repeat authorization. Ordinary
 
 `repeatOccurrenceKey` in `src/models/run/rerun.ts` derives one occurrence key from the business digest, consumed confirmation command, and transaction node. The intent retains its `occurrence` provenance. The sequencer queries all intents for the business digest and refuses a different unresolved occurrence. A new occurrence cannot bypass an `attempting`, `parked`, or other unresolved sibling.
 
-A selected repeat reaches fresh prepare, binding, fence, commit, and verification. `isFreshOccurrenceProof` in `src/backend/runtime/gates/repeat-proof.ts` rejects an earlier receipt as proof of the new occurrence. Recovery and operator-present resolution apply the same check. Generic business-key absence cannot settle a repeat occurrence, and an old confirmation cannot authorize another click.
+A selected repeat reaches fresh prepare, binding, fence, commit, and verification. `isFreshOccurrenceProof` in `src/backend/runtime/gates/repeat-proof.ts` rejects an earlier receipt as proof of the new occurrence. Recovery and operator-requested rechecks apply the same check. Generic business-key absence cannot settle a repeat occurrence, and an old confirmation cannot authorize another click.
 
 ## Sequenced writes
 
@@ -154,7 +154,7 @@ A settled prior transaction returns an `already-present` preview without staging
 
 ## 4. Crash recovery and UNKNOWN refusal
 
-`createWriteRecovery` handles unfinished `attempting` intents. Worker and expired-claim recovery must reconcile these intents before ordinary queue admission. [Execution and sessions](execution-and-sessions.md) describes that scheduling boundary.
+`createWriteRecoveryService` handles unfinished `attempting` intents. Production worker startup parks unfinished attempts for operator action; the standalone recovery service is not composed into that startup path. Worker and expired-claim recovery must reconcile these intents before ordinary queue admission. [Execution and sessions](execution-and-sessions.md) describes that scheduling boundary.
 
 The recovery service rebuilds the exact commit input and binds the retained run configuration fingerprint around its read lease. Missing authority or incompatible semantic identity refuses before probing. A failed probe is not absence.
 
@@ -182,18 +182,22 @@ An UNKNOWN submission never authorizes generic retry, another occurrence, cancel
 
 ## 4.1 Parked-write resolution
 
+The command kernel accepts `recheck-write` and `resolve-write-absent` only for the current `parked-write` run and `parked` intent. Both bind run version, intent ID, generation, original attempt ID, binding digest, and `occurrenceKeyDigest`. A stale request or mismatched target changes nothing. No command accepts operator-supplied completion proof.
 The dashboard's `check-parked-write` command uses an existing idle worker's control journal and session owner to run only the registered target-system idempotency read. Admission binds the installation, profile, operator, worker lifetime and control revision, run version, original intent generation and attempt, node, binding and occurrence digest. The service rechecks retained write authority after reading and closes its sessions before acknowledging. A deadline or unproved closure retains uncertainty. The journal keeps schema-bound system evidence; the dashboard receives only the held status and evidence digest. All results leave the run and intent parked. A matching target state without original-attempt attribution is ambiguous, and absence never invokes the confirmed-absent or recovery path.
 
 The check retains its actual registered task callback across task deadlines and command cancellation. Browser closure does not prove that callback exited: the worker control and retained configuration remain owned until callback settlement, including after a failed close. Expired or cancelled checks cannot publish late success.
 
-The command kernel accepts `resolve-write-present` and `resolve-write-absent` only for the current `parked-write` run and `parked` intent. Requests bind run version, intent ID, generation, original attempt ID, binding digest, and `occurrenceKeyDigest`. A stale request or mismatched target changes nothing.
 
 `createWriteResolutionExecutor` provides two arms:
 
-- Confirmed present validates the supplied proof's current schema hash, parses its value, checks repeat freshness, and reconstructs the output. Authenticated settlement records `proofSource: "operator-attestation"`, the checkpoint, confirmation history, and continuation.
-- Confirmed absent requires `evidenceNote`, records the operator and confirmation instant, and marks the intent `retryable`. It does not click. The next attempt must prepare, observe, and fence again.
+- `recheck-write` records an audited request on the parked intent and queues the same run at its transaction node. The lifecycle continuation requires that exact command and node. The worker runs the read-only probe before prepare, staging, fencing, or clicking. Valid present proof settles the intent with `proofSource: "recovery-probe"`, writes the checkpoint and confirmation history atomically, and continues the run. Absent, ambiguous, unknown, throwing, or invalid proof clears the request and returns the run to `parked-write` with a renewed code, message, and time. This path never authorizes retry, including contracts with stabilized negative recovery.
+- `resolve-write-absent` records the operator and confirmation instant and marks the intent `retryable`. It does not click. The next attempt must prepare, observe, and fence again.
 
-`commitResolvedParkedWrite` and `settleResolvedParkedAbsence` in `authority-database.ts` authenticate the resolution against the command and audit and verify the run CAS. Both preserve the original parked attempt bytes. Resolution is recorded on the intent, not by rewriting the original browser attempt's outcome.
+A recheck optionally accepts `transactionId` only when the completion verifier is `ucpath/verify-termination`. That verifier searches the exact employee and reads only the requested transaction detail. Proof must match the requested transaction ID and the permanent key's subject and effective date. A missing or mismatched record stays parked.
+
+`requestRecheck`, `parkRecheck`, `commitRecheckedParkedWrite`, and `settleResolvedParkedAbsence` in `authority-database.ts` enforce intent CAS and authenticated command/audit identity. Recheck settlement also requires the current running worker claim. The original parked browser attempt remains immutable. The recheck request audit and settled intent authenticate confirmation history and canonical receipts through the recovery-probe proof source.
+
+A lost or crashed recheck claim returns claimed, validating, or running execution to `parked-write`; the intent remains parked and its request is cleared. A fresh operator command is required to check again.
 
 `requireWriteResolutionBinding` checks the consumed semantic surface. Exact contract-closure identity is sufficient. When the closure changes, the module checks workflow identity, descriptor version, transaction node, canonical-input schema, re-derived permanent key, and retained binding identity. Missing evidence, schema failure, and key drift remain distinct refusal categories. There is no force or waiver arm. Settling an intent does not re-plan its run onto a changed descriptor.
 
@@ -224,11 +228,12 @@ Confirmed-action publication is separate from settlement. `run-executor.ts` publ
 `match-identity.ts`, `verifyIdentityApproval`, and the registered graph distinguish independently supplied EIDs from name resolution:
 
 - `document-eid` and `canonical-eid` require an exact UCPath actual-detail read-back and coherent declared origin. They produce `machine-verification` without a gate result.
-- `name-resolved` requires the operator's typed identity gate result even when similarity is high. The graph's gate condition is exactly `packet.emplIdSource == "name-resolved"`.
+- `name-resolved` and `operator-entered` require the operator's identity gate result even when similarity is high. The comparison derives `approvalRequired` for these two origins, and every identity gate tests that fact.
+- The optional `operatorEmployeeId` run input is entered only through the declared Job Summary not-found action in Logs. It is absent from start and rerun forms. The action plans a source-version-bound rerun changing only that field, preserving execution options, omissions and private retained input. The entered EID is read exactly in UCPath; the original document EID text or absence remains unchanged in the identity packet. It never becomes a document EID or a machine-verified canonical EID.
 
 ### 14.5 Identity authority and approval evidence
 
-The post-gate task verifies the packet digest, approved EID membership, and `chosenFrom` label. It refuses an EID the packet never showed. A supplied-EID packet cannot consume an operator result. Rejection is a failed identity verification and cannot reach a write.
+The post-gate task verifies the packet digest, approved EID membership, and `chosenFrom` label. It refuses an EID the packet never showed. A document-EID or independently supplied canonical-EID packet cannot consume an operator result. An operator-entered EID cannot proceed without one. Failure correction provenance retains the source run, version, failure ID and input field in the rerun plan and consumed run authorization. The entered EID is classified as a direct identifier; its identity origin and approval requirement are decision facts in receipts and evidence. Rejection is a failed identity verification and cannot reach a write.
 
 `identity-evidence.ts` produces the decision packet, disagreements-first comparisons, and persisted risk `approvalShape`, including `type-the-eid`. The gate projection separately derives its presentation `approvalShape`: `choose-a-candidate` when it shows several approvable EIDs, otherwise `one-click`. Disagreeing fields make the served approval confirmation destructive. This presentation does not change the canonical packet, approved subject, schema bindings or evidence digest, and requires a fresh operator confirmation. The packet includes the write plan from `write-plan.ts`; its digest binds the planned values as well as identity. Protected timekeeper values use retained protected-input binding identity in this packet and its digest.
 
@@ -236,7 +241,7 @@ The actual `IdentityApprovalResultSchema` carries the decision, selected EID, ch
 
 ### 14.6 Approval ceremony risks
 
-Risk 1 is a client that downgrades the server's required identity ceremony to one-click approval. `src/dashboard/surfaces/run-detail/identity/identity-ceremony.ts` accepts the served `one-click` or `choose-a-candidate` shape and refuses unknown or contradictory packets. Candidate choice has no default selection. The dashboard serves and composes approvals only; it offers no rejection. Only the operator's decision is composed locally; the EID origin and evidence digest come from the served packet.
+Risk 1 is a client that downgrades the server's required identity ceremony to one-click approval. `src/dashboard/surfaces/run-detail/identity/identity-ceremony.ts` accepts the served `one-click` or `choose-a-candidate` shape and refuses unknown or contradictory packets. Candidate choice has no default selection. Operator-entered EIDs use the same served ceremony as name-resolved identities: UCPath's returned person is shown before approval, with no write before the gate is resolved. The dashboard serves and composes approvals only; it offers no rejection. Only the operator's decision is composed locally; the EID origin and evidence digest come from the served packet.
 
 `src/rules/separations/identity-approval.ts` remains the authority: an unshown EID, changed evidence digest, contradictory origin, rejection, or missing required approval refuses before a write. Fresh page binding separately prevents an approved person from being replaced by a different staged subject.
 

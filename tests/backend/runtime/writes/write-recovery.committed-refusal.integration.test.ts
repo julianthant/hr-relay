@@ -19,7 +19,7 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
         assert.equal(decision.state, "backfilled");
         const committed = h.database.authority.writeIntents.get(writeIntentId);
         assert.ok(committed);
-        const command = commandFor("resolve-write-absent", run, { evidenceNote: "stale operator tab" });
+        const command = commandFor("resolve-write-absent", run, {});
         if (command.family !== "run" || command.type !== "resolve-write-absent") throw new Error("unreachable");
         const context: WriteResolutionContext = Object.freeze({
           auditId:UUID_6, command, run, intent: committed, now: h.clock.now().toISOString(),

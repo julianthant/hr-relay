@@ -17,8 +17,8 @@ import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/s
 import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
 
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 {
 
@@ -138,9 +138,9 @@ function options(root: string) {
 
 describe("read-only storage recovery truth", () => {
   it("reports interruption separately from healthy integrity and preserves all recovery bytes", async () => {
-    const f = await storageRecoveryFixture();
+    const profile = await createBoundProfileFixture();
+    const f = { ...profile, root: profile.stateRoot, clock: systemClock };
     try {
-      await f.finish();
       await doctorAuthorityStorage(f.admission, options(f.root), f.clock, boundProfileCredentials(f.admission));
       assert.equal(existsSync(`${f.path}-wal`) ? readFileSync(`${f.path}-wal`).length : 0, 0);
       writeFileSync(join(f.root, ".restore-00000000-0000-4000-8000-000000000001.sqlite.tmp"), "retained current stage", { mode: 0o600 });
@@ -152,7 +152,7 @@ describe("read-only storage recovery truth", () => {
         serviceState: () => ({state: "never-run", reason: "Explicit backups only"}) });
       assert.deepEqual(wire.recovery, report.recovery);
       assert.deepEqual(snapshot(f.root), before);
-    } finally { await f.dispose(); }
+    } finally { await profile.close(); }
   });
 
 });

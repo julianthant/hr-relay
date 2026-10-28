@@ -18,7 +18,7 @@ import {
 import type { NodeId, TaskId } from "../../../rules/identity/ids.js";
 import { RunRecordSchema } from "../../../models/run/record.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { catalogCodeForThrown } from "../../../models/failures/error-catalog.js";
+import { failureCodeFromTaskCode, catalogCodeForThrown } from "../../../models/failures/error-catalog.js";
 import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   FailureRecordSchema,
@@ -35,10 +35,6 @@ function writeAuthorityReasonFrom(error: unknown): WriteAuthorityReason | undefi
   return undefined;
 }
 
-
-export function failureCodeFromTaskCode(code: string): string {
-  return ErrorCodeSchema.parse(code.toUpperCase().replaceAll("-", "_"));
-}
 
 // Failure fingerprints describe a failure class; occurrence identity must not split repeated failures.
 export function deriveFailureFingerprint(input: Readonly<{

@@ -1,4 +1,8 @@
+import { failureCodeFromTaskCode } from "../failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { StartPlanRequestSchema } from "./start-plan.js";
+import { ActionConfirmWireSchema } from "./actions.js";
+import { FailureCorrectionSchema } from "../workflow/failure-correction.js";
 import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema } from "../../rules/commands/commands.js";
 import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
@@ -574,8 +578,11 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
 /** The failure section serves CONTENT, not a pointer; every field below is one the schema itself made display-safe. */
 export const FailureDetailWireSchema = z.strictObject({
   native: NativeRunEventWireSchema.optional(),
-  rerunInput: z.strictObject({ field: z.literal("documentNumber"), expectedVersion: PositiveIntSchema }).optional(),
   display: FailureDisplaySchema.optional(),
+  recovery: z.strictObject({
+    correction: FailureCorrectionSchema, expectedVersion: z.number().int().positive(),
+    retry: ActionDescriptorWireSchema, confirm: ActionConfirmWireSchema, request: StartPlanRequestSchema,
+  }).optional(),
   resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
   runId: RunIdSchema,
   failureId: FailureIdSchema,
@@ -619,9 +626,14 @@ export const FailureDetailWireSchema = z.strictObject({
   ]),
   occurredAt: IsoInstantSchema,
 }).superRefine((failure, context) => {
-  if (failure.rerunInput !== undefined && (failure.workflowId !== "separations" || failure.code !== "DOCUMENT_UNAVAILABLE"
-    || failure.taskId !== "kuali/read-separation-document" || failure.nodeId === undefined || failure.writeState !== "not-attempted")) {
-    context.addIssue({ code: "custom", path: ["rerunInput"], message: "document correction requires an exact read failure before any write" });
+  const recovery = failure.recovery;
+  if (recovery !== undefined) {
+    const source = recovery.request.rerunSource;
+    if (failure.writeState !== "not-attempted" || failureCodeFromTaskCode(recovery.correction.code) !== failure.code || recovery.correction.nodeId !== failure.nodeId
+      || recovery.retry.kind !== "command" || recovery.retry.command !== "retry" || recovery.retry.expectedVersion !== recovery.expectedVersion
+      || source?.runId !== failure.runId || source.expectedVersion !== recovery.expectedVersion
+      || source.failureCorrection?.failureId !== failure.failureId || source.failureCorrection.inputField !== recovery.correction.inputField
+      || recovery.request.workflowId !== failure.workflowId) context.addIssue({ code: "custom", path: ["recovery"], message: "Failure recovery must target this exact failure and revision" });
   }
   if (failure.sameFingerprintSeen < 1) {
     context.addIssue({
@@ -763,7 +775,7 @@ export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type ProofFieldWire = z.infer<typeof ProofFieldWireSchema>;
 
-/** WHAT A CONFIRMED-PRESENT RESOLUTION MUST CARRY: the resolution refuses any proof whose `schemaHash` is not the commit contract's own, and parses the value through that exact schema. */
+/** Completion-proof metadata for parked-write evidence; rechecks obtain proof from the target system. */
 export const ProofContractWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("served"),
@@ -771,7 +783,7 @@ export const ProofContractWireSchema = z.discriminatedUnion("state", [
     commitTaskId: TaskIdSchema,
       /* How this write WOULD have proved itself unattended; context the operator needs, because `save-verify` means a reload read-back is the only landing proof. */
     completionKind: z.enum(["receipt", "save-verify", "upload-verify"]),
-    /** The exact value the resolution's `proof.schemaHash` must equal. */
+    /** Schema identity of the completion proof. */
     schemaHash: FingerprintSchema,
     fields: z.array(ProofFieldWireSchema).min(1),
   }),
@@ -781,6 +793,7 @@ export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
 
 /** The parked-write section: a `parked-write` run is the one lifecycle whose ordinary controls are REFUSED BY NAME, because a fenced write may already exist in a real HR system. */
 export const ParkedWriteDetailWireSchema = z.strictObject({
+  acceptsTransactionId: z.boolean(),
   check: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("available"), target: ParkedWriteCheckTargetSchema }),
     z.strictObject({ state: z.literal("unavailable"), code: z.literal("PARKED_CHECK_UNAVAILABLE") }),

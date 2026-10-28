@@ -99,6 +99,7 @@ describe("gate resolution", () => {
     };
     const output = MatchIdentityOutputSchema.parse({
       packet,
+      approvalRequired: ["name-resolved", "operator-entered"].includes(packet.emplIdSource),
       evidenceDigest: deriveIdentityEvidenceDigest(packet),
     });
     const checkpoint = harness.database.authority.runCheckpoints.insert({

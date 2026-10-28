@@ -86,7 +86,7 @@ async function harness(configureRunners?: (runners: readonly PreflightRunner[]) 
   const unexpected = (): never => { throw new Error("Unexpected unrelated effect"); };
   const kernelDependencies: CommandKernelDependencies = { lifecycle, authority: database, clock, ids: sequentialIdFactory("c"), appVersion: "0.1.0", descriptors,
     preflight: preflight.admission, configIdentity: identity, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    writeResolution: { resolvePresent: unexpected, resolveAbsent: unexpected },
+    writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
     workerRuntime: { pool: {planPoolWorkerCount:unexpected,spawnPoolWorker:unexpected,refreshPoolBrowser:unexpected,reopenPoolBrowser:unexpected,stopPoolWorker:unexpected,pausePoolWorker:unexpected,resumePoolWorker:unexpected} } };
   const kernel = createCommandKernel(kernelDependencies);
   const ingress = { workflowId: personLookupDescriptor.id, submissions: [{ emplId: "10873698" }], dryRun: false };
@@ -462,7 +462,7 @@ async function harness(beforeCrmEndpoint?: () => Promise<void>) {
   const unexpected = (): never => { throw new Error("Unexpected unrelated effect"); };
   const kernelDependencies: CommandKernelDependencies = { lifecycle, authority: database, clock, ids: sequentialIdFactory("c"), appVersion: "0.1.0", descriptors,
     preflight: preflight.admission, configIdentity: identity, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    writeResolution: { resolvePresent: unexpected, resolveAbsent: unexpected },
+    writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
     workerRuntime: { pool: { planPoolWorkerCount: unexpected, spawnPoolWorker: unexpected, refreshPoolBrowser: unexpected, reopenPoolBrowser: unexpected, stopPoolWorker: unexpected, pausePoolWorker: unexpected, resumePoolWorker: unexpected } } };
   const kernel = createCommandKernel(kernelDependencies);
   const ingress = { workflowId: personLookupDescriptor.id, submissions: [{ emplId: "10873698" }], dryRun: false };

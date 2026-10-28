@@ -49,7 +49,7 @@ function sameJson(left: unknown, right: unknown): boolean {
   return canonicalJsonStringify(left) === canonicalJsonStringify(right);
 }
 
-const FREEFORM_TEXT = new Set(["correctedValue", "displayName", "evidenceNote", "note", "reason", "value"]);
+const FREEFORM_TEXT = new Set(["correctedValue", "displayName", "note", "reason", "value"]);
 
 function safeString(key: string | undefined, value: string): string | undefined {
   if (FingerprintSchema.safeParse(value).success || z.uuid().safeParse(value).success) return value;

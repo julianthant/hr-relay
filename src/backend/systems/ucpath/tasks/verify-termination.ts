@@ -8,7 +8,7 @@ import { firstDisagreeingName, ucpathTerminationVerdict } from "../termination-v
 export const verifyTerminationTask = defineTask(ucpathDriver, UcpathVerifyTermination, {
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
   async run({ input, ctx }) {
-    const scan = await ctx.driver.scanTerminationTransactions({ emplId: input.emplId });
+    const scan = await ctx.driver.scanTerminationTransactions({ emplId: input.emplId, ...(input.transactionId === undefined ? {} : { transactionId: input.transactionId }) });
     const disagreeing = firstDisagreeingName(scan, input.expectedName);
     if (disagreeing !== undefined) {
       return ctx.fail(

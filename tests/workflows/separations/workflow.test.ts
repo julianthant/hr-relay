@@ -265,7 +265,7 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "timecard", kind: "task", dependsOn: ["subject", "plan", "timecard-search"] },
         { id: "dates", kind: "task", dependsOn: ["plan", "timecard"] },
         { id: "comparison", kind: "task", dependsOn: ["document", "plan", "subject", "job-summary", "name-search", "termination-type", "department-option", "employment", "dates"] },
-        { id: "identity-approval", kind: "gate", dependsOn: ["comparison"], when: { kind: "equals", of: { from: "node", nodeId: "comparison", path: "packet.emplIdSource" }, value: "name-resolved" } },
+        { id: "identity-approval", kind: "gate", dependsOn: ["comparison"], when: { kind: "is-true", of: { from: "node", nodeId: "comparison", path: "approvalRequired" } } },
         { id: "approval", kind: "task", dependsOn: ["comparison", "identity-approval"] },
         { id: "pending-set", kind: "task", dependsOn: ["approval"] },
         { id: "clear-pending", kind: "transaction", dependsOn: ["approval", "pending-set"], dryRun: "stop-after-prepare" },

@@ -61,7 +61,7 @@ export type EnqueuePolicy = z.infer<typeof EnqueuePolicySchema>;
 
 export const CommandActionIdSchema = z.enum([
   "retry", "restart", "cancel", "bump", "rename", "delete",
-  "edit-checkpoint", "resolve-write-present", "resolve-write-absent",
+  "edit-checkpoint", "recheck-write", "resolve-write-absent",
 ]);
 export const NavigationActionIdSchema = z.enum(["open-review", "open-evidence"]);
 export const WorkflowActionIdSchema = z.enum([

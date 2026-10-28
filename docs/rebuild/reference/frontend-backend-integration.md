@@ -198,7 +198,8 @@ and marker claims for other requests refuse validation.
 A pre-dispatch validation failure can say Nothing was sent. A failure after dispatch is unknown:
 the backend may have recorded the command. Retain the original request/command identity and check
 that attempt before another submission. Unknown external writes remain parked and offer
-`resolve-write-present` or `resolve-write-absent` with exact intent identity and evidence. They
+`recheck-write` or `resolve-write-absent` with exact intent identity. Recheck reads the real system;
+the operator does not supply completion proof. They
 never auto-retry. Navigation shortcuts to Review, Resolve, or failure evidence do not execute a
 command. Machine verification is not operator approval.
 

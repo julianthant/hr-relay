@@ -55,7 +55,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await form.getByRole("button", { name: "Continue run", exact: true }).click();
       await expect(parked.getByRole("button", { name: "Check result", exact: true })).toHaveCount(0);
       await expect(parked.locator("figure")).toHaveCount(1);
-      const result = surface.getByText("Termination confirmed. Transaction SIM-042 is present. Continued to Finalize Kuali document.", { exact: true });
+      const result = surface.getByText("Checking transaction. Relay is reading SIM-042 in UCPath.", { exact: true });
       await expect(result).toBeFocused();
       expect(await result.evaluate(node => node.closest("article"))).toBeNull();
 

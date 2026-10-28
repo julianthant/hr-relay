@@ -3,13 +3,12 @@ import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixt
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 import { CreateRunRequestSchema } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { sourceBoundReadDescriptor,sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
-import { WriteFixtureProofSchema,absentProbeEvidence,buildWriteFixtureRegistry,writeFixtureDescriptor,writeFixtureDocumentDescriptor,writeFixtureMemoDescriptor,writeFixtureOmittableDescriptor,writeFixtureParallelDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { absentProbeEvidence,buildWriteFixtureRegistry,writeFixtureDescriptor,writeFixtureDocumentDescriptor,writeFixtureMemoDescriptor,writeFixtureOmittableDescriptor,writeFixtureParallelDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
 const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
@@ -168,29 +167,32 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.equal(h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId)
       .filter((row) => row.runId === repeat.envelope.runId).length, 0);
   });
-  it("requires exact-occurrence attestation and rejects old proof before atomic positive settlement", async () => {
+  it("rechecks repeat proof and rejects an earlier receipt without another click", async () => {
     const h = await harness(); const source = await completed(h);
     const warning = h.proposal(source); assert.ok(warning.rerun);
     const repeat = h.start(h.proposal(source, warning.rerun.warningDigest));
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
     await h.execute(repeat);
-    const parked = h.fresh(repeat);
-    const intent = h.database.authority.writeIntents.listByRun(repeat.envelope.runId)[0];
-    assert.equal(intent.status, "parked");
-    const base = { requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "run", type: "resolve-write-present",
-      target: { runId: repeat.envelope.runId, expectedVersion: parked.version, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest } };
-    const payload = { proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T123456" } }, evidenceNote: "Exact occurrence receipt inspected" };
-    assert.throws(() => h.kernel.execute({ ...base, commandId: h.ids.uuid(), payload }), /occurrenceKeyDigest/u);
-    assert.equal(h.kernel.execute({ ...base, commandId: h.ids.uuid(), payload: { ...payload, occurrenceKeyDigest: intent.idempotencyKeyDigest } }).state, "rejected");
-    assert.deepEqual(h.fresh(repeat), parked);
-    assert.deepEqual(h.database.authority.writeIntents.get(intent.writeIntentId), intent);
-    const command = { ...base, commandId: h.ids.uuid(), payload: { ...payload, occurrenceKeyDigest: intent.idempotencyKeyDigest,
-      proof: { ...payload.proof, value: { transactionId: "T345678" } } } };
+    let parked = h.fresh(repeat);
+    const request = () => {
+      const intent = h.database.authority.writeIntents.listByRun(repeat.envelope.runId)[0];
+      assert.ok(intent.status === "parked");
+      return { commandId: h.ids.uuid(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+        family: "run", type: "recheck-write", target: { runId: repeat.envelope.runId, expectedVersion: parked.version,
+          writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
+          bindingProofDigest: intent.bindingProofDigest }, payload: { occurrenceKeyDigest: intent.idempotencyKeyDigest } };
+    };
+    const clicks = h.world.events.filter(event => event.startsWith("commit-click")).length;
+    assert.equal(h.kernel.execute(request()).state, "applied");
+    h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
+    assert.equal((await h.execute(h.fresh(repeat))).state, "parked-write");
+    parked = h.fresh(repeat);
+    const command = request();
     assert.equal(h.kernel.execute(command).state, "applied");
     assert.equal(h.kernel.execute(command).state, "already-applied");
-    const clicks = h.world.events.filter((event) => event.startsWith("commit-click")).length;
+    h.world.probeResults.push({ state: "present", proof: { transactionId: "T345678" } });
     assert.equal((await h.execute(h.fresh(repeat))).state, "done");
-    assert.equal(h.world.events.filter((event) => event.startsWith("commit-click")).length, clicks, "own-run checkpoint resumes without another click");
+    assert.equal(h.world.events.filter(event => event.startsWith("commit-click")).length, clicks);
     assert.deepEqual(h.fresh(source), source);
   });
 
@@ -243,20 +245,6 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.equal(h.database.authority.startPlans.get(accepted.startPlanId)?.consumedBy, undefined);
   });
 
-  it("retains an exact external command proof reference and refuses deletion atomically",async()=>{
-    const h=await harness(),source=await completed(h),peer=h.start(h.proposal());
-    const checkpoint=h.database.authority.runCheckpoints.listByItem(h.descriptor.id,source.envelope.itemId)[0];assert.ok(checkpoint);
-    const commandId=h.ids.uuid();
-    h.database.authority.commands.insert({commandId,requestedAt:h.clock.now().toISOString(),requestedBy:"local-operator",source:"dashboard",
-      family:"run",type:"resolve-write-present",target:{runId:peer.envelope.runId,expectedVersion:peer.version,
-        writeIntentId:h.ids.uuid(),intentGeneration:1,writeAttemptId:h.ids.uuid(),bindingProofDigest:source.envelope.contractFingerprint},
-      payload:{occurrenceKeyDigest:source.envelope.contractFingerprint,proof:{schemaHash:checkpoint.output.schemaHash,value:{checkpoint}},evidenceNote:"offline checkpoint inspection"}});
-    const generation=h.database.getMeta().authorityGeneration;
-    const result=h.lifecycle.delete({commandId:h.ids.uuid(),runId:source.envelope.runId,expectedVersion:source.version});
-    assert.deepEqual(result,{state:"refused",refusal:{reason:"shared-checkpoint"}});
-    assert.deepEqual(h.fresh(source),source);assert.equal(h.database.getMeta().authorityGeneration,generation);
-    assert.ok(h.database.authority.commands.get(commandId));
-  });
 
   it("rolls back the plan, session, first creation and publication when the second real service create refuses", async () => {
     const h = await harness(true);

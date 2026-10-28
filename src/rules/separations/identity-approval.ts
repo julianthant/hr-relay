@@ -3,6 +3,7 @@ import { z } from "zod";
 import { EidSchema, FingerprintSchema, type Fingerprint } from "../identity/ids.js";
 import { directIdentifierDisplay } from "../redaction/redaction.js";
 import {
+  IdentityApprovalShapeSchema,
   IdentityEvidencePacketSchema,
   deriveIdentityEvidenceDigest,
 } from "./identity-evidence.js";
@@ -13,7 +14,7 @@ export const IdentityApprovalChoiceSchema = z.enum([
   "checked",
   /** The EID the document's NAME resolves to, when that is a different person. */
   "name-search",
-  /** An EID the approver typed. It must still be one the packet SHOWED. */
+  /** Another EID the packet SHOWED. */
   "manual",
 ]);
 export type IdentityApprovalChoice = z.infer<typeof IdentityApprovalChoiceSchema>;
@@ -42,7 +43,7 @@ export const ApprovedIdentitySubjectSchema = z.strictObject({
   /** The name UCPath displayed for the checked EID, carried onto the receipt. */
   ucpathName: z.string().min(1),
   nameTier: z.enum(["same", "similar", "different"]),
-  approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
+  approvalShape: IdentityApprovalShapeSchema,
 });
 export type ApprovedIdentitySubject = z.infer<typeof ApprovedIdentitySubjectSchema>;
 
@@ -108,7 +109,7 @@ export function verifyIdentityApproval(
     });
   }
 
-  if (result !== undefined && packet.emplIdSource !== "name-resolved") {
+  if (result !== undefined && packet.emplIdSource !== "name-resolved" && packet.emplIdSource !== "operator-entered") {
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-supplied-eid-unproved",
@@ -117,11 +118,11 @@ export function verifyIdentityApproval(
   }
 
   if (result === undefined) {
-    if (packet.emplIdSource === "name-resolved") {
+    if (packet.emplIdSource === "name-resolved" || packet.emplIdSource === "operator-entered") {
       return IdentityApprovalVerificationSchema.parse({
         state: "refused",
         code: "identity-approval-required",
-        reason: "an EID resolved by name requires an operator identity decision",
+        reason: "a name-resolved or operator-entered EID requires an operator identity decision",
       });
     }
     if (packet.emplIdSource === "document-eid" && packet.documentEidText !== packet.emplId) {

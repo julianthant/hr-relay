@@ -179,8 +179,8 @@ export async function finishProfileOnboarding(session: Pick<ReturnType<typeof cr
   return session.completeOnboarding(draft.token, draft.operationId);
 }
 
-export async function createBoundProfileFixture(options: { pending?: true; sharedMachine?: true; workspace?: string } = {}) {
-  if (options.pending === true && options.sharedMachine === true) throw new Error("pending profile fixture requires exclusive machine");
+export async function createBoundProfileFixture(options: { pending?: "storage" | "onboarding"; sharedMachine?: true; workspace?: string } = {}) {
+  if (options.pending !== undefined && options.sharedMachine === true) throw new Error("pending profile fixture requires exclusive machine");
   const workspace = options.workspace === undefined
     ? realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")))
     : realpathSync(options.workspace);
@@ -195,7 +195,7 @@ export async function createBoundProfileFixture(options: { pending?: true; share
       repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
       initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
       activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
-    let draft = options.pending === true ? undefined : session.signUp(fields);
+    const draft = options.pending === "storage" ? undefined : session.signUp(fields);
     if (draft !== undefined && draft.state !== "onboarding") throw new Error("fixture draft was not created");
     const operation = draft ?? machine.beginProfileSignUp({ firstName: fields.firstName, lastName: fields.lastName,
       createdAt: IsoInstantSchema.parse(fields.createdAt), emailKey: createProfileVerifiers(machine.stateRoot).emailKeyFor(fields.email),
@@ -205,9 +205,9 @@ export async function createBoundProfileFixture(options: { pending?: true; share
     const stateRoot = admission.stateRoot;
     registerBoundProfile(admission, machine);
     const finish = async () => {
-      const current = draft ?? session.signUp(fields);
-      if (current.state !== "onboarding" || current.profileId !== operation.profileId) throw new Error("fixture draft did not resume");
-      draft = current;
+      if (draft === undefined) throw new Error("fixture onboarding draft unavailable");
+      const current = draft;
+      if (current.state !== "onboarding" || current.profileId !== operation.profileId) throw new Error("fixture onboarding draft changed");
       const active = await finishProfileOnboarding(session, current);
       if (active.state !== "active" || active.profileId !== operation.profileId) throw new Error("bound profile fixture signup refused");
       admission.release();
@@ -216,7 +216,7 @@ export async function createBoundProfileFixture(options: { pending?: true; share
       registerBoundProfile(admission, machine);
       return active;
     };
-    if (options.pending !== true) await finish();
+    if (options.pending === undefined) await finish();
     if (options.sharedMachine === true) {
       await session.close();
       admission.release();

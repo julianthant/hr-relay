@@ -196,7 +196,7 @@ async function kernelHarness(existing?: { database: AuthorityDatabase; clock: Te
       resolve: (workflowId) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === workflowId),
     },
     writeResolution: {
-      resolvePresent: () => {
+      recheck: () => {
         throw new Error("unused in this suite");
       },
       resolveAbsent: () => {

@@ -110,7 +110,7 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
       ids: sequentialIdFactory("d"),
       descriptors,
       writeResolution: {
-        resolvePresent: () => {
+        recheck: () => {
           throw new Error("write resolution is not wired in the parity seed");
         },
         resolveAbsent: () => {

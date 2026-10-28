@@ -188,7 +188,7 @@ export function createDashboardPoolTestWorld() {
         resolve: (workflowId) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === workflowId),
       },
       writeResolution: {
-        resolvePresent: () => {
+        recheck: () => {
           throw new Error("unused in this suite");
         },
         resolveAbsent: () => {
@@ -407,7 +407,7 @@ export function kernelOver(
       resolve: (workflowId) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === workflowId),
     },
     writeResolution: {
-      resolvePresent: () => {
+      recheck: () => {
         throw new Error("unused in this suite");
       },
       resolveAbsent: () => {

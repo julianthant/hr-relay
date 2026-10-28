@@ -1,6 +1,10 @@
 /** Desktop parity uses isolated servers and paired screenshot/a11y references. */
+import "./tests/support/helpers/credential-keychain-process-preload.js";
 import { defineConfig } from "@playwright/test";
 import { parityUpdateRequested } from "./tests/parity/helpers/reference-store.js";
+
+const keychainPreload = new URL("./tests/support/helpers/credential-keychain-process-preload.ts", import.meta.url).href;
+process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ""} --import=${keychainPreload}`;
 
 export default defineConfig({
   testDir: "tests/parity",

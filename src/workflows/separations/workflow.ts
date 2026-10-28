@@ -1,5 +1,6 @@
 /** `separations` — one Kuali separation document → one terminated employee across three systems; reads before writes, gated by operator approval. */
 import { z } from "zod";
+import { EID_PATTERN, EidSchema } from "../../rules/identity/ids.js";
 import { SeparationsResultSchema } from "../../models/workflows/separations/result.js";
 export { SeparationsResultSchema } from "../../models/workflows/separations/result.js";
 import { defineWorkflow, defineStepEntries } from "../../workflow-kit/workflow-definition.js";
@@ -153,12 +154,12 @@ export const comparisonNode = identityCheckEntries.task(COMPARISON_NODE, Separat
   replay: "checkpoint",
 });
 
-// Name-resolved identity requires operator approval through the version-checked command.
+// Name-resolved and operator-entered identities require version-checked approval.
 export const identityApprovalGate = identityCheckEntries.operatorGate(GATE_NODE, {
   label: "Identity Approval",
   statusKey: "awaitingIdentityApproval",
   result: IdentityApprovalResultSchema,
-  when: { kind: "equals", of: { from: "node", nodeId: COMPARISON_NODE, path: "packet.emplIdSource" }, value: "name-resolved" },
+  when: { kind: "is-true", of: { from: "node", nodeId: COMPARISON_NODE, path: "approvalRequired" } },
 });
 
 // Recheck stored approval against current evidence; checkpoints preserve only the prior answer.
@@ -405,7 +406,8 @@ const SeparationReReadSchema = z.strictObject({
 });
 
 const SeparationsInputShape = {
-    // Only the document number varies per run; the id is a graph output.
+    // The employee ID is supplied only by the declared Logs correction.
+  operatorEmployeeId: EidSchema.optional(),
   documentNumber: KualiDocumentNumberSchema,
     // The timekeeper is retained input so `explain run` can show it.
   timekeeperName: KualiTimekeeperNameSchema,
@@ -430,6 +432,7 @@ export const SeparationsCanonicalInput = defineCanonicalInput(
       timekeeperName: "Synthetic Timekeeper",
     },
     {
+      operatorEmployeeId: SeparationsMatchIdentity.example.packet.emplId,
       documentNumber: "4524",
       timekeeperName: "Synthetic Timekeeper",
       searchTimeoutMs: 30_000,
@@ -461,6 +464,10 @@ export const separationsWorkflow = defineWorkflow({
   icon: "ShieldCheck",
   category: "separation",
   canonicalInput: SeparationsCanonicalInput,
+  failureCorrections: [{ nodeId: JOB_SUMMARY_NODE, code: "employee-not-found", inputField: "operatorEmployeeId",
+    label: "Employee ID", actionLabel: "Enter EID", pattern: EID_PATTERN.source },
+  { nodeId: ACTION_NODE, code: "document-not-in-action-list", inputField: "documentNumber",
+    label: "Document number", actionLabel: "Enter document number", pattern: z.toJSONSchema(KualiDocumentNumberSchema).pattern }],
   rerunValues: [
     { nodeId: DATES_NODE, fieldPath: "lastDayWorked", label: "Last day worked", targetStepKey: "kronos-timecard", targetFieldPath: "lastDayWorked" },
     { nodeId: DATES_NODE, fieldPath: "separationDate", label: "Separation date", targetStepKey: "kronos-timecard", targetFieldPath: "separationDate" },
@@ -752,6 +759,7 @@ export const separationsWorkflow = defineWorkflow({
     const subject = task(subjectNode, [document, plan, nameSearch], ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       employeeName: outputs[PLAN_NODE].employeeName,
+      ...(input.operatorEmployeeId === undefined ? {} : { operatorEmployeeId: input.operatorEmployeeId }),
       documentEid: outputs[DOCUMENT_NODE].employee.eid,
       nameSelection: outputs[NAME_SEARCH_NODE].selection,
     }));

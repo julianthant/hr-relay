@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterEach,describe,it,vi } from "vitest";
 import { createOperatorRunDetail } from "../../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { buildRunDetail, buildRunSection } from "../../../../../src/backend/runs/queries/run-detail.js";
 import { projectRunLogs } from "../../../../../src/dashboard/state/run-wiring-adapter.js";
-import { ERROR_CATALOG, resolveErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
+import { ERROR_CATALOG, resolveErrorCatalogFailure, failureCodeFromTaskCode } from "../../../../../src/models/failures/error-catalog.js";
 import { DiagnosticBundleCorruptError } from "../../../../../src/backend/runs/commands/refusals.js";
-import { buildReceiptFailureSection } from "../../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
+import { RerunRefusedError } from "../../../../../src/backend/runs/start/rerun.js";
+import { buildReceiptFailureSection, failureRecovery } from "../../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
 import { createServerVerifiedArtifactReader } from "../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { deriveDiagnosticContentDigest } from "../../../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../../../src/models/trust/diagnostic.js";
@@ -81,7 +82,24 @@ function availableFailure(response: ReturnType<typeof buildReceiptFailureSection
 }
 
 describe("run-detail failure diagnostic-bundle linkage", () => {
-  it("offers document correction only for the current descriptor's exact read failure before any write", async () => {
+  it("offers no recovery for canonical rerun refusal and propagates unexpected snapshot failures", async () => {
+    const h = await fixture(), descriptor = separationsModule.descriptor;
+    const correction = descriptor.failureCorrections?.[0]; assert.ok(correction);
+    const run = RunRecordSchema.parse({ ...h.run, envelope: { ...h.run.envelope, workflow: descriptor.id,
+      descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint } });
+    const failure = FailureRecordSchema.parse({ ...h.failure, nodeId: correction.nodeId,
+      code: failureCodeFromTaskCode(correction.code), writeState: "not-attempted" });
+    const deps = { ...h.f.deps, canonical: { reader: h.f.reader, database: h.f.database, descriptors: { resolve: () => descriptor } } };
+    let error: Error = new RerunRefusedError("source-stale", "synthetic stale source");
+    const snapshot = vi.spyOn(h.f.database, "withAuthorityReadSnapshot").mockImplementation(() => { throw error; });
+    try {
+      assert.deepEqual(failureRecovery(deps, run, failure), {});
+      error = new Error("synthetic unexpected snapshot failure");
+      assert.throws(() => failureRecovery(deps, run, failure), candidate => candidate === error);
+    } finally { snapshot.mockRestore(); }
+  });
+
+  it("does not offer document correction for an unavailable Kuali page or uncertain write", async () => {
     const h = await fixture();
     const descriptor = separationsModule.descriptor;
     const run = RunRecordSchema.parse({ ...h.run, envelope: { ...h.run.envelope, workflow: descriptor.id,
@@ -98,14 +116,14 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
       trust: { ...h.f.receipts, getFailure: () => failure },
     };
     const read = () => availableFailure(buildReceiptFailureSection(deps, run.envelope.runId, "failure"));
-    assert.deepEqual(read().rerunInput, { field: "documentNumber", expectedVersion: run.version });
+    assert.equal(read().recovery, undefined, "an unavailable page is not a proved missing document");
     failure = FailureRecordSchema.parse({ ...failure, action: { ...failure.action, operation: "commit" }, writeState: "unknown" });
-    assert.equal(read().rerunInput, undefined, "UNKNOWN is never offered a correction/retry");
+    assert.equal(read().recovery, undefined, "UNKNOWN is never offered a correction/retry");
     failure = FailureRecordSchema.parse({ ...failure, action: { ...failure.action, operation: "read" }, writeState: "not-attempted", code: "UNEXPECTED_PAGE_STATE" });
-    assert.equal(read().rerunInput, undefined, "a different failure is not a document correction");
+    assert.equal(read().recovery, undefined, "a different failure is not a document correction");
     failure = FailureRecordSchema.parse({ ...failure, code: "DOCUMENT_UNAVAILABLE" });
     current = false;
-    assert.equal(read().rerunInput, undefined, "missing current descriptor never becomes a default");
+    assert.equal(read().recovery, undefined, "missing current descriptor never becomes a default");
   });
   it("retains an early terminal failure in Logs when the empty evidence fold skips timeline reads", async () => {
     const h = await fixture();

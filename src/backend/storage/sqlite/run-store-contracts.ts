@@ -239,6 +239,9 @@ export const CanonicalWriteResolutionTransitionRequestSchema = z.strictObject({
   lifecycle: z.strictObject({ state: z.literal("queued") }),
   writeResolution: z.discriminatedUnion("kind",[
     z.strictObject({kind:z.literal("operator"),binding:ParkedWriteResolutionBindingSchema}),
+    z.strictObject({ kind: z.literal("recheck"), commandId: CommandIdSchema,
+      writeIntentId: WriteIntentIdSchema, generation: PositiveIntSchema,
+      writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }),
     z.strictObject({kind:z.literal("recovery"),writeIntentId:WriteIntentIdSchema,generation:PositiveIntSchema,
       writeAttemptId:WriteAttemptIdSchema,bindingProofDigest:FingerprintSchema,decision:z.enum(["present","absent"])}),
   ]),

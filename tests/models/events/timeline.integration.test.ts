@@ -116,7 +116,7 @@ const _afterEachFixture0 = async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 async function fresh() {
-  const profile = await createBoundProfileFixture({ pending: true });
+  const profile = await createBoundProfileFixture({ pending: "storage" });
   pendingProfiles.push(profile);
   const input = { stateRoot: profile.stateRoot, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false };
   return { root: profile.stateRoot, path: profile.path, input, run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };

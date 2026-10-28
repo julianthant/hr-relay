@@ -403,7 +403,7 @@ describe("queue-row action descriptors — every served verb has a command behin
   });
 
   it("catches a synthesized descriptor whose verb this path cannot send", () => {
-    const unreachable = ["edit-checkpoint", "resolve-write-present", "resolve-write-absent"] as const;
+    const unreachable = ["edit-checkpoint", "recheck-write", "resolve-write-absent"] as const;
     for (const command of unreachable) {
       assert.ok(
         !served.some((action) => action.kind === "command" && action.command === command),

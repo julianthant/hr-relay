@@ -14,7 +14,7 @@ import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.j
 import { type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
-import { authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
+import { authenticateParkedWriteRecheck, authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { prepareNativeRunDeletion, executeNativeRunDeletion, containsDeletionArtifactReference } from "./native-run-deletion.js";
 import { inspectArtifactDeletionFile, removeArtifactDeletionFile, pendingDiagnosticArtifacts, reclaimDiagnosticStages } from "../artifacts/content-addressed-artifact-writer.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
@@ -126,7 +126,7 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAu
 import type { VerifiedBackup } from "./backup-service.js";
 import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
-import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceRecordsSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, ResolvedParkedWriteCommitInputSchema, ResolvedParkedWriteAbsenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
+import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceRecordsSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, ResolvedParkedWriteCommitInputSchema, WriteRecheckRequestSchema, WriteRecheckParkRequestSchema, ResolvedParkedWriteAbsenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
 
 
 export class AuthoritySchemaVersionError extends Error {
@@ -272,6 +272,8 @@ type WriteIntentRepository = Readonly<{
   fenceAttempt(input: unknown): PermanentWriteResolution;
 
   refenceRetryable(input: unknown): PermanentWriteResolution;
+  requestRecheck(input: unknown): WriteIntentRecord;
+  parkRecheck(input: unknown): WriteIntentRecord;
   /** Ref write-safety §4 arm 3: CAS `attempting` → `parked` on intent AND current attempt. */
   parkAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
   /** Stabilized negative evidence settles only an attempting callback. */
@@ -1006,8 +1008,10 @@ function authenticateStoredResolutionAudit(database: DatabaseSync,input:unknown)
   const audit=NativeCommandAuditSchema.parse(input);
   if (!("writeResolution" in audit) || audit.writeResolution === undefined) return;
   const intent=audit.writeResolution;
-  if ((intent.status !== "committed" && intent.status !== "retryable") || intent.resolution === undefined) throw new Error("parked-write-resolution-audit-authority-missing");
-  const attempt=database.prepare("SELECT * FROM write_attempts WHERE id=?").get(intent.resolution.writeAttemptId);
+  if (intent.status !== "parked" && ((intent.status !== "committed" && intent.status !== "retryable") || intent.resolution === undefined)) throw new Error("parked-write-resolution-audit-authority-missing");
+  const attemptId = intent.status === "parked" ? intent.currentAttemptId : intent.resolution?.writeAttemptId;
+  if (attemptId === undefined) throw new Error("parked-write-resolution-audit-authority-missing");
+  const attempt=database.prepare("SELECT * FROM write_attempts WHERE id=?").get(attemptId);
   const command=database.prepare("SELECT * FROM commands WHERE id=?").get(audit.request.commandId);
   if(attempt === undefined || command === undefined) throw new Error("parked-write-resolution-audit-authority-missing");
   authenticateAuditedParkedWriteResolution(nativeOrdinaryRecordFromRow("write_attempts",attempt),commandFromRow(command),audit);
@@ -2971,7 +2975,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  commitResolvedParkedWrite(input: unknown): AtomicWriteCommitReport {
+  commitRecheckedParkedWrite(input: unknown): AtomicWriteCommitReport {
     const request = ResolvedParkedWriteCommitInputSchema.parse(input);
     const {commit,checkpoint,resolution} = request;
     return this.withAuthorityTransaction(()=>{
@@ -2980,14 +2984,18 @@ export class AuthorityDatabase implements Disposable {
       const attempt = this.#requireWriteAttempt(current.currentAttemptId);
       if (attempt.outcome.state !== "parked") throw new Error("parked-write-resolution-original-attempt-required");
       const run = this.#readRunRow(current.runId);
-      if (run === undefined || run.version !== resolution.expectedRunVersion || run.lifecycle.state !== "parked-write"
-        || run.lifecycle.writeIntentId !== current.writeIntentId || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-resolution-run-cas-mismatch");
+      if (run === undefined || run.lifecycle.state !== "running" || current.recheck?.commandId !== resolution.commandId
+        || run.envelope.attempt !== current.runAttempt || commit.outcome.proofSource !== "recovery-probe") throw new Error("parked-write-recheck-run-mismatch");
+      this.#assertCurrentExecution(current.runId, request.claim);
+      authenticateParkedWriteRecheck(current, attempt, this.authority.commands.get(resolution.commandId), this.authority.commandAudits.get(resolution.auditId));
       this.#assertAtomicCommitMatchesIntent(commit,current);
       if (checkpoint.writtenAt !== commit.confirmedAt || checkpoint.runId !== current.runId
         || checkpoint.workflowId !== current.workflowId || checkpoint.itemId !== current.itemId
         || checkpoint.attempt !== current.runAttempt || Number(checkpoint.claimGeneration) !== Number(run.claimGeneration)
+        || checkpoint.nodeId !== current.recheck.nodeId || checkpoint.descriptorVersion !== run.envelope.descriptorVersion
+        || checkpoint.contractFingerprint !== run.envelope.contractFingerprint || commit.transaction.traceId !== run.envelope.traceId
         || canonicalJsonStringify(checkpoint.output.value) !== canonicalJsonStringify(commit.outcome)) throw new Error("parked-write-resolution-checkpoint-mismatch");
-      const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,...base} = current;
+      const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base} = current;
       const intent = WriteIntentRecordSchema.parse({...base,status:"committed",completionProof:commit.completionProof,
         confirmedAt:commit.confirmedAt,version:current.version+1,updatedAt:commit.confirmedAt,resolution});
       authenticateStoredWriteResolution(this.#database,intent);
@@ -3019,7 +3027,7 @@ export class AuthorityDatabase implements Disposable {
       if (attempt.outcome.state !== "parked" || run === undefined || run.version !== request.resolution.expectedRunVersion
         || run.lifecycle.state !== "parked-write" || run.lifecycle.writeIntentId !== current.writeIntentId
         || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-resolution-run-cas-mismatch");
-      const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,...base} = current;
+      const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base} = current;
       const intent = WriteIntentRecordSchema.parse({...base,status:"retryable",settlement:request.settlement,
         resolvedAt:request.resolution.resolvedAt,version:current.version+1,updatedAt:request.resolution.resolvedAt,resolution:request.resolution});
       authenticateStoredWriteResolution(this.#database,intent);
@@ -4614,6 +4622,34 @@ export class AuthorityDatabase implements Disposable {
             this.#replaceWriteIntent(intent);
             this.#insertWriteAttempt(attempt);
             return PermanentWriteResolutionSchema.parse({ state: "fenced", intent, attempt });
+          });
+        },
+        requestRecheck: (input: unknown) => {
+          const request = WriteRecheckRequestSchema.parse(input);
+          return this.withAuthorityTransaction(() => {
+            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            if (current.status !== "parked" || current.recheck !== undefined) throw new Error("parked-write-recheck-parked-intent-required");
+            const run = this.#readRunRow(current.runId);
+            if (run?.lifecycle.state !== "parked-write" || run.version !== request.recheck.expectedRunVersion
+              || run.lifecycle.writeIntentId !== current.writeIntentId || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-recheck-run-mismatch");
+            const intent = WriteIntentRecordSchema.parse({ ...current, recheck: request.recheck,
+              version: current.version + 1, updatedAt: request.recheck.requestedAt });
+            authenticateParkedWriteRecheck(intent, this.#requireWriteAttempt(current.currentAttemptId),
+              this.authority.commands.get(request.recheck.commandId), this.authority.commandAudits.get(request.recheck.auditId));
+            this.#replaceWriteIntent(intent);
+            return intent;
+          });
+        },
+        parkRecheck: (input: unknown) => {
+          const request = WriteRecheckParkRequestSchema.parse(input);
+          return this.withAuthorityTransaction(() => {
+            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
+            if (current.status !== "parked" || current.recheck?.commandId !== request.commandId) throw new Error("parked-write-recheck-request-mismatch");
+            const { recheck: _recheck, ...base } = current;
+            const intent = WriteIntentRecordSchema.parse({ ...base, parkedCode: request.code, message: request.message,
+              authorityReason: request.authorityReason, version: current.version + 1, updatedAt: request.now });
+            this.#replaceWriteIntent(intent);
+            return intent;
           });
         },
         parkAttempt: (input: unknown) => {

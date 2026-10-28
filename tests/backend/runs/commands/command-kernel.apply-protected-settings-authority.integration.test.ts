@@ -46,7 +46,7 @@ function protectedSettingsCommand(input: Readonly<{
 describe("apply-protected-settings authority", () => {
   it("refuses a stale protected schema before reading or materializing credentials", async () => {
     assert.notEqual(HASH_A, PROTECTED_SETTINGS_SCHEMA_HASH);
-    const profile = await createBoundProfileFixture({ pending: true });
+    const profile = await createBoundProfileFixture({ pending: "storage" });
     profiles.push(profile);
     const stateRoot = profile.stateRoot;
     const credentials = createCredentialStore({ stateRoot });

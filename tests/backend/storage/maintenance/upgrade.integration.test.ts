@@ -40,7 +40,8 @@ const clock = manualClock(new Date("2026-10-01T12:00:00Z"));
 const closers: Array<() => void | Promise<void>> = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const close of closers.splice(0).reverse()) await close(); });
 async function fixture(){
- const profile=await createBoundProfileFixture({ pending: true }); closers.push(async () => await profile.close());
+ const profile=await createBoundProfileFixture({ pending: "onboarding" }); closers.push(async () => await profile.close());
+ rmSync(profile.path);
  const root=profile.stateRoot,path=profile.path,input={stateRoot:root,processLockRoot:join(profile.workspace,rebuildRuntimeIsolation.processLockRoot),plan:false};
  return {get admission(){return profile.admission;},profileId:profile.admission.profileBinding.profileId,machine:profile.machine,finish:async ()=>await profile.finish(),root,path,input,run:(plan=false)=>upgradeStorage(profile.admission,{...input,plan},clock)};
 }
