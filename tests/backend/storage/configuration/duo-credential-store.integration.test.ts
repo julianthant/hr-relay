@@ -577,6 +577,7 @@ it("finishes one interrupted Duo publication after the producing process exits a
     };
     let eventFailure: { error: unknown } | undefined;
     try {
+      await f.lifetime.share(child);
       const ready = await next();
       assert.deepEqual(ready, { type: "ready", pid: child.pid });
       const uncertain = once(child, "message");
