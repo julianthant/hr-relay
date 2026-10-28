@@ -51,8 +51,8 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[])
   const doctorOptions = { stateRootTrustAnchor: root, stateRoot, authorityPath: databasePath, backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 100 };
   const input: RuntimePreflightRunnerInput = { config, providerAvailability, protectedSecrets: { read: () => record }, browserExecutablePath: () => executable,
     scope: PreflightAdmissionScopeSchema.parse({configSnapshotId:"11111111-1111-4111-8111-111111111111", configFingerprint:"a".repeat(64), descriptorFingerprint:"b".repeat(64), requestedCapabilities:capabilities}),
-    dashboard: {repoRoot:root, stateRoot, artifactRoot, processLockRoot:join(stateRoot,"locks"), backendPort:0, frontendPort:0, clock,
-      authorityHealth: new AuthorityHealthPreflightRunner(profile.admission, doctorOptions, clock, boundProfileCredentials(profile.admission)), listLiveWorkerProcesses:()=>[]},
+    dashboard: {repoRoot:root, stateRoot, artifactRoot, backendPort:0, frontendPort:0, clock,
+      authorityHealth: new AuthorityHealthPreflightRunner(profile.admission, doctorOptions, clock, boundProfileCredentials(profile.admission)) },
   };
   const report = (transform?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]) => {
     const runners = createRuntimePreflightRunners(input);

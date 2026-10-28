@@ -647,7 +647,6 @@ async function composeDashboardRuntimeStartup(
       ? {}
       : { frontendOwnerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] }),
     clock,
-    processLockRoot,
     authorityHealth: new AuthorityHealthPreflightRunner(admission, {
       stateRootTrustAnchor: resolve(stateRoot, ".."),
       stateRoot,
@@ -655,10 +654,6 @@ async function composeDashboardRuntimeStartup(
       backupDirectory,
       busyTimeoutMs: 5000,
     }, clock, context.credentials),
-    listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map((lease) => ({
-      workerId: lease.workerId,
-      processId: lease.processId,
-    })),
   });
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
   const preflightAuthority = createPreflightAuthority({

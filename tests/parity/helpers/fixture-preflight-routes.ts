@@ -10,12 +10,13 @@ export function fixturePreflightReport(profile: FixtureDashboardProfile, workflo
   const workflow = workflowId === undefined ? undefined : WorkflowBootstrapPrimitiveSchema.array().parse(profile.bootstrap.workflows).find(row => row.id === workflowId);
   if (workflowId !== undefined && !workflow) throw new Error("PREFLIGHT_FIXTURE_SCOPE_UNKNOWN");
   const capabilities: RuntimeCapability[] = workflow ? ["executor.run", "system.ucpath.prod", "system.crm.prod"] : ["dashboard.serve"];
+  if(warning)capabilities.push("provider.nominatim");
   return PreflightReportWireSchema.parse({
     configFingerprint: FIXTURE_EDITABLE_SETTINGS.activeConfigFingerprint,
     descriptorFingerprint: workflow?.descriptorFingerprint ?? profile.bootstrap.descriptorHash,
     checkedAt: profile.bootstrap.serverClock.now, requestedCapabilities: capabilities,
-    results: expectedPreflightChecks(capabilities).map(check => warning && check.id === "process.orphans"
-      ? { status: "warning", check: check.id, summary: "An unused worker process is still present.", impact: "No active run is blocked.", remediation: "Review unused workers in Sessions." }
+    results: expectedPreflightChecks(capabilities).map(check => warning && check.id === "provider.nominatim"
+      ? { status: "warning", check: check.id, summary: "The optional Nominatim provider is unavailable.", impact: "No active run is blocked.", remediation: "Configure the optional provider in Settings." }
       : { status: "pass", check: check.id, summary: "Check passed for this scope." }),
   });
 }

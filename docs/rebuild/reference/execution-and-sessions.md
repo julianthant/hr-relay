@@ -547,6 +547,10 @@ state, and actual supervisor exit evidence. Runs, unfinished writes, browser obs
 pending controls and pending artifacts all keep the profile busy. Cancellation awaits the owned-child
 drain and refuses incomplete resource closure. PID files and OS process census do not decide quiescence.
 
+Dashboard preflight reports runtime/configuration, filesystem, authority and reserved-port readiness.
+Worker liveness comes from owned supervisor child events; preflight does not inspect PID records.
+Optional provider warnings report registered provider availability.
+
 The dashboard owns one serial Nominatim service. It accepts requests only over each spawned
 worker's existing IPC channel; workers have no direct Nominatim fetch path. The queue spaces actual
 fetch starts by at least one second, preserves deadlines and cancellation, and never replays a

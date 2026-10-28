@@ -26,7 +26,7 @@ function fixture(capabilities: readonly RuntimeCapability[]) {
   const input: RuntimePreflightRunnerInput = {
     scope: PreflightAdmissionScopeSchema.parse({ configSnapshotId: "11111111-1111-4111-8111-111111111111", configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64), requestedCapabilities: capabilities }),
     config, protectedSecrets: { read: initialProtectedStoreRecord }, providerAvailability: {},
-    dashboard: { repoRoot: root, stateRoot: root, artifactRoot: root, processLockRoot: join(root, "locks"), backendPort: 0, frontendPort: 0, clock, listLiveWorkerProcesses: () => [],
+    dashboard: { repoRoot: root, stateRoot: root, artifactRoot: root, backendPort: 0, frontendPort: 0, clock,
       authorityHealth: { check: PreflightCheckIdSchema.parse("authority.health"), kind: "io", async run() { throw new Error("unselected authority detector ran"); } } },
   };
   const observe = async (name: string, useFactory = false) => {

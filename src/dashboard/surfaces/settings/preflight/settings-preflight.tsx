@@ -27,7 +27,6 @@ const CHECK_COPY: Record<string, { name: string; description: string }> = {
   "secrets.ucpath-sso": { name: "UCPath sign-in", description: "Checks the username and password required for UCPath sign-in." },
   "secrets.timekeeper": { name: "Timekeeper name", description: "Checks the timekeeper name needed by this workflow." },
   "secrets.sharepoint-roster": { name: "SharePoint roster", description: "Checks the onboarding roster location used by this workflow." },
-  "process.orphans": { name: "Unfinished processes", description: "Checks for stale processes or worker leases." },
 };
 
 function checkCopy(id: string): { name: string; description: string } {

@@ -12,7 +12,6 @@ export const PreflightScenarioIdSchema = z.enum([
   "preflight/port-busy",
   "preflight/fiscal-stale",
   "preflight/workflow-secret-missing",
-  "preflight/orphan-process",
   "preflight/endpoint-prod",
   "preflight/provider-unavailable",
 ]);

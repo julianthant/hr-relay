@@ -24,7 +24,7 @@ async function report() {
 
 it("Settings groups served checks and keeps failures, blocks, and only exact remedies visible",async()=>{
   const served=await report();let storage=0,sessions=0,settings=0,reruns=0;
-  const checks=["fiscal.current","authority.health","process.orphans","browser.assets"].map(id=>({
+  const checks=["fiscal.current","authority.health","provider.nominatim","browser.assets"].map(id=>({
     id:PreflightCheckIdSchema.parse(id),label:id,verdict:"fail" as const,
     detail:`Synthetic ${id} unavailable`,blocks:["executor.run"],remediation:`Repair ${id}`,checkedAt:served.checkedAt,
   }));
@@ -44,7 +44,7 @@ it("Settings groups served checks and keeps failures, blocks, and only exact rem
   const buttons=[...host.querySelectorAll("button")].filter(button=>button.textContent?.startsWith("Open "));
   assert.equal(buttons.length,4);
   for(const button of buttons)await act(async()=>button.click());
-  assert.deepEqual([storage,sessions,settings],[1,1,2]);
+  assert.deepEqual([storage,sessions,settings],[1,0,3]);
   const rerun=[...host.querySelectorAll("button")].find(button=>button.textContent==="Run preflight");
   assert.ok(rerun);await act(async()=>rerun.click());assert.equal(reruns,1);
 });

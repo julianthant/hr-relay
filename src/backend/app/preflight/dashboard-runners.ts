@@ -12,7 +12,6 @@ import {
   type PreflightRunner,
 } from "../../../models/preflight/preflight.js";
 import { probeOwnedViteServer } from "../host/local-vite-probe.js";
-import { inspectRuntimeProcessOrphans, observeProcessIdentity } from "../../storage/sqlite/runtime-process-locks.js";
 
 const RuntimePackageSchema = z.object({
   name: z.string().min(1),
@@ -32,7 +31,6 @@ const RuntimeCompatibilityCheck = PreflightCheckIdSchema.parse("runtime.compatib
 const ConfigValidCheck = PreflightCheckIdSchema.parse("config.valid");
 const FilesystemHealthCheck = PreflightCheckIdSchema.parse("filesystem.health");
 const PortsAvailableCheck = PreflightCheckIdSchema.parse("ports.available");
-const ProcessOrphansCheck = PreflightCheckIdSchema.parse("process.orphans");
 
 function nodeMeetsFloor(version: string, engine: string): boolean {
   const required = NodeFloorSchema.parse(engine).slice(2).split(".").map(Number);
@@ -88,10 +86,7 @@ export interface DashboardPreflightRunnerInput {
   readonly authorityHealth: PreflightRunner;
   readonly frontendOwnerNonce?: string;
   readonly clock: Clock;
-  readonly processLockRoot: string;
   readonly frontendProbe?: typeof probeOwnedViteServer;
-  readonly listLiveWorkerProcesses: () => readonly Readonly<{ workerId: string; processId: number }>[];
-  readonly observeProcess?: typeof observeProcessIdentity;
   /** The filesystem boundary remains injectable for controlled disk-exhaustion proof. */
   readonly filesystemProbe?: { availableBlocks(this: void, path: string): number };
 }
@@ -113,7 +108,6 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
     ? undefined
     : DashboardLaunchNonceSchema.parse(input.frontendOwnerNonce);
   const frontendProbe = input.frontendProbe ?? probeOwnedViteServer;
-  const observe = input.observeProcess ?? observeProcessIdentity;
   let ownedBackendPort: number | undefined;
 
   const implementations: readonly PreflightRunner[] = [
@@ -209,32 +203,6 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
           return unhealthy(this.check, `reserved port ownership is invalid for ${occupied.join(" and ")}`, "the isolated dashboard cannot bind or identify its serving process");
         }
         return healthy(this.check, "reserved dashboard ports are bindable or owned by this dashboard pair");
-      },
-    },
-    {
-      check: ProcessOrphansCheck,
-      kind: "io",
-      async run(context) {
-        if (context.signal.aborted) throw new Error("process.orphans preflight was aborted");
-        try {
-          const inspection = inspectRuntimeProcessOrphans(input.processLockRoot);
-          const staleOwners = inspection.staleServerRecords + inspection.staleWorkerRecords;
-          const orphaned = input.listLiveWorkerProcesses().filter(({ processId }) => observe(processId).state === "gone");
-          return orphaned.length === 0 && staleOwners === 0
-            ? healthy(this.check, "no live worker lease points at a missing process and no unreleased dead process owners were found")
-            : unhealthy(
-              this.check,
-              `${String(orphaned.length)} live worker lease(s) point at missing processes; ${String(staleOwners)} unreleased dead process owner record(s) require review`,
-              "review worker leases and stale process ownership before recovery",
-            );
-        } catch {
-          return unhealthy(
-            this.check,
-            "process-lock evidence could not be reconciled (process-lock-evidence-invalid: "
-              + `${basename(input.processLockRoot)})`,
-            "process liveness cannot be reconciled until the malformed record is reviewed",
-          );
-        }
       },
     },
   ];

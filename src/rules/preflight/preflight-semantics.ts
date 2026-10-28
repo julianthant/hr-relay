@@ -89,7 +89,6 @@ export const PREFLIGHT_CHECK_EXPECTATIONS = deepFreeze(PreflightCheckSemanticExp
   ]),
   expectation("secrets.timekeeper", ["workflow.kuali-fill"], ["workflow.kuali-fill"]),
   expectation("secrets.sharepoint-roster", ["workflow.sharepoint-download", "system.sharepoint.prod"], ["workflow.sharepoint-download", "system.sharepoint.prod"]),
-  expectation("process.orphans", ["dashboard.serve"], []),
   ...systemExpectations(),
   ...providerExpectations(),
 ]));

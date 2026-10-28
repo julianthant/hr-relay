@@ -377,10 +377,6 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     try {
       const readiness = await createDashboardClient({ baseUrl: `http://127.0.0.1:${String(second.port)}` }).readiness();
       assert.equal(readiness.state, "present");
-      if (readiness.state === "present") {
-        const check = readiness.checks.find(({ id }) => id === "process.orphans");
-        assert.equal(check?.verdict, "warning"); assert.match(check?.detail ?? "", /1 unreleased dead process owner record/u);
-      }
     } finally {
       await assert.rejects(second.stop(), error => {
         assert.ok(error instanceof RuntimeCustodyUncertainError);
