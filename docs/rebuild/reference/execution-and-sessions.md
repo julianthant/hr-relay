@@ -293,6 +293,24 @@ readback grants authority. A publisher that fails readback or custody release re
 if a complete receipt remains available for independent verification. Receipt proof describes the
 historical process closure event; it never replaces a consumer's current database/resource guards.
 
+### Offline cancellation of never-claimed queued runs
+
+`storage cancel-queued-runs --plan --json` captures an established flat native6 installation
+without changing source files or acquiring admission. `storage cancel-queued-runs --capture
+<digest> --apply --json` rechecks that exact capture under restore admission and exclusive
+installation custody, proves process/open-file/cwd absence, then cancels all eligible queued runs
+in one transaction. Plan or apply refuses any other nonterminal run, prior claim, requeue,
+checkpoint, write intent, delegation, active native resource, live owner or uncertain custody.
+A stale dead worker process record can remain for subsequent `recover-worker-process`; this command
+neither releases nor rewrites process records. Changes to captured database files, native inventory,
+installation witnesses or process custody require a new plan.
+
+The finite native6 path shares the ordinary lifecycle transition validator and version-fenced row
+update. It records terminal `cancelled` with reason `cancelled offline: stale queued run`, the normal
+lifecycle command and audit, terminal result evidence and timeline event. It changes no schema or
+credentials and grants no profile runtime authority. The supported existing-data claim and upgrade
+retain the cancelled outcome and reason.
+
 ## 7. Verification owners
 
 Tests mirror implementation under `tests/backend/runtime/` and `tests/backend/storage/sqlite/`.

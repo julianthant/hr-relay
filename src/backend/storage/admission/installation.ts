@@ -3451,7 +3451,7 @@ export function prepareStoppedDeviceRecertification(lease: InstallationLease, re
     } });
 }
 
-export function inspectFlatWorkerProcessRecovery(workspacePath: string, acquisitionId: string) {
+export function inspectFlatOfflineRunMaintenance(workspacePath: string) {
   const workspace = realpathSync(workspacePath), control = join(workspace, CONTROL);
   if (resolve(workspacePath) !== workspace) fail("worker-process-recovery-workspace-unsafe");
   assertNoSymlinkComponents(control); privateDirectory(control);
@@ -3462,16 +3462,21 @@ export function inspectFlatWorkerProcessRecovery(workspacePath: string, acquisit
       .map(name => join(control, name))].some(path => lstatMaybe(path) !== undefined)) fail("worker-process-recovery-flat-source-unproved");
   const witnesses = [join(control, "installation.json"), join(control, "locator.json"), join(state, MARKER), join(artifacts, MARKER)]
     .map(path => readProcessCustodyFile(path).witness);
-  return WorkerProcessRecoveryCaptureSchema.parse({ workspace, installationId: locator.installationId, processLockRoot: locks,
-    ...captureWorkerProcessRecoveryFile(locks, acquisitionId), witnesses,
-    singletonClaims: assertWorkerProcessRecoveryRuntimeStopped(locks, acquisitionId),
+  return { workspace, installationId: locator.installationId, processLockRoot: locks, witnesses,
     roots: [state, artifacts, locks].map(path => {
       assertNoSymlinkComponents(path);
       const stat = lstatSync(path);
       if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o022) !== 0
         || process.getuid !== undefined && stat.uid !== process.getuid()) fail("worker-process-recovery-root-unsafe");
       return { path, device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid };
-    }) });
+    }) };
+}
+
+export function inspectFlatWorkerProcessRecovery(workspacePath: string, acquisitionId: string) {
+  const installation = inspectFlatOfflineRunMaintenance(workspacePath);
+  return WorkerProcessRecoveryCaptureSchema.parse({ ...installation,
+    ...captureWorkerProcessRecoveryFile(installation.processLockRoot, acquisitionId),
+    singletonClaims: assertWorkerProcessRecoveryRuntimeStopped(installation.processLockRoot, acquisitionId) });
 }
 
 export function assertFlatWorkerProcessRecoveryHeld(lease: InstallationLease, restore: RestoreAdmissionHandle, acquisitionId: string) {

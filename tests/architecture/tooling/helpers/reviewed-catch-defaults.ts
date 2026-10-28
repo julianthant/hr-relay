@@ -63,7 +63,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "ccca05dbcbc83f8b66d23b43cdefa89286fbb816c85b6f0aec47697bee3139a3",
+      "sha256": "978496033d0f8d3cc451bd0d53320a50fd52e41bcb31fc5d8118697093583f63",
     "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate. Descriptor and directory close failures retain source custody and original failures; publication cleanup aggregates failures. Abandoned-mutex recovery retains restore custody on unproved closure, and inventory disposal refuses release on failed closure."
   },
   {
@@ -108,8 +108,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "017ed71d7d3b3daf051bbb24dbd2a59f8ce4cea399cfef5603cc435fc5e9aba7",
-    "reason": "The empty rollback-failure accumulator cannot settle migration success: rollback failure retains database custody with the original error, and successful rollback rethrows that error. Failed external validation clears only its admission cache and throws the mutation error or run-search-index-rebuild-required. Malformed diagnostics remain explicit; stopped inspection, upgrade and claimed-profile rebase retain failed source closure and original causes."
+    "sha256": "507be5dae2c833af3d7965ce82fb99452cabb868d7d7dab2a4f4f7f94b5b9491",
+    "reason": "The empty rollback-failure accumulator cannot settle migration success: rollback failure retains database custody with the original error, and successful rollback rethrows that error. Failed external validation clears only its admission cache and throws the mutation error or run-search-index-rebuild-required. Malformed diagnostics remain explicit; stopped inspection, upgrade and claimed-profile rebase retain failed source closure and original causes. Finite native6 queued cancellation rolls back on failure and retains original plus rollback or database-close failures before installation or restore custody can release."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
@@ -143,7 +143,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "8b79e55e0adbac3481d69c020e4e29b0c73f8f65baea1e092bd8593c6eb0fd15",
+    "sha256": "91d161a61ca16b7cc7e26090fa741b22dc884b424cbe9258bbaa04d59268b333",
     "reason": "An unproved source closure keeps stopped maintenance custody and rethrows; release runs only when custody was not retained. Offline process-recovery failure prints the catalogued refusal and rethrows the same error, including retained-resource identity."
   },
   {

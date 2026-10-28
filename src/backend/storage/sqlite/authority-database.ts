@@ -26,7 +26,7 @@ import { readAppSettings, writeAppSettings } from "./settings-storage.js";
 import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
 import { requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody } from "./worker-slots.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
-import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
+import { runRecordColumns, runRecordFromRow, updateRunRecord, transitionRunRecord } from "./run-record-row.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { selectTransactions } from "./transaction-selection.js";
@@ -40,7 +40,7 @@ import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-prove
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
-import type { VerifiedRelocationActivationIntent } from "../admission/installation.js";
+import type { InstallationLease, VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
@@ -1427,6 +1427,25 @@ function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typ
   return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
 }
 
+function flatQueuedRunCancellationInventory(database: DatabaseSync, assertResourcesClosed: (facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) => void) {
+  const inspection = inspectNativeAuthority(database, 6);
+  if (inspection.installationId !== undefined || inspection.profileId !== undefined) throw new Error("queued-run-cancellation-binding-refused");
+  const facts = maintenanceInventory(database, inspection);
+  const candidates = facts.runs.filter(run => run.lifecycle.state !== "terminal");
+  for (const run of candidates) {
+    if (run.lifecycle.state !== "queued" || run.claimGeneration !== 0 || runClaim(run) !== undefined
+      || run.lifecycle.requeuedFrom !== undefined || run.envelope.parent !== undefined
+      || database.prepare("SELECT 1 FROM write_intents WHERE run_id=? LIMIT 1").get(run.envelope.runId) !== undefined
+      || database.prepare("SELECT 1 FROM run_checkpoints WHERE run_id=? LIMIT 1").get(run.envelope.runId) !== undefined
+      || database.prepare("SELECT 1 FROM run_delegations WHERE parent_run_id=? LIMIT 1").get(run.envelope.runId) !== undefined) {
+      throw new Error("queued-run-cancellation-ineligible");
+    }
+  }
+  assertResourcesClosed({ ...facts, runs: facts.runs.filter(run => run.lifecycle.state === "terminal") });
+  const { installationId: _installationId, profileId: _profileId, ...nativeInspection } = inspection;
+  return { digest: sha256Hex(canonicalJsonStringify({ inspection: nativeInspection, facts })), candidates };
+}
+
 function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, backup = false): void {
   if (backup) requireRuntimeAdmission(admission).assertStoppedAuthorityBackup(path, processLockRoot);
   else requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(path, processLockRoot);
@@ -1896,6 +1915,83 @@ export class AuthorityDatabase implements Disposable {
         : inspection.installationId !== binding?.installationId || inspection.profileId !== binding?.profileId) throw new Error("profile-maintenance-binding-mismatch");
       return maintenanceInventory(database, inspection);
     });
+  }
+
+  static async readFlatQueuedRunCancellation(path: string) {
+    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
+    return withReadonlyAuthoritySnapshot(path, database => flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed));
+  }
+
+  // This finite native6 command cannot grant ordinary profile runtime authority.
+  static async cancelQueuedRunsNative6(lease: InstallationLease, restore: RestoreAdmissionHandle, expectedDigest: string, clock: Clock) {
+    const { assertInstallationLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
+    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
+    assertInstallationLease(lease);
+    if (lease.mode !== "exclusive") throw new Error("queued-run-cancellation-exclusive-required");
+    const workspace = lease.readInstallationContext().workspace;
+    const installation = inspectFlatOfflineRunMaintenance(workspace);
+    const stateRoot = lease.locator.stateRoot, path = join(stateRoot, "state.db");
+    const assertHeld = () => {
+      lease.assertHeld(); assertRuntimeRestoreAdmission(restore, installation.processLockRoot);
+      const locks = observeRuntimeLockSnapshot({ processLockRoot: installation.processLockRoot,
+        sourceDatabaseIdentity: authoritySourceDatabaseIdentity(path) }, clock);
+      if (Object.values(locks.processLocks).some(lock => lock.state !== "stopped")) throw new Error("queued-run-cancellation-runtime-active");
+      if (canonicalJsonStringify(inspectFlatOfflineRunMaintenance(workspace)) !== canonicalJsonStringify(installation)
+        || lease.locator.installationId !== installation.installationId) throw new Error("queued-run-cancellation-installation-changed");
+    };
+    assertHeld(); requireDatabaseSourcePath(path);
+    const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, allowExtension: false, timeout: 5000 });
+    let runIds: string[] | undefined;
+    let failure: { error: unknown } | undefined;
+    try {
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        const inventory = flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed);
+        if (inventory.digest !== expectedDigest) throw new Error("queued-run-cancellation-capture-changed");
+        const now = clock.now().toISOString();
+        for (const current of inventory.candidates) {
+          const commandId = randomUUID();
+          const lifecycle = { state: "terminal" as const, outcome: "cancelled" as const, endedAt: now,
+            errorSummary: "cancelled offline: stale queued run" };
+          const request = { commandId, runId: current.envelope.runId, expectedVersion: current.version, lifecycle };
+          const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId, operation: "transition", request,
+            requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0transition\0${canonicalJsonStringify(request)}`),
+            fence: { kind: "version", expectedVersion: current.version }, recordedAt: now });
+          const updated = transitionRunRecord(current, RunRecordSchema.parse({ ...current, lifecycle }), now);
+          updateRunRecord(database, updated);
+          insertNativeCommand(database, command);
+          const audit = RunLifecycleCommandAuditRecordSchema.parse({ kind: "run-lifecycle", auditId: commandId, request: command,
+            result: { kind: "run", runId: current.envelope.runId, appliedVersion: updated.version, terminal: { outcome: "cancelled", endedAt: now } }, completedAt: now });
+          database.prepare("INSERT INTO command_audits(id,command_id,code,payload_json,created_at) VALUES(?,?,NULL,?,?)")
+            .run(commandId, commandId, canonicalJsonStringify(audit), now);
+          settleNativeCommand(database, audit);
+          const result = createRunTerminalEvidenceResult(updated, { kind: "lifecycle-evidence", outcome: "cancelled", commandId: command.commandId,
+            auditId: audit.auditId, requestFingerprint: command.requestFingerprint, appliedVersion: updated.version });
+          database.prepare("INSERT INTO run_results(run_id,workflow,attempt,result_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
+            .run(result.runId, result.workflowId, result.attempt, result.resultDigest, canonicalJsonStringify(result), result.createdAt);
+          createTimelineRepository({ database, read: work => work(), mutate: work => work().result,
+            assertOwner: event => { if (event.scope.kind !== "run" || event.scope.runId !== updated.envelope.runId) throw new Error("timeline-lifecycle-owner-mismatch"); } })
+            .append({ schemaVersion: 1, eventId: lifecycleCommandId("timeline-lifecycle", commandId), workflow: updated.envelope.workflow,
+              scope: { kind: "run", runId: updated.envelope.runId }, occurredAt: now, recordedAt: now, retentionDate: localDatePart(clock.now()),
+              source: { kind: "native" }, payload: { kind: "span", event: { t: "span.ended", kind: "run", outcome: "cancelled",
+                pid: process.pid, ts: now, workflow: updated.envelope.workflow, runId: updated.envelope.runId, attempt: updated.envelope.attempt,
+                traceId: updated.envelope.traceId, spanPath: updated.envelope.traceId } } });
+        }
+        if (inventory.candidates.length > 0) database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,search_generation=NULL,search_state='invalid',updated_at=? WHERE id=1").run(now);
+        inspectNativeAuthority(database, 6); assertHeld();
+        database.exec("COMMIT");
+        runIds = inventory.candidates.map(run => run.envelope.runId);
+      } catch (error) {
+        try { database.exec("ROLLBACK"); }
+        catch (rollback) { throw retainAuthoritySourceClosure([error, rollback], { database, admission: lease, restore }); }
+        throw error;
+      }
+    } catch (error) { failure = { error }; }
+    try { database.close(); }
+    catch (error) { throw retainAuthoritySourceClosure(failure === undefined ? [error] : [failure.error, error], { database, admission: lease, restore }); }
+    if (failure !== undefined) throw failure.error;
+    if (runIds === undefined) throw new Error("queued-run-cancellation-result-unavailable");
+    return runIds;
   }
 
   static readFlatBackupRecoveryInventory(path: string, restore: RestoreAdmissionHandle) {
@@ -4600,8 +4696,7 @@ export class AuthorityDatabase implements Disposable {
     this.#authorityWrite("runs", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...values)
-        : this.#database.prepare(`UPDATE runs SET ${keys.map(key => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
-          .run(...values, record.envelope.runId, record.version - 1);
+        : { changes: updateRunRecord(this.#database, record) };
       const changes = sqliteChanges(result.changes);
       if (changes !== 1) throw new Error(`run ${record.envelope.runId} ${mode} affected ${String(changes)} rows`);
       this.#lifecycleHooks?.afterRunWrite?.(record);
@@ -4642,11 +4737,7 @@ export class AuthorityDatabase implements Disposable {
         }
       }
       const candidate = next(current);
-      if ("workerId" in current.lifecycle && "workerId" in candidate.lifecycle
-        && canonicalJsonStringify(current.lifecycle.workerLifetime ?? null) !== canonicalJsonStringify(candidate.lifecycle.workerLifetime ?? null)) throw new Error("run-claim-lifetime-immutable");
-      const violation = runTransitionViolation(current.lifecycle, candidate.lifecycle);
-      if (violation !== undefined) throw new Error(`run ${runId}: ${violation}`);
-      const updated = RunRecordSchema.parse({ ...candidate, version: current.version + 1, updatedAt: now });
+      const updated = transitionRunRecord(current, candidate, now);
       this.#writeRunRow(updated, "update");
       return RunUpdateOutcomeSchema.parse({ state: "applied", run: updated });
     });
