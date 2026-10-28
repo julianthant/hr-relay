@@ -1,22 +1,25 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
+import { withSmokeWorker } from "../../../../scripts/verify/browser-login.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
+import { deleteOwnedBrowserProfile, probeClosedBrowserProfile, workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { join } from "node:path";
 import { it } from "vitest";
 import { composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
 import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory, composeProfileCredentialInventory, scanProfileCredentialCopy } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
 import { createCredentialStore, inspectCredentialKeyCopy } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { backupStoppedAuthority, upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, deriveAuthorityUpgradePlanDigest } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityUpgradeRecordSchema, type AuthorityUpgradeRecord } from "../../../../src/models/config/authority.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -441,3 +444,34 @@ it('refuses retargeting a setup receipt to historical eight without the matching
     throw new AggregateError([error], 'profile-credential-inventory-cleanup-failed', { cause: error });
   }
 });
+
+for(const purpose of ["logout","backup"] as const)it(`accepts completed verification cleanup with removed scratch directory for ${purpose}`,async()=>{
+  const f=await fixture(),lock=await runtimeLifetimeLock(),profileRunId=randomUUID();
+  const smokeRoot=join(f.stateRoot,"scratch","live-smoke",profileRunId,"browsers");
+  const native=createBrowserSessionFactoryFixtures(f.clock,randomUUID(),{schedule:()=>({cancel(){}})}).fakeLauncher();
+  let settlement:ReturnType<typeof f.erase>|undefined,stopped:ReturnType<typeof f.admission.forStoppedProfileUpgrade>|undefined;
+  try{
+    await withSmokeWorker(f.context.database,async slot=>{
+      const directory=workerProfileDirectory({profileRoot:smokeRoot,slotOrdinal:slot.ordinal,system:"crm"});
+      mkdirSync(directory,{recursive:true,mode:0o700});
+      await probeClosedBrowserProfile({profileRoot:smokeRoot,launch:{profileDirectory:directory,extensionDirectory:"",downloadsPath:directory,viewport:{width:800,height:600},timeoutMs:1000},
+        clock:f.clock,scheduler:{schedule:()=>({cancel(){}})},closeProofMs:1000,signal:new AbortController().signal,launcher:native.launcher});
+      assert.equal(native.contextClosed(),true);
+      const snapshot=f.context.database.readProfileResourceCustody().configSnapshots[0];assert.ok(snapshot);
+      f.context.database.authority.workerControls.observe({workerId:slot.workerId,leaseGeneration:1,sessionId:randomUUID(),system:"crm",configFingerprint:snapshot.fingerprint,
+        signInFingerprint:snapshot.fingerprint,browserMode:"headless",profileDirectory:directory,acceptDownloads:false,exclusive:false,health:"closed",
+        observedAt:f.clock.now().toISOString(),openedAt:f.clock.now().toISOString(),profileRevision:1});
+      deleteOwnedBrowserProfile(smokeRoot,join(smokeRoot,`w${slot.ordinal}`));assert.equal(existsSync(directory),false);
+    },f.clock,{lock,...f.admission.profileBinding,profileRunId,system:"crm",credentialKey:FingerprintSchema.parse("a".repeat(64))});
+    const facts=f.context.database.readProfileResourceCustody();assert.equal(facts.verificationProfiles[0]?.cleanup,"closed");
+    await f.context.account.close();
+    if(purpose==="logout"){
+      await f.inventory.prepare();settlement=f.erase();
+      assert.equal(f.inventory.assess({...settlement,capturedSecrets:f.capturedSecrets,capturedSecretsComplete:true}).logoutComplete,true);
+    }else{
+      f.context.database.close();stopped=f.admission.forStoppedProfileUpgrade();
+      const report=await backupStoppedAuthority(stopped,f.stateRoot,f.clock,join(f.workspace,rebuildRuntimeIsolation.processLockRoot));
+      assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);
+    }
+  }finally{stopped?.release();settlement?.admission.release();await f.cleanup();}
+},30000);

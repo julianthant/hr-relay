@@ -69,6 +69,31 @@ function requireVerificationCleanup(database: DatabaseSync, hold: NonNullable<Re
     || database.prepare("SELECT 1 FROM auth_leases WHERE holder_worker_id=? AND state='held' LIMIT 1").get(hold.slot.workerId) !== undefined) throw new Error("worker-verification-cleanup-unproved");
 }
 
+export function readWorkerVerificationProfiles(database: DatabaseSync, slots: readonly WorkerSlotRecord[]) {
+  for (const workflow of new Set(slots.map(slot => slot.workflow))) requireVerificationRetirements(database, workflow);
+  return slots.flatMap(slot => {
+    if (slot.reservationCommandId === null) return [];
+    const row = database.prepare("SELECT * FROM commands WHERE id=?").get(slot.reservationCommandId);
+    if (row === undefined) throw new Error("worker-slot-reservation-authority-unavailable");
+    const command = commandFromRow(row);
+    if (!("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "worker-verification-admission") return [];
+    const request = WorkerVerificationAdmissionRequestSchema.parse(command.request);
+    assertVerificationProfileBinding(database, request);
+    const rows = database.prepare("SELECT payload_json FROM command_audits WHERE command_id=?").all(command.commandId);
+    if (rows.length !== 1) throw new Error("worker-verification-authority-unavailable");
+    const audit = RunLifecycleCommandAuditRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(rows[0]).payload_json));
+    if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command) || audit.result.kind !== "worker"
+      || audit.result.slot.workerId !== slot.workerId || audit.result.slot.workflow !== slot.workflow
+      || request.workflow !== slot.workflow || audit.result.slot.ordinal !== slot.ordinal || audit.result.slot.poolIndex !== slot.poolIndex
+      || audit.result.slot.reservationCommandId !== slot.reservationCommandId) throw new Error("worker-verification-authority-unavailable");
+    const retirementRow = slot.retirementCommandId === null ? undefined : database.prepare("SELECT * FROM commands WHERE id=?").get(slot.retirementCommandId);
+    const retirement = retirementRow === undefined ? undefined : commandFromRow(retirementRow);
+    const cleanup = retirement !== undefined && "kind" in retirement && retirement.kind === "run-lifecycle"
+      && retirement.operation === "worker-verification-retirement" ? WorkerVerificationRetirementRequestSchema.parse(retirement.request).cleanup : "pending";
+    return [{ workerId: slot.workerId, profileRunId: request.profileRunId, system: request.system, cleanup }];
+  });
+}
+
 export function recoveryFromSlot(database: DatabaseSync, slot: WorkerSlotRecord) {
   if (slot.retiredAt !== null || slot.reservationCommandId === null) return undefined;
   const row = database.prepare("SELECT * FROM commands WHERE id=?").get(slot.reservationCommandId);

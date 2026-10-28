@@ -17,7 +17,7 @@ import type { RegisteredProfileStorageClaim } from "../admission/admission.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { readStoppedProfileUpgradeInventory } from "./profile-inventory.js";
+import { probeStoppedProfileBrowsersClosed, readStoppedProfileUpgradeInventory } from "./profile-inventory.js";
 import type { VerifiedBackup } from "../sqlite/backup-service.js";
 import { deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
 
@@ -45,6 +45,7 @@ export async function backupStoppedAuthority(admission:RuntimeAdmission,stateRoo
   requireRuntimeAdmission(admission).assertStoppedAuthorityBackup(join(stateRoot,"state.db"),processLockRoot);admission.assertStateRoot(stateRoot);
   const input={stateRoot,processLockRoot,plan:false};
   requireStopped(admission,input,clock,true);
+  await probeStoppedProfileBrowsersClosed(admission,clock,processLockRoot);
   const restore=heldRestore??acquireRuntimeRestoreAdmission({processLockRoot:input.processLockRoot,pid:process.pid},clock);
   const verifyHeld=()=>{const path=join(processLockRoot,"restore-admission.lock.json"),stat=lstatSync(path);
     if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||(stat.mode&0o777)!==0o600)throw new Error("restore-admission-invalid");

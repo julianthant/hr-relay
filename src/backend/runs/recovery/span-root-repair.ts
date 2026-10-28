@@ -1,3 +1,4 @@
+import { assertStoppedProfileBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
 
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -109,6 +110,7 @@ export class OfflineSpanRootRepairService {
         sourceDatabaseIdentity,
       }, this.#clock);
       this.#proofs.consumeAgainstLiveSnapshot(request.stoppedSystemProof, liveSnapshot);
+      assertStoppedProfileBrowsersClosed(this.#runtimeAdmission,this.#clock);
 
       const before = AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(
         this.#runtimeAdmission,

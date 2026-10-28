@@ -1,5 +1,5 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
-import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, credentialCopyProcessCustody, assertCredentialCopyResourcesClosed } from "../../storage/maintenance/profile-inventory.js";
+import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, credentialCopyProcessCustody, assertCredentialCopyResourcesClosed, assertRetainedBrowsersClosed, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames, deriveAuthorityUpgradePlanDigest } from "../../storage/sqlite/migrations.js";
 import { readEmergencyFaults } from "../../logs/emergency-faults.js";
@@ -246,6 +246,13 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
         && entry.path !== join(credentialsRoot, "protected.json") && entry.path !== join(credentialsRoot, ".protected.lock")) };
       return canonicalJsonStringify(stable);
     };
+    const probeFacts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
+    assertCredentialCopyResourcesClosed(probeFacts);
+    const probeSettings = probeFacts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
+      : probeFacts.settingsAuthority.record.saved?.settings ?? probeFacts.settingsAuthority.record.initialization.settings.settings;
+    const probeConfig = resolveConfigWithProvenance(probeSettings,input.hostFacts,input.clock,
+      {stateRoot:admission.stateRoot,artifactRoot:admission.artifactRoot}).config;
+    assertRetainedBrowsersClosed(admission,probeFacts,probeConfig);
     const before = enumerate();
     const root = admission.stateRoot, profileId = admission.profileBinding.profileId;
     const duoRoot = owner.kind === "ordinary" ? input.machine.stateRoot : requireStoppedControlProfileInventory(owner.claim).machineRoot;
@@ -370,6 +377,16 @@ export function composeProfileCredentialInventory(input: Readonly<{ machine: Run
     stopped?: ReturnType<typeof credentialCopyProcessCustody> } | undefined;
   return Object.freeze({
     async prepare(): Promise<void> {
+      const probe = input.database.withAuthorityReadSnapshot(() => {
+        input.admission.assertLive();
+        const custody = input.database.readProfileResourceCustody();
+        assertCredentialCopyResourcesClosed(custody);
+        const saved = readSettings(input.database.authority);
+        const config = resolveConfigWithProvenance(saved.settings,input.hostFacts,input.clock,
+          {stateRoot:root,artifactRoot:input.admission.artifactRoot}).config;
+        return {custody,config};
+      });
+      await probeRetainedBrowsersClosed({admission:input.admission,...probe,clock:input.clock,signal:new AbortController().signal});
       const before = enumerate();
       const backups: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[] = [];
       for (const path of before.manifests) {

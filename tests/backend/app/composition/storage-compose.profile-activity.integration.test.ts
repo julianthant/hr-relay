@@ -95,7 +95,7 @@ it("includes an idle owned lifetime and refuses absent supervisor acknowledgemen
     const profileId = f.admission.profileBinding.profileId;
     assert.equal(composeProfileActivity(f.input).hasUnquiescedWork(profileId), false);
     const slot = f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-      commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0,
+      commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
       now: f.input.clock.now().toISOString()
     }, randomUUID()));
     const started = f.context.database.authority.workerLeases.start({ workerId: slot.workerId, workflow: "person-lookup", browserSystems: ["crm"],
@@ -143,7 +143,7 @@ async function stoppedPlanFixture(mode: "plan" | "direct" = "plan") {
     if (planned === undefined) {
       const commandId = randomUUID();
       const slot = f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-        commandId, workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, now: f.input.clock.now().toISOString()
+        commandId, workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: child.pid, now: f.input.clock.now().toISOString()
       }, randomUUID()));
       planned = { slot, request: { commandId } };
     }

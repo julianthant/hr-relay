@@ -128,7 +128,7 @@ describe("secrets single source", () => {
     const wrapperPath = "scripts/dev/secure-env-bootstrap.ts";
     const wrapper = readFileSync(join(REPO_ROOT, wrapperPath), "utf8");
     assert.deepEqual(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: wrapper }]), []);
-    for (const candidate of [wrapper + '\nawait runSecureEnvironmentBootstrap();', wrapper.replace('entryPath !== undefined &&', ''), wrapper.replace('bootstrap/secure-env-bootstrap.js', 'bootstrap/forged.js')]) {
+    for (const candidate of [wrapper + '\nawait runSecureEnvironmentBootstrap();', wrapper.replace('entryPath !== undefined &&', ''), wrapper.replace('bootstrap/secure-env-bootstrap.js', 'bootstrap/forged.js'), wrapper.replace('if (args.length !== 1)', 'if (false)'), wrapper.replace('browser/native-profile-probe.js', 'browser/forged.js')]) {
       assert.ok(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: candidate }]).length > 0);
     }
   });

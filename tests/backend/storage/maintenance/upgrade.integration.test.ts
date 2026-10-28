@@ -1,3 +1,5 @@
+import * as browserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { createWorkbookLibraryRepository } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { START_PLAN } from "../../../support/fixtures/phase1f-run-fixtures.js";
@@ -584,4 +586,14 @@ describe("stopped native upgrade admission",()=>{
   await assert.rejects(upgradeStorage(f.admission,f.input,clock,()=>{throw new Error("injected-admission-failure");}),/injected-admission-failure/u);
   assert.deepEqual(storageTree(f.root),before);assert.equal((await f.run()).state,"initialized");
  });
+});
+
+for(const failure of ["busy","unproved"] as const)it(`keeps stopped backup files unchanged when native browser closure is ${failure}`,async()=>{
+  const f=await baselineFixture(),stopped=f.admission.forStoppedProfileUpgrade();
+  closers.push(()=>stopped.release());
+  const error=failure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy")):new NativeBrowserClosureUnprovedError([new Error("synthetic unproved close")]);
+  const probe=vi.spyOn(browserInventory,"probeStoppedProfileBrowsersClosed").mockRejectedValue(error);
+  const before=storageTree(f.root);
+  await assert.rejects(backupStoppedAuthority(stopped,f.root,clock,f.input.processLockRoot),value=>value===error);
+  assert.deepEqual(storageTree(f.root),before);assert.equal(probe.mock.calls.length,1);
 });

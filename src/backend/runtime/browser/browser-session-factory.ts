@@ -1,7 +1,9 @@
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, ProfileCustodyUnavailableError,
+  profileReservations, assertPrivateProfilePath, probeClosedBrowserProfile, closeContextWithProof, observeContextLifecycle,
+  workerProfileDirectory, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-profile-probe.js";
+export { BrowserProfileStillClosingError, ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, probeClosedBrowserProfile,
+  workerProfileDirectory, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-profile-probe.js";
 import { DuoCredentialSchema, DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
-import { workerProfileDirectory } from "../../storage/maintenance/profile-inventory.js";
-export { workerProfileDirectory };
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
@@ -9,7 +11,6 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 
 import { lstatSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
-import { chromium } from "playwright";
 import type { BrowserContext, Page } from "playwright";
 import type {
   BrowserSessionCloseProof,
@@ -53,35 +54,6 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { ProtectedStoreRecordSchema } from "../../../models/config/protected-settings.js";
 import { captureFullPage, FullPageCaptureRefusedError, FullPageCaptureRestoreError } from "./full-page-capture.js";
 
-// Keep the acquisition scheduler structural so both ports use the same timer without a module cycle.
-export interface BrowserDeadlineScheduler {
-  schedule(deadlineMonotonicMs: number, onDeadline: () => void): { cancel: () => void };
-}
-
-/** The Playwright launch seam, so a unit test can drive open/close without a real browser. */
-export interface PersistentContextLauncher {
-  launch(input: Readonly<{
-    profileDirectory: string;
-    headless: boolean;
-    extensionDirectory: string;
-    acceptDownloads: boolean;
-    downloadsPath: string;
-    viewport: Readonly<{ width: number; height: number }>;
-    timeoutMs?: number;
-  }>): Promise<BrowserContext>;
-}
-
-export class BrowserProfileStillClosingError extends Error {
-  readonly code = "BROWSER_PROFILE_STILL_CLOSING";
-  constructor(cause: unknown) { super(ERROR_CATALOG.BROWSER_PROFILE_STILL_CLOSING.text, { cause }); this.name = "BrowserProfileStillClosingError"; }
-}
-
-export const PROFILE_CUSTODY_UNAVAILABLE_TEXT = "Browser profile custody is unavailable. The browser cannot open until its current profile revision is admitted.";
-export class ProfileCustodyUnavailableError extends Error {
-  readonly code = "browser-profile-custody-unavailable";
-  constructor() { super(PROFILE_CUSTODY_UNAVAILABLE_TEXT); this.name = "ProfileCustodyUnavailableError"; }
-}
-
 export const BrowserProfileAdmissionSchema = z.strictObject({
   workerId: WorkerIdSchema, system: BrowserSystemIdSchema, instance: RuntimeInstanceSchema,
   configFingerprint: FingerprintSchema, browserMode: BrowserPresentationModeSchema,
@@ -116,24 +88,6 @@ interface SsoCredentials {
   readonly password: string;
 }
 
-const DEFAULT_LAUNCHER: PersistentContextLauncher = {
-  async launch(input) {
-    return chromium.launchPersistentContext(input.profileDirectory, {
-      // The extension requires the full bundled Chromium; the headless shell
-      // cannot load one (duo-autopilot/README.md).
-      channel: "chromium",
-      headless: input.headless,
-      ...(input.timeoutMs === undefined ? {} : { timeout: input.timeoutMs }),
-      acceptDownloads: input.acceptDownloads,
-      downloadsPath: input.downloadsPath,
-      viewport: input.viewport,
-      args: [
-        `--disable-extensions-except=${input.extensionDirectory}`,
-        `--load-extension=${input.extensionDirectory}`,
-      ],
-    });
-  },
-};
 
 
 function browserModeFor(
@@ -189,23 +143,21 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
 
   async probeProfile(input: Parameters<WorkerBrowserSessionFactory["probeProfile"]>[0]): Promise<void> {
     input.signal.throwIfAborted();
-    const { config } = this.#options, system = BrowserSystemIdSchema.parse(input.system);
+    const { config, clock, scheduler } = this.#options, system = BrowserSystemIdSchema.parse(input.system);
     const profileDirectory = workerProfileDirectory({ profileRoot: config.paths.browserProfileRoot,
       slotOrdinal: this.#options.slotOrdinal(WorkerIdSchema.parse(input.workerId), system), system });
-    if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
-    profileReservations.add(profileDirectory);
-    const context = await this.#launchProfile(profileDirectory, browserModeFor(input.browserMode, config.browser.headless), false,
-      system, config.timeouts.sessionAcquireMs);
-    const lifecycle = observeContextLifecycle(context);
-    this.#owned.set(profileDirectory, { context, lifecycle });
+    if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
+    mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
     try {
-      await this.#closeWithProof(context, lifecycle, system, "fresh-boundary");
-      this.#releaseProfile(profileDirectory);
+      await probeClosedBrowserProfile({ profileRoot: config.paths.browserProfileRoot, launcher: this.#launcher,
+        launch: { profileDirectory, extensionDirectory: config.paths.duoExtensionDir, downloadsPath: config.paths.downloadsDir,
+          viewport: { width: config.display.screenWidth, height: config.display.screenHeight }, timeoutMs: config.timeouts.sessionAcquireMs },
+        clock, scheduler, closeProofMs: config.browser.closeProofMs, signal: input.signal });
     } catch (error) {
+      if (error instanceof BrowserProfileStillClosingError || error instanceof ProfileCustodyUnavailableError) throw error;
       throw new BrowserSessionClosureUnprovedError([error], `${system} native profile probe closure is unproved`, { cause: error });
     }
-    input.signal.throwIfAborted();
   }
 
   async open(input: Readonly<{
@@ -477,60 +429,11 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     system: BrowserSystemId,
     reason: BrowserSessionCloseReason,
   ): Promise<void> {
-    const { clock, scheduler, config } = this.#options;
-    const deadline = clock.monotonicMs() + config.browser.closeProofMs;
-    let expire = (): void => undefined;
-    const timedOut = new Promise<never>((_resolve, reject) => {
-      const handle = scheduler.schedule(deadline, () => {
-        reject(new Error(
-          `${system} browser session close (${reason}) did not complete within its ${String(config.browser.closeProofMs)}ms proof deadline`,
-        ));
-      });
-      expire = (): void => handle.cancel();
-    });
-    const pages = context.pages();
-    try {
-      await Promise.race([
-        (async (): Promise<void> => {
-          for (const page of pages) await page.close({ runBeforeUnload: false });
-          await context.close();
-        })(),
-        timedOut,
-      ]);
-    } finally {
-      expire();
-    }
-    const openPages = pages.filter((page) => !page.isClosed());
-    if (openPages.length > 0) {
-      throw new Error(
-        `${system} browser session close (${reason}) left ${String(openPages.length)} page(s) open; closure cannot be proven`,
-      );
-    }
-    if (context.pages().length > 0) {
-      throw new Error(
-        `${system} browser session close (${reason}) left new pages open; closure cannot be proven`,
-      );
-    }
-    if (!lifecycle.closed()) {
-      throw new Error(
-        `${system} browser session close (${reason}) never emitted its context close event; closure cannot be proven`,
-      );
-    }
+    return closeContextWithProof({ clock: this.#options.clock, scheduler: this.#options.scheduler,
+      closeProofMs: this.#options.config.browser.closeProofMs }, context, lifecycle, system, reason);
   }
 }
 
-const profileReservations = new Set<string>();
-
-function assertPrivateProfilePath(root: string, path: string): void {
-  if (!path.startsWith(`${root}${sep}`)) throw new ProfileCustodyUnavailableError();
-  for (let cursor = path; cursor !== dirname(cursor); cursor = dirname(cursor)) {
-    const metadata = lstatSync(cursor, { throwIfNoEntry: false });
-    if (metadata !== undefined && (!metadata.isDirectory() || metadata.isSymbolicLink()
-      || metadata.uid !== (process.getuid?.() ?? -1) || (metadata.mode & 0o077) !== 0)) throw new ProfileCustodyUnavailableError();
-    if (cursor === root) return;
-  }
-  throw new ProfileCustodyUnavailableError();
-}
 
 export function deleteOwnedBrowserProfile(profileRoot: string, profileDirectory: string): void {
   const root = AbsolutePathSchema.parse(profileRoot), directory = AbsolutePathSchema.parse(profileDirectory);
@@ -604,18 +507,6 @@ async function provisionDuoSession(credentials: readonly z.infer<typeof DuoCrede
     if (copy === null || typeof copy !== "object" || Object.keys(copy).length !== Object.keys(original).length) throw new Error("duo-session-provisioning-unverified");
     for (const [key, value] of Object.entries(original)) if (Reflect.get(copy, key) !== value) throw new Error("duo-session-provisioning-unverified");
   }
-}
-
-interface ContextLifecycle {
-  readonly closed: () => boolean;
-}
-
-function observeContextLifecycle(context: BrowserContext): ContextLifecycle {
-  let closed = false;
-  context.on("close", () => {
-    closed = true;
-  });
-  return { closed: () => closed };
 }
 
 // UCSD systems share an SSO realm and credential pair, but hold distinct application sessions.

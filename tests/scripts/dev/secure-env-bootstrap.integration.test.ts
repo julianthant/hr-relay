@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath,pathToFileURL } from "node:url";
 import { describe,it } from "vitest";
-import { runSecureEnvironmentBootstrap as runBootstrap, secureEnvironmentEntrypoint } from "../../../scripts/dev/secure-env-bootstrap.js";
+import { runSecureEnvironmentBootstrap as runBootstrap, secureEnvironmentEntrypoint } from "../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { acquireRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";

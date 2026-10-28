@@ -1,3 +1,4 @@
+import { probeStoppedProfileBrowsersClosed } from "../../../storage/maintenance/profile-inventory.js";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, copyFileSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -294,6 +295,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
       }
       finally { source.close(); }
       if (view.pending?.commandId !== input.command.id) throw new Error("storage-relocation: requested plan is not current pending intent");
+      await probeStoppedProfileBrowsersClosed(activeAdmission,clock);
       operation = activeAdmission.beginRelocation(view.pending.desiredPair, bindingFromPlan(view), restore);
     }
     operationId = operation.operationId;

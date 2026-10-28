@@ -25,7 +25,7 @@ import { workerSlotFromRow } from "./worker-slots.js";
 import { authenticateWorkerSupervisorEffect, consumeWorkerSupervisorEffect, type WorkerSupervisorEffect, authenticateWorkerControlClosure, consumeWorkerControlClosure, type WorkerControlClosure, assertWorkerResetParkedWrite, workerControlFromRow, workerBrowserFromRow } from "./worker-control.js";
 import { readAppSettings } from "./settings-storage.js";
 import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
-import { requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody, admitWorkerVerification, retireWorkerVerification } from "./worker-slots.js";
+import { requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody, readWorkerVerificationProfiles, admitWorkerVerification, retireWorkerVerification } from "./worker-slots.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
 import { runRecordColumns, runRecordFromRow, updateRunRecord, transitionRunRecord } from "./run-record-row.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
@@ -1424,7 +1424,7 @@ function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typ
   const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
   const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
   const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
-  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, verificationProfiles: readWorkerVerificationProfiles(database, slots), browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
 }
 
 function flatQueuedRunCancellationInventory(database: DatabaseSync, assertResourcesClosed: (facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) => void) {
@@ -1917,6 +1917,18 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  static readStoppedBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, clock: Clock) {
+    const owner=requireRuntimeAdmission(admission),path=join(owner.stateRoot,"state.db");
+    owner.assertStoppedAuthorityBackup(path,processLockRoot);
+    const expected=AuthorityDatabase.inspectStoppedUpgrade(owner,path,processLockRoot,clock);
+    return withAuthorityDatabaseReadOnly(owner,path,database=>{
+      const inspection=inspectNativeAuthority(database,expected.schemaVersion);
+      if(inspection.authorityGeneration!==expected.authorityGeneration||inspection.authorityContentFingerprint!==expected.authorityContentFingerprint)throw new Error("stopped-browser-source-changed");
+      if(inspection.installationId!==undefined&&(inspection.installationId!==owner.profileBinding.installationId||inspection.profileId!==owner.profileBinding.profileId))throw new Error("profile-maintenance-binding-mismatch");
+      return maintenanceInventory(database,inspection);
+    });
+  }
+
   static async readFlatQueuedRunCancellation(path: string) {
     const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
     return withReadonlyAuthoritySnapshot(path, database => flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed));
@@ -1925,7 +1937,7 @@ export class AuthorityDatabase implements Disposable {
   // This finite native6 command cannot grant ordinary profile runtime authority.
   static async cancelQueuedRunsNative6(lease: InstallationLease, restore: RestoreAdmissionHandle, expectedDigest: string, clock: Clock) {
     const { assertInstallationLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
-    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
+    const { assertCredentialCopyResourcesClosed, probeFlatBrowserInventoryClosed } = await import("../maintenance/profile-inventory.js");
     assertInstallationLease(lease);
     if (lease.mode !== "exclusive") throw new Error("queued-run-cancellation-exclusive-required");
     const workspace = lease.readInstallationContext().workspace;
@@ -1944,6 +1956,10 @@ export class AuthorityDatabase implements Disposable {
     let runIds: string[] | undefined;
     let failure: { error: unknown } | undefined;
     try {
+      const initial=flatQueuedRunCancellationInventory(database,assertCredentialCopyResourcesClosed);
+      if(initial.digest!==expectedDigest)throw new Error("queued-run-cancellation-capture-changed");
+      await probeFlatBrowserInventoryClosed(stateRoot,maintenanceInventory(database,inspectNativeAuthority(database,6)),clock);
+      assertHeld();
       database.exec("BEGIN IMMEDIATE");
       try {
         const inventory = flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed);
@@ -2236,6 +2252,7 @@ export class AuthorityDatabase implements Disposable {
         upgrades: readAuthorityUpgradeRecords(this.#database),
         slots,
         reservations: readWorkerReservationCustody(this.#database, slots, controls),
+        verificationProfiles: readWorkerVerificationProfiles(this.#database, slots),
         leases: this.#database.prepare("SELECT * FROM worker_leases ORDER BY id").all()
           .map(row => this.#parseNativeRow("worker_leases", row, WorkerLeaseRecordSchema)),
         controls,

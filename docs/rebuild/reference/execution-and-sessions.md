@@ -554,9 +554,26 @@ request after disconnect. Standalone execution composes its own service while ho
 root listener. Shutdown retains the controller until active geocode work drains; failed closure
 refuses release. There are no geocode election, endpoint or PID files.
 
-Duo onboarding closes its owned pages and context, requires the context close event, and settles
-startup and extension message pumps before replacement. Failed retention or closure stays uncertain;
-a Chromium PID or profile marker does not establish closure.
+`runtime/browser/native-profile-probe.ts` owns the native launcher and verified page/context close
+used by preclaim and maintenance. Taking the root listener excludes Node owners; a surviving
+Chromium still requires a native profile probe before file replacement or credential erasure.
+Async closure paths await the probe directly. Synchronous inventory callbacks await a finite child
+through `native-profile-probe`; no controller, credential, provider or login is initialized in that
+selector. The request names existing private directories and deadlines. Its nonce and request digest
+bind one strict result to the full closed-directory list, followed by actual child completion.
+Busy profiles refuse with `BROWSER_PROFILE_STILL_CLOSING`; missing, malformed, failed or unproved
+closure refuses with `BROWSER_CLOSURE_UNPROVED`. Neither refusal permits erasure or replacement.
+
+Retained settings roots and authenticated verification scratch paths have distinct membership.
+An absent directory is released only when the exact completed cleanup already proves owned context
+closure and profile deletion. Startup `cleanup: interrupted` does not supply that evidence.
+
+Duo onboarding derives its canonical directory from the authenticated operation, profile, account
+and generation through `onboardingProfileDirectory`. Existing exact paths must pass native closure
+before reuse or deletion, followed by a fresh exact owner check. Random or stale-owner directories
+remain unknown and untouched. Recovery accepts missing paths only after the persisted finish or
+abort step that follows actual owned drain. Failed retention or closure stays uncertain; startup
+and extension message pumps settle before replacement. No Chromium PID or marker proves closure.
 
 Standalone browser verification holds the exclusive runtime listener throughout its admitted lifetime.
 Its reservation binds the installation/profile, lock port, fresh scratch profile, browser system and

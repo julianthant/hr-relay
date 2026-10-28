@@ -766,8 +766,8 @@ export function auditSoleRunnerInvocation(
 
     if (path === BOOTSTRAP_WRAPPER) {
       const compact = ts.createPrinter({ removeComments: true }).printFile(source).replace(/\s+/gu, "");
-      const expected = 'import{pathToFileURL}from"node:url";import{runSecureEnvironmentBootstrap}from"../../src/backend/app/bootstrap/secure-env-bootstrap.js";export{runSecureEnvironmentBootstrap,secureEnvironmentEntrypoint,}from"../../src/backend/app/bootstrap/secure-env-bootstrap.js";exporttype{SecureEnvironmentBootstrapDependencies,SecureEnvironmentEntrypoint,}from"../../src/backend/app/bootstrap/secure-env-bootstrap.js";constentryPath=process.argv[1];if(entryPath!==undefined&&pathToFileURL(entryPath).href===import.meta.url){awaitrunSecureEnvironmentBootstrap();}';
-      if (compact !== expected) violations.push(`${path}: bootstrap wrapper must retain only canonical exports and the direct-entry invocation`);
+      const expected = 'import{pathToFileURL}from"node:url";exportasyncfunctionrunSecureEnvironmentEntrypoint(args:readonlystring[]=process.argv.slice(2)):Promise<void>{if(args[0]==="native-profile-probe"){if(args.length!==1)thrownewError("native-profile-probe-extra-arguments");const{runNativeProfileProbeChild}=awaitimport("../../src/backend/runtime/browser/native-profile-probe.js");awaitrunNativeProfileProbeChild();return;}const{runSecureEnvironmentBootstrap}=awaitimport("../../src/backend/app/bootstrap/secure-env-bootstrap.js");awaitrunSecureEnvironmentBootstrap(args);}constentryPath=process.argv[1];if(entryPath!==undefined&&pathToFileURL(entryPath).href===import.meta.url){awaitrunSecureEnvironmentEntrypoint();}';
+      if (compact !== expected) violations.push(`${path}: bootstrap dispatcher must retain the strict native-only selector and guarded ordinary bootstrap invocation`);
     }
 
     if (path !== BOOTSTRAP) {

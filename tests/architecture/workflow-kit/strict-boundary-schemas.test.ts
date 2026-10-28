@@ -1,3 +1,4 @@
+import { NativeProfileProbeRequestSchema, NativeProfileProbeResultSchema } from "../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { ExplorerOverrideImportReceiptSchema, ExplorerOverrideImportSourceSchema } from "../../../src/models/dashboard/explorer-override.js";
 import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-authority-reason.js";
@@ -818,6 +819,13 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "LoginResult", schema: LoginResultSchema, fixtures: ["logged-in", "already-authenticated"] },
   { name: "IdleRefreshCadence", schema: IdleRefreshCadenceSchema, fixtures: [{ intervalMs: 30_000 }] },
   { name: "RetryPolicy", schema: RetryPolicySchema, fixtures: [{ attempts: 2, backoffMs: 500, retryOn: "transient" }] },
+  { name: "NativeProfileProbeRequest", schema: NativeProfileProbeRequestSchema, fixtures: [{ version: 1, nonce: UUID_1,
+    profiles: [{ profileRoot: "/tmp/native-probe", profileDirectory: "/tmp/native-probe/w1/crm" }], launchTimeoutMs: 1000, closeProofMs: 1000 }] },
+  { name: "NativeProfileProbeResult", schema: NativeProfileProbeResultSchema, fixtures: [
+    { version: 1, nonce: UUID_1, requestDigest: HASH_A, state: "closed", closedDirectories: ["/tmp/native-probe/w1/crm"] },
+    { version: 1, nonce: UUID_1, requestDigest: HASH_A, state: "busy", closedDirectories: [], code: "BROWSER_PROFILE_STILL_CLOSING" },
+    { version: 1, nonce: null, requestDigest: null, state: "closure-unproved", closedDirectories: [], code: "BROWSER_CLOSURE_UNPROVED" },
+  ] },
   { name: "ProviderInvocationConfig", schema: ProviderInvocationConfigSchema, fixtures: [{ timeoutMs: 15_000 }] },
   { name: "ProviderInvocationSettings", schema: ProviderInvocationSettingsSchema.unwrap(), fixtures: [{ geocodeCensus: { timeoutMs: 15_000 }, geocodeNominatim: { timeoutMs: 15_000 } }] },
   { name: "ProviderUnavailableReason", schema: ProviderUnavailableReasonSchema, fixtures: [{ code: "aborted", message: "cancelled" }] },

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, readFileSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
-import { chromium } from "playwright";
+import { closeSync, constants, fstatSync, openSync, readFileSync, lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
+import { basename, isAbsolute, join } from "node:path";
 import { submitOnboardingSsoCredentials } from "../systems/browser-shared/ucsd-sso.js";
 import type { BrowserContext, Page, Worker } from "playwright";
 import { z } from "zod";
@@ -9,7 +8,8 @@ import { BrowserDocumentIdSchema } from "../../models/config/duo-credential-stor
 import type { Clock } from "../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { deleteOwnedBrowserProfile } from "../runtime/browser/browser-session-factory.js";
-import type { PersistentContextLauncher } from "../runtime/browser/browser-session-factory.js";
+import { DEFAULT_BROWSER_LAUNCHER, onboardingProfileDirectory, probeClosedBrowserProfile, type PersistentContextLauncher } from "../runtime/browser/native-profile-probe.js";
+import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
 
 export class ProfileOnboardingDuoProviderError extends Error {
@@ -48,15 +48,6 @@ export interface OnboardingDuoProviderOptions {
   readonly launcher?: PersistentContextLauncher;
 }
 
-const launcher: PersistentContextLauncher = {
-  async launch(input) {
-    return chromium.launchPersistentContext(input.profileDirectory, {
-      channel: "chromium", headless: false, acceptDownloads: false,
-      args: [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`,
-        "--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"],
-    });
-  },
-};
 
 async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop" | "assertContext" | "browserInstall" | "browserNext" | "browserReply" | "browserStop", args: readonly unknown[] = []): Promise<unknown> {
   return worker.evaluate(async input => {
@@ -101,7 +92,7 @@ function stageRelayExtension(sourceRoot: string, destination: string): void {
 }
 
 export function createProfileOnboardingDuoProvider(options: OnboardingDuoProviderOptions): ProfileOnboardingDuoProvider {
-  const browserLauncher = options.launcher ?? launcher;
+  const browserLauncher = options.launcher ?? DEFAULT_BROWSER_LAUNCHER;
   type ProviderSession = {
     attempt: DraftDuoAttempt; profileDirectory: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
     capability?: DraftDuoCapability; credentialId?: string; requestId?: string; accepted: boolean; revoked: boolean;
@@ -345,7 +336,22 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       const root = lstatSync(options.browserRoot);
       if (!root.isDirectory() || root.isSymbolicLink() || root.uid !== process.getuid?.() || (root.mode & 0o077) !== 0) throw new Error("root");
     } catch { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root"); }
-    const session: OwnedBrowser = { owner, profileDirectory: mkdtempSync(join(options.browserRoot, "onboarding-")), revoked: false, contextClosed: false, launchStarted: false };
+    const ownerIdentity={operationId:owner.operationId,profileId:owner.profileId,accountId:owner.accountId,generation:owner.generation};
+    const assertOwner=()=>{owner.assertCurrent();if(!sameOwner(owner,ownerIdentity))throw new ProfileOnboardingDuoProviderError("refused","scope");};
+    const profileDirectory=onboardingProfileDirectory(options.browserRoot,ownerIdentity);
+    if(readdirSync(options.browserRoot).some(name=>name!==basename(profileDirectory))) {
+      throw new ProfileOnboardingDuoProviderError("unknown","browser-root");
+    }
+    if(lstatSync(profileDirectory,{throwIfNoEntry:false})!==undefined){
+      await probeClosedBrowserProfile({profileRoot:options.browserRoot,launcher:browserLauncher,
+        launch:{profileDirectory,extensionDirectory:"",downloadsPath:profileDirectory,viewport:{width:1100,height:800},timeoutMs:options.closeProofMs},
+        clock:options.clock,scheduler:createTimeoutDeadlineScheduler(options.clock),closeProofMs:options.closeProofMs,signal:new AbortController().signal});
+      assertOwner();
+      deleteOwnedBrowserProfile(options.browserRoot,profileDirectory);
+    }
+    assertOwner();
+    mkdirSync(profileDirectory,{mode:0o700});
+    const session: OwnedBrowser = { owner, profileDirectory, revoked: false, contextClosed: false, launchStarted: false };
     browser = session;
     session.startup = (async () => {
       mkdirSync(join(session.profileDirectory, "Default"), { mode: 0o700 });
@@ -354,7 +360,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       stageRelayExtension(options.extensionDirectory, extensionDirectory);
       session.launchStarted = true;
       session.launching = browserLauncher.launch({ profileDirectory: session.profileDirectory, headless: false,
-        extensionDirectory, acceptDownloads: false, downloadsPath: session.profileDirectory, viewport: { width: 1100, height: 800 } }).then(context => {
+        extensionDirectory, acceptDownloads: false, downloadsPath: session.profileDirectory, viewport: { width: 1100, height: 800 }, disablePasswordManager: true, defaultContextOptions: true }).then(context => {
         session.context = context;
         context.on("close", () => {
           session.contextClosed = true;

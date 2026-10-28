@@ -1,3 +1,5 @@
+import * as browserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
 
 
@@ -8,7 +10,7 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { randomUUID } from "node:crypto";
-import { copyFileSync, readFileSync, readdirSync, statSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, readdirSync, statSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
@@ -275,4 +277,35 @@ it("admits only the exact held stopped projection capability before opening stag
     restore.release();
     assert.throws(() => AuthorityDatabase.openStoppedRestoreProjection(capability!, options, clock));
   } finally { capability?.release(); restore.release(); await f.close(); }
+});
+
+for(const failure of ["busy","unproved"] as const)it(`retains logout credentials and allocates no erasure identity after ${failure} native closure`,async()=>{
+  const f=await createBoundProfileFixture(),clock=manualClock(new Date("2026-10-21T12:00:00Z"));
+  const runtime=composeProfileRuntime({admission:f.machine,clock,hostFacts:{primaryDisplay:null}});
+  const error=failure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy")):new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
+  const probe=vi.spyOn(browserInventory,"probeRetainedBrowsersClosed").mockRejectedValue(error);
+  let context:ReturnType<typeof runtime.selectedContext>|undefined;
+  try{
+    const active=runtime.session.signIn({email:"fixture@ucsd.edu",password:"disposable-fixture-password",at:clock.now().toISOString()});
+    assert.equal(active.state,"active");if(active.state!=="active")throw new Error("fixture sign-in required");
+    context=runtime.selectedContext(active.token);
+    runtime.beginSupervisorConstruction(active.token);runtime.bindSupervisor(active.token,{memberEvidence:()=>undefined,drainOwnedChildren:async()=>undefined});
+    const protectedPath=join(context.admission.stateRoot,"credentials","protected.json");
+    const keyPath=join(f.machine.stateRoot,"machine","credential-keys",`${active.profileId}.json`);
+    const journalPath=join(f.machine.stateRoot,"machine","erasures",`${active.profileId}.json`);
+    const protectedBefore=readFileSync(protectedPath),keyBefore=readFileSync(keyPath);
+    assert.equal(runtime.session.logOut(active.token,{at:clock.now().toISOString()}).state,"cancelling");
+    await assert.rejects(runtime.awaitClosurePreparation(active.profileId),value=>value===error);
+    const operation=runtime.session.logoutOperations()[0];assert.ok(operation);
+    assert.equal(runtime.session.resumeLogout(operation.operationId).state,"cancelling");
+    const retained=runtime.session.logoutOperations()[0];assert.ok(retained);
+    assert.equal(retained.commandId,undefined);assert.equal(retained.writeId,undefined);assert.equal(retained.expectedRevision,undefined);
+    assert.deepEqual(readFileSync(protectedPath),protectedBefore);assert.deepEqual(readFileSync(keyPath),keyBefore);assert.equal(existsSync(journalPath),false);
+    assert.equal(probe.mock.calls.length,1);
+    await assert.rejects(runtime.close());
+  }finally{
+    probe.mockRestore();
+    if(context!==undefined){await context.account.close();context.database.close();context.admission.release();}
+    runtime.session.close();await f.close();
+  }
 });
