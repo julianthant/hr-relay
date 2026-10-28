@@ -35,6 +35,7 @@ export const ERROR_CATALOG = Object.freeze({
   CREDENTIAL_KEYCHAIN_MISMATCH: catalogEntry("The OS encryption key does not match this profile's binding. Preserve the current installation for recovery.", EmptyParametersSchema),
   CREDENTIAL_KEYCHAIN_UNCERTAIN: catalogEntry("Encryption key custody could not be confirmed. Preserve the installation and OS credential entry before continuing.", EmptyParametersSchema),
   CREDENTIAL_CONTEXT_REQUIRED: catalogEntry("The selected profile credential authority is unavailable. Restart the runtime before continuing.", EmptyParametersSchema),
+  CREDENTIAL_INITIALIZATION_RETAINED_DUO_KEY_MISMATCH: catalogEntry("A retained Duo credential copy uses a different encryption key. Preserve the profile and its original key before continuing credential conversion.", EmptyParametersSchema),
   RUNTIME_CUSTODY_UNCERTAIN: catalogEntry("Runtime resource closure is unproved. Preserve the current installation and process custody before restarting.", EmptyParametersSchema),
   PROFILE_BROWSER_ROOT_REFUSED: catalogEntry("Browser storage must stay inside the selected profile in an owned directory without links.", EmptyParametersSchema),
   PROFILE_STORAGE_RELOCATION_UNSUPPORTED: catalogEntry("Storage relocation is unavailable for profile installations. Keep the current installation roots.", EmptyParametersSchema),

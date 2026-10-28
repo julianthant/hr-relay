@@ -86,7 +86,8 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
     const replacement = CompleteProtectedSettingsPatchSchema.parse({ ucpathUserId: { set: fields.email }, ucpathPassword: { set: fields.password },
       timekeeperName: { clear: true }, sharepointOnboardingRosterUrl: { clear: true }, activityPersonPseudonym: { clear: true } });
     try {
-      assert.throws(() => migrator.signIn({ ...fields, credentialMigration: { kind: "replace-v3", entries: replacement } }));
+      assert.throws(() => migrator.signIn({ ...fields, credentialMigration: { kind: "replace-v3", entries: replacement } }),
+        error => error instanceof Error && "code" in error && error.code === "CREDENTIAL_INITIALIZATION_RETAINED_DUO_KEY_MISMATCH");
       assert.ok(retainedInventory, "the genuine migration must reach its physical-copy inventory before refusal");
       assert.equal(staged, 0);
       assert.deepEqual(readFileSync(duoPath), duoBytes);

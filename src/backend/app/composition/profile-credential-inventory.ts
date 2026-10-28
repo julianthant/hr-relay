@@ -206,7 +206,8 @@ function assertCredentialBackupBinding(admission: RuntimeAdmission, backup: Awai
       : deriveAuthorityUpgradePlanDigest(manifest.schemaVersion, manifest.authorityContentFingerprint))) throw new Error("profile-inventory-backup-upgrade-unproved");
 }
 
-function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock }>, owner: CredentialMaintenancePurpose, authorize: () => void) {
+function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock }>, owner: CredentialMaintenancePurpose, authorize: () => void,
+  initializationKeyId?: string) {
   return (writer: Readonly<{ acquisitionId: string; pid: number }> | undefined, copies: CredentialInitializationCopyInspection) => {
     const { admission } = input;
     authorize();
@@ -274,6 +275,8 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
         try { envelope = DuoDocumentEnvelopeSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes))); }
         catch { throw new Error("duo-purpose-plaintext-refused"); }
         if (envelope.installationId !== admission.profileBinding.installationId || envelope.profileId !== profileId) throw new Error("duo-envelope-binding-mismatch");
+        if (initializationKeyId !== undefined && envelope.keyId !== initializationKeyId) throw Object.assign(
+          new Error("credential-initialization-retained-duo-key-mismatch"), { code: "CREDENTIAL_INITIALIZATION_RETAINED_DUO_KEY_MISMATCH" });
         if (authorityWitness(scope) !== registry) throw new Error("credential-maintenance-inventory-changed");
       }
       return canonicalJsonStringify(entries);
@@ -307,7 +310,7 @@ export function composeProfileCredentialInitializationInventory(input: Readonly<
   return (operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) =>
     {
       let current = operation;
-      const inventory = composeProfileCredentialMaintenanceInventory(input, { kind: "ordinary" }, () => { input.machine.assertProfileCredentialInitialization(input.admission, current); })(writer, copies);
+      const inventory = composeProfileCredentialMaintenanceInventory(input, { kind: "ordinary" }, () => { input.machine.assertProfileCredentialInitialization(input.admission, current); }, operation.credentialInitialization?.keyId)(writer, copies);
       return Object.freeze({ revalidateBeforeKeyIntent: inventory.revalidateBeforeKeyIntent, revalidate: (next: SignUpOperation) => {
         if (canonicalJsonStringify({ ...next, credentialInitialization: operation.credentialInitialization }) !== canonicalJsonStringify(operation)
           || next.credentialInitialization?.mode !== operation.credentialInitialization?.mode
