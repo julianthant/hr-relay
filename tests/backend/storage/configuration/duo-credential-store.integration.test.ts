@@ -30,6 +30,7 @@ import { DuoCredentialDocumentSchema } from "../../../../src/models/config/duo-c
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { removeExactPath } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
 async function setup(options: { sharedMachine?: true } = {}) {
   const fixture = await createBoundProfileFixture(options), clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
@@ -560,6 +561,50 @@ function assertUnchanged(paths: { controlPath: string; markerPath: string; datab
 }
 
 const retainedPublicationRecoveryOwners = new Set<unknown>();
+
+it("authorizes a Duo reservation after the peer control publication finishes", async () => {
+  const f = await setup();
+  const peers: { path: string; bytes: Buffer; identity: { device: number; inode: number } }[] = [];
+  let primary: { error: unknown } | undefined;
+  try {
+    f.store.enroll(f.input); f.store.confirm(f.input.credentialId, f.input.scope);
+    const first = f.store.reserve(f.input.credentialId), before = f.store.read();
+    const profileId = f.admission.profileBinding.profileId;
+    const controlPath = join(f.workspace, ".tracker", "control", ".installation-mutation.lock");
+    const stagePath = join(f.machine.stateRoot, "machine", "duo-credentials", `.${profileId}.${randomUUID()}.stage`);
+    for (const [path, bytes] of [[controlPath, Buffer.from(JSON.stringify({ nonce: randomUUID() }))],
+      [stagePath, Buffer.from("synthetic peer stage")]] as const) {
+      writeFileSync(path, bytes, { mode: 0o600, flag: "wx" });
+      const info = statSync(path); peers.push({ path, bytes, identity: { device: info.dev, inode: info.ino } });
+    }
+    const opens = vi.spyOn(nativeFs, "openSync");
+    const wait = vi.spyOn(Atomics, "wait").mockImplementation(() => {
+      unlinkSync(stagePath); unlinkSync(controlPath);
+      return "ok";
+    });
+    syncBuiltinESMExports();
+    const reserved = f.store.reserve(f.input.credentialId);
+    assert.equal(wait.mock.calls.length, 1); assert.equal(wait.mock.calls[0]?.[3], 25);
+    assert.equal(opens.mock.calls.filter(([path, flags]) => path === controlPath
+      && typeof flags === "number" && (flags & nativeFs.constants.O_EXCL) !== 0).length, 2);
+    assert.equal(reserved.count, first.count + 1); assert.equal(reserved.revision, before.revision + 1);
+    assert.notEqual(reserved.attemptId, first.attemptId);
+    assert.equal(f.store.read().credentials.find(row => row.credentialId === f.input.credentialId)?.highWater, reserved.count);
+    assert.equal(existsSync(stagePath), false); assert.equal(existsSync(controlPath), false);
+  } catch (error) { primary = { error }; }
+  vi.restoreAllMocks(); syncBuiltinESMExports();
+  try {
+    for (const peer of peers) if (existsSync(peer.path)) {
+      assert.deepEqual(readFileSync(peer.path), peer.bytes);
+      removeExactPath(peer.path, peer.identity, false, "synthetic-peer-file-changed");
+    }
+    await f.close();
+  } catch (error) {
+    if (primary !== undefined) throw new AggregateError([primary.error, error], "Duo control contention and owned cleanup failed", { cause: error });
+    throw error;
+  }
+  if (primary !== undefined) throw primary.error;
+});
 
 it("finishes one interrupted Duo publication after the producing process exits and refuses a changed or released claim", async () => {
   const f = await setup({ sharedMachine: true });
