@@ -103,7 +103,7 @@ it("validates the same key-stage publication before and after intent under one h
       } });
     store.migrateHistory({ operation });
     assert.equal(intentObserved, true);
-    assert.equal(store.read().revision, 0);
+    assert.equal(store.read().revision, 1);
     assert.equal(nativeFs.existsSync(join(f.machine.stateRoot, "machine", "credential-keys", `${operation.profileId}.json`)), true);
     assert.equal(nativeFs.existsSync(intentPath), false);
   } finally { opens.mockRestore(); syncBuiltinESMExports(); await f.close(); }
