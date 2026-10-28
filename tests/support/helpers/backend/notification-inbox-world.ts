@@ -70,7 +70,7 @@ export function createNotificationInboxTestWorld() {
       ids: sequentialIdFactory("c"),
       descriptors: { resolve: () => undefined },
       writeResolution: {
-        resolvePresent: () => { throw new Error("unused"); },
+        recheck: () => { throw new Error("unused"); },
         resolveAbsent: () => { throw new Error("unused"); },
       },
       workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },

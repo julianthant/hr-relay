@@ -246,7 +246,7 @@ export function createWriteRecoveryTestWorld() {
     return { h, executor, kernel:makeKernel(),makeKernel };
   }
 
-  function commandFor(type: "resolve-write-present" | "resolve-write-absent", run: RunRecord, payload: Record<string, unknown>) {
+  function commandFor(type: "recheck-write" | "resolve-write-absent", run: RunRecord, payload: Record<string, unknown>) {
     return CommandRequestSchema.parse({
       commandId: UUID_7,
       requestedAt: WRITE_FIXTURE_NOW,

@@ -7,13 +7,13 @@ import { ActionDescriptorWireSchema } from "../../../../../src/models/dashboard/
 
 const ACTIONS = z.array(ActionDescriptorWireSchema).parse([
   {
-    key: "resolve-write-present",
+    key: "recheck-write",
     label: "I found the write",
     detail: "Records the transaction as present. The run settles on it and nothing is submitted again.",
     intent: "success",
     placement: ["banner"],
     kind: "command",
-    command: "resolve-write-present",
+    command: "recheck-write",
     expectedVersion: 4,
     confirm: { title: "Record it as present", body: "Settles this write.", confirmLabel: "Record present", tone: "neutral" },
     writeTarget: { writeIntentId: "3f2a6c18-4b21-4d7e-9a55-1c0e8b7d4f30", intentGeneration: 2, writeAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) },
@@ -63,7 +63,7 @@ const ACTIONS = z.array(ActionDescriptorWireSchema).parse([
 describe("the banner's park-resolution split", () => {
   it("hands the two write resolutions to ParkResolutions and nothing else", () => {
     expect(parkResolutions(ACTIONS).map((a) => a.key)).toEqual([
-      "resolve-write-present",
+      "recheck-write",
       "resolve-write-absent",
     ]);
   });

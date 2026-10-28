@@ -734,8 +734,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         + `${wedged.envelope.runId} (${wedged.envelope.workflow}), which is still ${wedged.lifecycle.state} `
         + "under this worker id. A run holding an unfinished `attempting` write intent has no legal "
         + "release edge from that state — ref write-safety §4.1's typed operator resolutions "
-        + "(resolve-write-present / resolve-write-absent) are the only paths out, and they need a human "
-        + "to look in the target system first",
+        + "(recheck-write / resolve-write-absent) are the only paths out",
       );
     }
 

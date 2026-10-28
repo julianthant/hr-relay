@@ -171,7 +171,7 @@ async function harness(): Promise<Readonly<{
     // Neither seam is reachable from a retry; both refuse loudly rather than
     // standing in as a no-op that a mis-routed command could pass through.
     writeResolution: {
-      resolvePresent: unreachable("resolve-write-present"),
+      recheck: unreachable("recheck-write"),
       resolveAbsent: unreachable("resolve-write-absent"),
     },
     workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },

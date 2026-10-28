@@ -264,7 +264,7 @@ export function ParkResolutions({
     // Measure the detail column, not viewport width; context rails change the space controls share.
     <div className="mt-[var(--ds-space-base)] grid gap-[var(--ds-space-snug)] @min-[35rem]:grid-cols-2">
       {options.map((a) => {
-        const present = a.kind === "command" && a.command === "resolve-write-present";
+        const present = a.kind === "command" && a.command === "recheck-write";
         const Icon = present ? CheckCircle2 : CircleSlash;
         return (
           <BareButton
@@ -282,7 +282,7 @@ export function ParkResolutions({
               dsMotion.fast,
               "hover:brightness-125",
               present
-                ? "border-[color:var(--ds-success-border)] bg-[var(--ds-success-bg)]"
+                ? "border-[color:var(--ds-border-strong)] bg-[var(--ds-control-bg)]"
                 : "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
             )}
           >
@@ -290,7 +290,7 @@ export function ParkResolutions({
               className={cn(
                 dsText.body,
                 "inline-flex items-center gap-[var(--ds-space-snug)] font-semibold",
-                present ? "text-[color:var(--ds-success-fg)]" : "text-[color:var(--ds-danger)]",
+                present ? "text-[color:var(--ds-control-fg)]" : "text-[color:var(--ds-danger)]",
               )}
             >
               <Icon aria-hidden className={dsIcon.sm} />

@@ -121,3 +121,22 @@ describe("separations workflow task wrappers", () => {
     assert.deepEqual(sourceMismatch.records, []);
   });
 });
+
+describe("operator-entered identity", () => {
+  for (const documentEid of [{ state: "present" as const, value: OTHER_EID }, { state: "absent" as const, reason: "blank on the document" }]) {
+    it(`reads the exact entered subject and preserves the ${documentEid.state} document observation`, async () => {
+      const success = taskContext();
+      const output = await matchIdentityTask.impl.run({ input: { ...identityInput(), documentEid, emplIdSource: "operator-entered" }, ctx: success.ctx });
+      assert.equal(output.approvalRequired, true);
+      assert.equal(output.packet.emplIdSource, "operator-entered");
+      assert.equal(output.packet.documentEidText, documentEid.state === "present" ? OTHER_EID : "blank (blank on the document)");
+      assert.equal(output.packet.comparisons.find(row => row.field === "eid")?.agrees, false);
+      assertRecordedOutput(success.records, output);
+    });
+  }
+  it("still refuses a different UCPath read-back", async () => {
+    const context = taskContext();
+    await expectRefusal(() => matchIdentityTask.impl.run({ input: { ...identityInput(), emplIdSource: "operator-entered", emplId: OTHER_EID }, ctx: context.ctx }), "identity-subject-mismatch");
+    assert.deepEqual(context.records, []);
+  });
+});

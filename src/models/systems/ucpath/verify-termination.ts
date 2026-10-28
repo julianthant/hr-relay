@@ -1,3 +1,4 @@
+import { UcpathTransactionReceiptSchema } from "../../ui/ucpath-ss-smart-hr.js";
 /** The `save-verify` READ-BACK: `present` requires the `T…` AND an approval status, and every non-`present` verdict parks. */
 import { EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import {
@@ -11,7 +12,7 @@ export const UcpathVerifyTermination = defineTaskContract({
   id: taskId("ucpath/verify-termination"),
   title: "Verify Filed UCPath Termination",
   effect: "read",
-  input: UcpathTerminationTargetSchema,
+  input: UcpathTerminationTargetSchema.extend({ transactionId: UcpathTransactionReceiptSchema.optional() }),
   output: UcpathTerminationVerdictSchema,
   errorCodes: ["ucpath-unavailable", "unexpected-page-state", "subject-mismatch"],
   subject: {

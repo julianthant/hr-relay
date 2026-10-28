@@ -1,6 +1,6 @@
 /** The fork of the document's own EID field and the unconditional UCPath name search, producing the `(emplId, emplIdSource)` pair every downstream read binds against. */
 import { z } from "zod";
-import { taskId } from "../../../rules/identity/ids.js";
+import { EidSchema, taskId } from "../../../rules/identity/ids.js";
 import {
   SEPARATION_SUBJECT_REFUSAL_CODES,
   SeparationSubjectSchema,
@@ -17,6 +17,7 @@ export const SeparationsMatchSeparationSubject = defineTaskContract({
   title: "Separation Subject",
   effect: "read",
   input: z.strictObject({
+    operatorEmployeeId: EidSchema.optional(),
     documentNumber: z.string().min(1),
     /** The name the separation form carries, verbatim. */
     employeeName: z.string().min(1),

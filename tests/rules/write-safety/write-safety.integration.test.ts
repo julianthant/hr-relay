@@ -17,16 +17,13 @@ import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admis
 import { currentAtomicWriteFixture,seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import { fenceWriteFixture,seedCorruptWriteFenceFixture } from "../../support/helpers/write-fence-fixture.js";
 
-import { reconstructConfirmedOperation } from "../../../src/models/events/confirmed-operation.js";
 
-import type { WriteResolutionContext } from "../../../src/backend/runs/commands/command-kernel.js";
 
-import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 
 import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-safety.js";
-import { UUID_5,UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_5 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
-import { WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_WORKFLOW_ID,WriteFixtureProofSchema,writeFixtureDescriptorAfterUnrelatedEdit,writeFixtureQueuedRun } from "../../support/fixtures/write-sequencer-fixtures.js";
+import { WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_WORKFLOW_ID,writeFixtureDescriptorAfterUnrelatedEdit,writeFixtureQueuedRun } from "../../support/fixtures/write-sequencer-fixtures.js";
 
 import { z } from "zod";
 import { WriteSafetyAuthorityError } from "../../../src/rules/write-safety/write-safety.js";
@@ -221,90 +218,36 @@ afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose();
 });
 
-  it.each([writeFixtureDescriptor,writeFixtureDescriptorAfterUnrelatedEdit])("confirmed-present parses the exact proof schema and resumes under closure $contractFingerprint", async descriptor => {
-    const { h, kernel,makeKernel } = await resolutionHarness(descriptor);
+  it.each([writeFixtureDescriptor,writeFixtureDescriptorAfterUnrelatedEdit])("records an audited recheck request under closure $contractFingerprint", async descriptor => {
+    const { h, kernel, makeKernel } = await resolutionHarness(descriptor);
     const { run, writeIntentId } = parkedAttemptingWrite(h);
-    // Park the intent the way recovery would have before the operator acts.
-    h.database.withAuthorityTransaction((repositories) =>
-      repositories.writeIntents.parkAttempt({
-        writeIntentId, generation: 1, expectedVersion: 1,
-        code: "unknown", message: "clicked, cannot prove it landed", now: h.clock.now().toISOString(),
-        authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "test operator park"),
-      }));
-    const originalAttempt=h.database.authority.writeAttempts.get(UUID_5);
-    const command = commandFor("resolve-write-present", run, {
-      proof: {
-        schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
-        value: { transactionId: "T999999" },
-      },
-      evidenceNote: "Verified transaction T999999 in the target system",
-    });
-    if (command.family !== "run" || command.type !== "resolve-write-present") throw new Error("unreachable");
-    assert.equal(kernel.execute(command).state,"applied");
-    const resolved=h.database.authority.runs.get(run.envelope.runId);
-    assert.ok(resolved);
-    assert.equal(resolved.envelope.runId,run.envelope.runId);
-    assert.equal(resolved.lifecycle.state,"queued");
-
-    const intent = intentByKey(h.database);
-    assert.ok(intent && intent.status === "committed");
-    assert.deepEqual(intent.completionProof.value, { transactionId: "T999999" });
-    const checkpoint = h.database.authority.runCheckpoints.latest(
-      WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID);
-    assert.ok(checkpoint);
-    assert.equal((checkpoint.output.value as { proofSource: string }).proofSource, "operator-attestation");
-    assert.equal(checkpoint.contractFingerprint,descriptor.contractFingerprint);
-    assert.deepEqual(h.database.authority.writeAttempts.get(UUID_5),originalAttempt);
-    const audit=h.database.authority.commandAudits.findByCommand(command.commandId);
+    h.database.authority.writeIntents.parkAttempt({ writeIntentId, generation: 1, expectedVersion: 1,
+      code: "unknown", message: "clicked, cannot prove it landed", now: h.clock.now().toISOString(),
+      authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "test operator park") });
+    const originalAttempt = h.database.authority.writeAttempts.get(UUID_5);
+    const command = commandFor("recheck-write", run, {});
+    assert.equal(kernel.execute(command).state, "applied");
+    const requested = intentByKey(h.database);
+    assert.ok(requested?.status === "parked" && requested.recheck?.commandId === command.commandId);
+    assert.equal(h.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "queued");
+    assert.equal(h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID), undefined);
+    const audit = h.database.authority.commandAudits.findByCommand(command.commandId);
     assert.ok(audit);
-    const generation=h.database.getMeta().authorityGeneration;
-    const timeline=h.database.authority.timelineEvents.page({runId:run.envelope.runId,limit:100});
-    assert.equal(timeline.filter(event=>event.payload.kind==="operation-confirmed").length,1);
-    const confirmed=timeline.find(event=>event.payload.kind==="operation-confirmed");
-    assert.ok(confirmed);
-    assert.deepEqual(reconstructConfirmedOperation(h.database.authority,confirmed).ledger.proof,command.payload.proof);
-    assert.equal(h.database.authority.writeIntents.getPublication(writeIntentId)?.checkpoint.contractFingerprint,descriptor.contractFingerprint);
-    assert.equal(kernel.execute(command).state,"already-applied");
-    assert.equal(h.database.getMeta().authorityGeneration,generation);
-    assert.deepEqual(h.database.authority.timelineEvents.page({runId:run.envelope.runId,limit:100}),timeline);
-    assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId),audit);
-    assert.deepEqual(h.database.authority.writeAttempts.get(UUID_5),originalAttempt);
-    h.database.authority.runs.advanceRevision({runId:run.envelope.runId,expectedVersion:resolved.version,now:WRITE_FIXTURE_NOW});
+    assert.equal(kernel.execute(command).state, "already-applied");
     h.restart();
-    const restartedKernel=makeKernel();
-    const reopenedGeneration=h.database.getMeta().authorityGeneration;
-    assert.equal(restartedKernel.execute(command).state,"already-applied");
-    assert.equal(h.database.getMeta().authorityGeneration,reopenedGeneration);
-    assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId),audit);
-    assert.deepEqual(h.database.authority.writeAttempts.get(UUID_5),originalAttempt);
-    assert.deepEqual(h.database.authority.timelineEvents.page({runId:run.envelope.runId,limit:100}),timeline);
-    assert.deepEqual(reconstructConfirmedOperation(h.database.authority,confirmed).ledger.proof,command.payload.proof);
-    assert.deepEqual(h.world.events,[],"operator attestation performs no external effects");
+    assert.equal(makeKernel().execute(command).state, "already-applied");
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId), audit);
+    assert.deepEqual(h.database.authority.writeAttempts.get(UUID_5), originalAttempt);
+    assert.deepEqual(h.world.events, [], "request admission performs no browser effects");
   });
 
-  it("confirmed-present with a wrong proof schema hash changes nothing", async () => {
-    const { h, executor } = await resolutionHarness();
+  it("refuses operator-supplied proof at the command boundary", async () => {
+    const { h } = await resolutionHarness();
     const { run, writeIntentId } = parkedAttemptingWrite(h);
-    const parkedIntent = h.database.withAuthorityTransaction((repositories) =>
-      repositories.writeIntents.parkAttempt({
-        writeIntentId, generation: 1, expectedVersion: 1,
-        code: "unknown", message: "clicked, cannot prove it landed", now: h.clock.now().toISOString(),
-        authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "test operator park"),
-      }));
-    const command = commandFor("resolve-write-present", run, {
-      proof: { schemaHash: "1".repeat(64), value: { transactionId: "T999999" } },
-      evidenceNote: "wrong schema",
-    });
-    if (command.family !== "run" || command.type !== "resolve-write-present") throw new Error("unreachable");
-    const context: WriteResolutionContext = Object.freeze({
-      auditId:UUID_6, command, run, intent: parkedIntent, now: h.clock.now().toISOString(),
-    });
-    assert.throws(
-      () => h.database.withAuthorityTransaction((repositories) => executor.resolvePresent(repositories, context)),
-      /bound to schema/,
-    );
-    assert.equal(intentByKey(h.database)?.status, "parked", "the refused resolution changed nothing");
-    assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+    h.database.authority.writeIntents.parkAttempt({writeIntentId,generation:1,expectedVersion:1,code:"unknown",
+      message:"operator proof is never a command input",now:h.clock.now().toISOString(),
+      authorityReason:deriveWriteAuthorityReason("recovery-probe-unknown","probe","test operator park")});
+    assert.throws(() => commandFor("recheck-write", run, { proof: { schemaHash: "1".repeat(64), value: {} } }));
   });
 
   it("confirmed-absent records the typed operator settlement and resumes for a fresh generation", async () => {
@@ -314,7 +257,6 @@ afterEach(async () => {
       message:"operator absence requires parked authority",now:h.clock.now().toISOString(),
       authorityReason:deriveWriteAuthorityReason("recovery-probe-unknown","probe","test operator park")});
     const command = commandFor("resolve-write-absent", run, {
-      evidenceNote: "Checked UCPath directly; the transaction is absent",
     });
     if (command.family !== "run" || command.type !== "resolve-write-absent") throw new Error("unreachable");
     assert.equal(kernel.execute(command).state,"applied");
@@ -324,7 +266,6 @@ afterEach(async () => {
     assert.equal(settled.settlement.state, "operator-confirmed-absent");
     if (settled.settlement.state === "operator-confirmed-absent") {
       assert.equal(settled.settlement.operator, "local-operator");
-      assert.match(settled.settlement.evidenceNote, /transaction is absent/);
     }
     assert.equal(settled.generation, 1, "the resolution never itself advances the generation");
   });

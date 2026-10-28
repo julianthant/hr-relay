@@ -81,7 +81,7 @@ function availableFailure(response: ReturnType<typeof buildReceiptFailureSection
 }
 
 describe("run-detail failure diagnostic-bundle linkage", () => {
-  it("offers document correction only for the current descriptor's exact read failure before any write", async () => {
+  it("does not offer document correction for an unavailable Kuali page or uncertain write", async () => {
     const h = await fixture();
     const descriptor = separationsModule.descriptor;
     const run = RunRecordSchema.parse({ ...h.run, envelope: { ...h.run.envelope, workflow: descriptor.id,
@@ -98,14 +98,14 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
       trust: { ...h.f.receipts, getFailure: () => failure },
     };
     const read = () => availableFailure(buildReceiptFailureSection(deps, run.envelope.runId, "failure"));
-    assert.deepEqual(read().rerunInput, { field: "documentNumber", expectedVersion: run.version });
+    assert.equal(read().recovery, undefined, "an unavailable page is not a proved missing document");
     failure = FailureRecordSchema.parse({ ...failure, action: { ...failure.action, operation: "commit" }, writeState: "unknown" });
-    assert.equal(read().rerunInput, undefined, "UNKNOWN is never offered a correction/retry");
+    assert.equal(read().recovery, undefined, "UNKNOWN is never offered a correction/retry");
     failure = FailureRecordSchema.parse({ ...failure, action: { ...failure.action, operation: "read" }, writeState: "not-attempted", code: "UNEXPECTED_PAGE_STATE" });
-    assert.equal(read().rerunInput, undefined, "a different failure is not a document correction");
+    assert.equal(read().recovery, undefined, "a different failure is not a document correction");
     failure = FailureRecordSchema.parse({ ...failure, code: "DOCUMENT_UNAVAILABLE" });
     current = false;
-    assert.equal(read().rerunInput, undefined, "missing current descriptor never becomes a default");
+    assert.equal(read().recovery, undefined, "missing current descriptor never becomes a default");
   });
   it("retains an early terminal failure in Logs when the empty evidence fold skips timeline reads", async () => {
     const h = await fixture();

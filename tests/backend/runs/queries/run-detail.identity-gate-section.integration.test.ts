@@ -124,6 +124,7 @@ function checkpointOf(packet: IdentityEvidencePacket, nodeId = "comparison"): Ru
   if (task === undefined || task.kind !== "task") throw new Error(`identity checkpoint task ${nodeId} is absent`);
   const value = MatchIdentityOutputSchema.parse({
     packet,
+    approvalRequired: packet.emplIdSource === "name-resolved" || packet.emplIdSource === "operator-entered",
     evidenceDigest: deriveIdentityEvidenceDigest(packet),
   });
   return RunCheckpointRecordSchema.parse({
@@ -467,7 +468,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.equal(payload.state, "missing");
     assert.match(
       payload.state === "missing" ? payload.reason : "",
-      /requires an operator decision only for a name-resolved EID/u,
+      /requires an operator decision only for a name-resolved or operator-entered EID/u,
     );
   });
 

@@ -174,16 +174,16 @@ Machine-verified identity is not an approval ceremony. Operator approval binds t
 record/source set, corrected values, and revision. A completed command requires a matching result;
 an optimistic click or navigation cannot certify it.
 
-A parked decision displays Write parked. Its current verification input produces a
-`LogDecisionAnswer`: `outcome: "present"` requires a nonblank `transaction`; `outcome: "absent"`
-is an explicit choice. `decisionActionResult` validates the answer and produces a local result.
-Present confirms the transaction and continues toward Finalize Kuali document; absent reports no
-matching termination and continues toward retry. These are mock results and continuation, not
-backend reconciliation or permission to retry an unknown submit.
+A served parked decision displays Write parked and offers Check again through the served
+`recheck-write` confirmation. The server's `acceptsTransactionId` field comes from the same
+completion-contract predicate used by the runtime probe. When true, Check result collects Yes
+and a transaction number, or No. Yes requests a read-only recheck of that number; No composes
+`resolve-write-absent`. Otherwise the second choice is It didn't land. Every choice uses its
+served command confirmation and binds the run version, intent, generation, write attempt,
+binding proof digest and occurrence key digest. Superseded choices refuse before dispatch.
+Pending, refused, uncertain with exact replay, and settled feedback use the existing command
+executor. Local result copy describes the request, without claiming verification or continuation.
 
-Required backend wiring binds reconciliation to exact `writeIntentId`, `intentGeneration`,
-`expectedVersion`, proof contract, and evidence note, through distinct `resolve-write-present` and
-`resolve-write-absent` commands. Those authority fields are not current `LogDecisionAnswer` fields.
 Never retry an unknown submit automatically. Served failure wiring keeps write state, remediation,
 and both permanence meanings visible while diagnosis can be disclosed. Missing evidence stays
 unavailable rather than looking like a successful receipt.

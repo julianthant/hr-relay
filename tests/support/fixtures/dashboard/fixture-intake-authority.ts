@@ -69,7 +69,7 @@ export async function createIntakeAuthority() {
     } }),
       appVersion: "0.1.0", authority: database, clock, ids: kernelIds,
       configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_1 }, descriptors,
-      writeResolution: { resolvePresent: forbidden, resolveAbsent: forbidden },
+      writeResolution: { recheck: forbidden, resolveAbsent: forbidden },
       workerRuntime: { pool: { planPoolWorkerCount: forbidden, spawnPoolWorker: forbidden, refreshPoolBrowser: forbidden, reopenPoolBrowser: forbidden, stopPoolWorker: forbidden, pausePoolWorker: forbidden, resumePoolWorker: forbidden } },
       intakeParser: parser, intakeProjections: projections });
     const projection = createRunQueueProjection({

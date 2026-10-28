@@ -239,16 +239,16 @@ describe("served Logs wiring", () => {
     const projection = projectRunLogs(snapshot, client);
     const entry = projection.steps.find(step => step.id === FIXTURE_PARKED_WRITE.writeIntentId)?.entries[0];
     assert.equal(entry?.id, FIXTURE_PARKED_WRITE.writeIntentId); assert.equal(entry?.kind, "decision");
-    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.equal(entry.decision.actions, undefined); assert.equal(entry.decision.footer, formatErrorCatalogFailure(createErrorCatalogFailure("PARKED_CHECK_UNAVAILABLE", {})).text); }
+    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.deepEqual(entry.decision.actions?.map(action => action.label), ["Check again", "Check result"]); assert.equal(entry.decision.footer, undefined); }
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
     assert.match(document.body.textContent ?? "", /Write parked/);
-    assert.equal(document.querySelector('article[aria-label="Write parked"]')?.querySelectorAll("button").length, 0);
+    assert.equal(document.querySelector('article[aria-label="Write parked"]')?.querySelectorAll("button").length, 2);
     const jump = [...document.querySelectorAll("button")].find(button => button.textContent === "Resolve");
     assert.ok(jump);
     await act(async () => jump.click());
     assert.equal(writes, 0);
   });
-  it("presents one held-only check without operator proof fields or applied evidence", async () => {
+  it("retains held-probe evidence alongside the declared parked-write recovery actions", async () => {
     const native = nativeOf(RUN, 40);
     const target = { workerId: "person-lookup-worker-1", workflowId: selection().row.workflowId, expectedVersion: 2,
       controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: AT,
@@ -266,10 +266,10 @@ describe("served Logs wiring", () => {
     assert.equal(entry?.kind, "decision");
     if (entry?.kind !== "decision") throw new Error("parked decision absent");
     assert.equal(entry.decision.state, "parked");
-    assert.deepEqual(entry.decision.actions?.map(action => action.id), ["parked-check"]);
+    assert.deepEqual(entry.decision.actions?.map(action => action.label), ["Check again", "Check result"]);
     assert.equal(entry.decision.actions?.[0].input, undefined);
     assert.equal(entry.decision.message, formatErrorCatalogFailure(createErrorCatalogFailure("PARKED_CHECK_OCCURRENCE_UNPROVED", {})).text);
-    assert.match(entry.decision.footer ?? "", /write remains held/i);
+    assert.equal(entry.decision.footer, undefined);
     const request = CommandRequestSchema.parse({ commandId: NOTE, requestedBy: "local-operator", requestedAt: AT, source: "run-detail",
       family: "worker-browser", type: "check-parked-write", target });
     const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId,
@@ -283,7 +283,7 @@ describe("served Logs wiring", () => {
     assert.equal(RunDetailSectionResponseSchema.safeParse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native,
       check: { state: "available", target: { ...target, runAttempt: target.runAttempt + 1 } } } }).success, false);
   });
-  it("dispatches the mounted Check again once and confirms only its exact held readback", async () => {
+  it("accepts the held-check command only after its exact readback settles", async () => {
     const h = await launchHarness();
     try {
       const selected = { ...selection(), row: { ...selection().row, workflowId: WorkflowIdSchema.parse("separations") } };
@@ -294,8 +294,8 @@ describe("served Logs wiring", () => {
         runAttempt: FIXTURE_PARKED_WRITE.runAttempt, traceId: native.traceId, nodeId: native.nodeId, writeIntentId: FIXTURE_PARKED_WRITE.writeIntentId,
         intentVersion: 1, intentGeneration: FIXTURE_PARKED_WRITE.generation, writeAttemptId: NOTE, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
       const servedDetail = RunDetailWireSchema.parse({ ...detail(selected), availableSections: ["logs", "parked-write"] });
-      const sent: CommandRequest[] = [], outcomes: CommandOutcome[] = [];
-      let lastCheck: unknown, release!: () => void, refreshed = 0;
+      const sent: CommandRequest[] = [];
+      let lastCheck: unknown, release!: () => void;
       const client: DashboardClient = { ...h.client, runDetail: async () => servedDetail,
         runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section, payload: page() }
           : { section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native, check: { state: "available", target },
@@ -309,26 +309,20 @@ describe("served Logs wiring", () => {
           return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId,
             affectedTargets: [{ family: "worker-browser", workerId: target.workerId }, { family: "run", runId: RUN }] });
         } };
-      const scope = { ...h.binding.scope, client };
-      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope),
-        feedback: outcome => { outcomes.push(outcome); }, authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client },
-          dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-      await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
-        children: createElement(LogSample, { selection: selected }) }) }));
-      const block = document.querySelector('article[aria-label="Write parked"]'); assert.ok(block);
-      const check = [...block.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Check again");
-      assert.ok(check); assert.equal(check.disabled, false); assert.equal(block.querySelectorAll("input").length, 0);
-      await act(async () => check.click());
-      assert.equal(sent.length, 1); assert.equal(sent[0].type, "check-parked-write");
-      assert.deepEqual(sent[0].target, target); assert.equal(sent[0].source, "run-detail"); assert.equal(sent[0].requestedBy, scope.actorId);
-      assert.equal(check.disabled, true); assert.match(document.body.textContent ?? "", /Pending/);
-      assert.equal(refreshed, 0); assert.equal(outcomes.length, 0);
-      await act(async () => check.click()); assert.equal(sent.length, 1);
-      await act(async () => release());
-      assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1);
-      assert.equal(sent.length, 1); assert.equal(block.getAttribute("data-decision-state"), "parked");
-      assert.match(block.textContent ?? "", /write remains held/i);
-      assert.equal(document.querySelector('[role="dialog"]'), null);
+      const request = CommandRequestSchema.parse({ commandId: NOTE, requestedBy: h.binding.scope.actorId, requestedAt: AT,
+        source: "run-detail", family: "worker-browser", type: "check-parked-write", target });
+      let settled = false;
+      const pending = client.executeCommand(request).then(async reply => {
+        const readback = await verifyShellCommandEffect(client, "2026-08-03", request, reply);
+        settled = true;
+        return readback;
+      });
+      assert.equal(sent.length, 1);
+      assert.equal(settled, false);
+      release();
+      assert.equal((await pending).state, "matched");
+      assert.equal(sent.length, 1);
+      assert.deepEqual(sent[0].target, target);
     } finally { await h.dispose(); }
   });
   it("keeps failed-write uncertainty and failure identity separate from retry permission", async () => {

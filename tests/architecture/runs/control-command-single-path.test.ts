@@ -460,7 +460,7 @@ const EXPECTED_ACTIVE = {
     "cancel", "bump", "rename",
 
     "delete",
-    "resolve-write-present", "resolve-write-absent",
+    "recheck-write", "resolve-write-absent",
 
   ],
   gate: ["resolve-gate"],
@@ -545,7 +545,7 @@ async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
       resolve: (workflowId) => workflowId === "fixture-graph" ? fixtureDescriptor : undefined,
     },
     writeResolution: {
-      resolvePresent: seamFailure("resolve-write-present"),
+      recheck: seamFailure("recheck-write"),
       resolveAbsent: seamFailure("resolve-write-absent"),
     },
     workerRuntime: { pool: {

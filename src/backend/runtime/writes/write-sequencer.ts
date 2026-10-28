@@ -1,3 +1,5 @@
+import { acceptsRecheckTransactionId } from "../../../rules/write-safety/parked-resolution.js";
+import { UcpathTerminationTargetSchema } from "../../../models/ui/ucpath-smart-hr-termination.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
@@ -70,6 +72,7 @@ import {
   WriteAttemptRecordSchema,
   WriteBindingProofSchema,
   WriteIntentRecordSchema,
+  ParkedWriteResolutionBindingSchema,
   WriteSafetyAuthorityError,
   type WriteAuthorityReason,
   type WriteAuthorityReasonCode,
@@ -205,6 +208,7 @@ export interface WriteSequencerAuthority {
   readonly authority: WriteSequencerRepositories;
   withAuthorityTransaction<Result>(work: (repositories: WriteSequencerRepositories) => Result): Result;
   commitWriteAttempt(input: unknown, checkpoint: unknown): AtomicWriteCommitReport;
+  commitRecheckedParkedWrite(input: unknown): AtomicWriteCommitReport;
 }
 
 // Use the same session manager bound by the worker loop; recovery binds retained config separately.
@@ -506,6 +510,7 @@ export async function executeIdempotencyProbe(
   input: Readonly<{
     commitContract: AnyCommitTaskContract;
     commitInput: unknown;
+    transactionId?: string;
     instance: string;
     signal: AbortSignal;
     onRecord?: (taskId: TaskId, batch: BoundedTaskRecordBatch) => void;
@@ -514,7 +519,12 @@ export async function executeIdempotencyProbe(
   }>,
 ): Promise<z.output<ReturnType<typeof probeVerdictSchema>>> {
   const { commitContract } = input;
-  const probeRef = commitContract.writeSafety.idempotency.probe;
+  const completion = commitContract.writeSafety.completion;
+  if (input.transactionId !== undefined && !acceptsRecheckTransactionId(completion)) {
+    throw new Error("write-recheck-transaction-id-unsupported");
+  }
+  const probeRef = input.transactionId === undefined || completion.kind === "receipt"
+    ? commitContract.writeSafety.idempotency.probe : completion.verify;
   const probeTask = taskIndexOf(deps.stores).get(probeRef.taskId);
   if (probeTask === undefined) throw new Error(`no store implements idempotency probe ${probeRef.taskId}`);
   if (probeTask.contract.effect !== "read") {
@@ -526,7 +536,8 @@ export async function executeIdempotencyProbe(
   }
   let probeInput: unknown;
   try {
-    probeInput = probeTask.contract.input.parse(input.commitInput);
+    probeInput = probeTask.contract.input.parse(input.transactionId === undefined ? input.commitInput
+      : { ...UcpathTerminationTargetSchema.parse(input.commitInput), transactionId: input.transactionId });
   } catch (error) {
     throw new Error(
       `idempotency probe ${probeRef.taskId} cannot bind the commit input; a dedicated probe input `
@@ -550,7 +561,14 @@ export async function executeIdempotencyProbe(
     return output;
   });
   try {
-    return probeVerdictSchema(proofSchema).parse(probeTask.contract.output.parse(raw));
+    const verdict = probeVerdictSchema(proofSchema).parse(probeTask.contract.output.parse(raw));
+    if (input.transactionId !== undefined && verdict.state === "present") {
+      const target = UcpathTerminationTargetSchema.parse(input.commitInput);
+      const observed = z.object({ emplId: z.string(), effectiveDate: z.string(), transactionId: z.string() }).parse(verdict.proof);
+      if (observed.transactionId !== input.transactionId || observed.emplId !== target.emplId
+        || observed.effectiveDate !== target.effectiveDate) throw new Error("write-recheck-transaction-identity-mismatch");
+    }
+    return verdict;
   } catch (error) {
     throw new Error(
       `idempotency probe ${probeRef.taskId} output does not parse as a ProbeVerdict; a probe that `
@@ -653,7 +671,14 @@ export function executeSequencedWriteCommit(
       || current.lifecycle.intentGeneration !== parsed.commit.generation) {
       throw new Error("resume-queued settlement requires the exact parked write intent and generation");
     }
-    const report = authority.commitWriteAttempt(parsed.commit, parsed.checkpoint);
+    const report = intent?.status === "parked" && intent.recheck !== undefined && transition.kind === "advance-running"
+      ? authority.commitRecheckedParkedWrite({ commit: parsed.commit, checkpoint: parsed.checkpoint,
+          expectedIntentVersion: intent.version, claim: transition.claim,
+          resolution: ParkedWriteResolutionBindingSchema.parse({ commandId: intent.recheck.commandId, auditId: intent.recheck.auditId, expectedRunVersion: intent.recheck.expectedRunVersion,
+            writeIntentId: intent.writeIntentId, writeAttemptId: intent.currentAttemptId, generation: intent.generation,
+            bindingProofDigest: intent.bindingProofDigest, idempotencyKeyDigest: intent.idempotencyKeyDigest,
+            runId: intent.runId, runAttempt: intent.runAttempt, decision: "present", resolvedAt: parsed.commit.confirmedAt }) })
+      : authority.commitWriteAttempt(parsed.commit, parsed.checkpoint);
     hooks?.afterSequencedStep?.("commit-write-attempt");
     repositories.runCheckpoints.insert(parsed.checkpoint);
     hooks?.afterSequencedStep?.("transaction-checkpoint");
@@ -1098,6 +1123,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
+    transactionId?: string,
   ): Promise<RuntimeProbeVerdict> {
     const instance = resolvedInstanceFor(context, systemOf(commitContract.id));
     emitTaskSpan(context, "probe", "span.started");
@@ -1105,6 +1131,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       const verdict = await executeIdempotencyProbe(deps, {
         commitContract,
         commitInput,
+        ...(transactionId === undefined ? {} : { transactionId }),
         instance,
         signal: context.signal,
         onRecord: (taskId, batch) => emitObservedBatch(context, "probe", taskId, batch),
@@ -1331,7 +1358,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const now = instant();
     const envelope = context.run.envelope;
     deps.authority.withAuthorityTransaction((repositories) => {
-      repositories.writeIntents.parkAttempt({
+      const intent = repositories.writeIntents.get(failure.writeIntentId);
+      const request = {
         writeIntentId: failure.writeIntentId,
         generation: failure.generation,
         expectedVersion: failure.intentVersion,
@@ -1339,7 +1367,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         message: failure.operatorMessage,
         authorityReason: failure.authorityReason,
         now,
-      });
+      };
+      if (intent?.status === "parked" && intent.recheck !== undefined) {
+        repositories.writeIntents.parkRecheck({ ...request, commandId: intent.recheck.commandId });
+      } else repositories.writeIntents.parkAttempt(request);
       const current = repositories.runs.get(envelope.runId);
       if (current === undefined) throw new Error(`run ${envelope.runId} disappeared while parking`);
       if (current.lifecycle.state !== "running") {
@@ -1514,15 +1545,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }
 
 
-  async function recoverOwnAttemptingIntent(
+  async function recoverOwnIntent(
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
-    intent: AttemptingIntent,
+    intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
   ): Promise<unknown> {
     let verdict: RuntimeProbeVerdict;
     try {
-      verdict = await runLiveProbe(context, commitContract, commitInput);
+      verdict = await runLiveProbe(context, commitContract, commitInput, intent.status === "parked" ? intent.recheck?.transactionId : undefined);
     } catch (error) {
       const failure = new PostFenceWriteFailure({
         writeIntentId: intent.writeIntentId,
@@ -1769,7 +1800,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       return reuseDurableIntent(context, commitContract, decision.record);
     }
     if (decision.kind === "recover-own") {
-      return await recoverOwnAttemptingIntent(context, commitContract, commitInput, decision.record);
+      return await recoverOwnIntent(context, commitContract, commitInput, decision.record);
     }
     if (decision.kind === "refuse-foreign") {
       const existing = decision.record;
@@ -1780,6 +1811,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
     if (decision.kind === "refuse-parked") {
       const existing = decision.record;
+      if (existing.recheck !== undefined && existing.runId === envelope.runId && existing.runAttempt === envelope.attempt) {
+        return await recoverOwnIntent(context, commitContract, commitInput, existing);
+      }
       throw new Error(
         `write intent ${existing.writeIntentId} for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} is parked (`
         + `${existing.parkedCode}); stored detail is retained only in authority. `

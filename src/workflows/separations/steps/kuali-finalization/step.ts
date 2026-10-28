@@ -345,13 +345,12 @@ export const separationsKualiFinalizationWorkflow = defineWorkflow({
         statusKey: "awaitingIdentityApproval",
         result: IdentityApprovalResultSchema,
         when: {
-          kind: "equals",
+          kind: "is-true",
           of: {
             from: "node",
             nodeId: COMPARISON_NODE,
-            path: "packet.emplIdSource",
+            path: "approvalRequired",
           },
-          value: "name-resolved",
         },
       },
       [comparison, departmentOption],

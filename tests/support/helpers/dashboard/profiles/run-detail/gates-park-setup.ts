@@ -84,6 +84,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
   const PARKED_WRITE_REVISION = 6;
 
   const FIXTURE_PARKED_WRITE = {
+    acceptsTransactionId: true,
     runId: FIXTURE_IDS.parkedRun,
     native: { eventId: uuidOf(9960), order: 50, runId: FIXTURE_IDS.parkedRun, attempt: 1, traceId: traceOf(6), nodeId: "terminate" },
     writeIntentId: PARKED_WRITE_INTENT_ID,
@@ -134,21 +135,20 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
     },
     actions: [
       {
-        key: "resolve-write-present",
-        label: "I confirmed it IS there",
-        detail: "Record the transaction you found, with its proof. The run settles as committed and never clicks again.",
+        key: "recheck-write",
+        label: "Check again",
+        detail: "Read the target system again. A verified transaction continues the run; uncertainty keeps the write parked.",
         intent: "warning",
         icon: "resolve",
         placement: ["banner", "footer"],
         kind: "command",
-        command: "resolve-write-present",
+        command: "recheck-write",
         expectedVersion: PARKED_WRITE_REVISION,
         confirm: {
-          title: "Confirm the transaction exists",
-          body: `This files ${PARKED_WRITE_SYSTEM} transaction ${PARKED_WRITE_INTENT_ID} as committed on this run's `
-            + "evidence. If it is not actually there, the run finishes reporting work nobody did.",
-          confirmLabel: "It is there",
-          tone: "destructive",
+          title: "Check the target system again",
+          body: "Relay reads ucpath again and submits nothing. If it finds this write, the run continues to its next step.",
+          confirmLabel: "Check again",
+          tone: "neutral",
         },
         writeTarget: PARKED_WRITE_TARGET,
       },
