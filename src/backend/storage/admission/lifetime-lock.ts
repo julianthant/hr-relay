@@ -124,10 +124,13 @@ export class RuntimeLifetimeLock {
 
 export class WorkerRuntimeLifetimeLock {
   readonly #server: Server;
+  readonly #disconnected: () => void;
   #closing: Promise<void> | undefined;
   readonly #port: number;
   readonly #workspace: string;
-  private constructor(server: Server, port: number, workspace: string) { this.#server = server; this.#port = port; this.#workspace = workspace; }
+  private constructor(server: Server, port: number, workspace: string, disconnected: () => void) {
+    this.#server = server; this.#port = port; this.#workspace = workspace; this.#disconnected = disconnected;
+  }
   get port(): number { return this.#port; }
 
   static receive(this: void, port: number, onDisconnect: () => void): Promise<WorkerRuntimeLifetimeLock> {
@@ -163,7 +166,7 @@ export class WorkerRuntimeLifetimeLock {
         try {
           if (resolvePath(parsed.data.workspace) !== parsed.data.workspace || realpathSync(parsed.data.workspace) !== parsed.data.workspace) throw new Error("runtime-lifetime-workspace-invalid");
         } catch { handle.close(); failed(); return; }
-        resolve(new WorkerRuntimeLifetimeLock(handle, port, parsed.data.workspace));
+        resolve(new WorkerRuntimeLifetimeLock(handle, port, parsed.data.workspace, disconnected));
       };
       process.once("disconnect", disconnected);
       process.on("message", received);
@@ -179,7 +182,13 @@ export class WorkerRuntimeLifetimeLock {
     if (workspace !== this.#workspace) throw new Error("runtime-lifetime-workspace-unproved");
   }
 
-  close(): Promise<void> { return this.#closing ??= closeListener(this.#server); }
+  close(): Promise<void> {
+    if (this.#closing === undefined) {
+      process.removeListener("disconnect", this.#disconnected);
+      this.#closing = closeListener(this.#server);
+    }
+    return this.#closing;
+  }
 }
 
 export const acquireRuntimeLifetimeLock = RuntimeLifetimeLock.acquire;
