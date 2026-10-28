@@ -18,8 +18,9 @@ import { countProfileCredentialLoginRows } from "../sqlite/profile-local-databas
 import { readRuntimeProcessLock } from "../sqlite/runtime-process-locks.js";
 
 type CredentialMembershipCustody = Pick<ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, "slots" | "reservations" | "verificationProfiles" | "browsers" | "configSnapshots" | "controls" | "artifactReferences" | "upgrades">;
+type BrowserProfileCustody = Pick<CredentialMembershipCustody, "slots" | "verificationProfiles" | "browsers" | "configSnapshots" | "controls">;
 
-export function retainedBrowserProfiles(root: string, custody: CredentialMembershipCustody, savedBrowserRoot: string) {
+export function retainedBrowserProfiles(root: string, custody: BrowserProfileCustody, savedBrowserRoot: string) {
   const profiles = new Map<string, { profileRoot: string; profileDirectory: string; cleanupCompleted: boolean }>();
   const roots = [...new Set([...custody.configSnapshots.map(snapshot => snapshot.config.paths.browserProfileRoot), savedBrowserRoot])];
   for (const path of roots) assertBrowserRoot(root, path);
@@ -44,7 +45,7 @@ export function retainedBrowserProfiles(root: string, custody: CredentialMembers
   return [...profiles.values()];
 }
 
-function nativeProbeProfiles(root: string, custody: CredentialMembershipCustody, config: import("../../../models/config/schema.js").Config) {
+function nativeProbeProfiles(root: string, custody: BrowserProfileCustody, config: import("../../../models/config/schema.js").Config) {
   const profiles = retainedBrowserProfiles(root, custody, config.paths.browserProfileRoot).filter(profile => {
     assertPrivateProfilePath(profile.profileRoot, profile.profileDirectory);
     if (lstatSync(profile.profileDirectory, {throwIfNoEntry:false}) !== undefined) return true;
@@ -54,7 +55,7 @@ function nativeProbeProfiles(root: string, custody: CredentialMembershipCustody,
   return profiles;
 }
 
-export function assertRetainedBrowsersClosed(admission: RuntimeAdmission, custody: CredentialMembershipCustody, config: import("../../../models/config/schema.js").Config): void {
+export function assertRetainedBrowsersClosed(admission: RuntimeAdmission, custody: BrowserProfileCustody, config: import("../../../models/config/schema.js").Config): void {
   admission.assertLive();
   assertNativeBrowserProfilesClosed(nativeProbeProfiles(admission.stateRoot, custody, config), {
     launchTimeoutMs: config.timeouts.sessionAcquireMs, closeProofMs: config.browser.closeProofMs,
@@ -63,7 +64,7 @@ export function assertRetainedBrowsersClosed(admission: RuntimeAdmission, custod
 }
 
 export async function probeRetainedBrowsersClosed(input: Readonly<{
-  admission: RuntimeAdmission; custody: CredentialMembershipCustody; config: import("../../../models/config/schema.js").Config;
+  admission: RuntimeAdmission; custody: BrowserProfileCustody; config: import("../../../models/config/schema.js").Config;
   clock: Clock; signal: AbortSignal;
 }>): Promise<void> {
   input.admission.assertLive();

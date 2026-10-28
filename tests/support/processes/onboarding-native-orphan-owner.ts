@@ -13,7 +13,7 @@ browser.stderr.on("data",(chunk:unknown)=>{
   if(!(chunk instanceof Uint8Array))throw new Error("native-orphan-stderr-not-bytes");
   text+=Buffer.from(chunk).toString("utf8");
   const endpoint=/DevTools listening on (ws:\/\/127\.0\.0\.1:[0-9]+\/devtools\/browser\/[^\s]+)/u.exec(text)?.[1];
-  if(!ready&&endpoint!==undefined){ready=true;process.send?.({state:"ready",directory,endpoint});text="";}
+  if(!ready&&endpoint!==undefined){ready=true;process.send?.({state:"ready",directory,endpoint,browserPid:z.number().int().positive().parse(browser.pid)});text="";}
   if(text.length>65536)text="";
 });
 browser.once("error",()=>{process.exitCode=1;process.disconnect?.();});

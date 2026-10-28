@@ -161,7 +161,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/duo-ceremony-fixtures.ts` | duo ceremony fixtures |
 | `helpers/failure-resolution/fixtures.ts` | fixtures |
 | `helpers/geocode/nominatim-client.ts` | nominatim client |
-| `processes/onboarding-native-orphan-owner.ts` | owned canonical Chromium orphan after Node owner SIGKILL |
+| `processes/onboarding-native-orphan-owner.ts` | canonical Chromium orphan after owner SIGKILL; child PID from owned IPC is a bounded test-only exit observation; unproved exit retains the contained run |
 | `helpers/geocode/nominatim-parent.ts` | parent-owned geocode queue and IPC disconnect |
 | `helpers/integration/journaled-protected-settings.ts` | journaled protected settings |
 | `helpers/integration/storage-recovery-fixture.ts` | storage recovery fixture |

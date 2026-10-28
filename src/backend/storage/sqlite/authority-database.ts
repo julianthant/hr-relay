@@ -1405,7 +1405,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   }
 }
 
-function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>) {
+function browserProfileInventory(database: DatabaseSync) {
   const settings = readAppSettings(database);
   const settingsAuthority = settings === undefined
     ? Object.freeze({ state: "never-initialized" as const })
@@ -1414,18 +1414,23 @@ function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typ
     .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
   const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
   const browsers = database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow);
-  const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
   const controls = database.prepare("SELECT * FROM worker_controls ORDER BY command_id").all().map(row => {
     const record = workerControlFromRow(row), authenticated = readWorkerControl(database, record.commandId);
     if (authenticated === undefined) throw new Error("worker-control-command-binding-mismatch");
     return authenticated;
   });
-  const reservations = readWorkerReservationCustody(database, slots, controls);
+  return { settingsAuthority, configSnapshots, slots, browsers, controls, verificationProfiles: readWorkerVerificationProfiles(database, slots) };
+}
+
+function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>) {
+  const browserProfiles = browserProfileInventory(database);
+  const reservations = readWorkerReservationCustody(database, browserProfiles.slots, browserProfiles.controls);
+  const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
   const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
   const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
   const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
   const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
-  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, verificationProfiles: readWorkerVerificationProfiles(database, slots), browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, ...browserProfiles, reservations, leases, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
 }
 
 function flatQueuedRunCancellationInventory(database: DatabaseSync, assertResourcesClosed: (facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) => void) {
@@ -1926,7 +1931,7 @@ export class AuthorityDatabase implements Disposable {
       const inspection=inspectNativeAuthority(database,expected.schemaVersion);
       if(inspection.authorityGeneration!==expected.authorityGeneration||inspection.authorityContentFingerprint!==expected.authorityContentFingerprint)throw new Error("stopped-browser-source-changed");
       if(inspection.installationId!==undefined&&(inspection.installationId!==owner.profileBinding.installationId||inspection.profileId!==owner.profileBinding.profileId))throw new Error("profile-maintenance-binding-mismatch");
-      return maintenanceInventory(database,inspection);
+      return Object.freeze(browserProfileInventory(database));
     });
   }
 

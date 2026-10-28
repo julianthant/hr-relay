@@ -15,7 +15,7 @@ import { copyFileSync, existsSync, readFileSync, readdirSync, statSync, mkdirSyn
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
-import { composeProfileRuntime, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { RuntimeCustodyUncertainError, composeProfileRuntime, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -286,6 +286,7 @@ for(const failure of ["busy","unproved"] as const)it(`retains logout credentials
   const error=failure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy")):new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
   const probe=vi.spyOn(browserInventory,"probeRetainedBrowsersClosed").mockRejectedValue(error);
   let context:ReturnType<typeof runtime.selectedContext>|undefined;
+  let primary:{error:unknown}|undefined;
   try{
     const active=runtime.session.signIn({email:"fixture@ucsd.edu",password:"disposable-fixture-password",at:clock.now().toISOString()});
     assert.equal(active.state,"active");if(active.state!=="active")throw new Error("fixture sign-in required");
@@ -303,10 +304,17 @@ for(const failure of ["busy","unproved"] as const)it(`retains logout credentials
     assert.equal(retained.commandId,undefined);assert.equal(retained.writeId,undefined);assert.equal(retained.expectedRevision,undefined);
     assert.deepEqual(readFileSync(protectedPath),protectedBefore);assert.deepEqual(readFileSync(keyPath),keyBefore);assert.equal(existsSync(journalPath),false);
     assert.equal(probe.mock.calls.length,1);
+    assert.equal(probe.mock.calls[0]?.[0].admission,context.admission);
     await assert.rejects(runtime.close());
-  }finally{
-    probe.mockRestore();
-    if(context!==undefined){await context.account.close();context.database.close();context.admission.release();}
-    runtime.session.close();await f.close();
-  }
+  }catch(error){primary={error};}
+  const cleanupErrors:unknown[]=[];
+  probe.mockRestore();
+  try{
+    assert.throws(()=>runtime.session.close(),error=>error instanceof RuntimeCustodyUncertainError
+      && error.errors.some((cause:unknown)=>cause instanceof Error&&cause.message==="profile-account-closure-unproved"));
+  }catch(error){cleanupErrors.push(error);}
+  try{if(context!==undefined){await context.account.close();context.database.close();context.admission.release();}}catch(error){cleanupErrors.push(error);}
+  try{await f.close();}catch(error){cleanupErrors.push(error);}
+  if(cleanupErrors.length!==0)throw new AggregateError(primary===undefined?cleanupErrors:[primary.error,...cleanupErrors],"native-logout-fixture-cleanup-failed");
+  if(primary!==undefined)throw primary.error;
 });

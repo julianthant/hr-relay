@@ -1,3 +1,4 @@
+import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
@@ -12,10 +13,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeRestoreAdmission, bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { deleteOwnedBrowserProfile, probeClosedBrowserProfile, workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { join } from "node:path";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
 import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory, composeProfileCredentialInventory, scanProfileCredentialCopy } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
@@ -319,8 +320,11 @@ for (const content of ["clean", "escaped-value", "escaped-key-material", "malfor
 
 for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material", "malformed"] as const) it(`inspects canonical retained browser JSON with ${content} content`, async () => {
   const f = await fixture();
+  const native=createBrowserSessionFactoryFixtures(f.clock,randomUUID(),{schedule:()=>({cancel(){}})}).fakeLauncher();
+  const launch=vi.spyOn(DEFAULT_BROWSER_LAUNCHER,"launch").mockImplementation(native.launcher.launch);
   let settlement: ReturnType<typeof f.erase> | undefined;
   let worker: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
+  let primary:{error:unknown}|undefined;
   try {
     const processLockRoot = join(f.workspace, "inventory-process-locks");
     worker = bindWorkerProcessAdmission({ processLockRoot, authorityPath: f.path, pid: process.pid, clock: f.clock,
@@ -347,12 +351,23 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
     const text = content === "clean" ? '{"profile":{"name":"Synthetic"}}' : content === "malformed" ? "{invalid}" : content === "escaped-shadowed" ? `{"synthetic":"${escaped}","synthetic":"clean"}` : `{"${escaped}":"synthetic"}`;
     assert.equal(text.includes(secret), false);
     writeFileSync(path, text, { mode: 0o600 });
-    await f.inventory.prepare(); settlement = f.erase();
+    const stopped = f.context.database.authority.workerLeases.reportLifecycle({workerId:worker.workerId,leaseGeneration:lease.leaseGeneration,
+      lifecycle:{state:"stopped",startedAt:lease.lifecycle.startedAt,stoppedAt:f.clock.now().toISOString(),reason:"shutdown"},now:f.clock.now().toISOString()});
+    assert.equal(stopped.state,"applied");
+    assert.equal(f.context.database.authority.workerLeases.get(worker.workerId)?.lifecycle.state,"stopped");
+    worker.processLock.release();worker=undefined;
+    await f.inventory.prepare();
+    assert.equal(native.contextClosed(),true);assert.equal(native.launches().length,1);
+    assert.equal(readFileSync(path,"utf8"),text);
+    settlement = f.erase();
     const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
     assert.equal(observed.logoutComplete, content === "clean");
     assert.equal(observed.backupPlaintext.includes(path), content === "escaped-key" || content === "escaped-shadowed" || content === "key-material");
     assert.equal(observed.unknownFormats.includes(path), content === "malformed");
-  } finally { worker?.processLock.release(); settlement?.admission.release(); await f.cleanup(); }
+  } catch(error){primary={error};}
+  try{launch.mockRestore();worker?.processLock.release();settlement?.admission.release();await f.cleanup();}
+  catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"browser-json-fixture-cleanup-failed");}
+  if(primary!==undefined)throw primary.error;
 });
 
 for (const encoding of ["raw", "base64", "utf16le", "utf16be"] as const) it(`detects private stable key ${encoding} across the copy chunk boundary`, async () => {
@@ -450,7 +465,8 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
   const f=await fixture(),lock=await runtimeLifetimeLock(),profileRunId=randomUUID();
   const smokeRoot=join(f.stateRoot,"scratch","live-smoke",profileRunId,"browsers");
   const native=createBrowserSessionFactoryFixtures(f.clock,randomUUID(),{schedule:()=>({cancel(){}})}).fakeLauncher();
-  let settlement:ReturnType<typeof f.erase>|undefined,stopped:RuntimeAdmission|undefined;
+  let settlement:ReturnType<typeof f.erase>|undefined,stopped:RuntimeAdmission|undefined,restore:ReturnType<typeof acquireRuntimeRestoreAdmission>|undefined;
+  let primary:{error:unknown}|undefined;
   try{
     await withSmokeWorker(f.context.database,async slot=>{
       const directory=workerProfileDirectory({profileRoot:smokeRoot,slotOrdinal:slot.ordinal,system:"crm"});
@@ -470,9 +486,15 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
       await f.inventory.prepare();settlement=f.erase();
       assert.equal(f.inventory.assess({...settlement,capturedSecrets:f.capturedSecrets,capturedSecretsComplete:true}).logoutComplete,true);
     }else{
-      f.context.database.close();const stoppedAdmission=f.admission.forStoppedProfileUpgrade();stopped=stoppedAdmission;
-      const report=await backupStoppedAuthority(stoppedAdmission,f.stateRoot,f.clock,join(f.workspace,rebuildRuntimeIsolation.processLockRoot));
+      const profileId=f.admission.profileBinding.profileId;f.context.database.close();f.admission.release();
+      const processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot);
+      restore=acquireRuntimeRestoreAdmission({processLockRoot,pid:process.pid},f.clock);
+      const stoppedAdmission=await f.machine.forStoppedProfileUpgrade(createProfileRegistry(f.machine).storageClaim(profileId),restore,f.clock,{primaryDisplay:null});stopped=stoppedAdmission;
+      const report=await backupStoppedAuthority(stoppedAdmission,f.stateRoot,f.clock,processLockRoot,restore);
       assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);
     }
-  }finally{stopped?.release();settlement?.admission.release();await f.cleanup();}
+  }catch(error){primary={error};}
+  try{stopped?.release();restore?.release();settlement?.admission.release();await f.cleanup();}
+  catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"verification-cleanup-fixture-close-failed");}
+  if(primary!==undefined)throw primary.error;
 },30000);

@@ -507,7 +507,7 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(diagnostic).not.toContain("SAMLResponse");
     expect(diagnostic).not.toContain("authentication");
     const entries = z.array(z.record(z.string(), z.string())).parse(JSON.parse(diagnostic));
-    expect(entries).toContainEqual({ error: "BrowserLoginError", system: "ucpath", phase: "sso-submit", host: "login.example.invalid" });
+    expect(entries).toContainEqual({ error: "BrowserLoginError", code: "UCPATH_SIGN_IN_FAILED", text: ERROR_CATALOG.UCPATH_SIGN_IN_FAILED.text, system: "ucpath", phase: "sso-submit", host: "login.example.invalid" });
     expect(entries).toContainEqual({ error: "DuoTerminalRefusalError", code: "DUO_TERMINAL_REFUSAL", text: ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text, system: "crm", phase: "duo-clearance", host: "login.example.invalid", path: "/sso", title: "" });
     expect(entries).toContainEqual({ error: "TypeError" });
     expect(entries.filter(entry => entry.error === "DuoTerminalRefusalError")).toHaveLength(1);
@@ -518,7 +518,7 @@ describe("registered browser-login smoke lifecycle", () => {
     const error = new BrowserLoginError("ucpath", "verify-landing", sentinel, `https://[invalid?token=${sentinel}`);
     const diagnostic = smokeErrorDiagnostic(error);
     expect(diagnostic.includes(sentinel)).toBe(false);
-    expect(JSON.parse(diagnostic)).toEqual([{ error: "BrowserLoginError", system: "ucpath", phase: "verify-landing", host: "<unparseable navigation target>" }]);
+    expect(JSON.parse(diagnostic)).toEqual([{ error: "BrowserLoginError", code: "UCPATH_SIGN_IN_FAILED", text: ERROR_CATALOG.UCPATH_SIGN_IN_FAILED.text, system: "ucpath", phase: "verify-landing", host: "<unparseable navigation target>" }]);
   });
 
   it("omits non-Error values without coercing or reading authentication objects", () => {
@@ -542,7 +542,7 @@ describe("registered browser-login smoke lifecycle", () => {
     Object.assign(error, { name: sentinel, system: sentinel, step: sentinel });
     const diagnostic = smokeErrorDiagnostic(error);
     expect(diagnostic.includes(sentinel)).toBe(false);
-    expect(JSON.parse(diagnostic)).toEqual([{ error: "BrowserLoginError", host: "login.example.invalid" }]);
+    expect(JSON.parse(diagnostic)).toEqual([{ error: "BrowserLoginError", code: "UCPATH_SIGN_IN_FAILED", text: ERROR_CATALOG.UCPATH_SIGN_IN_FAILED.text, host: "login.example.invalid" }]);
     const generic = new Error(sentinel);
     generic.name = sentinel;
     expect(smokeErrorDiagnostic(generic)).toBe('[{"error":"Error"}]');
