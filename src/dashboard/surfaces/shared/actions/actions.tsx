@@ -282,7 +282,7 @@ export function ParkResolutions({
               dsMotion.fast,
               "hover:brightness-125",
               present
-                ? "border-[color:var(--ds-success-border)] bg-[var(--ds-success-bg)]"
+                ? "border-[color:var(--ds-border-strong)] bg-[var(--ds-control-bg)]"
                 : "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
             )}
           >
@@ -290,7 +290,7 @@ export function ParkResolutions({
               className={cn(
                 dsText.body,
                 "inline-flex items-center gap-[var(--ds-space-snug)] font-semibold",
-                present ? "text-[color:var(--ds-success-fg)]" : "text-[color:var(--ds-danger)]",
+                present ? "text-[color:var(--ds-control-fg)]" : "text-[color:var(--ds-danger)]",
               )}
             >
               <Icon aria-hidden className={dsIcon.sm} />

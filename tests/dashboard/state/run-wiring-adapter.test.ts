@@ -238,10 +238,10 @@ describe("served Logs wiring", () => {
     const projection = projectRunLogs(snapshot, client);
     const entry = projection.steps.find(step => step.id === FIXTURE_PARKED_WRITE.writeIntentId)?.entries[0];
     assert.equal(entry?.id, FIXTURE_PARKED_WRITE.writeIntentId); assert.equal(entry?.kind, "decision");
-    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.equal(entry.decision.actions, undefined); assert.match(entry.decision.footer ?? "", /Resolution unavailable/); }
+    if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.deepEqual(entry.decision.actions?.map(action => action.label), ["Check again", "Check result"]); assert.equal(entry.decision.footer, undefined); }
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
     assert.match(document.body.textContent ?? "", /Write parked/);
-    assert.equal(document.querySelector('article[aria-label="Write parked"]')?.querySelectorAll("button").length, 0);
+    assert.equal(document.querySelector('article[aria-label="Write parked"]')?.querySelectorAll("button").length, 2);
     const jump = [...document.querySelectorAll("button")].find(button => button.textContent === "Resolve");
     assert.ok(jump);
     await act(async () => jump.click());

@@ -775,6 +775,7 @@ export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
 
 /** The parked-write section: a `parked-write` run is the one lifecycle whose ordinary controls are REFUSED BY NAME, because a fenced write may already exist in a real HR system. */
 export const ParkedWriteDetailWireSchema = z.strictObject({
+  acceptsTransactionId: z.boolean(),
   native: NativeRunEventWireSchema.optional(),
   runId: RunIdSchema,
   writeIntentId: WriteIntentIdSchema,

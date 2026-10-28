@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
+import { FIXTURE_PARKED_WRITE } from "../../support/fixtures/dashboard/run-detail/gates-park.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
-import { gateLogActions, readRunLogs, useRunWiring, type RunWiringConfirm } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { gateLogActions, parkedWriteLogActions, readRunLogs, useRunWiring, type RunWiringConfirm } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { PendingCommand } from "../../../src/dashboard/surfaces/shared/actions/actions.js";
 import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
-import { IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
+import { ParkedWriteDetailWireSchema, IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
@@ -53,7 +54,7 @@ let root: Root | undefined;
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); vi.unstubAllGlobals(); });
 
-type Harness = { state?: ReturnType<typeof useRunWiring>; outcomes: CommandOutcome[]; refreshed: number; render: (selected: LogSelection) => Promise<void> };
+type Harness = { state?: ReturnType<typeof useRunWiring>; outcomes: CommandOutcome[]; refreshed: number; render: (selected: LogSelection, key?: number) => Promise<void> };
 async function harness(client: DashboardClient, confirm?: RunWiringConfirm): Promise<Harness> {
   const h: Harness = { outcomes: [], refreshed: 0, render: async () => undefined };
   const scope = Object.freeze({ actorId: ActorIdSchema.parse("local-operator"), client, authority: {}, dayRequest: {} });
@@ -62,7 +63,7 @@ async function harness(client: DashboardClient, confirm?: RunWiringConfirm): Pro
     authority: { epoch: scope.authority, catalog: [], nowIso: AT, today: "2026-08-03", day: "2026-08-03", dayState, selection: { route: { start: false }, workflowId: "separations" } } } as unknown as DashboardCommandBinding;
   function Probe({ selected }: { selected: LogSelection }) { h.state = useRunWiring(client, selected, binding, confirm); return null; }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  h.render = async selected => { await act(async () => { root?.render(createElement(Probe, { selected })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
+  h.render = async (selected, key = 0) => { await act(async () => { root?.render(createElement(Probe, { selected, key })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   return h;
 }
 function gateClient(gate: ReturnType<typeof servedGate>, selected: LogSelection, sent: CommandRequest[]): DashboardClient {
@@ -187,5 +188,140 @@ describe("served Logs decision authority", () => {
     assert.equal(h.state?.state, "failed");
     assert.equal(h.state?.error, formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text);
     assert.equal(h.refreshed, 0);
+  });
+});
+
+function parkedAt(revision = 3, acceptsTransactionId = true) {
+  return ParkedWriteDetailWireSchema.parse({ ...FIXTURE_PARKED_WRITE, acceptsTransactionId, runId: RUN,
+    native: native(50), actions: FIXTURE_PARKED_WRITE.actions.map(action => ({ ...action, expectedVersion: revision })) });
+}
+function parkedClient(selected: LogSelection, sent: CommandRequest[], options: {
+  write?: ReturnType<typeof parkedAt>;
+  execute?: (request: CommandRequest) => Promise<unknown>;
+} = {}) {
+  let version = selected.row.rowRevision.valueOf();
+  let write = options.write ?? parkedAt(version);
+  const client = { artifactUrl: (id: string) => `/artifacts/${id}`,
+    runDetail: async () => detailAt(selected, version, { availableSections: ["logs", "parked-write"] }),
+    runSection: async (_run: string, section: string) => section === "logs" ? logs()
+      : RunDetailSectionResponseSchema.parse({ section: "parked-write", payload: write }),
+    executeCommand: async (raw: unknown) => {
+      const request = CommandRequestSchema.parse(raw); sent.push(request);
+      if (options.execute !== undefined) return options.execute(request);
+      version++;
+      return CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "run", runId: RUN }] });
+    },
+  } as unknown as DashboardClient;
+  return { client, setWrite: (next: typeof write, revision = version) => { write = next; version = revision; } };
+}
+
+describe("served parked-write Logs decisions", () => {
+  for (const [acceptsId, choice, answer, verb, transactionId] of [
+    [true, 0, {}, "recheck-write", undefined],
+    [true, 1, { outcome: "present", transaction: " T123456 " }, "recheck-write", "T123456"],
+    [true, 1, { outcome: "absent" }, "resolve-write-absent", undefined],
+    [false, 0, {}, "recheck-write", undefined],
+    [false, 1, {}, "resolve-write-absent", undefined],
+  ] as const) it(`confirms and dispatches ${verb} (${acceptsId}, ${choice}, ${transactionId})`, async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: { pending: PendingCommand; send: () => void }[] = [];
+    const write = parkedAt(3, acceptsId);
+    const { client } = parkedClient(selected, sent, { write });
+    const h = await harness(client, (pending, send) => confirmations.push({ pending, send }));
+    await h.render(selected);
+    const action = parkedWriteLogActions(write)[choice]; assert.ok(action);
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, action, answer));
+    assert.equal(sent.length, 0); assert.equal(confirmations.length, 1);
+    const expected = write.actions.find(action => action.kind === "command" && action.command === verb); assert.ok(expected?.kind === "command");
+    assert.deepEqual(confirmations[0].pending.action, expected);
+    await act(async () => confirmations[0].send());
+    assert.equal(sent.length, 1);
+    const request = sent[0]; assert.ok(request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent"));
+    const { occurrenceKeyDigest, ...writeTarget } = expected.writeTarget!;
+    assert.deepEqual(request.target, { runId: RUN, expectedVersion: 3, ...writeTarget });
+    assert.deepEqual(request.payload, { occurrenceKeyDigest, ...(transactionId === undefined ? {} : { transactionId }) });
+    assert.equal(h.state?.command?.state, "settled"); assert.equal(h.refreshed, 1);
+  });
+
+  for (const change of ["version", "generation", "intent", "attempt"] as const) it(`refuses confirmation after the parked ${change} changes`, async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [];
+    const write = parkedAt(); const fixture = parkedClient(selected, sent);
+    const h = await harness(fixture.client, (_pending, send) => confirmations.push(send)); await h.render(selected);
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
+    const next = { ...write, ...(change === "generation" ? { generation: 2 } : {}),
+      ...(change === "intent" ? { writeIntentId: NOTE } : {}),
+      actions: write.actions.map(action => action.kind !== "command" ? action : { ...action, expectedVersion: change === "version" ? 4 : 3,
+        writeTarget: { ...action.writeTarget, ...(change === "generation" ? { intentGeneration: 2 } : {}),
+          ...(change === "intent" ? { writeIntentId: NOTE } : {}), ...(change === "attempt" ? { writeAttemptId: NOTE } : {}) } }) };
+    fixture.setWrite(ParkedWriteDetailWireSchema.parse(next), change === "version" ? 4 : 3);
+    await h.render(selectionAt(change === "version" ? 4 : 3));
+    await act(async () => confirmations[0]());
+    assert.equal(sent.length, 0); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+  });
+
+  for (const result of ["rejected", "conflict"] as const) it(`retains pending and ${result} feedback and allows a new confirmed decision after refusal`, async () => {
+    let release: ((value: unknown) => void) | undefined;
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirms: (() => void)[] = [];
+    const fixture = parkedClient(selected, sent, { execute: () => new Promise(resolve => { release = resolve; }) });
+    const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
+    const write = parkedAt(), action = parkedWriteLogActions(write)[0];
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, action, {}));
+    await act(async () => confirms[0]());
+    assert.equal(h.state?.command?.state, "pending"); assert.equal(h.state?.onDecision, undefined);
+    await act(async () => confirms[0]()); assert.equal(sent.length, 1);
+    await act(async () => release?.(CommandResultSchema.parse({ state: result, commandId: sent[0].commandId, message: "No longer parked", ...(result === "rejected" ? { code: "invalid-state" } : { currentVersion: 4 }) })));
+    assert.equal(h.state?.command?.state, "refused"); assert.ok(h.state?.command?.feedback); assert.ok(h.state?.onDecision);
+    await h.render(selectionAt(3), 1);
+    assert.equal(h.state?.command?.state, "refused"); assert.ok(h.state?.command?.feedback); assert.ok(h.state?.onDecision);
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, action, {})); assert.equal(confirms.length, 2);
+  });
+
+  it("restores uncertainty after remount, replays the exact request and settles on matching readback", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirms: (() => void)[] = [];
+    let replay = false;
+    const fixture = parkedClient(selected, sent, { execute: async request => {
+      if (!replay) throw new Error("reply lost");
+      fixture.setWrite(parkedAt(4), 4);
+      return CommandResultSchema.parse({ state: "already-applied", commandId: request.commandId, affectedTargets: [{ family: "run", runId: RUN }] });
+    } });
+    const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
+    await act(async () => confirms[0]());
+    assert.equal(h.state?.command?.state, "uncertain"); assert.equal(h.state?.onDecision, undefined);
+    await h.render(selectionAt(3), 1);
+    assert.equal(h.state?.command?.state, "uncertain"); assert.ok(h.state?.replay);
+    replay = true; await act(async () => h.state?.replay?.());
+    assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(h.state?.command?.state, "settled"); assert.equal(h.refreshed, 1);
+  });
+
+  it("retains an uncertain attempt but refuses to replay it after a new intent generation", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirms: (() => void)[] = [];
+    const fixture = parkedClient(selected, sent, { execute: async () => { throw new Error("reply lost"); } });
+    const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
+    await act(async () => confirms[0]());
+    fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, generation: 2, actions: write.actions.map(action => action.kind === "command"
+      ? { ...action, writeTarget: { ...action.writeTarget, intentGeneration: 2 } } : action) }));
+    await h.render(selectionAt(3));
+    await act(async () => h.state?.replay?.());
+    assert.equal(sent.length, 1); assert.equal(h.state?.command?.state, "uncertain"); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+  });
+
+  it("offers the next parked decision after an accepted recheck returns with new authority", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirms: (() => void)[] = [];
+    const fixture = parkedClient(selected, sent);
+    const h = await harness(fixture.client, (_pending, send) => confirms.push(send)); await h.render(selected);
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
+    await act(async () => confirms[0]()); assert.equal(h.state?.command?.state, "settled");
+    fixture.setWrite(parkedAt(4), 4); await h.render(selectionAt(4));
+    assert.ok(h.state?.onDecision); assert.equal(h.state?.command, undefined);
+    await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(parkedAt(4))[0], {}));
+    await act(async () => confirms[1]()); assert.equal(sent.length, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
+  });
+
+  it("sends nothing without the served confirmation port", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [];
+    const h = await harness(parkedClient(selected, sent).client); await h.render(selected);
+    const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
+    assert.equal(sent.length, 0);
   });
 });

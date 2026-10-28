@@ -1,3 +1,4 @@
+import { acceptsRecheckTransactionId } from "../../../../rules/write-safety/parked-resolution.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
 import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
 import { protectIdentityEvidencePacket } from "../../../../rules/separations/identity-evidence.js";
@@ -470,7 +471,14 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
   if (native !== undefined && (native.runId !== runId || native.attempt !== intent.runAttempt
     || native.traceId !== authority.envelope.traceId || native.workflow !== authority.envelope.workflow
     || intent.bindingProof.afterPrepareSpanPath !== `${native.traceId}/${native.nodeId}/prepare`)) throw new LogIdentityRefusedError("RUN_LOG_WRITE_NATIVE_IDENTITY_MISMATCH");
+  const descriptor = deps.canonical?.descriptors.resolve(authority.envelope.workflow);
+  const acceptsTransactionId = descriptor !== undefined
+    && descriptor.version === authority.envelope.descriptorVersion
+    && descriptor.contractFingerprint === authority.envelope.contractFingerprint
+    && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction"
+      && node.commit.uses.id === intent.taskId && acceptsRecheckTransactionId(node.commit.uses.writeSafety.completion));
   return ParkedWriteDetailWireSchema.parse({
+    acceptsTransactionId,
     ...(native === undefined || nativeEvent === undefined ? {} : { native: {
       eventId: nativeEvent.eventId, order: nativeEvent.cursor, runId: native.runId,
       attempt: native.attempt, traceId: native.traceId, nodeId: native.nodeId,

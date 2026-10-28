@@ -1,5 +1,7 @@
+import { z } from "zod";
+import { CompletionCheckRuntimeSchema } from "../../../src/models/task/write-safety.js";
 import { describe,expect,it } from "vitest";
-import { authenticateAuditedParkedWriteResolution,authenticateParkedWriteResolution } from "../../../src/rules/write-safety/parked-resolution.js";
+import { acceptsRecheckTransactionId,authenticateAuditedParkedWriteResolution,authenticateParkedWriteResolution } from "../../../src/rules/write-safety/parked-resolution.js";
 import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-authority-reason.js";
 import { HASH_A,HASH_B,LATER,NOW,UUID_5,UUID_6,WRITE_ATTEMPT,WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
 const reason=deriveWriteAuthorityReason("recovery-probe-unknown","probe","offline indeterminate probe");
@@ -42,4 +44,15 @@ describe("authenticated immutable parked resolution",()=>{
     expect(authenticateParkedWriteResolution(absentIntent,attempt,absentCommand,{...audit,completedAt:LATER,request:absentCommand,writeResolution:absentIntent}).attempt).toEqual(attempt);
     expect(()=>authenticateParkedWriteResolution({...absentIntent,settlement:{...absentIntent.settlement,confirmedAt:"2026-01-01T00:00:00.000Z"}},attempt,absentCommand,{...audit,completedAt:LATER,request:absentCommand,writeResolution:absentIntent})).toThrow(/audit-acknowledgement-mismatch/u);
   });
+});
+
+it("accepts a typed transaction only for a completion read by UCPath transaction ID", () => {
+  const proof = { proofSchema: z.unknown(), proofFromOutput: (value: unknown) => value,
+    proofFromPresentProbe: (value: unknown) => value, outputFromProof: (value: unknown) => value };
+  for (const [kind, taskId, expected] of [["receipt", undefined, false], ["save-verify", "ucpath/verify-termination", true],
+    ["save-verify", "kuali/verify-finalized", false], ["save-verify", "ucpath/verify-pending-sweep", false],
+    ["upload-verify", "onbase/verify-upload", false]] as const) {
+    const completion = CompletionCheckRuntimeSchema.parse({ kind, ...proof, ...(taskId === undefined ? {} : { verify: { taskId, effect: "read" } }) });
+    expect(acceptsRecheckTransactionId(completion)).toBe(expected);
+  }
 });

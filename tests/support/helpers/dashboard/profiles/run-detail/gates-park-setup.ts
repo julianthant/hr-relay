@@ -84,6 +84,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
   const PARKED_WRITE_REVISION = 6;
 
   const FIXTURE_PARKED_WRITE = {
+    acceptsTransactionId: true,
     runId: FIXTURE_IDS.parkedRun,
     native: { eventId: uuidOf(9960), order: 50, runId: FIXTURE_IDS.parkedRun, attempt: 1, traceId: traceOf(6), nodeId: "terminate" },
     writeIntentId: PARKED_WRITE_INTENT_ID,

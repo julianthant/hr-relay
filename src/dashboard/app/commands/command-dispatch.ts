@@ -1,3 +1,6 @@
+import type { ParkedWriteDetailWire } from "../../../models/dashboard/run-detail.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { CommandRequestSchema } from "../../../rules/commands/commands.js";
 import type { DashboardClient } from "../../client/index.js";
 import type { CommandRequest, CommandResult, BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
 import type { DashboardDayWire, QueueSurfaceWire } from "../../../models/dashboard/projection.js";
@@ -41,6 +44,8 @@ export interface CommandContext {
   readonly source: "queue" | "run-detail";
   /** the gate section the run advertised, when one is open */
   readonly gate?: IdentityGatePayload | undefined;
+  readonly parkedWrite?: ParkedWriteDetailWire | undefined;
+  readonly transactionId?: string | undefined;
   /** What the operator answered in the ceremony dialog. It is OPTIONAL because
  * exactly one ceremony needs no answer — a `one-click` packet naming one */
   readonly gateAnswer?: IdentityGateAnswer | undefined;
@@ -179,12 +184,25 @@ export function composeCommandRequest(
     case "resolve-gate":
       return composeGateResult(action, context.gate, context.gateAnswer, envelope);
     case "recheck-write":
-    case "resolve-write-absent":
-      // The parked-write dialog owns these commands.
-      return {
-        state: "refused",
-        reason: `${action.command} is answered by the parked-write dialog, not by this dispatcher`,
-      };
+    case "resolve-write-absent": {
+      const parked = context.parkedWrite;
+      const served = parked?.actions.find(candidate => candidate.key === action.key);
+      const write = action.writeTarget;
+      if (parked === undefined || parked.runId !== target.runId || target.expectedVersion !== action.expectedVersion
+        || served === undefined || canonicalJsonStringify(served) !== canonicalJsonStringify(action)
+        || write === undefined || write.writeIntentId !== parked.writeIntentId || write.intentGeneration !== parked.generation
+        || (context.transactionId !== undefined && (action.command !== "recheck-write" || !parked.acceptsTransactionId))) {
+        return { state: "refused", reason: "The parked write or its served action has changed. Reload before deciding." };
+      }
+      const { occurrenceKeyDigest, ...writeTarget } = write;
+      const parsed = CommandRequestSchema.safeParse({
+        ...envelope, family: "run", type: action.command,
+        target: { runId: target.runId, expectedVersion: action.expectedVersion, ...writeTarget },
+        payload: { occurrenceKeyDigest, ...(context.transactionId === undefined ? {} : { transactionId: context.transactionId.trim() }) },
+      });
+      return parsed.success ? { state: "ready", request: parsed.data }
+        : { state: "refused", reason: "The parked-write answer is invalid. Check the transaction number." };
+    }
   }
 }
 
@@ -235,6 +253,13 @@ export async function verifyShellCommandEffect(
       : request.type === "notification-unsnooze" ? row.state !== "snoozed"
       : row.state === "snoozed" && row.snoozedUntil !== undefined && Date.parse(row.snoozedUntil) > Date.parse(request.requestedAt);
     return matches ? { state: "matched", evidence: row } : mismatch(row);
+  }
+  if (request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent")) {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "run"
+      || reply.affectedTargets[0].runId !== request.target.runId) return mismatch(reply);
+    const detail = await client.runDetail(request.target.runId);
+    return detail.runId === request.target.runId && detail.rowRevision > request.target.expectedVersion
+      ? { state: "matched", evidence: detail } : mismatch(detail);
   }
   if (request.family === "gate") {
     const detail = await client.runDetail(request.target.runId);

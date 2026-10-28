@@ -145,6 +145,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.equal(payload.runAttempt, 1);
     assert.equal(payload.system, "ucpath");
     assert.equal(payload.taskId, "ucpath/terminate-person");
+    assert.equal(payload.acceptsTransactionId, false, "missing canonical contract cannot accept a typed ID");
     assert.equal(payload.idempotencyKeyDigest, IDEMPOTENCY_KEY_DIGEST);
     assert.equal(payload.fencedAt, NOW);
     assert.equal(payload.parkedAt, NOW);

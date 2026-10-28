@@ -1,3 +1,4 @@
+import { acceptsRecheckTransactionId } from "../../../rules/write-safety/parked-resolution.js";
 import { UcpathTerminationTargetSchema } from "../../../models/ui/ucpath-smart-hr-termination.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
@@ -518,7 +519,7 @@ export async function executeIdempotencyProbe(
 ): Promise<z.output<ReturnType<typeof probeVerdictSchema>>> {
   const { commitContract } = input;
   const completion = commitContract.writeSafety.completion;
-  if (input.transactionId !== undefined && (completion.kind === "receipt" || completion.verify.taskId !== "ucpath/verify-termination")) {
+  if (input.transactionId !== undefined && !acceptsRecheckTransactionId(completion)) {
     throw new Error("write-recheck-transaction-id-unsupported");
   }
   const probeRef = input.transactionId === undefined || completion.kind === "receipt"

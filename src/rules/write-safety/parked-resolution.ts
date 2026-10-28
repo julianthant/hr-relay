@@ -1,3 +1,4 @@
+import type { AnyCommitTaskContract } from "../../models/task/task-contract.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "./write-safety.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../commands/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../identity/ids.js";
@@ -82,4 +83,8 @@ export function authenticateAuditedParkedWriteResolution(attempt: unknown, comma
   const audit = CommandAuditRecordSchema.parse(auditInput);
   if (audit.writeResolution?.status === "parked") return authenticateParkedWriteRecheck(audit.writeResolution, attempt, command, audit);
   return authenticateParkedWriteResolution(audit.writeResolution, attempt, command, audit);
+}
+
+export function acceptsRecheckTransactionId(completion: AnyCommitTaskContract["writeSafety"]["completion"]): boolean {
+  return completion.kind !== "receipt" && completion.verify.taskId === "ucpath/verify-termination";
 }

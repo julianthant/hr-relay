@@ -153,6 +153,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
     expect(response.status, "a parked run with no intent answers 500, not an empty panel").toBe(200);
     const section = RunDetailSectionResponseSchema.parse(await response.json());
     if (section.section !== "parked-write") throw new Error("expected the parked-write section");
+    expect(section.payload.acceptsTransactionId).toBe(false);
     expect(section.payload.generation).toBe(1);
     expect(section.payload.system).toBe("ucpath");
     expect(section.payload.subject.state).toBe("subject-match");
