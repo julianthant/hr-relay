@@ -1558,6 +1558,10 @@ export class RuntimeAdmission {
       throw error;
     }
   }
+  static acquireWorker(workspace: string): RuntimeAdmission {
+    const canonical = realpathSync(workspace);
+    return RuntimeAdmission.fromInstallationLease(acquireInstallation(canonical, "shared", { machine: true, readonlyControl: true }));
+  }
   static acquireMachine(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
     const canonical = realpathSync(workspace);
     const control = join(canonical, ".tracker/control/installation.json");

@@ -5,8 +5,11 @@ import { admitWorkerVerification, retireWorkerVerification } from "../../src/bac
 import { z } from "zod";
 import { createCredentialStore } from "../../src/backend/storage/configuration/credential-store.js";
 import { acquireEntrypointAdmission } from "../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireRuntimeLifetimeLock } from "../../src/backend/storage/admission/lifetime-lock.js";
 import { fileURLToPath } from "node:url";
 import { hostConfigFacts } from "../../src/models/config/host-display.js";
+/** Live login smoke against production SSO: it reports content-based login proof (never a value), and full Chromium is required to load the Duo extension. */
+/** It never runs a workflow node and never commits a UCPath transaction. */
 /** Live login smoke against production SSO: it reports content-based login proof (never a value), and full Chromium is required to load the Duo extension. */
 /** It never runs a workflow node and never commits a UCPath transaction. */
 import { randomUUID } from "node:crypto";
@@ -338,6 +341,12 @@ export function createSmokeProfileAdmission(input: Readonly<{
 }
 
 async function main(): Promise<void> {
+  const lock = await acquireRuntimeLifetimeLock(rebuildRuntimeIsolation.lockPort);
+  try { await runAdmittedSmoke(); }
+  finally { await new Promise<void>((resolve, reject) => lock.close(error => { if (error !== undefined) reject(error); else resolve(); })); }
+}
+
+async function runAdmittedSmoke(): Promise<void> {
   const requested = process.argv[2];
   const retireOwned = requested === "--retire-owned-slots";
   const recoverOwned = requested === "--recover-owned-slot";

@@ -85,7 +85,7 @@
       "file": "tests/architecture/runtime/operational-isolation.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Both runtimes on this machine bind distinct configured commands, state/artifact roots, ports, process locks, and browser profiles/sessions. Rebuild isolation values come from one exported direct-const defineRuntimeIsolation call invoked at top level through unshadowed named imports. The admitted CLI signature permits only the exact optional initial-custody and dashboard-admission callbacks after the live RuntimeAdmission parameter. Negative controls reject overlapping roots, ports, and browser sessions, changed callback signatures, and invalid authority wiring.",
+      "invariant": "Both runtimes on this machine bind distinct configured commands, state/artifact roots, ports, process locks, and browser profiles/sessions. Rebuild isolation values come from one exported direct-const defineRuntimeIsolation call invoked at top level through unshadowed named imports. The admitted CLI signature permits only the exact optional initial-custody and dashboard-admission callbacks and the bootstrap-owned RuntimeLifetime after the live RuntimeAdmission parameter. The dedicated lockPort differs from both runtimes HTTP ports and is bound by the canonical isolation factory. Negative controls reject overlapping roots, ports, and browser sessions, changed callback signatures, and invalid authority wiring.",
       "replacementRequired": true
     },
     {

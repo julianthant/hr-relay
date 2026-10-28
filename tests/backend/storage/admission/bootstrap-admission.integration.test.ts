@@ -5,30 +5,29 @@ import { healthyRuntimePreflightRunners } from "../../../support/fixtures/prefli
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
-import { withSynchronousMutexDeadline } from "../../../support/helpers/storage/synchronous-mutex-deadline.js";
-import { createAdmissionChildFixtures } from "../../../support/helpers/storage/admission-child-fixtures.js";
+
+
 import { default as assert } from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync as mkdirSync_m1, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
+
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
-import { expect, it, vi } from "vitest";
+import { it, vi } from "vitest";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeStorageCommand, composeProfileRuntime, runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { AdmissionMutexBusyError, recoverAbandonedAdmissionMutex } from "../../../../src/backend/storage/admission/installation.js";
 import { backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
-import * as locks_m1 from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import * as processLocks_m4 from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+
+
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+
 import { runtimeFixture } from "../../../support/fixtures/preflight/runtime-fixture.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 
@@ -75,227 +74,6 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
     restarted?.release(); await profile.close();
   }
 }, 20_000);
-}
-
-{
-const roots: string[] = [];
-const children: ChildProcess[] = [];
-async function kill(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  await new Promise<void>(resolve => { child.once("exit", () => resolve()); child.kill("SIGKILL"); });
-}
-const _afterEachFixture0 = async () => {
-  vi.restoreAllMocks();
-  syncBuiltinESMExports();
-  await Promise.all(children.splice(0).map(kill));
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-};
-function fixture(): string {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "admission-crash-")));
-  roots.push(root);
-  acquireEntrypointAdmission(root, "exclusive").release();
-  return root;
-}
-async function pausedChild(root: string, window: string): Promise<ChildProcess> {
-  const url = pathToFileURL(join(process.cwd(), "src/backend/storage/admission/bootstrap-admission.ts")).href;
-  const code = `
-    import fs from 'node:fs';
-    import { syncBuiltinESMExports } from 'node:module';
-    const window = ${JSON.stringify(window)};
-    const pause = () => { fs.writeSync(1, 'PAUSED\\n'); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0); };
-    const mkdir = fs.mkdirSync, rename = fs.renameSync, unlink = fs.unlinkSync;
-    fs.mkdirSync = (...args) => { const result = mkdir(...args);
-      if (window === 'pre-owner' && String(args[0]).includes('.admission-mutex-tmp-')) pause(); return result; };
-    fs.renameSync = (...args) => { const result = rename(...args);
-      if (window === 'prepared' && String(args[1]).endsWith('/owner.json') && String(args[1]).includes('admission-mutex')) pause();
-      if (window === 'released' && String(args[0]).endsWith('/admission-mutex')) pause(); return result; };
-    fs.unlinkSync = (...args) => { const result = unlink(...args);
-      if (window === 'released' && String(args[0]).endsWith('/admission-mutex/owner.json')) pause(); return result; };
-    syncBuiltinESMExports();
-    const { acquireEntrypointAdmission } = await import(${JSON.stringify(url)});
-    acquireEntrypointAdmission(process.argv[1], 'shared').release();
-  `;
-  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, root], { stdio: ["ignore", "pipe", "pipe"] });
-  children.push(child);
-  await new Promise<void>((resolve, reject) => {
-    let output = "";
-    child.stdout?.on("data", chunk => { output += String(chunk); if (output.includes("PAUSED")) resolve(); });
-    child.stderr?.on("data", chunk => { output += String(chunk); });
-    child.once("error", reject);
-    child.once("exit", code => reject(new Error(`child exited ${String(code)}: ${output}`)));
-  });
-  return child;
-}
-it.each(["prepared", "released"])("cleans an actual killed child's %s folder without a canonical empty lock", async window => {
-try {
-
-  const root = fixture();
-  const child = await pausedChild(root, window);
-  await kill(child);
-  const control = join(root, ".tracker/control");
-  expect(existsSync(join(control, "admission-mutex"))).toBe(false);
-  expect(readdirSync_m1(control).some(name => name.startsWith(".admission-mutex-"))).toBe(true);
-  acquireEntrypointAdmission(root, "shared").release();
-  expect(readdirSync_m1(control).filter(name => name.startsWith(".admission-mutex-"))).toEqual([]);
-
-} finally {
-await _afterEachFixture0();
-}
-});
-it("preserves a live temporary folder before owner publication and cleans it only after death", async () => {
-try {
-
-  const root = fixture();
-  const child = await pausedChild(root, "pre-owner");
-  const control = join(root, ".tracker/control");
-  const name = readdirSync_m1(control).find(entry => entry.startsWith(".admission-mutex-tmp-"));
-  expect(name).toBeDefined();
-  acquireEntrypointAdmission(root, "shared").release();
-  expect(readdirSync_m1(join(control, name!))).toEqual([]);
-  await kill(child);
-  acquireEntrypointAdmission(root, "shared").release();
-  expect(existsSync(join(control, name!))).toBe(false);
-
-} finally {
-await _afterEachFixture0();
-}
-});
-it("refuses an empty canonical lock immediately and archives its empty custody with a receipt", async () => {
-try {
-
-  const root = fixture();
-  const path = join(root, ".tracker/control", "admission-mutex");
-  mkdirSync_m1(path, { mode: 0o700 });
-  const wait = vi.spyOn(Atomics, "wait");
-  let failure: unknown;
-  try { acquireEntrypointAdmission(root, "shared"); } catch (error) { failure = error; }
-  expect(failure).toBeInstanceOf(AdmissionMutexBusyError);
-  expect(failure).toMatchObject({ name: "AdmissionMutexEmptyError" });
-  expect(String(failure)).toContain("storage recover-admission --empty");
-  expect(wait).not.toHaveBeenCalled();
-  wait.mockRestore();
-  const restore = locks_m1.acquireRuntimeRestoreAdmission({ processLockRoot: join(root, ".tracker/data", "locks"), pid: process.pid });
-  try {
-    const result = recoverAbandonedAdmissionMutex(root, restore, "empty");
-    expect(existsSync(path)).toBe(false);
-    expect(readdirSync_m1(join(root, ".tracker/control", "admission-mutex-recovery", result.acquisitionId))).toEqual([]);
-    const receipt: unknown = JSON.parse(readFileSync(result.receiptPath, "utf8"));
-    expect(receipt).toMatchObject({ custody: "empty", acquisitionId: result.acquisitionId });
-    expect(receipt).not.toHaveProperty("pid");
-  } finally { restore.release(); }
-  acquireEntrypointAdmission(root, "shared").release();
-
-} finally {
-await _afterEachFixture0();
-}
-});
-it.each(["lease", "journal", "server", "workers"])("preserves empty lock custody when %s blocks recovery", async condition => {
-try {
-
-  const root = fixture();
-  const control = join(root, ".tracker/control");
-  const path = join(control, "admission-mutex");
-  mkdirSync_m1(path, { mode: 0o700 });
-  const current = locks_m1.observeProcessIdentity(process.pid);
-  if (current.state !== "alive") throw new Error("current identity unavailable");
-  if (condition === "lease") writeFileSync(join(control, "leases", `${randomUUID()}.json`), JSON.stringify({
-    schemaVersion: 1, admissionId: randomUUID(), mode: "shared", pid: process.pid, processIdentity: current.identity,
-  }), { mode: 0o600 });
-  if (condition === "journal") writeFileSync(join(control, "journal.json"), "{}", { mode: 0o600 });
-  const restore = locks_m1.acquireRuntimeRestoreAdmission({ processLockRoot: join(root, ".tracker/data", "locks"), pid: process.pid });
-  try {
-    if (condition === "server" || condition === "workers") {
-      const original = locks_m1.observeRuntimeLockSnapshot;
-      vi.spyOn(locks_m1, "observeRuntimeLockSnapshot").mockImplementation(input => {
-        const snapshot = original(input);
-        return { ...snapshot, processLocks: { ...snapshot.processLocks, [condition]: { state: "active", generation: 1, pid: process.pid } } };
-      });
-    }
-    expect(() => recoverAbandonedAdmissionMutex(root, restore, "empty")).toThrow(condition === "lease"
-      ? /installation lease may still be live/u : condition === "journal"
-        ? /unexpected installation control entry/u : /runtime process lock may still be live/u);
-    expect(readdirSync_m1(path)).toEqual([]);
-    expect(existsSync(join(control, "admission-mutex-recovery"))).toBe(false);
-  } finally { restore.release(); }
-
-} finally {
-await _afterEachFixture0();
-}
-});
-
-it("retries acquisition when an observed empty canonical folder disappears during inspection", async () => {
-try {
-
-  const root = fixture();
-  const path = join(root, ".tracker/control", "admission-mutex");
-  mkdirSync_m1(path, { mode: 0o700 });
-  const actualReaddir = nativeFirstBootFs.readdirSync;
-  let removed = false;
-  vi.spyOn(nativeFirstBootFs, "readdirSync").mockImplementation(((target: Parameters<typeof actualReaddir>[0]) => {
-    const entries = actualReaddir(target);
-    if (String(target) === path && !removed) { removed = true; rmdirSync(path); }
-    return entries;
-  }) as typeof actualReaddir);
-  syncBuiltinESMExports();
-  acquireEntrypointAdmission(root, "shared").release();
-  expect(removed).toBe(true);
-  expect(existsSync(path)).toBe(false);
-
-} finally {
-await _afterEachFixture0();
-}
-});
-it("preserves a temporary folder when exact birth identity observation fails", async () => {
-try {
-
-  const root = fixture();
-  const observed = locks_m1.observeProcessIdentity(process.pid);
-  if (observed.state !== "alive") throw new Error("current identity unavailable");
-  const digest = createHash("sha256").update(canonicalJsonStringify(observed.identity)).digest("hex");
-  const path = join(root, ".tracker/control", `.admission-mutex-tmp-${process.pid}-${digest}-${randomUUID()}`);
-  mkdirSync_m1(path, { mode: 0o700 });
-  const failure = new Error("identity observation unavailable");
-  vi.spyOn(locks_m1, "observeProcessIdentity").mockImplementation(() => { throw failure; });
-  expect(() => acquireEntrypointAdmission(root, "shared")).toThrow(failure);
-  expect(readdirSync_m1(path)).toEqual([]);
-
-} finally {
-await _afterEachFixture0();
-}
-});
-it("cleans a pre-owner folder for a reused PID using exact birth identity", async () => {
-try {
-
-  const root = fixture();
-  const digest = createHash("sha256").update(canonicalJsonStringify({ platform: process.platform, startToken: "previous-process" })).digest("hex");
-  const path = join(root, ".tracker/control", `.admission-mutex-tmp-${process.pid}-${digest}-${randomUUID()}`);
-  mkdirSync_m1(path, { mode: 0o700 });
-  acquireEntrypointAdmission(root, "shared").release();
-  expect(existsSync(path)).toBe(false);
-
-} finally {
-await _afterEachFixture0();
-}
-});
-it("preserves a remnant whose complete owner disagrees with its process identity name", async () => {
-try {
-
-  const root = fixture();
-  const current = locks_m1.observeProcessIdentity(process.pid);
-  if (current.state !== "alive") throw new Error("current identity unavailable");
-  const acquisitionId = randomUUID();
-  const path = join(root, ".tracker/control", `.admission-mutex-tmp-${process.pid}-${"0".repeat(64)}-${acquisitionId}`);
-  mkdirSync_m1(path, { mode: 0o700 });
-  const ownerPath = join(path, "owner.json");
-  const bytes = JSON.stringify({ schemaVersion: 1, acquisitionId, phase: "admitting", pid: process.pid, processIdentity: current.identity });
-  writeFileSync(ownerPath, bytes, { mode: 0o600 });
-  expect(() => acquireEntrypointAdmission(root, "shared")).toThrow(/mutex temporary owner identity mismatch/u);
-  expect(readFileSync(ownerPath, "utf8")).toBe(bytes);
-
-} finally {
-await _afterEachFixture0();
-}
-});
 }
 
 {
@@ -437,55 +215,6 @@ const _afterEachFixture0 = async () => {
   }
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
-const { launch } = createAdmissionChildFixtures(children);
-it("admits and releases simultaneous installed children after a live mutex holder leaves its critical section", async () => {
-try {
-
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "runtime-admission-concurrent-")));
-  roots.push(root);
-  acquireEntrypointAdmission(root, "exclusive").release();
-  const bootUrl = pathToFileURL(join(process.cwd(), "src/backend/storage/admission/bootstrap-admission.ts")).href;
-  const locksUrl = pathToFileURL(join(process.cwd(), "src/backend/storage/sqlite/runtime-process-locks.ts")).href;
-  const holder = launch(`
-    import { mkdirSync, writeFileSync, unlinkSync, rmdirSync } from "node:fs";
-    import { join } from "node:path";
-    import { randomUUID } from "node:crypto";
-    const { observeProcessIdentity } = await import(${JSON.stringify(locksUrl)});
-    const root = process.argv[1];
-    const mutex = join(root, ".tracker/control", "admission-mutex");
-    mkdirSync(mutex, { mode: 0o700 });
-    const observed = observeProcessIdentity(process.pid);
-    if (observed.state !== "alive") throw new Error("holder identity unavailable");
-    writeFileSync(join(mutex, "owner.json"), JSON.stringify({ schemaVersion: 1, acquisitionId: randomUUID(),
-      phase: "admitting", pid: process.pid, processIdentity: observed.identity }), { mode: 0o600 });
-    process.on("message", () => { unlinkSync(join(mutex, "owner.json")); rmdirSync(mutex);
-      process.send({ state: "released" }); process.disconnect(); });
-    process.send({ state: "held" });
-  `, root);
-  assert.equal((await holder.next()).state, "held");
-  const code = `
-    const { acquireEntrypointAdmission } = await import(${JSON.stringify(bootUrl)});
-    process.send({ state: "attempting" });
-    try { const admission = acquireEntrypointAdmission(process.argv[1], "shared");
-      admission.assertLive(); admission.release(); process.send({ state: "admitted-and-released" }); }
-    catch (error) { process.send({ state: "refused", detail: error.message }); }
-    process.disconnect();
-  `;
-  const first = launch(code, root);
-  assert.equal((await first.next()).state, "attempting");
-  const second = launch(code, root);
-  assert.equal((await second.next()).state, "attempting");
-  holder.child.send("release");
-  assert.equal((await holder.next()).state, "released");
-  assert.deepEqual(await Promise.all([first.next(), second.next()]),
-    [{ state: "admitted-and-released" }, { state: "admitted-and-released" }]);
-  const exclusive = acquireEntrypointAdmission(root, "exclusive");
-  exclusive.release();
-
-} finally {
-await _afterEachFixture0();
-}
-});
 
 function initializedRoot(): string {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "runtime-admission-refusal-")));
@@ -493,70 +222,6 @@ function initializedRoot(): string {
   acquireEntrypointAdmission(root, "exclusive").release();
   return root;
 }
-it.each(["live", "empty", "malformed", "unknown"] as const)("preserves %s owner custody without attempting abandoned-owner recovery", async condition => {
-try {
-
-  const root = initializedRoot();
-  const mutex = join(root, ".tracker/control", "admission-mutex");
-  mkdirSync_m1(mutex, { mode: 0o700 });
-  if (condition !== "empty") {
-    const observation = processLocks_m4.observeProcessIdentity(process.pid);
-    assert.ok(observation.state === "alive");
-    writeFileSync(join(mutex, "owner.json"), condition === "malformed" ? "not-json" : JSON.stringify({
-      schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: process.pid,
-      processIdentity: observation.identity,
-    }), { mode: 0o600 });
-  }
-  const before = readdirSync_m1(mutex).map(name => ({ name, bytes: readFileSync(join(mutex, name)) }));
-  const unknown = new Error("process birth identity unavailable");
-  if (condition === "unknown") vi.spyOn(processLocks_m4, "observeProcessIdentity").mockImplementation(() => { throw unknown; });
-  if (condition === "unknown") assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === unknown);
-  else if (condition === "malformed") withSynchronousMutexDeadline(() => {
-    assert.throws(() => acquireEntrypointAdmission(root, "shared"), SyntaxError);
-  });
-  else if (condition === "live") withSynchronousMutexDeadline(() => {
-    assert.throws(() => acquireEntrypointAdmission(root, "shared"), AdmissionMutexBusyError);
-  });
-  else assert.throws(() => acquireEntrypointAdmission(root, "shared"), AdmissionMutexBusyError);
-  assert.deepEqual(readdirSync_m1(mutex).map(name => ({ name, bytes: readFileSync(join(mutex, name)) })), before);
-  assert.equal(existsSync(join(root, ".tracker/control", "admission-mutex-recovery")), false);
-
-} finally {
-await _afterEachFixture0();
-}
-});
-it("propagates non-EEXIST mutex mkdir failures without translating them to busy", async () => {
-try {
-
-  const root = initializedRoot();
-  const mutex = join(root, ".tracker/control", "admission-mutex");
-  const failure = Object.assign(new Error("injected mkdir access failure"), { code: "EACCES" });
-  const mkdir = vi.spyOn(nativeFirstBootFs, "mkdirSync").mockImplementationOnce(() => { throw failure; });
-  syncBuiltinESMExports();
-  assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === failure);
-  assert.match(String(mkdir.mock.calls.at(-1)?.[0]), /\/\.admission-mutex-tmp-[1-9]\d*-[0-9a-f]{64}-[0-9a-f-]{36}$/u);
-  assert.equal(existsSync(mutex), false);
-
-} finally {
-await _afterEachFixture0();
-}
-});
-it("refuses symlink mutex custody and preserves an immediate exclusive lease conflict", async () => {
-try {
-
-  const root = initializedRoot();
-  const admission = acquireEntrypointAdmission(root, "exclusive");
-  assert.throws(() => acquireEntrypointAdmission(root, "shared"), /installation lease busy/u);
-  admission.release();
-  const target = initializedRoot();
-  symlinkSync(join(target, ".tracker/control"), join(root, ".tracker/control", "admission-mutex"));
-  assert.throws(() => acquireEntrypointAdmission(root, "shared"), /unsafe directory/u);
-  assert.equal(existsSync(join(target, ".tracker/control", "installation.json")), true);
-
-} finally {
-await _afterEachFixture0();
-}
-});
 
 it("propagates installation lstat access failure instead of treating the path as absent", async () => {
 try {
@@ -573,18 +238,18 @@ await _afterEachFixture0();
 });
 }
 
-it.each(["malformed", "foreign"] as const)("refuses %s machine registry before publishing an installation lease", kind => {
+it.each(["malformed", "foreign"] as const)("refuses %s machine registry without publishing control entries", kind => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "machine-registry-admission-")));
   const machine = acquireEntrypointAdmission(workspace, "exclusive");
   const registryPath = join(machine.stateRoot, "machine", "profiles.json");
   machine.release();
-  const control = join(workspace, ".tracker/control"), leases = join(control, "leases");
+  const control = join(workspace, ".tracker/control");
   try {
     const document = JSON.parse(readFileSync(registryPath, "utf8")) as Record<string, unknown>;
     writeFileSync(registryPath, kind === "malformed" ? "{" : JSON.stringify({ ...document, sessionGeneration: 7 }), { mode: 0o600 });
-    const before = readFileSync(registryPath), beforeLeases = readdirSync_m1(leases);
+    const before = readFileSync(registryPath), beforeEntries = readdirSync_m1(control);
     assert.throws(() => acquireEntrypointAdmission(workspace, "shared"));
-    assert.deepEqual(readdirSync_m1(leases), beforeLeases);
+    assert.deepEqual(readdirSync_m1(control), beforeEntries);
     assert.equal(readFileSync(registryPath).equals(before), true);
     assert.equal(existsSync(join(control, "admission-mutex")), false);
   } finally { rmSync(workspace, { recursive: true, force: true }); }

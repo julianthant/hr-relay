@@ -65,6 +65,8 @@ import { ActorIdSchema } from "../../../../rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 
 import { spawn as spawnChildProcess } from "node:child_process";
+import type { Server } from "node:net";
+import { shareRuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
@@ -127,6 +129,7 @@ export const DashboardFrontendModeSchema = z.enum(["vite-dev", "built-bundle"]);
 export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
+  readonly lifetimeLock?: Server;
   readonly onboardingDuo?: ProfileOnboardingDuoProvider;
   readonly admission?: RuntimeAdmission;
   readonly profile?: Readonly<{ runtime: ReturnType<typeof composeProfileRuntime>; token: string }>;
@@ -369,12 +372,17 @@ export function reconcileDeadWorkerLifetimes(database: AuthorityDatabase, clock:
 }
 
 // Spawn absolute argv without a shell; inherited stderr keeps bootstrap failures visible.
-function realWorkerProcessSpawner(): WorkerProcessSpawner {
+function realWorkerProcessSpawner(lock: Server | undefined): WorkerProcessSpawner {
   return (request) => {
+    if (lock === undefined) throw new Error("runtime-lifetime-lock-required-before-worker-spawn");
     const child = spawnChildProcess(request.command, [...request.args], {
       cwd: request.cwd,
       env: request.environment,
-      stdio: "inherit",
+      stdio: ["inherit", "inherit", "inherit", "ipc"],
+    });
+    void shareRuntimeLifetimeLock(lock, child).catch(error => {
+      child.kill("SIGKILL");
+      child.emit("error", error);
     });
     return Object.freeze({
       pid: child.pid,
@@ -741,7 +749,7 @@ async function composeDashboardRuntimeStartup(
     clock,
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
     launch: input.workerProcess?.launch ?? productionWorkerLaunch(repoRoot, env),
-    spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(),
+    spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(input.lifetimeLock),
     birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
     onFault: reportSupervisorFault,
     preflight: runtimePreflight,

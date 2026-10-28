@@ -40,6 +40,7 @@ function seedValidRuntime(root: string): void {
     ...(side.archiveDatabaseFile === undefined ? [] : [`  archiveDatabaseFile: ${JSON.stringify(side.archiveDatabaseFile)},`]),
     `  artifactRoot: ${JSON.stringify(side.artifactRoot)},`,
     `  backendPort: ${String(side.backendPort)},`,
+    ...(side.lockPort === undefined ? [] : [`  lockPort: ${String(side.lockPort)},`]),
     `  frontendPort: ${String(side.frontendPort)},`,
     `  processLockRoot: ${JSON.stringify(side.processLockRoot)},`,
     `  browserProfileRoot: ${JSON.stringify(side.browserProfileRoot)},`,
@@ -182,7 +183,16 @@ describe("operational isolation", () => {
       const dashboard = custody.replace('RuntimeProcessLockHandle | undefined', 'RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void');
       write(root, "src/cli.ts", dashboard);
       assert.deepEqual(fixtureViolations(root), []);
+      const lifetime = 'import type { RuntimeLifetime } from "./backend/app/bootstrap/secure-env-bootstrap.js";\n'
+        + dashboard.replace('acceptDashboardAdmission?: () => void', 'acceptDashboardAdmission?: () => void, lifetime?: RuntimeLifetime');
+      write(root, "src/cli.ts", lifetime);
+      assert.deepEqual(fixtureViolations(root), []);
       for (const invalid of [
+        lifetime.replace('lifetime?', 'otherLifetime?'),
+        lifetime.replace('lifetime?: RuntimeLifetime', 'lifetime: RuntimeLifetime'),
+        lifetime.replace('lifetime?: RuntimeLifetime', 'lifetime?: unknown'),
+        lifetime.replace('./backend/app/bootstrap/secure-env-bootstrap.js', './wrong-bootstrap.js'),
+        lifetime.replace('import type { RuntimeLifetime }', 'import type { Other as RuntimeLifetime }'),
         dashboard.replace('acceptDashboardAdmission?', 'otherAdmission?'),
         dashboard.replace('acceptDashboardAdmission?:', 'acceptDashboardAdmission:'),
         dashboard.replace('acceptDashboardAdmission?: () => void', 'acceptDashboardAdmission?: (value: unknown) => void'),

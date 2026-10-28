@@ -661,10 +661,9 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   if (externalStop !== undefined) {
     if (externalStop.aborted) onExternalStop();
     else externalStop.addEventListener("abort", onExternalStop, { once: true });
-  } else {
-    process.once("SIGINT", onSigint);
-    process.once("SIGTERM", onSigterm);
   }
+  process.once("SIGINT", onSigint);
+  process.once("SIGTERM", onSigterm);
 
   removeStopListeners = () => {
     if (externalStop !== undefined) externalStop.removeEventListener("abort", onExternalStop);

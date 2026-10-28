@@ -2,7 +2,6 @@ import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } fro
 import { assertProfileBrowserRoot, composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeProfilePendingLogoutInventory, composeProfileCredentialInventory } from "./profile-credential-inventory.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
-import { retireOrphanVerification } from "../../storage/maintenance/orphan-verification-retirement.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migrations.js";
@@ -479,15 +478,12 @@ const STORAGE_USAGE = [
   "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
   "       storage cancel-queued-runs --plan [--json]",
   "       storage cancel-queued-runs --capture <digest> --apply [--json]",
-  "       storage recover-worker-process --acquisition <uuid> --plan [--json]",
-  "       storage recover-worker-process --acquisition <uuid> --capture <digest> --apply [--json]",
   "       storage recover-duo-publication",
   "       storage restore --from <manifest.json> [--json]",
   "       storage recover-restore --operation <id> --from <manifest.json> --outcome <unchanged|replaced> [--json]",
   "       storage relocate --plan <command-id> | --resume <operation-id> | --status [--json]",
   "       storage repair-span-root --run <run-id> [--json]",
   "       storage recover-chatgpt-lock",
-  "       storage retire-orphan-verification --acquisition <uuid> [--plan] [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces); exit 0 only when",
   "           authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated",
   "  backup   write ONE verified authority backup + manifest under the state root's backups/authority;",
@@ -1032,23 +1028,6 @@ export async function composeStorageCommand(
       const report = { state: "refused-or-incomplete", code: code ?? "upgrade-validation-failed", ...(key === undefined ? {} : { key }) };
       return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: ${report.code}${key === undefined ? "" : ` { key: ${key} }`}; inspect state before retrying`, exitCode: 1 };
     }
-  }
-  if (subcommand === "retire-orphan-verification") {
-    const parsed = z.tuple([z.literal("--acquisition"), z.uuid()]).safeParse(rest.slice(0, 2));
-    if (!parsed.success || rest.slice(2).some(arg => arg !== "--plan" && arg !== "--json")
-      || new Set(rest).size !== rest.length) return { output: STORAGE_USAGE, exitCode: 2 };
-    let database: AuthorityDatabase | undefined;
-    try {
-      admission.assertExclusive();
-      if (admission.readInstallationContext() !== undefined) admission.assertFixedProcessLockRoot(repoRoot, join(repoRoot, isolation.processLockRoot));
-      database = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 5000,
-        migrationOwner: "orphan-verification-retirement" }, clock, undefined, undefined, undefined, credentials);
-      const report = retireOrphanVerification(admission, database, { acquisitionId: parsed.data[1], plan: rest.includes("--plan") }, clock);
-      return { output: rest.includes("--json") ? JSON.stringify(report) : `orphan verification: ${report.state} ${report.workerId}`, exitCode: 0 };
-    } catch {
-      const code = "ORPHAN_VERIFICATION_RETIREMENT_REFUSED";
-      return { output: rest.includes("--json") ? JSON.stringify({ state: "refused", code }) : `${code}: ${ERROR_CATALOG[code].text}`, exitCode: 1 };
-    } finally { database?.close(); }
   }
   if (subcommand === "restore") return restoreCommand(isolation, rest, clock, repoRoot, admission, credentials);
   if (subcommand === "backup") return backupCommand(isolation, rest, clock, repoRoot, admission);

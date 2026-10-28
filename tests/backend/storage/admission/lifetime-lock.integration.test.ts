@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { it, vi } from "vitest";
 import { acquireRuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 
 const ReadySchema = z.strictObject({ kind: z.literal("held"), port: z.number().int().positive(), workerPid: z.number().int().positive() });
 
@@ -116,4 +119,51 @@ it("lets a cooperative worker close its shared handle on parent disconnect", asy
       await closed;
     });
   } finally { await world.close(); }
+});
+
+it("refuses both dashboard and offline commands before admission when another lifetime holds the port", async () => {
+  const lock = await acquireRuntimeLifetimeLock(0);
+  const address = lock.address();
+  assert.ok(address !== null && typeof address !== "string");
+  try {
+    for (const args of [["cli", "dashboard"], ["cli", "storage", "backup"]]) {
+      await assert.rejects(runSecureEnvironmentBootstrap(args, {
+        acquireLifetimeLock: () => acquireRuntimeLifetimeLock(address.port),
+        acquireAdmission: () => assert.fail("busy lifetime reached storage admission"),
+      }), RuntimeAlreadyRunningError);
+    }
+  } finally {
+    const closed = once(lock, "close");
+    lock.close();
+    await closed;
+  }
+});
+
+it("validates the production bundle before acquiring the lifetime listener", async () => {
+  await assert.rejects(runSecureEnvironmentBootstrap(["cli", "dashboard", "--prod"], {
+    validateDashboardBundle: () => { throw new Error("invalid-bundle-fixture"); },
+    acquireLifetimeLock: () => assert.fail("invalid bundle acquired lifetime listener"),
+    acquireAdmission: () => assert.fail("invalid bundle reached storage admission"),
+  }), /invalid-bundle-fixture/);
+});
+
+it("keeps machine publication with the controller and creates no PID lease or admission mutex", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "relay-machine-control-"));
+  let controller: RuntimeAdmission | undefined;
+  let worker: RuntimeAdmission | undefined;
+  try {
+    controller = acquireEntrypointAdmission(directory, "exclusive");
+    assert.deepEqual(controller.readProfileRegistry().profiles, []);
+    controller.release();
+    worker = RuntimeAdmission.acquireWorker(directory);
+    assert.deepEqual(worker.readProfileRegistry().profiles, []);
+    assert.throws(() => worker?.publishProfileOperation("00000000-0000-4000-8000-000000000001"), /worker-machine-control-read-only/);
+    for (const name of ["admission-mutex", "leases"]) {
+      await assert.rejects(access(join(directory, ".tracker", "control", name)), { code: "ENOENT" });
+    }
+  } finally {
+    worker?.release();
+    controller?.release();
+    await rm(directory, { recursive: true });
+  }
 });

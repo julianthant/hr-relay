@@ -2573,7 +2573,6 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/imported-artifacts.ts",
       "src/backend/storage/sqlite/native-run-deletion.ts",
       "src/backend/storage/sqlite/notification-publications.ts",
-      "src/backend/storage/sqlite/orphan-verification-proof.ts",
       "src/backend/storage/sqlite/profile-local-databases.ts",
       "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
       "src/backend/storage/sqlite/run-search-index.ts",

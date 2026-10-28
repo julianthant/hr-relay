@@ -1,16 +1,12 @@
 import { SourceRecordSchema, StorageBackupSchema, hash, file, inventory, verifyCopies, retainedStorageBackup, existingDataFileLabel } from "./existing-data-backup-files.js";
 import { decodeStoredArtifact } from "../artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { verifyFlatBackupRecoveryManifest } from "../sqlite/backup-service.js";
-import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
-import { enumerateFlatBackupRecoveryMembership, assertCredentialCopyResourcesClosed } from "./profile-inventory.js";
+import { assertCredentialCopyResourcesClosed } from "./profile-inventory.js";
 import { profileAuthorityFileWitnesses } from "../configuration/credential-store.js";
-import { type RuntimeLocator } from "../admission/installation.js";
-import { FlatBackupRecoveryBindingSchema, MutexRecoveryReceiptSchema, MutexOwnerSchema } from "../admission/mutex-contracts.js";
 import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { writePrivateStage, fsyncPath, noSymlinkAncestry, statDirectory, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
+import { writePrivateStage, fsyncPath, noSymlinkAncestry, statDirectory } from "../configuration/credential-safe-file.js";
 import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -67,11 +63,9 @@ async function writeCoupledBackup(machine: RuntimeAdmission, admission: RuntimeA
   }
   const profileRoot = admission.stateRoot;
   const databases = canonicalJsonStringify(profileAuthorityFileWitnesses(profileRoot));
-  const recoveryHistory = root === storageRoot ? flatBackupRecoveryHistory(root, machine.locator.installationId, machine.locator.generation) : undefined;
   const census = () => {
-    if (recoveryHistory !== undefined && flatBackupRecoveryHistory(root, machine.locator.installationId, machine.locator.generation).observation !== recoveryHistory.observation) throw new Error("flat-backup-recovery-history-changed");
     return coupledBackupCensus(context.workspace, admission.stateRoot, machine.stateRoot, flat,
-      root === storageRoot || storageBackup !== undefined ? machine.locator.installationId : undefined, undefined, recoveryHistory?.excluded);
+      root === storageRoot || storageBackup !== undefined ? machine.locator.installationId : undefined);
   };
   census();
   let authorityManifest: string | undefined;
@@ -166,14 +160,12 @@ export function assertFlatBackupFacts(workspace: string, stateRoot: string, arti
 }
 
 function coupledBackupCensus(workspace: string, profileRoot: string, machineRoot: string, flat: boolean,
-  storageInstallationId?: string, recoveryReceipt?: string, recoveryMembers: readonly string[] = []) {
+  storageInstallationId?: string) {
   return [
     ...inventory(profileRoot, "profile", new Set(["state.db", "state.db-wal", "state.db-shm", "state.db-journal", ...(flat ? ["locks"] : [])])),
     ...(flat ? [] : inventory(join(machineRoot, "machine"), "machine")),
     ...(flat && lstatSync(join(workspace, "data"), { throwIfNoEntry: false }) !== undefined ? inventory(join(workspace, "data"), "workspace-data") : []),
-    ...inventory(join(workspace, ".tracker", "control"), "control", new Set(["leases", "admission-mutex",
-      ...(storageInstallationId === undefined ? [] : [`storage-backups/${storageInstallationId}`]),
-      ...(recoveryReceipt === undefined ? [] : [`admission-mutex-recovery/${recoveryReceipt}.json`]), ...recoveryMembers])),
+    ...inventory(join(workspace, ".tracker", "control"), "control", new Set(storageInstallationId === undefined ? [] : [`storage-backups/${storageInstallationId}`])),
   ];
 }
 
@@ -187,104 +179,9 @@ function coupledSourceRecord(installationId: string, profileRoot: string,
     files: census().map(entry => ({ ...entry.file, mode: file(entry.path, existingDataFileLabel(entry.file.path)).stat.mode })) }));
 }
 
-export function observeFlatBackupMutexRecovery(workspace: string, locator: RuntimeLocator, restore: RestoreAdmissionHandle,
-  recoveryReceipt: string) {
-  const stateRoot = join(workspace, rebuildRuntimeIsolation.stateRoot), artifactRoot = join(stateRoot, "artifacts");
-  const control = join(workspace, ".tracker", "control"), processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
-  assertRuntimeRestoreAdmission(restore, processLockRoot);
-  const locks = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(stateRoot, "state.db")) });
-  const orphans = inspectRuntimeProcessOrphans(processLockRoot);
-  if (Object.values(locks.processLocks).some(lock => lock.state !== "stopped") || orphans.staleServerRecords > 0 || orphans.staleWorkerRecords > 0) throw new Error("flat-backup-recovery-process-custody-refused");
-  if (locator.stateRoot !== stateRoot || locator.artifactRoot !== artifactRoot
-    || [join(stateRoot, "machine"), join(stateRoot, "profiles"), ...["profile-registry.json", "profile-flat-claim.json", "profile-publication.json", "profile-owner-claims"]
-      .map(name => join(control, name))].some(path => lstatSync(path, { throwIfNoEntry: false }) !== undefined)) throw new Error("flat-backup-recovery-source-refused");
-  noSymlinkAncestry(stateRoot, new Map()); noSymlinkAncestry(artifactRoot, new Map());
-  const allocations = join(control, "storage-backups"), root = join(allocations, locator.installationId);
-  statDirectory(allocations, "storage backups", 0o700); statDirectory(root, "storage backup", 0o700);
-  if (canonicalJsonStringify(readdirSync(allocations)) !== canonicalJsonStringify([locator.installationId])) throw new Error("flat-backup-recovery-membership-refused");
-  const names = readdirSync(root).sort();
-  if (names.some(name => !["source.json", "files", "backup.json"].includes(name))) throw new Error("flat-backup-recovery-membership-refused");
-  const { inspection, facts } = AuthorityDatabase.readFlatBackupRecoveryInventory(join(stateRoot, "state.db"), restore);
-  assertCredentialCopyResourcesClosed(facts);
-  if (facts.slots.some(slot => slot.retiredAt === null)) throw new Error("flat-backup-recovery-worker-custody-refused");
-  assertFlatBackupFacts(workspace, stateRoot, artifactRoot, facts);
-  assertCoupledArtifacts(artifactRoot, facts.artifactReferences);
-  const membership = enumerateFlatBackupRecoveryMembership(stateRoot, facts);
-  const backups = membership.manifests.map(path => verifyFlatBackupRecoveryManifest(path, AuthorityDatabase.sourceDatabaseIdentity(join(stateRoot, "state.db")), restore, processLockRoot));
-  if (backups.length !== membership.backupPaths.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("flat-backup-recovery-authority-membership-refused");
-  const recoveryHistory = flatBackupRecoveryHistory(root, locator.installationId, locator.generation, recoveryReceipt);
-  const census = () => coupledBackupCensus(workspace, stateRoot, stateRoot, true, locator.installationId, recoveryReceipt, recoveryHistory.excluded);
-  const source = census(), currentSource = coupledSourceRecord(locator.installationId, stateRoot, inspection, census);
-  if (names.length !== 0) {
-    if (!names.includes("source.json") || !file(join(root, "source.json")).bytes.equals(currentSource)) throw new Error("flat-backup-recovery-source-changed");
-    const record = SourceRecordSchema.parse(JSON.parse(currentSource.toString("utf8")));
-    const currentBackups = backups.filter(backup => backup.manifest.authorityContentFingerprint === record.sourceFingerprint && backup.manifest.authorityGeneration === record.sourceGeneration);
-    if (currentBackups.length === 0) throw new Error("flat-backup-recovery-authority-required");
-    const expected = record.files.map(entry => ({ path: entry.path, digest: entry.digest }));
-    const copies = names.includes("files") ? inventory(join(root, "files"), "") : [];
-    const prefix = expected.slice(0, copies.length);
-    if (copies.some(copy => !prefix.some(entry => entry.path === copy.file.path && entry.digest === copy.file.digest))) throw new Error("flat-backup-recovery-copy-refused");
-    const directories = new Set([""]);
-    for (const entry of expected.slice(0, copies.length + 1)) for (let path = dirname(entry.path); path !== "."; path = dirname(path)) directories.add(path);
-    if (names.includes("files") && unpublishedDraftAbortMembership(join(root, "files")).some(entry => entry.directory && !directories.has(entry.path))) throw new Error("flat-backup-recovery-copy-membership-refused");
-    if (names.includes("backup.json")) {
-      const receipt = StorageBackupSchema.parse(JSON.parse(file(join(root, "backup.json")).bytes.toString("utf8")));
-      if (receipt.installationId !== locator.installationId || receipt.sourceStateRoot !== stateRoot || receipt.sourceDigest !== hash(currentSource)
-        || canonicalJsonStringify(receipt.files) !== canonicalJsonStringify(source.map(entry => entry.file))
-        || !currentBackups.some(backup => backup.manifestPath === receipt.authorityManifest && hash(file(backup.manifestPath).bytes) === receipt.authorityDigest)) throw new Error("flat-backup-recovery-receipt-refused");
-      verifyCopies(root, receipt.files);
-    }
-  }
-  const roots = [workspace, control, stateRoot, artifactRoot, allocations].map(path => {
-    const value = lstatSync(path); return { path, device: value.dev, inode: value.ino, mode: value.mode, owner: value.uid };
-  });
-  assertRuntimeRestoreAdmission(restore, processLockRoot);
-  const allocation = lstatSync(root);
-  return { binding: FlatBackupRecoveryBindingSchema.parse({ kind: names.length === 0 ? "empty-allocation" : "source-record",
-    allocationDevice: allocation.dev, allocationInode: allocation.ino, sourceDigest: hash(currentSource) }),
-    observation: canonicalJsonStringify({ roots, source: currentSource.toString("base64"), allocation: unpublishedDraftAbortMembership(root),
-      recoveryHistory: recoveryHistory.observation, files: inventory(root, ""), membership: membership.identities.filter(entry => entry.path !== processLockRoot),
-      inspection: { ...inspection, installationId: inspection.installationId ?? null, profileId: inspection.profileId ?? null } }) };
-}
-
 function assertCoupledArtifacts(artifactRoot: string, references: ReturnType<typeof AuthorityDatabase.readProfileMaintenanceInventory>["artifactReferences"]) {
   for (const reference of references) {
     const stored = decodeStoredArtifact(JSON.parse(file(join(artifactRoot, `${reference.sha256}.artifact`), existingDataFileLabel(`profile/artifacts/${reference.sha256}.artifact`)).bytes.toString("utf8")), reference.sha256);
     if (canonicalJsonStringify(stored.ref) !== canonicalJsonStringify(reference)) throw new Error("existing-data-artifact-reference-mismatch");
   }
-}
-
-function flatBackupRecoveryHistory(root: string, installationId: string, generation: number, pendingId?: string) {
-  const sourcePath = join(root, "source.json"), excluded: string[] = [], observed: unknown[] = [];
-  if (lstatSync(sourcePath, { throwIfNoEntry: false }) === undefined) return { excluded, observation: canonicalJsonStringify(observed) };
-  const sourceBytes = file(sourcePath).bytes, source = SourceRecordSchema.parse(JSON.parse(sourceBytes.toString("utf8")));
-  if (source.installationId !== installationId) throw new Error("flat-backup-recovery-history-binding-refused");
-  const allocation = lstatSync(root), history = join(dirname(dirname(root)), "admission-mutex-recovery");
-  if (lstatSync(history, { throwIfNoEntry: false }) === undefined) return { excluded, observation: canonicalJsonStringify(observed) };
-  noSymlinkAncestry(history, new Map()); statDirectory(history, "mutex recovery", 0o700);
-  const prefix = "control/admission-mutex-recovery/", baseline = new Set(source.files.filter(entry => entry.path.startsWith(prefix)).map(entry => entry.path.slice(prefix.length).split("/")[0]));
-  const allowed = new Set([...baseline, ...(pendingId === undefined ? [] : [pendingId, `${pendingId}.json`])]);
-  for (const name of readdirSync(history).sort()) {
-    if (baseline.has(name) || name === `${pendingId}.json` || !name.endsWith(".json")) continue;
-    const path = join(history, name), raw = file(path), receipt = MutexRecoveryReceiptSchema.parse(JSON.parse(raw.bytes.toString("utf8")));
-    const binding = receipt.flatBackup;
-    if (name !== `${receipt.acquisitionId}.json` || receipt.installationId !== installationId || receipt.generation !== generation || binding === undefined
-      || binding.kind !== "source-record" || binding.sourceDigest !== hash(sourceBytes)
-      || binding.allocationDevice !== allocation.dev || binding.allocationInode !== allocation.ino) throw new Error("flat-backup-recovery-history-binding-refused");
-    const archive = join(history, receipt.acquisitionId); statDirectory(archive, "mutex archive", 0o700);
-    if ("pid" in receipt) {
-      if (canonicalJsonStringify(readdirSync(archive)) !== canonicalJsonStringify([receipt.ownerFile])) throw new Error("flat-backup-recovery-history-membership-refused");
-      const ownerFile = file(join(archive, receipt.ownerFile)), owner = MutexOwnerSchema.parse(JSON.parse(ownerFile.bytes.toString("utf8")));
-      if (owner.acquisitionId !== receipt.acquisitionId || owner.pid !== receipt.pid
-        || canonicalJsonStringify(owner.processIdentity) !== canonicalJsonStringify(receipt.processIdentity) || hash(ownerFile.bytes) !== receipt.ownerSha256) throw new Error("flat-backup-recovery-history-owner-refused");
-    } else {
-      const directory = lstatSync(archive);
-      if (readdirSync(archive).length !== 0 || directory.dev !== receipt.directoryDevice || directory.ino !== receipt.directoryInode) throw new Error("flat-backup-recovery-history-owner-refused");
-    }
-    allowed.add(name); allowed.add(receipt.acquisitionId);
-    excluded.push(`admission-mutex-recovery/${name}`, `admission-mutex-recovery/${receipt.acquisitionId}`);
-    observed.push({ receipt: { ...raw.identity, digest: hash(raw.bytes) }, archive: unpublishedDraftAbortMembership(archive), files: inventory(archive, "") });
-  }
-  if (readdirSync(history).some(name => !allowed.has(name))) throw new Error("flat-backup-recovery-history-membership-refused");
-  return { excluded, observation: canonicalJsonStringify(observed) };
 }

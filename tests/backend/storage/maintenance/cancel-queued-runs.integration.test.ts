@@ -10,7 +10,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { workerBootstrapEnvironment } from "../../../../src/models/config/secrets.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { runOfflineWorkerProcessRecovery } from "../../../../src/backend/storage/maintenance/worker-process-recovery.js";
 import { runOfflineQueuedRunCancellation } from "../../../../src/backend/storage/maintenance/cancel-queued-runs.js";
 import { runRecordFromRow, updateRunRecord } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { RunCheckpointRecordSchema, checkpointRecordKey } from "../../../../src/models/workflow/checkpoint.js";
@@ -145,24 +144,6 @@ it("dispatches the actual secure-bootstrap CLI plan and apply against an isolate
     const applied = command(["--capture", plan.captureDigest, "--apply", "--json"]);
     assert.equal(applied.error, undefined); assert.equal(applied.status, 0, applied.stderr);
     assert.deepEqual(JSON.parse(applied.stdout), { ...plan, state: "cancelled" });
-  } finally { f.close(); }
-});
-
-it("cancels before recovering a dead worker record, preserving the original process record", async () => {
-  const f = fixture();
-  try {
-    const module = pathToFileURL(join(process.cwd(), "src/backend/storage/sqlite/runtime-process-locks.ts")).href;
-    const owner = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
-      `import { acquireRuntimeProcessLock } from ${JSON.stringify(module)}; const lock = acquireRuntimeProcessLock({ processLockRoot: process.argv[1], name: "workers", workerId: "person-lookup-worker-4", pid: process.pid }); process.stdout.write(lock.acquisitionId);`, f.processLockRoot],
-      { encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
-    assert.equal(owner.error, undefined); assert.equal(owner.status, 0, owner.stderr);
-    const acquisition = z.uuid().parse(owner.stdout.trim());
-    const path = join(f.processLockRoot, "workers", `${acquisition}.lock.json`), original = readFileSync(path);
-    const plan = await runOfflineQueuedRunCancellation(f.workspace, ["--plan"]);
-    assert.equal((await runOfflineQueuedRunCancellation(f.workspace, ["--capture", plan.report.captureDigest, "--apply"])).report.state, "cancelled");
-    const recovery = runOfflineWorkerProcessRecovery(f.workspace, ["--acquisition", acquisition, "--plan"]);
-    assert.equal(runOfflineWorkerProcessRecovery(f.workspace, ["--acquisition", acquisition, "--capture", recovery.report.captureDigest, "--apply"]).report.state, "recovered");
-    assert.deepEqual(readFileSync(path), original);
   } finally { f.close(); }
 });
 

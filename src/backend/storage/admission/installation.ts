@@ -1,8 +1,6 @@
 import { credentialKeyCustody, CredentialKeyCustodyError, type CredentialKeyMigrationAdmission } from "../configuration/credential-key-custody.js";
-import { MutexOwnerSchema, MutexRecoveryReceiptSchema } from "./mutex-contracts.js";
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { retainedStorageBackup, SourceRecordSchema, StorageBackupSchema, inventory as backupFileInventory, file as backupFile } from "../maintenance/existing-data-backup-files.js";
-import { observeFlatBackupMutexRecovery } from "../maintenance/existing-data-backup.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStageTransition, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
@@ -17,9 +15,7 @@ import {
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot, inspectStoppedDeviceRecertificationCustody, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
-  assertWorkerProcessRecoveryRuntimeStopped, captureWorkerProcessRecoveryFile, readProcessCustodyFile, WorkerProcessRecoveryCaptureSchema,
-  assertRuntimeRestoreAdmission, type ProcessStartIdentity, type RestoreAdmissionHandle, authoritySourceDatabaseIdentity, RUNTIME_PROCESS_LOCK_NAMES, runtimeProcessLockIsActive, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
+import { observeRuntimeLockSnapshot, inspectStoppedDeviceRecertificationCustody, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, readProcessCustodyFile, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle, authoritySourceDatabaseIdentity, RUNTIME_PROCESS_LOCK_NAMES, runtimeProcessLockIsActive, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
 import { NonNegativeIntSchema } from "../../../rules/identity/ids.js";
@@ -82,7 +78,6 @@ const MarkerSchema = z.discriminatedUnion("schemaVersion", [
   z.strictObject({ schemaVersion: z.literal(1), ...MarkerCommon }),
   z.strictObject({ schemaVersion: z.literal(2), ...MarkerCommon, operationId: z.uuid() }),
 ]);
-const LeaseSchema = z.strictObject({ schemaVersion: z.literal(1), admissionId: z.uuid(), mode: z.enum(["shared", "exclusive"]), pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema });
 const DigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
 const ControlUpgradeFileSchema = z.strictObject({ device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(), digest: DigestSchema });
 
@@ -422,12 +417,7 @@ function assertRestoreHeld(workspace: string, restore: RestoreAdmissionHandle | 
   assertRuntimeRestoreAdmission(restore, root);
   assertNoSymlinkComponents(root);
   privateDirectory(root);
-  const lock = readStrict(join(root, "restore-admission.lock.json"), RestoreAdmissionFileSchema);
-  const observed = identity();
-  if (lock.schemaVersion !== 2 || lock.admissionId !== restore.admissionId || lock.pid !== process.pid
-    || lock.processIdentity.platform !== observed.platform || lock.processIdentity.startToken !== observed.startToken) {
-    fail("fixed restore admission identity mismatch");
-  }
+
 }
 function inside(parent: string, child: string): boolean {
   const part = relative(parent, child);
@@ -605,383 +595,14 @@ function prepareMovedDestinationRoot(workspace: string, pending: RelocationJourn
   ensureRoot(root);
   installMarker(root, pending.installationId, workspace, role, pending.sourceEpochs[role], pending.operationId);
 }
-let executingProcessIdentity: ProcessStartIdentity | undefined;
-function identity(): ProcessStartIdentity {
-  if (executingProcessIdentity !== undefined) return executingProcessIdentity;
-  const observation = observeProcessIdentity(process.pid);
-  if (observation.state !== "alive") fail("current process identity unavailable");
-  executingProcessIdentity = Object.freeze({ ...observation.identity });
-  return executingProcessIdentity;
+type LocalAdmission = Readonly<{ mode: "shared" | "exclusive" }>;
+const installationAdmissions = new Map<string, Set<LocalAdmission>>();
+function activeAdmissions(control: string): readonly LocalAdmission[] {
+  return [...(installationAdmissions.get(control) ?? [])];
 }
-function isLive(lease: z.infer<typeof LeaseSchema>): boolean {
-  const observed = lease.pid === process.pid
-    ? { state: "alive" as const, identity: identity() } : observeProcessIdentity(lease.pid);
-  return observed.state === "alive" && observed.identity.platform === lease.processIdentity.platform && observed.identity.startToken === lease.processIdentity.startToken;
-}
-export class AdmissionMutexBusyError extends Error {
-  constructor() {
-    super("runtime-control: admission mutex remained busy after 5000ms");
-    this.name = "AdmissionMutexBusyError";
-  }
-}
-export class AdmissionMutexEmptyError extends AdmissionMutexBusyError {
-  constructor() {
-    super();
-    this.name = "AdmissionMutexEmptyError";
-    this.message = "runtime-control: empty admission mutex; run npm run cli -- storage recover-admission --empty";
-  }
-}
-const mutexWait = new Int32Array(new SharedArrayBuffer(4));
-function filesystemCode(error: unknown): unknown {
-  return error instanceof Error && "code" in error ? error.code : undefined;
-}
-function mutexIdentityDigest(value: ProcessStartIdentity): string {
-  return createHash("sha256").update(canonicalJsonStringify(value)).digest("hex");
-}
-const MutexRemnantName = /^\.admission-mutex-(?:tmp|released)-([1-9]\d*)-([0-9a-f]{64})-([0-9a-f-]{36})$/u;
-function removeMutexFolder(path: string): void {
-  privateDirectory(path);
-  const entries = readdirSync(path);
-  for (const name of entries) {
-    if (name !== "owner.json" && !/^\.[0-9a-f-]{36}\.tmp$/u.test(name)) fail("unexpected mutex temporary entry");
-    privateFile(join(path, name));
-  }
-  for (const name of entries) unlinkSync(join(path, name));
-  rmdirSync(path);
-}
-function clearMutexRemnants(control: string): void {
-  for (const name of readdirSync(control)) {
-    const match = MutexRemnantName.exec(name);
-    if (match === null) continue;
-    if (!Number.isSafeInteger(Number(match[1])) || !z.uuid().safeParse(match[3]).success) fail("invalid mutex temporary identity");
-    const observed = observeProcessIdentity(Number(match[1]));
-    if (observed.state === "alive" && mutexIdentityDigest(observed.identity) === match[2]) continue;
-    const path = join(control, name);
-    try {
-      privateDirectory(path);
-      const ownerPath = join(path, "owner.json");
-      if (lstatMaybe(ownerPath) !== undefined) {
-        const owner = readStrict(ownerPath, MutexOwnerSchema);
-        if (owner.pid !== Number(match[1]) || mutexIdentityDigest(owner.processIdentity) !== match[2]
-          || owner.acquisitionId !== match[3]) fail("mutex temporary owner identity mismatch");
-      }
-      removeMutexFolder(path);
-    } catch (error) { if (filesystemCode(error) !== "ENOENT") throw error; }
-    syncDir(control);
-  }
-}
-function mutex<T>(control: string, callback: () => T): T {
+function withInstallationControl<T>(control: string, callback: () => T): T {
   privateDirectory(control);
-  clearMutexRemnants(control);
-  const path = join(control, "admission-mutex");
-  const owner = { schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: process.pid, processIdentity: identity() };
-  const suffix = `${owner.pid}-${mutexIdentityDigest(owner.processIdentity)}-${owner.acquisitionId}`;
-  const temporary = join(control, `.admission-mutex-tmp-${suffix}`);
-  const released = join(control, `.admission-mutex-released-${suffix}`);
-  mkdirSync(temporary, { mode: 0o700 });
-  let acquired = false;
-  let result: { value: T } | undefined, primary: { error: unknown } | undefined;
-  try {
-    atomicJson(join(temporary, "owner.json"), owner);
-    syncDir(control);
-    const deadline = systemClock.monotonicMs() + 5_000;
-    for (;;) {
-      try {
-        const occupied = lstatMaybe(path);
-        if (occupied !== undefined) {
-          privateDirectory(path);
-          if (readdirSync(path).length === 0) {
-            const current = lstatMaybe(path);
-            if (current === undefined || current.dev !== occupied.dev || current.ino !== occupied.ino) continue;
-            privateDirectory(path);
-            if (readdirSync(path).length === 0) throw new AdmissionMutexEmptyError();
-            continue;
-          }
-        } else {
-          renameSync(temporary, path);
-          acquired = true;
-          syncDir(control);
-          break;
-        }
-      } catch (error) {
-        if (!["EEXIST", "ENOTEMPTY", "ENOENT"].includes(String(filesystemCode(error)))) throw error;
-      }
-      const remaining = deadline - systemClock.monotonicMs();
-      if (remaining <= 0) throw new AdmissionMutexBusyError();
-      Atomics.wait(mutexWait, 0, 0, Math.min(10, remaining));
-    }
-    result = { value: callback() };
-  } catch (error) { primary = { error }; }
-  if (!acquired && primary?.error instanceof AuthoritySourceClosureUnprovedError) {
-    throw retainAuthoritySourceClosure([primary.error], { directory: { path: temporary, owner, control } });
-  }
-  let cleanupFailure: { error: unknown } | undefined;
-  try {
-    if (acquired) {
-      privateDirectory(path);
-      const held = readStrict(join(path, "owner.json"), MutexOwnerSchema);
-      if (held.acquisitionId !== owner.acquisitionId || held.pid !== owner.pid
-        || mutexIdentityDigest(held.processIdentity) !== mutexIdentityDigest(owner.processIdentity)) fail("admission mutex ownership changed");
-      renameSync(path, released);
-      syncDir(control);
-      removeMutexFolder(released);
-    } else removeMutexFolder(temporary);
-    syncDir(control);
-  } catch (error) { cleanupFailure = { error }; }
-  const errors = [...(primary === undefined ? [] : [primary.error]), ...(cleanupFailure === undefined ? [] : [cleanupFailure.error])];
-  if (errors.some(error => error instanceof AuthoritySourceClosureUnprovedError)) throw retainAuthoritySourceClosure(errors, {});
-  if (errors.length === 1) throw errors[0];
-  if (errors.length > 1) throw new AggregateError(errors, "installation-mutex-cleanup-failed", { cause: errors[0] });
-  if (result === undefined) throw new Error("installation-mutex-result-missing");
-  return result.value;
-}
-function assertLiveObservationMutex(control: string): void {
-  const path = join(control, "admission-mutex"), before = lstatMaybe(path);
-  if (before === undefined) return;
-  try {
-    privateDirectory(path);
-    const entries = readdirSync(path);
-    if (entries.length !== 1 || entries[0] !== "owner.json") fail("profile-registry-mutex-custody-unavailable");
-    const ownerPath = join(path, "owner.json");
-    const file = readPrivateFile(ownerPath, { label: "lock", maxBytes: 1_048_576 });
-    if (file === undefined) {
-      if (lstatMaybe(path) === undefined) return;
-      fail("profile-registry-mutex-custody-unavailable");
-    }
-    const owner = MutexOwnerSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
-    const observed = observeProcessIdentity(owner.pid);
-    if (observed.state !== "alive" || observed.identity.platform !== owner.processIdentity.platform
-      || observed.identity.startToken !== owner.processIdentity.startToken) fail("profile-registry-mutex-custody-unavailable");
-    const after = lstatMaybe(path);
-    if (after === undefined) return;
-    if (before.dev !== after.dev || before.ino !== after.ino) fail("profile-registry-observation-changed");
-    const current = readPrivateFile(ownerPath, { label: "lock", maxBytes: 1_048_576 });
-    if (current === undefined) {
-      if (lstatMaybe(path) === undefined) return;
-      fail("profile-registry-mutex-custody-unavailable");
-    }
-    privateDirectory(path);
-    const currentDirectory = lstatSync(path), currentEntries = readdirSync(path);
-    if (before.dev !== currentDirectory.dev || before.ino !== currentDirectory.ino
-      || currentEntries.length !== 1 || currentEntries[0] !== "owner.json"
-      || file.identity.device !== current.identity.device || file.identity.inode !== current.identity.inode
-      || !file.bytes.equals(current.bytes)) fail("profile-registry-observation-changed");
-  } catch (error) {
-    if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
-    if ((filesystemCode(error) === "ENOENT" || (error instanceof Error && filesystemCode(error.cause) === "ENOENT"))
-      && lstatMaybe(path) === undefined) return;
-    throw error;
-  }
-}
-/** Explicit offline recovery. The restore lock serializes recoveries; the occupied mutex excludes ordinary admission until the final rename. */
-export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: RestoreAdmissionHandle,
-  expectedPid: number | "empty"): Readonly<{ acquisitionId: string; pid?: number; receiptPath: string }> {
-  const workspace = realpathSync(workspacePath);
-  if (resolve(workspacePath) !== workspace) fail("recovery workspace must be canonical");
-  const control = join(workspace, CONTROL);
-  assertNoSymlinkComponents(control);
-  privateDirectory(control);
-  assertRestoreHeld(workspace, restore);
-  const mutexPath = join(control, "admission-mutex");
-  privateDirectory(mutexPath);
-  const mutexBefore = lstatSync(mutexPath);
-  const allowedControl = new Set(["installation.json", "locator.json", "leases", "admission-mutex",
-    "admission-mutex-recovery", "profile-registry.json", "storage-backups", "flat-start-clean.json", "device-recertification-receipt.json", RECEIPTS]);
-  if (readdirSync(control).some(entry => !allowedControl.has(entry))) fail("unexpected installation control entry");
-  const entries = readdirSync(mutexPath);
-  const empty = expectedPid === "empty";
-  if (entries.length !== (empty ? 0 : 1)) fail("abandoned mutex has unexpected entries");
-  const name = entries[0];
-  if (!empty && name !== "owner.json") {
-    const match = /^\.([0-9a-f-]{36})\.tmp$/u.exec(name);
-    if (match === null || !z.uuid().safeParse(match[1]).success) fail("abandoned mutex owner shape invalid");
-  }
-  const ownerPath = empty ? undefined : join(mutexPath, name);
-  const before = ownerPath === undefined ? undefined : lstatSync(ownerPath);
-  const bytes = ownerPath === undefined ? undefined : readFileSync(ownerPath);
-  const owner = ownerPath === undefined ? undefined : readStrict(ownerPath, MutexOwnerSchema);
-  if (owner !== undefined) {
-    if (owner.pid !== expectedPid) fail("abandoned mutex expected pid mismatch");
-    const observed = observeProcessIdentity(owner.pid);
-    if (observed.state !== "gone" && (observed.state !== "alive"
-      || observed.identity.platform === owner.processIdentity.platform
-        && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
-  }
-  const acquisitionId = owner?.acquisitionId ?? randomUUID();
-  function assertLeasesStopped(): void {
-    const leases = join(control, "leases");
-    privateDirectory(leases);
-    for (const leaseName of readdirSync(leases)) {
-      if (!/^[-0-9a-f]+\.json$/u.test(leaseName)) fail("unexpected lease entry");
-      const lease = readStrict(join(leases, leaseName), LeaseSchema);
-      const observation = observeProcessIdentity(lease.pid);
-      if (observation.state !== "gone" && (observation.state !== "alive"
-        || observation.identity.platform === lease.processIdentity.platform
-          && observation.identity.startToken === lease.processIdentity.startToken)) fail("installation lease may still be live");
-    }
-  }
-  assertLeasesStopped();
-  if (lstatMaybe(join(control, "journal.json"))) fail("pending installation journal blocks mutex recovery");
-  const locator = readLocator(control, workspace);
-  const recertificationPath = join(control, "device-recertification-receipt.json");
-  const recertification = completedDeviceRecertificationReceipt(control, locator);
-  const storageBackups = join(control, "storage-backups");
-  const unbound = lstatMaybe(join(locator.stateRoot, "machine")) === undefined && lstatMaybe(join(control, "profile-registry.json")) === undefined;
-  const flatWitness = lstatMaybe(storageBackups) === undefined || !unbound ? undefined
-    : observeFlatBackupMutexRecovery(workspace, locator, restore, acquisitionId);
-  const registry = flatWitness === undefined ? readMachineRegistry(control, locator, false) : undefined;
-  const machineWitness = flatWitness === undefined ? profileObservation(control, locator) : undefined;
-  function observeRetainedBackup(): string | undefined {
-    const backup = retainedStorageBackup(workspace, locator.installationId);
-    return backup === undefined ? undefined : canonicalJsonStringify({ backup, allocation: unpublishedDraftAbortMembership(dirname(backup.backupPath)) });
-  }
-  const retainedWitness = registry === undefined ? undefined : observeRetainedBackup();
-  const processLockRoot = fixedLockRoot(workspace);
-  const lockSnapshot = observeRuntimeLockSnapshot({ processLockRoot,
-    sourceDatabaseIdentity: "0".repeat(64) });
-  if (lockSnapshot.processLocks.server.state !== "stopped"
-    || lockSnapshot.processLocks.workers.state !== "stopped"
-    || lockSnapshot.processLocks["live-smoke"].state !== "stopped"
-    || lockSnapshot.processLocks.geocode.state !== "stopped") fail("runtime process lock may still be live");
-  assertRestoreHeld(workspace, restore);
-  privateDirectory(mutexPath);
-  function assertCustody(): void {
-    if (recertification === undefined ? lstatMaybe(recertificationPath) !== undefined
-      : !sameControlUpgradeFile(recertificationPath, recertification)) fail("device-recertification-receipt-changed");
-    const currentLocator = readLocator(control, workspace);
-    if (canonicalJsonStringify(currentLocator) !== canonicalJsonStringify(locator)) fail("installation locator changed during recovery");
-    if (flatWitness === undefined) {
-      readMachineRegistry(control, currentLocator, false);
-      if (profileObservation(control, currentLocator) !== machineWitness) fail("profile registry changed during mutex recovery");
-      if (observeRetainedBackup() !== retainedWitness) fail("storage-backup-recovery-changed");
-    }
-    if (flatWitness !== undefined || retainedWitness !== undefined) {
-      assertLeasesStopped();
-      if (owner !== undefined) {
-        const observed = observeProcessIdentity(owner.pid);
-        if (observed.state !== "gone" && (observed.state !== "alive"
-          || observed.identity.platform === owner.processIdentity.platform && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
-      }
-      if (readdirSync(control).some(entry => !allowedControl.has(entry))) fail("unexpected installation control entry");
-      if (flatWitness !== undefined
-        && canonicalJsonStringify(observeFlatBackupMutexRecovery(workspace, currentLocator, restore, acquisitionId)) !== canonicalJsonStringify(flatWitness)) fail("flat-backup-recovery-source-changed");
-    }
-    privateDirectory(mutexPath);
-    const directory = lstatSync(mutexPath);
-    const currentEntries = readdirSync(mutexPath);
-    if (directory.dev !== mutexBefore.dev || directory.ino !== mutexBefore.ino
-      || currentEntries.length !== (empty ? 0 : 1)) fail("admission mutex changed during recovery");
-    if (ownerPath !== undefined && before !== undefined && bytes !== undefined) {
-      privateFile(ownerPath);
-      const current = lstatSync(ownerPath);
-      if (currentEntries[0] !== name || current.dev !== before.dev || current.ino !== before.ino
-        || current.size !== before.size || !readFileSync(ownerPath).equals(bytes)) fail("admission mutex changed during recovery");
-    }
-  }
-  assertCustody();
-  const history = join(control, "admission-mutex-recovery");
-  if (lstatMaybe(history) === undefined) { mkdirSync(history, { mode: 0o700 }); syncDir(control); }
-  privateDirectory(history);
-  const receipt = MutexRecoveryReceiptSchema.parse(owner === undefined ? {
-    schemaVersion: 1, custody: "empty", acquisitionId, installationId: locator.installationId,
-    generation: locator.generation, directoryDevice: mutexBefore.dev, directoryInode: mutexBefore.ino,
-    ...(flatWitness === undefined ? {} : { flatBackup: flatWitness.binding }), recoveredAt: systemClock.now().toISOString(),
-  } : { schemaVersion: 1, acquisitionId, pid: owner.pid,
-    processIdentity: owner.processIdentity, installationId: locator.installationId,
-    generation: locator.generation, ownerFile: name,
-    ownerSha256: createHash("sha256").update(bytes!).digest("hex"), ...(flatWitness === undefined ? {} : { flatBackup: flatWitness.binding }), recoveredAt: systemClock.now().toISOString() });
-  const destination = join(history, acquisitionId);
-  const receiptPath = join(history, `${acquisitionId}.json`);
-  if (lstatMaybe(destination)) fail("recovery archive already exists");
-  let expectedReceipt = receipt;
-  if (lstatMaybe(receiptPath)) {
-    const existing = readStrict(receiptPath, MutexRecoveryReceiptSchema);
-    if (canonicalJsonStringify({ ...existing, recoveredAt: receipt.recoveredAt })
-      !== canonicalJsonStringify(receipt)) fail("recovery receipt changed");
-    expectedReceipt = existing;
-  } else atomicJson(receiptPath, receipt);
-  let recoveryReceipt: ReturnType<typeof controlUpgradeFile> | undefined;
-  if (flatWitness !== undefined || retainedWitness !== undefined) {
-    const file = readPrivateFile(receiptPath, { label: "lock", maxBytes: 1_048_576 });
-    if (file === undefined) fail("flat-backup-recovery-receipt-changed");
-    const published = MutexRecoveryReceiptSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
-    if (canonicalJsonStringify(published) !== canonicalJsonStringify(expectedReceipt)) fail("flat-backup-recovery-receipt-changed");
-    const verified = { device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") };
-    if (!sameControlUpgradeFile(receiptPath, verified)) fail("flat-backup-recovery-receipt-changed");
-    recoveryReceipt = verified;
-  }
-  assertRestoreHeld(workspace, restore);
-  assertCustody();
-  if (recoveryReceipt !== undefined && !sameControlUpgradeFile(receiptPath, recoveryReceipt)) fail("flat-backup-recovery-receipt-changed");
-  renameSync(mutexPath, destination);
-  syncDir(history);
-  syncDir(control);
-  return Object.freeze({ acquisitionId, ...(owner === undefined ? {} : { pid: owner.pid }), receiptPath });
-}
-
-/** This inspection authorizes no recovery; the offline proof rechecks exact owner custody. */
-export function admissionMutexOwnerProvenDead(workspacePath: string): boolean {
-  const workspace = realpathSync(workspacePath);
-  if (resolve(workspacePath) !== workspace) fail("recovery workspace must be canonical");
-  const control = join(workspace, CONTROL);
-  assertNoSymlinkComponents(control);
-  privateDirectory(control);
-  const mutexPath = join(control, "admission-mutex");
-  if (lstatMaybe(mutexPath) === undefined) return false;
-  privateDirectory(mutexPath);
-  const entries = readdirSync(mutexPath);
-  if (entries.length === 0) return false;
-  if (entries.length !== 1) fail("abandoned mutex has unexpected entries");
-  const name = entries[0];
-  if (name !== "owner.json") {
-    const match = /^\.([0-9a-f-]{36})\.tmp$/u.exec(name);
-    if (match === null || !z.uuid().safeParse(match[1]).success) fail("abandoned mutex owner shape invalid");
-  }
-  const owner = readStrict(join(mutexPath, name), MutexOwnerSchema);
-  const observed = observeProcessIdentity(owner.pid);
-  return observed.state === "gone" || observed.state === "alive"
-    && (observed.identity.platform !== owner.processIdentity.platform
-      || observed.identity.startToken !== owner.processIdentity.startToken);
-}
-
-/** Startup uses the offline proof only for an exact abandoned owner in a settled installation. */
-export function recoverAbandonedAdmissionMutexAtStartup(workspacePath: string): void {
-  const workspace = realpathSync(workspacePath);
-  if (resolve(workspacePath) !== workspace) fail("recovery workspace must be canonical");
-  const control = join(workspace, CONTROL);
-  assertNoSymlinkComponents(control);
-  privateDirectory(control);
-  const mutexPath = join(control, "admission-mutex");
-  if (lstatMaybe(mutexPath) === undefined) return;
-  privateDirectory(mutexPath);
-  const entries = readdirSync(mutexPath);
-  if (entries.length !== 1) fail("abandoned mutex has unexpected entries");
-  const name = entries[0];
-  if (name !== "owner.json") {
-    const match = /^\.([0-9a-f-]{36})\.tmp$/u.exec(name);
-    if (match === null || !z.uuid().safeParse(match[1]).success) fail("abandoned mutex owner shape invalid");
-  }
-  const owner = readStrict(join(mutexPath, name), MutexOwnerSchema);
-  const observed = observeProcessIdentity(owner.pid);
-  if (observed.state !== "gone" && (observed.state !== "alive"
-    || observed.identity.platform === owner.processIdentity.platform
-      && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
-  const restore = acquireRuntimeRestoreAdmission({ processLockRoot: fixedLockRoot(workspace), pid: process.pid });
-  let retain = false;
-  try { recoverAbandonedAdmissionMutex(workspace, restore, owner.pid); }
-  catch (error) {
-    if (error instanceof AuthoritySourceClosureUnprovedError) { retain = true; throw retainAuthoritySourceClosure([error], { restore }); }
-    throw error;
-  } finally { if (!retain) restore.release(); }
-}
-
-function activeLeases(control: string): readonly z.infer<typeof LeaseSchema>[] {
-  const directory = join(control, "leases");
-  privateDirectory(directory);
-  return readdirSync(directory).map((name) => {
-    if (!/^[-0-9a-f]+\.json$/u.test(name)) fail("unexpected lease entry");
-    return readStrict(join(directory, name), LeaseSchema);
-  }).filter(isLive);
+  return callback();
 }
 function readInstallation(control: string, workspace: string): z.infer<typeof InstallationSchema> {
   const installed = readStrict(join(control, "installation.json"), InstallationSchema);
@@ -1969,7 +1590,6 @@ function profileObservation(control: string, locator: RuntimeLocator): string {
 function readProfileUpgradeAuthority(control: string, workspace: string, locator: RuntimeLocator, id: string, assertHeld: () => void): string {
   assertHeld();
   if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-stopped-upgrade-locator-changed");
-  assertLiveObservationMutex(control);
   const before = profileObservation(control, locator);
   const document = readMachineRegistry(control, locator, false);
   const row = document.profiles.find(entry => entry.profileId === id);
@@ -1988,7 +1608,6 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
   });
   if (profileObservation(control, locator) !== before || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-stopped-upgrade-observation-changed");
   assertHeld();
-  assertLiveObservationMutex(control);
   const directories = [control, join(locator.stateRoot, "machine"), join(locator.stateRoot, "machine", "credential-keys"),
     join(locator.stateRoot, "machine", "erasures"), join(locator.stateRoot, "machine", "operations")].map(path => {
     if (lstatSync(path, { throwIfNoEntry: false }) === undefined && path === join(locator.stateRoot, "machine", "erasures")
@@ -2118,7 +1737,7 @@ export function inspectPendingRelocationRecovery(workspacePath: string, operatio
   assertNoSymlinkComponents(control);
   privateDirectory(control);
   assertRestoreHeld(workspace, restore);
-  if (activeLeases(control).length !== 0) fail("installation lease busy during recovery inspection");
+  if (activeAdmissions(control).length !== 0) fail("installation lease busy during recovery inspection");
   const installation = readInstallation(control, workspace);
   const pending = readStrict(join(control, "journal.json"), JournalSchema);
   if (pending.phase === "adopting" || pending.phase === "restoring" || pending.operationId !== operationId
@@ -2128,9 +1747,9 @@ export function inspectPendingRelocationRecovery(workspacePath: string, operatio
   readLocator(control, workspace, binding);
   return binding;
 }
-export function acquireInstallation(workspacePath: string, mode: "shared", options?: { machine?: true }): InstallationLease;
-export function acquireInstallation(workspacePath: string, mode: "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; machine?: true; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: RestoreAdmissionHandle } }): ExclusiveInstallationLease;
-export function acquireInstallation(workspacePath: string, mode: "shared" | "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; machine?: true; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: RestoreAdmissionHandle } }): InstallationLease | ExclusiveInstallationLease {
+export function acquireInstallation(workspacePath: string, mode: "shared", options?: { machine?: true; readonlyControl?: true }): InstallationLease;
+export function acquireInstallation(workspacePath: string, mode: "exclusive", options?: { readonlyControl?: true; defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; machine?: true; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: RestoreAdmissionHandle } }): ExclusiveInstallationLease;
+export function acquireInstallation(workspacePath: string, mode: "shared" | "exclusive", options?: { readonlyControl?: true; defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; machine?: true; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: RestoreAdmissionHandle } }): InstallationLease | ExclusiveInstallationLease {
   const workspace = realpathSync(workspacePath);
   const control = join(workspace, CONTROL);
   if (!existsSync(control)) {
@@ -2145,35 +1764,35 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (lstatMaybe(parent) === undefined) { mkdirSync(parent, { mode: 0o700 }); syncDir(workspace); }
     privateDirectory(parent);
     mkdirSync(control, { mode: 0o700 }); syncDir(parent);
-    mkdirSync(join(control, "leases"), { mode: 0o700 }); syncDir(control);
   }
   privateDirectory(control);
-  let leasePath = "";
-  let admissionId = "";
-  const resolvedLocator = mutex(control, () => {
-    const peers = activeLeases(control);
+  const localAdmission: LocalAdmission = Object.freeze({ mode });
+  const resolvedLocator = withInstallationControl(control, () => {
+    const peers = activeAdmissions(control);
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
     if (options?.recoverRelocation) assertRestoreHeld(workspace, options.recoverRelocation.restoreAdmission);
     const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined, mode === "exclusive" ? options?.recoverAuthorityRestore : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting, options.initializeFresh, options.machine) : fail("installation locator missing"));
-    credentialKeyCustody.migrateDirectory(join(resolved.stateRoot, "machine", "credential-keys"), resolved.installationId, admitCredentialKeyMigration(control, resolved), peers.length === 0);
-    if (options?.machine === true) readMachineRegistry(control, resolved);
-    admissionId = randomUUID();
-    leasePath = join(control, "leases", `${admissionId}.json`);
-    atomicJson(leasePath, { schemaVersion: 1, admissionId, mode, pid: process.pid, processIdentity: identity() });
+    credentialKeyCustody.migrateDirectory(join(resolved.stateRoot, "machine", "credential-keys"), resolved.installationId, admitCredentialKeyMigration(control, resolved), options?.readonlyControl !== true && peers.length === 0);
+    if (options?.machine === true) readMachineRegistry(control, resolved, options.readonlyControl !== true);
     return resolved;
   });
+  const admissions = installationAdmissions.get(control) ?? new Set<LocalAdmission>();
+  admissions.add(localAdmission);
+  installationAdmissions.set(control, admissions);
   const locator = Object.freeze({ ...resolvedLocator });
   const publicLocator = Object.freeze({ ...locator });
   let released = false;
   function assertHeld(): void {
     if (released) fail("installation lease released");
-    const record = readStrict(leasePath, LeaseSchema);
-    if (record.admissionId !== admissionId || record.mode !== mode || record.pid !== process.pid || !isLive(record)) {
-      fail("installation lease identity changed");
-    }
+    if (!admissions.has(localAdmission)) fail("installation admission released");
+  }
+  function mutate<T>(callback: () => T): T {
+    assertHeld();
+    if (options?.readonlyControl === true) fail("worker-machine-control-read-only");
+    return withInstallationControl(control, callback);
   }
   function publishOperation(input: ProfileOperation | string, creating: boolean, keyStageWitness?: CommittedCredentialKeyStage): void {
-      mutex(control, () => {
+      mutate(() => {
         assertHeld();
         const current = readLocator(control, workspace);
         if (!equalLocator(current, locator)) fail("profile-machine-authority-changed");
@@ -2237,7 +1856,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   }
   function publishRegistry(expected: ProfileRegistryDocument | undefined, document: ProfileRegistryDocument | undefined,
     registration?: { operation: z.infer<typeof SignUpOperationSchema>; witness: CommittedCredentialWitness; verifier: PreparedProfileVerifier }): void {
-      mutex(control, () => {
+      mutate(() => {
         assertHeld();
         const current = readLocator(control, workspace);
         if (!equalLocator(current, locator)) fail("profile-machine-authority-changed");
@@ -2298,7 +1917,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       });
   }
   function publishIssuedDuo(transaction: IssuedDuoTransaction, phase: "settle" | "durable-intent") {
-      mutex(control, () => {
+      mutate(() => {
         assertHeld();
         if (!equalLocator(readLocator(control, workspace), locator)) fail("duo-machine-authority-changed");
         const intentPath = join(control, "profile-publication.json");
@@ -2354,7 +1973,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       });
     }
   function reclassifyDraft(witness: IncompleteProfileDraftWitness): void {
-    mutex(control, () => {
+    mutate(() => {
       assertHeld();
       if (mode !== "exclusive") fail("profile-incomplete-stopped-authority-required");
       const before = readMachineRegistry(control, locator), capture = verifyIncompleteProfileDraft(witness, locator.stateRoot);
@@ -2467,19 +2086,18 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     readProfileRegistry() {
       assertHeld();
       if (lstatMaybe(join(control, "profile-publication.json"))) {
-        return mutex(control, () => {
+        if (options?.readonlyControl === true) return readMachineRegistry(control, locator, false);
+        return mutate(() => {
           assertHeld();
           if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
           return readMachineRegistry(control, locator);
         });
       }
-      assertLiveObservationMutex(control);
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
       const before = profileObservation(control, locator);
       const document = readMachineRegistry(control, locator, false);
       const after = profileObservation(control, locator);
       assertHeld();
-      assertLiveObservationMutex(control);
       if (before !== after || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
       return document;
@@ -2501,7 +2119,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     commitProfileDuo(transaction: IssuedDuoTransaction) { publishIssuedDuo(transaction, "settle"); },
     reclassifyIncompleteProfile(witness: IncompleteProfileDraftWitness) { reclassifyDraft(witness); },
     abortUnpublishedProfile(witness: UnpublishedDraftAbortWitness) {
-      mutex(control, () => {
+      mutate(() => {
         assertHeld();
         if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-draft-abort-machine-changed");
         const document = readMachineRegistry(control, locator), capture = verifyUnpublishedDraftAbort(witness, locator.stateRoot);
@@ -2546,7 +2164,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     },
     capturePendingProfileLogout(input: z.infer<typeof LogoutOperationSchema>) {
       const operation = LogoutOperationSchema.parse(input);
-      const read = () => mutex(control, () => {
+      const read = () => mutate(() => {
         assertHeld();
         if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-pending-logout-locator-changed");
         const document = readMachineRegistry(control, locator, false);
@@ -2625,7 +2243,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     beginProfileErasure(profileId: string, witness: VerifiedCredentialErasureIntent) {
       const root = join(locator.stateRoot, "profiles", profileId), journalPath = erasurePath(locator, profileId);
       const capture = verifyCredentialErasureIntent(witness, root, journalPath, { installationId: locator.installationId, profileId });
-      mutex(control, () => {
+      mutate(() => {
         assertHeld(); readMachineRegistry(control, locator, false);
         if (lstatMaybe(join(control, "journal.json"))) fail("profile-erasure-operation-busy");
         if (lstatMaybe(join(control, "profile-publication.json"))) {
@@ -2667,7 +2285,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     settleProfileErasure(profileId: string, request: ErasureRequestIdentity, witness: VerifiedCredentialErasureHead) {
       const root = join(locator.stateRoot, "profiles", profileId), journalPath = erasurePath(locator, profileId);
       const head = verifyCredentialErasureHead(witness, root, journalPath, { installationId: locator.installationId, profileId });
-      mutex(control, () => {
+      mutate(() => {
         assertHeld();
         if (!lstatMaybe(join(control, "profile-publication.json"))) { shared.assertProfileErasureHead(profileId, head); return; }
         const intent = readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
@@ -2700,7 +2318,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       return true;
     },
     publishProfileCredentialInitialization(profileId: string, witness: CommittedCredentialInitialization) {
-      mutex(control, () => {
+      mutate(() => {
         assertHeld();
         const capture = verifyCommittedCredentialInitialization(witness, locator.stateRoot,
           erasurePath(locator, profileId));
@@ -2756,7 +2374,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     },
     release() {
       if (released) return;
-      mutex(control, () => { assertHeld(); unlinkSync(leasePath); syncDir(join(control, "leases")); });
+      assertHeld();
+      admissions.delete(localAdmission);
+      if (admissions.size === 0) installationAdmissions.delete(control);
       released = true;
     },
   });
@@ -2829,7 +2449,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       assertHeld(); assertRestoreHeld(workspace, restore); checkRestoreInput(locator, parsed);
       assertProfileRestoreDatabaseBinding(parsed.authorityPath, parsed.profile.binding);
       assertProfileRestoreDatabaseBinding(parsed.stagedPath, parsed.profile.binding);
-      mutex(control, () => {
+      mutate(() => {
         assertHeld(); assertRestoreHeld(workspace, restore);
         readMachineRegistry(control, locator, false);
         if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-restore-erasure-pending");
@@ -2856,7 +2476,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       assertHeld(); assertRestoreHeld(workspace, restore);
       assertProfileRestoreDatabaseBinding(parsed.authorityPath, parsed.profile.binding);
       const verified = outcome === "replaced" ? z.strictObject({ authorityGeneration: GenerationSchema, authorityContentFingerprint: DigestSchema }).parse(verify()) : undefined;
-      mutex(control, () => {
+      mutate(() => {
         assertHeld(); assertRestoreHeld(workspace, restore);
         let pending = readStrict(join(control, "journal.json"), AuthorityRestoreJournalSchema);
         if (pending.installationId !== locator.installationId
@@ -3517,23 +3137,6 @@ export function inspectFlatOfflineRunMaintenance(workspacePath: string) {
     }) };
 }
 
-export function inspectFlatWorkerProcessRecovery(workspacePath: string, acquisitionId: string) {
-  const installation = inspectFlatOfflineRunMaintenance(workspacePath);
-  return WorkerProcessRecoveryCaptureSchema.parse({ ...installation,
-    ...captureWorkerProcessRecoveryFile(installation.processLockRoot, acquisitionId),
-    singletonClaims: assertWorkerProcessRecoveryRuntimeStopped(installation.processLockRoot, acquisitionId) });
-}
-
-export function assertFlatWorkerProcessRecoveryHeld(lease: InstallationLease, restore: RestoreAdmissionHandle, acquisitionId: string) {
-  assertInstallationLease(lease);
-  if (lease.mode !== "exclusive") fail("worker-process-recovery-exclusive-required");
-  const workspace = lease.readInstallationContext().workspace;
-  assertRestoreHeld(workspace, restore);
-  const capture = inspectFlatWorkerProcessRecovery(workspace, acquisitionId);
-  if (!equalLocator(readLocator(join(workspace, CONTROL), workspace), lease.locator)) fail("worker-process-recovery-locator-changed");
-  return capture;
-}
-
 export function assertStoppedMachineMaintenance(lease: InstallationLease, restore: RestoreAdmissionHandle): void {
   assertInstallationLease(lease);
   if (lease.mode !== "exclusive") fail("profile-control-upgrade-runtime-active");
@@ -3747,7 +3350,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       inventoryProofs.set(claim.profileId, { claim, proof });
     },
     run(plan: boolean) {
-      return mutex(control, () => {
+      return withInstallationControl(control, () => {
         held();
         const registrations = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
         const runtimeAccess = registrations.profiles.some(row => row.registration.onboardingCompletion === undefined)

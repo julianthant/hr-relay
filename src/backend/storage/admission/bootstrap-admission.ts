@@ -2,18 +2,13 @@ import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } fro
 import { existsSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { RuntimeAdmission } from "./admission.js";
-import { acquireInstallation, AdmissionMutexBusyError, admissionMutexOwnerProvenDead, recoverAbandonedAdmissionMutexAtStartup, type RuntimePair } from "./installation.js";
+import { acquireInstallation, type RuntimePair } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 
 export function acquireEntrypointAdmission(workspace: string, mode: "shared" | "exclusive",
   beforeInitialAuthorityOpen?: (pair: RuntimePair) => void): RuntimeAdmission {
   beforeInitialAuthorityOpen?.({ stateRoot: resolve(workspace, rebuildRuntimeIsolation.stateRoot), artifactRoot: resolve(workspace, rebuildRuntimeIsolation.artifactRoot) });
-  try { return RuntimeAdmission.acquireMachine(workspace, mode); }
-  catch (error) {
-    if (!(error instanceof AdmissionMutexBusyError) || !admissionMutexOwnerProvenDead(workspace)) throw error;
-    recoverAbandonedAdmissionMutexAtStartup(workspace);
-    return RuntimeAdmission.acquireMachine(workspace, mode);
-  }
+  return RuntimeAdmission.acquireMachine(workspace, mode);
 }
 
 export async function acquireDashboardEntrypointAdmission(workspace: string, mode: "shared" | "exclusive"): Promise<RuntimeAdmission> {
@@ -40,24 +35,13 @@ export async function acquireDashboardEntrypointAdmission(workspace: string, mod
 }
 
 function acquireDashboard(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
-  try { return RuntimeAdmission.acquireDashboard(workspace, mode); }
-  catch (error) {
-    if (!(error instanceof AdmissionMutexBusyError) || !admissionMutexOwnerProvenDead(workspace)) throw error;
-    recoverAbandonedAdmissionMutexAtStartup(workspace);
-    return RuntimeAdmission.acquireDashboard(workspace, mode);
-  }
+  return RuntimeAdmission.acquireDashboard(workspace, mode);
 }
 
 export async function acquireStorageBackupEntrypointAdmission(workspace: string): Promise<RuntimeAdmission> {
   if (!existsSync(resolve(workspace, ".tracker/control/installation.json"))) return acquireEntrypointAdmission(workspace, "exclusive");
   const canonical = realpathSync(workspace);
-  let observed: RuntimeAdmission;
-  try { observed = RuntimeAdmission.fromInstallationLease(acquireInstallation(canonical, "exclusive")); }
-  catch (error) {
-    if (!(error instanceof AdmissionMutexBusyError) || !admissionMutexOwnerProvenDead(canonical)) throw error;
-    recoverAbandonedAdmissionMutexAtStartup(canonical);
-    observed = RuntimeAdmission.fromInstallationLease(acquireInstallation(canonical, "exclusive"));
-  }
+  const observed = RuntimeAdmission.fromInstallationLease(acquireInstallation(canonical, "exclusive"));
   try { if (!observed.requiresFlatStoreMigration()) return observed; }
   catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: observed });

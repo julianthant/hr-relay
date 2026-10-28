@@ -23,12 +23,13 @@ import { composeStorageCommand } from "./backend/app/composition/storage-compose
 import { composeWorkerRuntime } from "./backend/app/composition/worker-compose.js";
 import type { RuntimeProcessLockHandle } from "./backend/storage/sqlite/runtime-process-locks.js";
 import type { RuntimeAdmission } from "./backend/storage/admission/admission.js";
+import type { RuntimeLifetime } from "./backend/app/bootstrap/secure-env-bootstrap.js";
 
 /** Compose and start one admitted CLI invocation; secure bootstrap awaits it, so a shutdown failure reaches the entrypoint. */
 /** The checkout that owns this cli module, never the caller's CWD. */
 const REPOSITORY_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void): Promise<void> {
+export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void, lifetime?: RuntimeLifetime): Promise<void> {
   admission.assertLive();
   if (process.argv[2] === "storage" && process.argv[3] === "transactions") {
     const command = parseTransactionExportArgs(process.argv.slice(4));
@@ -40,7 +41,8 @@ export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: (
     return;
   }
   registerDashboardComposer(async (runtimeIsolation, options) => {
-    const application = await composeDashboardApplication({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend });
+    const application = await composeDashboardApplication({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend,
+      ...(lifetime === undefined ? {} : { lifetimeLock: lifetime.lock }) });
     acceptDashboardAdmission?.();
     return application;
   });
@@ -49,7 +51,9 @@ export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: (
       parseDryRunScenarioManifest(await loadDryRunScenarioManifest(workflow)))),
   }));
   registerWorkerComposer(async (runtimeIsolation, args) => {
-    const report = await composeWorkerRuntime({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, args, ...(takeInitialCustody === undefined ? {} : { takeInitialCustody }) });
+    const report = await composeWorkerRuntime({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, args,
+      ...(lifetime === undefined ? {} : { stopSignal: lifetime.parentSignal }),
+      ...(takeInitialCustody === undefined ? {} : { takeInitialCustody }) });
     if (report.closure === "unproved") process.exitCode = 1;
     return report;
   });

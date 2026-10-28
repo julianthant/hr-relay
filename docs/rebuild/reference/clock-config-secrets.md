@@ -506,7 +506,7 @@ Application settings, credentials, and environment files are not test-input fall
 ## Installation roots, boot, and maintenance
 
 `config/runtime-isolation.json` and `rebuildRuntimeIsolation` pin the default state root
-`.tracker/data`, artifact root `.tracker/data/artifacts`, backend port `3938`, frontend port `5174`,
+`.tracker/data`, artifact root `.tracker/data/artifacts`, backend port `3938`, lifetime lock port `3939`, frontend port `5174`,
 process-lock root `.tracker/data/locks`, browser root `.tracker/data/browsers`, and browser session
 namespace `hrauto-rebuild`. The default paths are checkout-relative.
 The installation locator becomes the active authority for the state and artifact pair;
@@ -514,35 +514,26 @@ process locks remain at the fixed checkout location. A root pair must be canonic
 and the artifact root cannot contain the state root.
 
 `installation.ts` stores checkout control under `.tracker/control` with `installation.json`,
-`locator.json`, lifetime leases, journals, and relocation receipts. Root ownership uses
+`locator.json`, journals, and relocation receipts. Root ownership uses
 `.runtime-owner.json`; `.runtime-source-fence.json` is a negative witness. An established missing or
 malformed locator refuses. Source markers and retained data never select a fallback installation.
 `RuntimeAdmission` rechecks held custody and exact permitted storage paths throughout use.
-Shared admission supports runtime openers; exclusive admission excludes them for offline operations.
-The installation owner retains its executing process's immutable birth identity after one successful
-OS observation. Own-PID lease rows still compare their stored birth token against that witness on
-every use; peer process observations remain fresh. Unknown initial identity refuses. Lease files,
-control witnesses, profile claims and generations continue to be checked throughout use.
+Shared and exclusive admission handles retain in-process mode exclusion and revocation. The kernel-held
+lifetime listener owns process exclusion: bootstrap binds the dedicated configured loopback `lockPort`
+before installation admission and holds it through shutdown. A busy port refuses with
+`RUNTIME_ALREADY_RUNNING`. Workers receive the listening handle over IPC before storage admission;
+each worker retains its copy through parent disconnect and its write-safe drain. The port stays held
+while any parent or worker copy remains open. Standalone and offline commands acquire the same port.
 
 `acquireEntrypointAdmission` adopts or initializes the genuinely empty default installation before
 serving it. It verifies an existing native database read-only; initial authority creation uses a
 path-bound initialization capability while adoption remains pending. An established installation
 with a missing database does not become fresh merely because owner markers survive.
 
-The admission mutex publishes a complete `owner.json` in a private temporary directory and renames
-the directory to `admission-mutex`. Release renames it away before deletion. It waits at most five
-monotonic seconds for occupied complete custody. An empty mutex raises `AdmissionMutexEmptyError`,
-a subtype of `AdmissionMutexBusyError`, with the explicit `storage recover-admission --empty` remedy.
-Startup may recover and retry once only when exact process birth identity proves the owner gone or
-reused. Recovery rechecks a settled locator, ownership witnesses, leases, process locks, and absent
-pending journal under fixed restore admission. Live, unknown, unsafe, or divergent custody refuses.
-Recovery writes a durable receipt under `.tracker/control/admission-mutex-recovery/`.
-
-Healthy profile reads create no mutex. An observed generic mutex may coexist with the read only
-when its private directory, sole canonical owner record and freshly observed OS birth identity prove
-a live holder. Unknown, dead, malformed or unsafe custody refuses. Registry publication intent retains
-its recovery path; locator, registry continuity, operations and erasure evidence must remain exact
-across the read. An unrelated lease mutex disappearing does not revoke an otherwise unchanged profile.
+The controller publishes machine registry and profile-operation changes synchronously through their
+atomic files and journals. Worker machine-control admission is read-only: it checks current locator,
+registry continuity, operations and erasure evidence, and refuses pending publication that needs
+controller repair. Releasing a parent admission revokes its derived profile children.
 
 `secure-env-bootstrap.ts` accepts only `cli` and `test-target-document-number` runners and awaits
 the selected runner. Production dashboard bundle validation precedes installation admission.
@@ -650,10 +641,7 @@ and divergent evidence refuse. Restore candidate validation in `relocation-resto
 checks current receipt-compatible relocation history and destination snapshot identities before
 replacement. Copied older-location backup evidence is not a current recovery candidate.
 
-The explicit commands `storage recover-admission --pid <owner-pid>` and
-`storage recover-admission --empty` hold fixed restore admission and preserve installation identity.
-They quarantine proven abandoned mutex custody rather than repairing a relocation journal.
-`storage recover-restore` owns interrupted restore settlement.
+`storage recover-restore` owns interrupted restore settlement under the lifetime listener.
 
 ## Settings and readiness readback
 
