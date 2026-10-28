@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { systemClock } from "../../../rules/time/clock.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
 import { join, parse, relative, resolve } from "node:path";
@@ -261,6 +263,90 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
       : new Error("credential store lock could not be published exactly"));
   }
   return true;
+}
+
+
+const PrivateFileLockSchema = z.strictObject({ nonce: z.uuid() });
+function assertPrivateLockBytes(bytes: Buffer): void {
+  try { PrivateFileLockSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))); }
+  catch { throw new Error("directory-integrity: private lock is malformed"); }
+}
+
+export function capturePriorPrivateFileLock(directory: string, name: string): (() => void) | undefined {
+  const parent = statDirectory(directory, "private lock parent", CREDENTIAL_DIRECTORY_MODE);
+  const path = join(directory, name);
+  const file = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
+  if (file === undefined) return undefined;
+  assertPrivateLockBytes(file.bytes);
+  return () => {
+    if (!sameDirectory(parent, statDirectory(directory, "private lock parent", CREDENTIAL_DIRECTORY_MODE))) throw new Error("directory-integrity: prior private lock parent changed");
+    const current = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
+    if (current === undefined || !sameDirectory(current.identity, file.identity) || !current.bytes.equals(file.bytes)) throw new Error("directory-integrity: prior private lock changed");
+    removeExactPath(path, file.identity, false, "directory-integrity: prior private lock changed");
+    fsyncPath(directory);
+  };
+}
+
+export interface PrivateFileLock {
+  assertHeld(): void;
+}
+
+export function withPrivateFileLock<T>(directory: string, name: string, body: (held: PrivateFileLock) => T): T {
+  if (name === "." || name === ".." || name.includes("/") || name.includes("\\") || name.length === 0) {
+    throw new Error("directory-integrity: private lock name is invalid");
+  }
+  const ancestry = new Map<string, DirectoryIdentity>();
+  if (!noSymlinkAncestry(directory, ancestry)) throw new Error("directory-integrity: private lock parent is missing");
+  const parent = statDirectory(directory, "private lock parent", CREDENTIAL_DIRECTORY_MODE);
+  const path = join(directory, name);
+  const bytes = Buffer.from(JSON.stringify({ nonce: randomUUID() }));
+  const deadline = systemClock.monotonicMs() + 10_000;
+  let identity: DirectoryIdentity | undefined;
+  let active = true;
+  const assertParent = (): void => {
+    if (!noSymlinkAncestry(directory, ancestry)
+      || !sameDirectory(parent, statDirectory(directory, "private lock parent", CREDENTIAL_DIRECTORY_MODE))) {
+      throw new Error("directory-integrity: private lock parent changed");
+    }
+  };
+  const held: PrivateFileLock = Object.freeze({
+    assertHeld(): void {
+      if (!active) throw new Error("private lock operation has ended");
+      assertParent();
+      const file = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
+      if (file === undefined || identity === undefined || !sameDirectory(identity, file.identity) || !file.bytes.equals(bytes)) {
+        throw new Error("directory-integrity: private lock changed");
+      }
+    },
+  });
+  for (;;) {
+    assertParent();
+    if (createPrivateLock(path, directory, bytes, () => {
+      assertParent();
+      const file = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
+      if (file === undefined || !file.bytes.equals(bytes)) return false;
+      identity = file.identity;
+      return true;
+    })) break;
+    const existing = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
+    if (existing !== undefined) assertPrivateLockBytes(existing.bytes);
+    if (systemClock.monotonicMs() > deadline) throw new Error("private file lock is unavailable");
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+  let outcome: { kind: "value"; value: T } | { kind: "error"; error: unknown };
+  try { held.assertHeld(); outcome = { kind: "value", value: body(held) }; }
+  catch (error) { outcome = { kind: "error", error }; }
+  try {
+    held.assertHeld();
+    if (identity === undefined) throw new Error("private lock identity is unavailable");
+    removeExactPath(path, identity, false, "directory-integrity: private lock changed before release");
+    fsyncPath(directory);
+  } catch (error) {
+    if (outcome.kind === "error") throw new AggregateError([outcome.error, error], "operation and private lock release failed", { cause: error });
+    throw error;
+  } finally { active = false; }
+  if (outcome.kind === "error") throw outcome.error;
+  return outcome.value;
 }
 
 export const ChatGptCredentialLockSchema = z.strictObject({ id: z.uuid(), pid: z.number().int().positive(), identity: ProcessStartIdentitySchema });
