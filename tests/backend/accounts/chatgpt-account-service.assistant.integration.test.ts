@@ -2,6 +2,9 @@ import { createChatGptCredentialRepository } from '../../../src/backend/storage/
 import { z } from 'zod';
 import assert from "node:assert/strict";
 import { it } from "vitest";
+import { setImmediate } from 'node:timers/promises';
+import { createBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
+import { ChatGptAccountError } from '../../../src/backend/accounts/chatgpt-account-service.js';
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, type AssistantInferenceRequest } from "../../../src/models/dashboard/assistant.js";
 import { syntheticAssistantTools, syntheticAssistantResponse, completedAssistantStream } from "../../support/helpers/assistant-function-fixtures.js";
 import { chatGptFixture, completedOcrStream , publicCapabilityResponses } from "../../support/helpers/chatgpt-account-fixtures.js";
@@ -163,6 +166,50 @@ it("refreshes account-specific models after a fresh sign-in without a bundled ca
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 2);
     assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
   } finally { await f.cleanup(); }
+});
+
+it('closes a cancelled held response before admitting another inference or account close', async () => {
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
+  const entered = Promise.withResolvers<void>(), abort = new AbortController();
+  let cancellations = 0, body: ReadableStream<Uint8Array> | undefined;
+  try {
+    await f.connected();
+    f.setResponse(() => {
+      body = new ReadableStream<Uint8Array>({ pull() { entered.resolve(); }, cancel() { cancellations++; } });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    });
+    const inference = f.service.inferAssistant(request, abort.signal).catch((error: unknown) => error);
+    await entered.promise;
+    await setImmediate();
+    abort.abort();
+    const result = await inference;
+    assert.equal(cancellations, 1);
+    assert.equal(body?.locked, false);
+    assert.ok(result instanceof Error && 'code' in result);
+    assert.equal(result.code, 'CHATGPT_OCR_CANCELLED');
+    f.setResponse(() => new Response(completedAssistantStream(turn), { headers: { 'content-type': 'text/event-stream' } }));
+    assert.equal((await f.service.inferAssistant(request)).output[0]?.type, 'function_call');
+    await f.service.close();
+  } finally { try { await f.cleanup(); } finally { await profile.close(); } }
+});
+
+it('retains a real transport cancel failure even when it carries the cancellation code', async () => {
+  const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
+  const entered = Promise.withResolvers<void>(), abort = new AbortController();
+  try {
+    await f.connected();
+    f.setResponse(() => new Response(new ReadableStream<Uint8Array>({
+      pull() { entered.resolve(); }, cancel() { throw new ChatGptAccountError('CHATGPT_OCR_CANCELLED'); },
+    }), { headers: { 'content-type': 'text/event-stream' } }));
+    const rejected = assert.rejects(f.service.inferAssistant(request, abort.signal), { code: 'CHATGPT_RESOURCE_CLOSURE_UNPROVED' });
+    await entered.promise;
+    await setImmediate();
+    abort.abort();
+    await rejected;
+    await assert.rejects(f.service.signOut(), { code: 'CHATGPT_RESOURCE_CLOSURE_UNPROVED' });
+    assert.equal(f.service.readAccount().state, 'connected');
+    await assert.rejects(f.cleanup(), { code: 'CHATGPT_RESOURCE_CLOSURE_UNPROVED' });
+  } finally { await profile.close(); }
 });
 for (const catalog of [{ data: [] }, { models: [{ slug: "bad slug", display_name: "Invalid", visibility: "list" }] },
   { models: [{ slug: "duplicate", display_name: "One", visibility: "list" }, { slug: "duplicate", display_name: "Two", visibility: "list" }] }])

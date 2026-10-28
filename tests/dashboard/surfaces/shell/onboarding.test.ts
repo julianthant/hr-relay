@@ -1,3 +1,5 @@
+import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
 import { OnboardingSetup } from "../../../../src/dashboard/surfaces/shell/onboarding-setup.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
@@ -5,7 +7,7 @@ import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { it } from "vitest";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
-import { mockOnboardingPort, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
+import { createServedOnboardingPort, mockOnboardingPort, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 it("keeps form drafts across wizard and router navigation without retaining passwords", async () => {
@@ -200,13 +202,6 @@ it("unknown enrollment copy never directs adding the uncertain method again", as
     assert.doesNotMatch(host.textContent ?? "", /outcome unknown|Needs review|may already have been added/);
     assert.match(host.textContent ?? "", /without repeating this attempt/);
     assert.doesNotMatch(host.textContent ?? "", /Security key is next|Start with a security key|then add a security key|Security key and Touch ID not added/);
-    const steps: string[] = [];
-    const stalePort = { ...port, reauthenticationRequired: true, cancel: async () => { throw new Error("must not cancel stale draft"); } };
-    await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep(step) { steps.push(step); }, onDashboard() {}, port: stalePort })));
-    assert.match(host.textContent ?? "", /original profile details/);
-    const recover = [...host.querySelectorAll("button")].find(button => button.textContent === "Return to your details"); assert.ok(recover);
-    await act(async () => recover.click());
-    assert.deepEqual(steps, ["signup"]);
     for (const state of ["pending", "unavailable"] as const) {
       const currentPort = { ...port, unavailable: false, onboarding: { ...onboarding, methods: { ...onboarding.methods, key: { ...onboarding.methods.key, state } } } };
       await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: currentPort })));
@@ -272,5 +267,28 @@ it("selects Fast Duo cards through the device selector and blocks selection whil
     await act(async () => cards()[1].click());
     assert.equal(select.value, "key");
     assert.equal(cards()[1].querySelector(".duo-method-pill")?.textContent, "Pending");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it.each(["refusal", "transport"] as const)("shows the served catalog refusal and reserves generic text for %s failure", async failure => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async () => {
+    if (failure === "transport") throw new Error("fixture offline");
+    return Response.json({ state: "error", code: "PROFILE_TRANSITION_BLOCKED", message: "private server cause must not be displayed", retryable: false }, { status: 409 });
+  } });
+  const port = createServedOnboardingPort(client, () => {});
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "signup", onStep() {}, onDashboard() {}, port })));
+    assert.doesNotMatch(host.textContent ?? "", /Claim existing data|Reopen profile|Return to your profile/);
+    for (const [name, value] of [["firstName", "Fresh"], ["lastName", "Fixture"], ["email", "fresh@ucsd.edu"], ["password", "disposable-password"]]) {
+      await act(async () => {
+        const input = host.querySelector<HTMLInputElement>(`input[name="${name}"]`); assert.ok(input);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    assert.equal(host.querySelector(".form-error")?.textContent, operatorFailureSentence(failure === "refusal" ? "PROFILE_TRANSITION_BLOCKED" : "PROFILE_AUTHORITY_UNAVAILABLE"));
+    assert.doesNotMatch(host.textContent ?? "", /private server cause/);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

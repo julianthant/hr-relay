@@ -472,9 +472,7 @@ export const ERROR_CATALOG = Object.freeze({
     "A verified backup and local storage upgrade are starting. Sign in again after Relay restarts.",
     EmptyParametersSchema,
   ),
-  PROFILE_OWNER_CLAIM_REQUIRED: catalogEntry("Existing data needs its owner's explicit claim. Use Claim existing data to continue.", EmptyParametersSchema),
-  PROFILE_OWNER_CLAIM_STARTING: catalogEntry("Relay is backing up and preserving your existing data. Continue the same claim after Relay reconnects.", EmptyParametersSchema),
-  PROFILE_OWNER_CLAIM_UNAVAILABLE: catalogEntry("Ownership or a safe transition could not be verified. Existing data remains held for recovery.", EmptyParametersSchema),
+  PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),
   PROFILE_UPGRADE_UNAVAILABLE: catalogEntry(
     "The authenticated storage upgrade could not finish. Storage custody is retained; do not retry the upgrade.",
     EmptyParametersSchema,

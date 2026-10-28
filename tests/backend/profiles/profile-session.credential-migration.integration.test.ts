@@ -1,3 +1,4 @@
+import { createDuoCredentialStore } from "../../../src/backend/storage/configuration/duo-credential-store.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
@@ -31,14 +32,19 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
   const active = peer.signIn(fields); assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("genuine current-format sign-in refused");
   const child = f.machine.admitProfile(createProfileRegistry(f.machine).storageClaim(active.profileId));
+  const duo = createDuoCredentialStore(child, f.machine, clock);
+  duo.erase(); assert.equal(duo.read().state, "erased");
   const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: f.machine,
     erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${active.profileId}.json`) });
   const path = join(child.stateRoot, "credentials", "protected.json"), record = store.read();
   const continuityPath = join(f.workspace, ".tracker", "control", "profile-registry.json");
-  const continuity = JSON.parse(readFileSync(continuityPath, "utf8")) as { erasures: { profileId: string; credentialKey?: unknown }[] };
+  const continuity = JSON.parse(readFileSync(continuityPath, "utf8")) as { erasures: { profileId: string; credentialKey?: unknown }[];
+    duo: { profileId: string; state: string; revision: number }[] };
   const row = continuity.erasures.find(value => value.profileId === active.profileId); assert.ok(row !== undefined);
   delete row.credentialKey;
+  continuity.duo = continuity.duo.map(entry => entry.profileId === active.profileId ? { profileId: active.profileId, state: "never-initialized", revision: 0 } : entry);
   writeFileSync(continuityPath, JSON.stringify(continuity), { mode: 0o600 });
+  unlinkSync(join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`));
   unlinkSync(join(f.machine.stateRoot, "machine", "credential-keys", `${active.profileId}.json`));
   assert.ok(record.lastApplied !== undefined);
   const retired = record.lastApplied;

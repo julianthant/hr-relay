@@ -6,19 +6,15 @@ import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
 import { acquireStorageBackupEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { captureExistingDataOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { ownerClaimRecoveryCopies } from "../../../../src/backend/storage/maintenance/flat-profile-claim.js";
-import { verifyExistingDataBackupFiles } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createHistoricalFlatProfileFixture, historicalFlatFields } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
+import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 
 type Fixture = ReturnType<typeof createHistoricalFlatProfileFixture>;
 async function backup(f: Fixture) {
@@ -52,7 +48,6 @@ it("backs up an adopted native6 flat source without login, preserves source iden
     assert.throws(() => admission.assertArtifactRoot(f.artifact), /flat-backup-artifact-refused/u);
     assert.throws(() => admission.assertProfileMigration(f.databasePath, 6), /profile-initialization-authority-required/u);
     assert.throws(() => AuthorityDatabase.upgradeStopped(admission, f.databasePath, f.processLockRoot, systemClock), /flat-backup-upgrade-refused/u);
-    assert.throws(() => captureExistingDataOwner(admission, historicalFlatFields), /flat-backup-runtime-refused/u);
     const outcome = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], systemClock, f.workspace, admission);
     assert.equal(outcome.exitCode, 0);
     const report = JSON.parse(outcome.output) as { manifests: { backupFileName: string }[]; coupledBackup: { backupPath: string } };
@@ -158,24 +153,6 @@ it("resumes only an exact interrupted private copy prefix without repeating SQLi
     assert.ok(copied); const inode = statSync(copied).ino, names = readdirSync(join(f.stateRoot, "backups", "authority"));
     const completed = await backup(f); assert.equal(completed.exitCode, 0);
     assert.equal(statSync(copied).ino, inode); assert.deepEqual(readdirSync(join(f.stateRoot, "backups", "authority")), names); untouched(f);
-  } finally { f.close(); }
-});
-
-it("keeps CLI protected copies in erasure inventory only through the immutable authenticated flat claim reference", async () => {
-  const f = createHistoricalFlatProfileFixture();
-  try {
-    await backup(f); const storageRoot = receiptRoot(f);
-    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
-    try {
-      const owner = captureExistingDataOwner(machine, historicalFlatFields);
-      const operation = await machine.claimExistingProfileData(owner, randomUUID(), systemClock, { ...historicalFlatFields, createdAt: systemClock.now().toISOString() });
-      assert.ok(operation.ownerClaim); assert.equal(operation.onboarding?.finish, undefined); assert.equal(machine.readProfileRegistry().profiles.length, 0);
-      const claimBackup = verifyExistingDataBackupFiles(operation.ownerClaim, f.workspace, machine.locator.installationId);
-      assert.equal(claimBackup.storageBackup?.backupPath, join(storageRoot, "backup.json"));
-      assert.deepEqual(ownerClaimRecoveryCopies(machine, operation.profileId), [dirname(operation.ownerClaim.backupPath), storageRoot]);
-      assert.deepEqual(ownerClaimRecoveryCopies(machine, operation.profileId, "flat"), [dirname(operation.ownerClaim.backupPath)]);
-      assert.deepEqual(ownerClaimRecoveryCopies(machine, randomUUID()), []);
-    } finally { machine.release(); }
   } finally { f.close(); }
 });
 

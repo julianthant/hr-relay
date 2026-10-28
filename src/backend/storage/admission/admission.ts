@@ -1,5 +1,5 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
-import { captureIncompleteProfileDraft, verifyExistingDataOwner, CredentialErasureHeadSchema, erasureRequestIdentity, type ExistingDataOwnerWitness } from "../configuration/credential-store.js";
+import { captureIncompleteProfileDraft, CredentialErasureHeadSchema, erasureRequestIdentity } from "../configuration/credential-store.js";
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import type { UnpublishedDraftAbortWitness, CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness, CommittedCredentialInitialization, CommittedCredentialKeyStage, CredentialKeyStagePublication } from "../configuration/credential-store.js";
@@ -37,6 +37,11 @@ export class ProfileStorageRelocationUnsupportedError extends Error {
 export class ProfileUpgradeSourceRefusalError extends Error {
   readonly code = "PROFILE_UPGRADE_UNAVAILABLE";
   constructor() { super(ERROR_CATALOG.PROFILE_UPGRADE_UNAVAILABLE.text); this.name = "ProfileUpgradeSourceRefusalError"; }
+}
+
+export class ProfileFlatStoreMigrationError extends Error {
+  readonly code = "PROFILE_FLAT_STORE_MIGRATION_FAILED";
+  constructor(cause: unknown) { super(ERROR_CATALOG.PROFILE_FLAT_STORE_MIGRATION_FAILED.text, { cause }); this.name = "ProfileFlatStoreMigrationError"; }
 }
 
 export interface RegisteredProfileStorageClaim {
@@ -470,7 +475,7 @@ export class RuntimeAdmission {
     this.assertProfileCredentialKey(profile, join(this.#stateRoot, "machine", "credential-keys", `${profile.profileBinding.profileId}.json`));
     (this.#authority as InstallationLease).publishProfileCredentialInitialization(profile.profileBinding.profileId, witness);
   }
-  beginProfileSignUp(fields: Omit<SignUpOperation, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "ownerClaim">): SignUpOperation {
+  beginProfileSignUp(fields: Omit<SignUpOperation, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding">): SignUpOperation {
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
     return (this.#authority as InstallationLease).beginProfileSignUp(fields);
@@ -1380,6 +1385,21 @@ export class RuntimeAdmission {
     return new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => this.readInstallationContext() },
       root, join(root, "artifacts"), [join(root, "state.db")], "stopped-incomplete-profile-inventory", "exclusive", this.#locator, binding, this);
   }
+  async startCleanFlatStore(): Promise<void> {
+    const { lease, restore } = this.#stoppedDuoRecovery();
+    try {
+      if (!lease.flatStoreMigrationPending()) {
+        lease.eraseFlatStoreCredentials(restore);
+        const backup = await this.forStoppedFlatBackup();
+        const { backupFlatStorage } = await import("../maintenance/existing-data-backup.js");
+        await backupFlatStorage(backup, systemClock);
+      }
+      lease.startCleanFlatStore(restore);
+    } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: this });
+      throw new ProfileFlatStoreMigrationError(error);
+    }
+  }
   async forStoppedFlatBackup(): Promise<RuntimeAdmission> {
     const { lease, restore } = this.#stoppedDuoRecovery(), context = lease.readInstallationContext();
     const root = join(context.workspace, rebuildRuntimeIsolation.stateRoot), path = join(root, "state.db");
@@ -1394,7 +1414,7 @@ export class RuntimeAdmission {
         || ["profile-registry.json", "profile-flat-claim.json", "profile-publication.json", "profile-owner-claims"].some(name => existsSync(join(context.workspace, ".tracker", "control", name)))) throw new Error("flat-backup-source-refused");
     };
     assertSource();
-    if (!this.requiresExistingDataClaim()) throw new Error("flat-backup-source-required");
+    if (!this.requiresFlatStoreMigration()) throw new Error("flat-backup-source-required");
     const sources = ["", "-wal", "-shm", "-journal"].map(suffix => {
       const sourcePath = `${path}${suffix}`;
       const value = readPrivateFile(sourcePath, { label: "authority database", maxBytes: 512 * 1024 * 1024 });
@@ -1422,39 +1442,6 @@ export class RuntimeAdmission {
       child.release(); throw error;
     }
   }
-  async forStoppedExistingDataBackup(witness: ExistingDataOwnerWitness, targetProfileId?: string): Promise<RuntimeAdmission> {
-    const { lease, restore } = this.#stoppedDuoRecovery();
-    const owner = verifyExistingDataOwner(witness, this), flat = owner.profileId === undefined;
-    if (flat && !this.requiresExistingDataClaim()) throw new Error("existing-data-flat-source-required");
-    const profileId = owner.profileId ?? z.uuid().parse(targetProfileId).toLowerCase();
-    const root = flat ? this.stateRoot : join(this.stateRoot, "profiles", profileId), path = join(root, "state.db");
-    const processLockRoot = join(lease.readInstallationContext().workspace, rebuildRuntimeIsolation.processLockRoot);
-    const registry = flat ? undefined : canonicalJsonStringify(this.readProfileRegistry()), physical = lstatSync(path);
-    const assertHeld = () => {
-      this.assertLive(); assertStoppedMachineMaintenance(lease, restore); verifyExistingDataOwner(witness, this);
-      if (flat ? !this.requiresExistingDataClaim() : canonicalJsonStringify(this.readProfileRegistry()) !== registry) throw new Error("existing-data-owner-source-changed");
-      const current = lstatSync(path);
-      if (current.dev !== physical.dev || current.ino !== physical.ino || current.size !== physical.size
-        || current.mtimeMs !== physical.mtimeMs || current.ctimeMs !== physical.ctimeMs) throw new Error("existing-data-owner-source-changed");
-      if (!flat) assertCanonicalProfileBinding(path, { installationId: this.locator.installationId, profileId });
-    };
-    assertHeld();
-    const qualification: ReadyProfileUpgrade["qualification"] = { current: { kind: "inspection" } };
-    const child = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release() {} },
-      root, join(root, "artifacts"), [path], "profile-ready-upgrade", "exclusive", this.#locator,
-      { installationId: this.locator.installationId, profileId }, this, undefined,
-      { sourcePath: path, processLockRoot, sourceSchemaVersion: flat ? 6 : 9, qualification });
-    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
-    try {
-      const source = AuthorityDatabase.inspectStoppedUpgrade(child, path, processLockRoot, systemClock);
-      if (source.schemaVersion !== (flat ? 6 : 9)) throw new Error("existing-data-source-schema-refused");
-      qualification.current = { kind: "qualified", sourceFingerprint: source.authorityContentFingerprint };
-      return child;
-    } catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: child });
-      child.release(); throw error;
-    }
-  }
   async reclassifyIncompleteProfileAsDraft(profileId: string): Promise<void> {
     const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
     const { lease } = this.#stoppedDuoRecovery(), admission = this.forStoppedIncompleteProfileInventory(profileId);
@@ -1465,68 +1452,6 @@ export class RuntimeAdmission {
       const witness = captureIncompleteProfileDraft(this, admission, assertEmpty);
       lease.reclassifyIncompleteProfile(witness);
     } finally { admission.release(); }
-  }
-  async claimExistingProfileData(owner: ExistingDataOwnerWitness, claimId: string, clock: Clock, flat?: { firstName: string; lastName: string; createdAt: string }): Promise<SignUpOperation> {
-    const { lease, restore } = this.#stoppedDuoRecovery();
-    const source = verifyExistingDataOwner(owner, this);
-    if ((source.profileId === undefined) !== (flat !== undefined)) throw new Error("existing-data-owner-claim-required");
-    const { backupExistingData } = await import("../maintenance/existing-data-backup.js");
-    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
-    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
-    const backupAdmission = await this.forStoppedExistingDataBackup(owner, claimId);
-    let backup: Awaited<ReturnType<typeof backupExistingData>>;
-    try { backup = await backupExistingData(this, backupAdmission, owner, claimId, clock); }
-    catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
-      backupAdmission.release(); throw error;
-    }
-    if (owner.profileId === undefined) {
-      if (flat === undefined) throw new Error("existing-data-owner-claim-required");
-      const { prepareFlatProfileClaim, completeFlatProfileClaim } = await import("../maintenance/flat-profile-claim.js");
-      let witness: Awaited<ReturnType<typeof prepareFlatProfileClaim>>;
-      try { witness = await prepareFlatProfileClaim(this, owner, backup, flat, backupAdmission); }
-      catch (error) {
-        if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
-        backupAdmission.release(); throw error;
-      }
-      let operation: SignUpOperation;
-      try { operation = lease.claimFlatProfileData(witness, restore, this); }
-      catch (error) {
-        if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: backupAdmission });
-        backupAdmission.release(); throw error;
-      }
-      backupAdmission.release();
-      await completeFlatProfileClaim(this, operation, clock);
-      return operation;
-    }
-    let inventory: RuntimeAdmission | undefined, failure: { error: unknown } | undefined;
-    try {
-      const acquired = this.forStoppedIncompleteProfileInventory(owner.profileId);
-      inventory = acquired;
-      const witness = captureIncompleteProfileDraft(this, acquired, () => assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(acquired)), { owner, backup });
-      lease.claimExistingProfileData(witness);
-    } catch (error) { failure = { error }; }
-    if (!(failure?.error instanceof AuthoritySourceClosureUnprovedError)) {
-      try { inventory?.release(); backupAdmission.release(); }
-      catch (error) { failure = { error: retainAuthoritySourceClosure(failure === undefined ? [error] : [failure.error, error], {}) }; }
-    }
-    if (failure !== undefined) {
-      if (!(failure.error instanceof AuthoritySourceClosureUnprovedError)) throw failure.error;
-      const retained = retainAuthoritySourceClosure([failure.error], { admission: backupAdmission });
-      throw inventory === undefined ? retained : retainAuthoritySourceClosure([retained], { admission: inventory });
-    }
-    const operations = join(this.stateRoot, "machine", "operations");
-    const matches = readdirSync(operations).filter(name => name.endsWith(".json")).map(name => {
-      const file = readPrivateFile(join(operations, name), { label: "lock", maxBytes: 1_048_576 });
-      if (file === undefined) throw new Error("existing-data-claim-readback-unproved");
-      return z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(file.bytes.toString("utf8")));
-    }).filter((operation): operation is SignUpOperation => operation.kind === "sign-up" && operation.ownerClaim?.claimId === backup.claimId);
-    if (matches.length !== 1 || matches[0] === undefined) throw new Error("existing-data-claim-readback-unproved");
-    return matches[0];
-  }
-  recoverFlatProfileClaim(): SignUpOperation | undefined {
-    const { lease, restore } = this.#stoppedDuoRecovery();
-    return lease.recoverFlatProfileClaim(restore, this);
   }
   assertStoppedIncompleteProfileInventory(): void {
     this.assertLive();
@@ -1616,16 +1541,16 @@ export class RuntimeAdmission {
     stoppedMaintenanceRestores.set(lease, restore);
     return RuntimeAdmission.fromInstallationLease(lease);
   }
-  requiresExistingDataClaim(): boolean {
+  requiresFlatStoreMigration(): boolean {
     this.assertLive();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
-    return (this.#authority as InstallationLease).requiresExistingDataClaim();
+    return (this.#authority as InstallationLease).requiresFlatStoreMigration();
   }
   static acquireDashboard(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
     const canonical = realpathSync(workspace);
     if (!existsSync(join(canonical, ".tracker", "control", "installation.json"))) return RuntimeAdmission.acquireMachine(canonical, mode);
     const lease = mode === "exclusive" ? acquireInstallation(canonical, "exclusive") : acquireInstallation(canonical, "shared");
-    try { lease.requiresExistingDataClaim(); return RuntimeAdmission.fromInstallationLease(lease); }
+    try { lease.requiresFlatStoreMigration(); return RuntimeAdmission.fromInstallationLease(lease); }
     catch (error) {
       if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: lease });
       try { lease.release(); }

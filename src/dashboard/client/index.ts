@@ -1,4 +1,4 @@
-import { ProfileOwnerClaimRequestSchema, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type ProfileOwnerClaimRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+import { CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 import { DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /** The ONE typed dashboard client (ref frontend-backend-integration) */
@@ -9,6 +9,7 @@ import {
   type DashboardDaySubscription,
   type DashboardDaySubscriptionDeps,
 } from "./subscriptions/subscription.js";
+import { WIRE_ERROR_BODY } from "./errors.js";
 import { createDashboardTransport, type FetchLike } from "./transport.js";
 
 export { DashboardClientError } from "./errors.js";
@@ -25,7 +26,6 @@ export type {
 } from "../../models/dashboard/search.js";
 
 export interface DashboardClient extends DashboardQueries, DashboardCommands {
-  claimExistingProfileData(request: ProfileOwnerClaimRequest): Promise<PublicProfileState>;
   readProfileSession(): Promise<PublicProfileState>;
   signInProfile(request: ProfileLoginRequest): Promise<PublicProfileState>;
   signUpProfile(request: ProfileSignUpRequest): Promise<PublicProfileState>;
@@ -51,59 +51,54 @@ export function createDashboardClient(input: Readonly<{
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
   const client: DashboardClient = Object.freeze<DashboardClient>({
-    async claimExistingProfileData(request: ProfileOwnerClaimRequest) {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/claim-existing-data", {
-        method: "POST", body: JSON.stringify(ProfileOwnerClaimRequestSchema.parse(request)),
-      })).body);
-    },
     async readProfileSession() {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/state")).body);
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/state")).body);
     },
     async signInProfile(request: ProfileLoginRequest) {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/sign-in", {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/sign-in", {
         method: "POST", body: JSON.stringify(ProfileLoginRequestSchema.parse(request)),
       })).body);
     },
     async signUpProfile(request: ProfileSignUpRequest) {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/sign-up", {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/sign-up", {
         method: "POST", body: JSON.stringify(ProfileSignUpRequestSchema.parse(request)),
       })).body);
     },
     async logOutProfile() {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/logout", { method: "POST", body: "{}" })).body);
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/logout", { method: "POST", body: "{}" })).body);
     },
     async completeProfileOnboarding(request) {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/complete", {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/complete", {
         method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
       })).body);
     },
     async cancelProfileOnboardingDuo(request) {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/cancel", {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/cancel", {
         method: "POST", body: JSON.stringify(CancelProfileOnboardingDuoRequestSchema.parse(request)),
       })).body);
     },
     async cancelProfileOnboarding(request) {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/cancel", {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/cancel", {
         method: "POST", body: JSON.stringify(CancelProfileOnboardingRequestSchema.parse(request)),
       })).body);
     },
     async showProfileOnboardingBrowser(request) {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/browser", {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/browser", {
         method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
       })).body);
     },
     async openProfileOnboardingPortal(request) {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/portal", {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/portal", {
         method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
       })).body);
     },
     async startProfileOnboardingDuo(request) {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/start", {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/start", {
         method: "POST", body: JSON.stringify(StartProfileOnboardingDuoRequestSchema.parse(request)),
       })).body);
     },
     async confirmProfileOnboardingDuo(request) {
-      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/confirm", {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/confirm", {
         method: "POST", body: JSON.stringify(ConfirmProfileOnboardingDuoRequestSchema.parse(request)),
       })).body);
     },
@@ -136,3 +131,8 @@ export type { WorkbookLibraryQueries } from "./queries/workbook-library-queries.
 
 export type { AssistantQueries } from "./queries/assistant-queries.js";
 export type { AssistantModelPreferenceView, AssistantRequest, AssistantResult, AssistantSubject } from "../../models/dashboard/assistant.js";
+
+function parseProfileState(body: unknown): PublicProfileState {
+  const wire = WIRE_ERROR_BODY.safeParse(body);
+  return PublicProfileStateSchema.parse(wire.success ? { state: "refused", code: wire.data.code } : body);
+}

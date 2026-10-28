@@ -39,7 +39,7 @@ async function historicalPrematureFixture() {
     keyBytes: readFileSync(fixture.keyPath), protectedBytes: readFileSync(fixture.protectedPath), databaseBytes: readFileSync(fixture.databasePath) };
 }
 
-it("withdraws only the historical incomplete publication into a same-key private draft and authenticates genuine Details again", async () => {
+it("withdraws only the historical incomplete publication into a same-key private draft and removes it at startup", async () => {
   const f = await historicalPrematureFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root);
   const readonly = machine.forStoppedIncompleteProfileInventory(f.profileId);
   const inventory = AuthorityDatabase.readIncompleteOnboardingInventory(readonly);
@@ -57,9 +57,12 @@ it("withdraws only the historical incomplete publication into a same-key private
   machine.release();
   const resumedMachine = acquireEntrypointAdmission(f.root, "exclusive"), profile = composeProfileRuntime({ admission: resumedMachine,
     processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
-  const resumed = profile.session.signUp({ ...f.fields, createdAt: new Date().toISOString() });
-  assert.equal(resumed.state, "onboarding"); if (resumed.state !== "onboarding") throw new Error("fixture supported draft resume required");
-  assert.equal(resumed.operationId, operation.operationId); assert.equal(resumed.profileId, f.profileId);
+  await profile.session.recoverOnboarding();
+  assert.equal(existsSync(f.profileRoot), false);
+  assert.equal(existsSync(f.operationPath), false);
+  const fresh = profile.session.signUp({ ...f.fields, createdAt: new Date().toISOString() });
+  assert.equal(fresh.state, "onboarding"); if (fresh.state !== "onboarding") throw new Error("fixture fresh draft required");
+  assert.notEqual(fresh.operationId, operation.operationId); assert.notEqual(fresh.profileId, f.profileId);
   assert.equal(resumedMachine.readProfileRegistry().profiles.length, 0);
   await profile.close(); resumedMachine.release(); await f.close();
 });

@@ -1,5 +1,4 @@
 import { CanonicalCrashRecoveryRequestSchema } from "./run-store-contracts.js";
-import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { notificationCollectionTarget, type NotificationCollectionOperation, type NotificationCollectionTarget } from "../../../models/notifications/notifications.js";
@@ -23,7 +22,7 @@ import { generatedArtifactFromRow } from "./generated-artifacts.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
 import { workerSlotFromRow } from "./worker-slots.js";
 import { authenticateWorkerSupervisorEffect, consumeWorkerSupervisorEffect, type WorkerSupervisorEffect, authenticateWorkerControlClosure, consumeWorkerControlClosure, type WorkerControlClosure, assertWorkerResetParkedWrite, workerControlFromRow, workerBrowserFromRow } from "./worker-control.js";
-import { readAppSettings, writeAppSettings } from "./settings-storage.js";
+import { readAppSettings } from "./settings-storage.js";
 import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
 import { requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody } from "./worker-slots.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
@@ -69,7 +68,7 @@ import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync, lstatSync, openSync, closeSync, fsyncSync, unlinkSync, constants } from "node:fs";
-import { dirname, relative, resolve, join } from "node:path";
+import { dirname, resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -2075,65 +2074,6 @@ export class AuthorityDatabase implements Disposable {
     return result;
   }
 
-
-  static async rebaseClaimedProfileConfiguration(machine: RuntimeAdmission, admission: RuntimeAdmission,
-    operation: import("../../../models/profiles/profile.js").SignUpOperation, processLockRoot: string, clock: Clock): Promise<void> {
-    machine.assertProfileCredentialInitialization(admission, operation);
-    const { readFlatProfileClaimReceipt } = await import("../maintenance/flat-profile-claim.js");
-    const receipt = readFlatProfileClaimReceipt(machine, operation);
-    if (receipt === undefined) throw new Error("existing-data-flat-receipt-required");
-    const path = join(admission.stateRoot, "state.db");
-    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
-    const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
-    let primary: { error: unknown } | undefined;
-    try {
-      database.exec("BEGIN EXCLUSIVE");
-      try {
-        inspectNormalAuthority(database);
-        const app = readAppSettings(database);
-        if (app?.active == null) throw new Error("existing-data-flat-settings-unavailable");
-        const row = database.prepare("SELECT payload_json FROM settings_snapshots WHERE id=?").get(receipt.activationPrior.configSnapshotId);
-        if (row === undefined) throw new Error("existing-data-flat-settings-unavailable");
-        const source = ConfigSnapshotRecordSchema.parse(JSON.parse(z.strictObject({ payload_json: z.string() }).parse(row).payload_json));
-        if (source.fingerprint !== receipt.activationPrior.configFingerprint) throw new Error("existing-data-flat-settings-changed");
-        const config = { ...source.config, paths: { ...source.config.paths, stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot,
-          browserProfileRoot: join(admission.stateRoot, "browsers"), duoCredential: join(admission.stateRoot, "credentials", "duo-webauthn.json"),
-          reportsDir: join(admission.stateRoot, "files", "reports"), downloadsDir: join(admission.stateRoot, "files", "downloads"),
-          onboardingDocsDir: join(admission.stateRoot, "files", "onboarding"), i9CheckTrackerPath: join(admission.stateRoot, "files", "reports", "i9-check-tracker.xlsx") } };
-        const snapshot = ConfigSnapshotRecordSchema.parse({ ...source, configSnapshotId: receipt.activationSnapshotId, config,
-          fingerprint: createHash("sha256").update(canonicalJsonStringify(config)).digest("hex"), capturedAt: receipt.claimedAt });
-        const next = ActiveRuntimeConfigRecordSchema.parse({ ...receipt.activationPrior, generation: receipt.activationPrior.generation + 1,
-          configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint, activatedAt: snapshot.capturedAt });
-        const existing = database.prepare("SELECT payload_json FROM settings_snapshots WHERE id=?").get(snapshot.configSnapshotId);
-        if (existing === undefined) {
-          if (canonicalJsonStringify(app.active) !== canonicalJsonStringify(receipt.activationPrior)) throw new Error("existing-data-flat-settings-changed");
-          database.prepare("INSERT INTO settings_snapshots(id,revision,fingerprint,payload_json,captured_at) VALUES(?,?,?,?,?)")
-            .run(snapshot.configSnapshotId, snapshot.revision, snapshot.fingerprint, canonicalJsonStringify(snapshot), snapshot.capturedAt);
-          for (const row of database.prepare("SELECT * FROM browser_sessions ORDER BY id").all()) {
-            const browser = workerBrowserFromRow(row);
-            if (browser.health !== "closed") throw new Error("existing-data-flat-browser-closure-unproved");
-            if (browser.profileDirectory === undefined) throw new Error("existing-data-flat-browser-path-unproved");
-            const local = relative(receipt.sourceStateRoot, browser.profileDirectory);
-            if (!local.startsWith("browsers/") || resolve(receipt.sourceStateRoot, local) !== browser.profileDirectory) throw new Error("existing-data-flat-browser-path-unproved");
-            const moved = { ...browser, profileDirectory: join(admission.stateRoot, local) };
-            if (database.prepare("UPDATE browser_sessions SET payload_json=? WHERE id=? AND payload_json=?")
-              .run(canonicalJsonStringify(moved), browser.sessionId, canonicalJsonStringify(browser)).changes !== 1) throw new Error("existing-data-flat-browser-path-changed");
-          }
-          writeAppSettings(database, { ...app, active: next });
-          database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(snapshot.capturedAt);
-        } else if (canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(z.strictObject({ payload_json: z.string() }).parse(existing).payload_json))) !== canonicalJsonStringify(snapshot)
-          || canonicalJsonStringify(app.active) !== canonicalJsonStringify(next)) throw new Error("existing-data-flat-activation-changed");
-        inspectNormalAuthority(database); database.exec("COMMIT");
-      } catch (error) {
-        try { database.exec("ROLLBACK"); }
-        catch (rollback) { throw retainAuthoritySourceClosure([error, rollback], { database }); }
-        throw error;
-      }
-    } catch (error) { primary = { error }; }
-    try { database.close(); }
-    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database }); }
-    if (primary !== undefined) throw primary.error;
-  }
 
   readUpgradePhases() {
     return this.withAuthorityReadSnapshot(() => {
