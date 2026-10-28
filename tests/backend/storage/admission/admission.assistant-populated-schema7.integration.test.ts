@@ -5,7 +5,6 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { z } from "zod";
 import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { ProfileBrowserRootRefusalError } from "../../../../src/backend/storage/admission/admission-identity.js";
 import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
@@ -104,7 +103,7 @@ it("upgrades actual populated prior Settings rows without rewriting their exact 
       assert.equal(inspection.prepare("SELECT COUNT(*) AS count FROM assistant_grants").get()?.count, 0);
     } finally { inspection.close(); }
     const beforeRuntime = storageTree(f.root);
-    await assert.rejects(async () => await f.finish(), error => error instanceof ProfileBrowserRootRefusalError && error.code === "PROFILE_BROWSER_ROOT_REFUSED");
+    assert.throws(() => f.admission.assertProfileRuntime(), /profile-bound-authority-required/u);
     assert.deepEqual(storageTree(f.root), beforeRuntime);
   } finally { await f.dispose(); }
 });

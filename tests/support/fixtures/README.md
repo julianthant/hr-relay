@@ -10,6 +10,8 @@ Parity and served dashboard BFFs retain separate corpus and build authority: `te
 
 `../helpers/dashboard/run-start-dialog-harness.ts` supplies per-caller Run Start DOM setup and cleanup for the dialog and omitted-step unit suites; importing it performs no DOM setup.
 
+
+`createBoundProfileFixture` distinguishes raw storage setup (`pending: "storage"`) from a retained private draft (`pending: "onboarding"`). `finish()` consumes that held draft; it never reopens raw setup.
 ## Module catalogue
 
 Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed inputs or fixture authority; modules under `helpers/` build harnesses or support fixture consumers; `processes/` contains executable child entrypoints.
@@ -85,6 +87,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/workflow-definition-fixtures.ts` | workflow definition fixtures |
 | `fixtures/write-sequencer-fixtures.ts` | write sequencer fixtures |
 | `helpers/admission-fixture.ts` | admission fixture |
+| `helpers/credential-keychain-fake.ts` | process-local fake keychain and child custody snapshots |
+| `helpers/credential-keychain-process-preload.ts` | resolves keyring imports to the fake before child fixture evaluation |
 | `helpers/caching-compiler-host.ts` | content-checked shared parsed compiler sources and fresh Programs |
 | `helpers/backend/cross-date-search-harness.ts` | cross date search harness |
 | `helpers/backend/dashboard-harness.ts` | dashboard harness |

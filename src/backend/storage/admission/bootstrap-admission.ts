@@ -1,5 +1,4 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
-import { systemClock } from "../../../rules/time/clock.js";
 import { existsSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { RuntimeAdmission } from "./admission.js";
@@ -18,10 +17,9 @@ export function acquireEntrypointAdmission(workspace: string, mode: "shared" | "
 }
 
 export async function acquireDashboardEntrypointAdmission(workspace: string, mode: "shared" | "exclusive"): Promise<RuntimeAdmission> {
-  const { flatProfileClaimNeedsRecovery, resumeFlatProfileClaim } = await import("../maintenance/flat-profile-claim.js");
   const admission = acquireDashboard(workspace, mode);
   try {
-    if (!flatProfileClaimNeedsRecovery(admission)) return admission;
+    if (!admission.requiresFlatStoreMigration()) return admission;
   } catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission });
     try { admission.release(); }
@@ -30,7 +28,7 @@ export async function acquireDashboardEntrypointAdmission(workspace: string, mod
   }
   admission.release();
   const stopped = RuntimeAdmission.acquireStoppedMachineControlMaintenance(workspace);
-  try { await resumeFlatProfileClaim(stopped, systemClock); }
+  try { await stopped.startCleanFlatStore(); }
   catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: stopped });
     try { stopped.release(); }
@@ -60,7 +58,7 @@ export async function acquireStorageBackupEntrypointAdmission(workspace: string)
     recoverAbandonedAdmissionMutexAtStartup(canonical);
     observed = RuntimeAdmission.fromInstallationLease(acquireInstallation(canonical, "exclusive"));
   }
-  try { if (!observed.requiresExistingDataClaim()) return observed; }
+  try { if (!observed.requiresFlatStoreMigration()) return observed; }
   catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: observed });
     observed.release(); throw error;

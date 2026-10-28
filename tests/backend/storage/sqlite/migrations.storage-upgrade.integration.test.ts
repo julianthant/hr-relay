@@ -3,12 +3,9 @@ import { existsSync,readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
 import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 const cleanups: Array<() => void | Promise<void>> = [];
-const clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 async function fresh() {
   const f = await storageRecoveryFixture();
@@ -39,9 +36,8 @@ describe("stopped native SQLite initialization", () => {
     assert.deepEqual(storageTree(f.root), before);
     assert.equal((await f.run()).state, "initialized");
     assert.equal(existsSync(`${f.root}/credentials`), false);
-    await f.finish();
-    const db = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "upgrade-readback" }, clock);
-    try { assert.equal(db.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { db.close(); }
+    const db = new DatabaseSync(f.path, { readOnly: true });
+    try { assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { db.close(); }
     const bytes = readFileSync(f.path); const admitted = rows(f.path);
     assert.equal((await f.run()).state, "already-upgraded");
     assert.deepEqual(readFileSync(f.path), bytes);

@@ -309,3 +309,10 @@ the full stopped-owner release check, in one synchronous authority transaction. 
 Duo, browser, graph or write proof rolls back the command, reservation and all provisional run and
 journal mutations. Attempting or foreign-owned work cannot use this ordering to become cancelled.
 Actual replacement is dispatched only after that transaction commits and rechecks release.
+
+Profile credential keys use OS custody through `storage/configuration/credential-key-custody.ts`.
+Missing or mismatched entries refuse before decryption; ordinary reads and restores never generate
+replacement keys. Ordinary credential erase/logout retains the key and authenticated erasure
+history. Cancelled unpublished sign-up removes metadata and then the OS entry under its durable
+abort intent; unproved deletion prevents completion. The [clock/config contract](clock-config-secrets.md)
+owns the exact migration and backup rules.

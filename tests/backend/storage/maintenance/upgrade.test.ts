@@ -21,7 +21,7 @@ const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 describe("native authority backup", () => {
   it("plans a fresh native root without creating authority and initializes only behind stopped admission",async()=>{
-    const fixture=await createBoundProfileFixture({pending:true}),root=fixture.stateRoot,path=fixture.path;
+    const fixture=await createBoundProfileFixture({pending:"storage"}),root=fixture.stateRoot,path=fixture.path;
     cleanups.push(async ()=>await fixture.close());const admission=fixture.admission,processLockRoot=join(root,"locks"),clock=capturedInstantClock(NOW);
     mkdirSync(processLockRoot,{mode:0o700});
     await expect(upgradeStorage(admission,{stateRoot:root,processLockRoot,plan:true},clock)).resolves.toMatchObject({state:"planned",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION});
@@ -33,7 +33,7 @@ describe("native authority backup", () => {
 });
 
 for (const entry of ['service', 'command'] as const) it(`retains actual stopped source custody through ${entry} upgrade failure`, async () => {
-  const f = await createBoundProfileFixture({ pending: true });
+  const f = await createBoundProfileFixture({ pending: "storage" });
   AuthorityDatabase.initializeProfile(f.admission, systemClock);
   const root = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), before = fs.readFileSync(f.path);
   const actualRemove = fs.rmSync, actualCreate = fs.mkdtempSync;
@@ -81,7 +81,7 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
 });
 
 for (const entry of ['service', 'command'] as const) it(`releases proved upgrade owners after an ordinary ${entry} snapshot creation refusal`, async () => {
-  const f = await createBoundProfileFixture({ pending: true });
+  const f = await createBoundProfileFixture({ pending: "storage" });
   AuthorityDatabase.initializeProfile(f.admission, systemClock);
   const root = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), before = fs.readFileSync(f.path);
   const actualCreate = fs.mkdtempSync, injected = new Error('upgrade-source-create-unavailable');

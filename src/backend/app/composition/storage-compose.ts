@@ -952,7 +952,7 @@ async function backupCommand(
               `backup: verified — ${manifest.backupFileName}`,
               `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
               `  manifest ${manifest.backupFileName}.manifest.json${"coupledBackup" in report ? "" : " (restore with: storage restore --from <that manifest>)"}`,
-              ...("coupledBackup" in report ? [`  private coupled companions: ${report.coupledBackup.backupPath}; owner claim remains in the dashboard`] : []),
+              ...("coupledBackup" in report ? [`  private coupled companions: ${report.coupledBackup.backupPath}; no flat data is carried into sign-up`] : []),
             ].join("\n"),
         exitCode: 0,
       };

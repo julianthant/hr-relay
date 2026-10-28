@@ -1,3 +1,4 @@
+import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync } from "node:fs";
@@ -17,7 +18,7 @@ for (const unknownWrite of [false, true]) it(`dispatches actual secure-bootstrap
       const held = acquireRuntimeProcessLock({ processLockRoot: process.argv[1], name: "workers", workerId: "synthetic-cli-worker", pid: process.pid });
       process.stdout.write(held.acquisitionId);`;
     const owner = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, f.processLockRoot],
-      { encoding: "utf8", timeout: 20_000, env: workerBootstrapEnvironment() });
+      { encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
     assert.equal(owner.error, undefined); assert.equal(owner.status, 0, owner.stderr);
     const acquisition = z.uuid().parse(owner.stdout.trim()), originalPath = join(f.processLockRoot, "workers", `${acquisition}.lock.json`);
     const original = WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(originalPath, "utf8")));
@@ -31,7 +32,7 @@ for (const unknownWrite of [false, true]) it(`dispatches actual secure-bootstrap
     const before = [originalPath, f.databasePath, f.protectedPath].map(path => ({ path, bytes: readFileSync(path), inode: statSync(path).ino }));
     const command = (args: string[]) => spawnSync(process.execPath,
       ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "recover-worker-process", "--acquisition", acquisition, ...args],
-      { cwd: f.workspace, encoding: "utf8", timeout: 20_000, env: workerBootstrapEnvironment() });
+      { cwd: f.workspace, encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
     const lockNames = readdirSync(f.processLockRoot), controlNames = readdirSync(join(f.workspace, ".tracker/control"));
     const planned = command(["--plan", "--json"]);
     assert.equal(planned.error, undefined); assert.equal(planned.status, 0, planned.stderr);

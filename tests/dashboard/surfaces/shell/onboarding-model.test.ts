@@ -384,22 +384,11 @@ for (const recovery of ["same", "foreign-operation", "foreign-profile", "signed-
       await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
       assert.equal(session.state?.state, "active");
     } else if (!["logout", "unmount"].includes(recovery)) {
-      assert.equal(session.failure, true);
       if (["stale", "signed-out"].includes(recovery)) {
-        assert.ok("reauthenticationRequired" in session.port && session.port.reauthenticationRequired);
-        const before = paths.length;
-        await assert.rejects(session.port.start("key"));
-        assert.equal(paths.length, before);
-        await act(async () => { await session.port.submit("signup", { firstName: "Original", lastName: "Operator", email: "original@ucsd.edu", password: "original-synthetic-password" }); });
-        assert.equal(paths.at(-1), "/api/v1/profile/sign-up");
-        if (recovery === "stale") {
-          assert.equal(session.failure, true);
-          assert.ok("reauthenticationRequired" in session.port && session.port.reauthenticationRequired);
-          await act(async () => { await session.port.submit("signup", { firstName: "Original", lastName: "Operator", email: "original@ucsd.edu", password: "original-synthetic-password" }); });
-        }
         assert.equal(session.failure, false);
-        assert.deepEqual(session.port.onboarding?.methods.key, draft.methods.key);
-      }
+        assert.equal(session.state?.state, "signed-out");
+        assert.equal(session.port.onboarding, undefined);
+      } else assert.equal(session.failure, true);
     }
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
 });

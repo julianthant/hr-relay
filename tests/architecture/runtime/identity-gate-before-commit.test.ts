@@ -16,9 +16,8 @@ const SEPARATION_CLASS_PATTERN = /separation|termination|offboard/iu;
 const IDENTITY_AUTHORITY_TASK_ID = String(SeparationsVerifyIdentityApproval.id);
 const IDENTITY_GATE_ID = "identity-approval";
 const IDENTITY_GATE_CONDITION = {
-  kind: "equals",
-  of: { from: "node", nodeId: "comparison", path: "packet.emplIdSource" },
-  value: "name-resolved",
+  kind: "is-true",
+  of: { from: "node", nodeId: "comparison", path: "approvalRequired" },
 } as const;
 
 interface UnauthorisedPath {
@@ -182,7 +181,7 @@ describe("identity authority before commit", () => {
     assert.deepEqual(violations[0]?.path, ["<terminal>", "side-read"]);
   });
 
-  it("keeps the name-resolved branch behind the exact typed operator gate", () => {
+  it("keeps name-resolved and operator-entered branches behind the exact typed operator gate", () => {
     const expectedSchemaHash = deriveSchemaHash(IdentityApprovalResultSchema, "output");
     let gates = 0;
     for (const descriptor of DESCRIPTORS) {
@@ -198,7 +197,7 @@ describe("identity authority before commit", () => {
         assert.ok(authority, `${descriptor.id}: identity gate has no authority task`);
         assert.ok(
           authority.dependsOn.map(String).includes(IDENTITY_GATE_ID),
-          `${descriptor.id}: authority task does not depend on the name-only gate`,
+          `${descriptor.id}: authority task does not depend on the identity approval gate`,
         );
       }
     }

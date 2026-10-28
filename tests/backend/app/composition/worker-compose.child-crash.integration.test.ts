@@ -1,3 +1,4 @@
+import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
@@ -111,7 +112,7 @@ async function prepare(arm: "read" | "write" = "read") {
 function launch(workspace: string, mode: "checkpoint" | "resume" | "attempting") {
   const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"),
     fileURLToPath(new URL("../../../support/processes/child-execution-crash-worker.ts", import.meta.url)), workspace, mode],
-  { env: {}, stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  { env: credentialKeychainTestEnvironment({}), stdio: ["ignore", "pipe", "pipe", "ipc"] });
   assert.ok(child.stdout && child.stderr);
   child.stdout.resume();
   const stderrHash = createHash("sha256"); let stderrBytes = 0, closed = false;

@@ -31,7 +31,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-async function installation(options: { pending?: true } = {}) {
+async function installation(options: { pending?: "storage" } = {}) {
   const workspace = mkdtempSync(join(realpathSync(tmpdir()), "backup-bootstrap-"));
   roots.push(workspace);
   cpSync(join(repositoryRoot, "src"), join(workspace, "src"), { recursive: true });
@@ -45,7 +45,7 @@ async function installation(options: { pending?: true } = {}) {
   symlinkSync(join(repositoryRoot, "node_modules"), join(workspace, "node_modules"));
   const profile = await createBoundProfileFixture({ workspace, ...options }); profiles.push(profile);
   const stateRoot = profile.stateRoot, profileId = profile.admission.profileBinding.profileId;
-  if (options.pending !== true) assert.equal(AuthorityDatabase.inspectExistingReadOnly(profile.admission, profile.path).schemaVersion,
+  if (options.pending !== "storage") assert.equal(AuthorityDatabase.inspectExistingReadOnly(profile.admission, profile.path).schemaVersion,
     CURRENT_AUTHORITY_SCHEMA_VERSION);
   const processLockRoot = join(profile.machine.stateRoot, "locks");
   profile.admission.release(); profile.machine.release();
@@ -82,7 +82,7 @@ it("backs up a current installation through real bootstrap admission and persist
 
 for (const change of ["no-selection", "unfinished", "foreign-binding"] as const) {
   it(`refuses a current CLI backup for ${change} without creating or changing authority`, async () => {
-    const fixture = await installation(change === "unfinished" ? { pending: true } : {});
+    const fixture = await installation(change === "unfinished" ? { pending: "storage" } : {});
     if (change === "no-selection") {
       const machine = acquireEntrypointAdmission(fixture.workspace, "exclusive");
       try { createProfileRegistry(machine).advanceSession(null); } finally { machine.release(); }

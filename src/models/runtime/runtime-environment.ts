@@ -124,7 +124,7 @@ const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
   "OCR_OPENROUTER_MODEL", "OCR_SAMBANOVA_MODEL",
 ] as const;
 
-const TEST_ONLY_ENVIRONMENT_KEYS = ["PARITY_UPDATE", "TZ"] as const;
+const TEST_ONLY_ENVIRONMENT_KEYS = ["PARITY_UPDATE", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN"] as const;
 
 const INERT_RETIRED_ENVIRONMENT_KEYS = [
   ...PROVIDER_MODEL_ENVIRONMENT_KEYS, ...SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS,
@@ -151,6 +151,8 @@ export const RETIRED_ENVIRONMENT_KEYS = deepFreeze(
 const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set();
 
 const TEST_ONLY_ENVIRONMENT_OWNERS = {
+  NODE_OPTIONS: ["playwright.parity.config.ts", "tests/support/duo-ceremony-setup.ts", "tests/support/helpers/credential-keychain-fake.ts"],
+  RELAY_TEST_KEYCHAIN: ["tests/support/helpers/credential-keychain-fake.ts"],
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
   TZ: [
     "tests/backend/runs/projections/run-summary.derivation.integration.test.ts",
@@ -207,7 +209,9 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
 
 export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilySpecSchema.array().parse([]));
 
-export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([]));
+export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
+  { key: "NODE_OPTIONS", paths: ["playwright.parity.config.ts"] },
+]));
 
 interface ComputedReaderInput {
   readonly path: string;

@@ -55,17 +55,14 @@ function assertNoCreation(path: string, before: ReturnType<typeof companions>) {
 }
 
 it("creates a genuine pending profile only through initializeProfile and refuses a second initialization", async () => {
-  const f = await createBoundProfileFixture({ pending: true });
+  const f = await createBoundProfileFixture({ pending: "storage" });
   try {
     assertAbsent(f.path);
     assert.throws(() => AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "existing-open-test" }), /profile-bound-authority-required/u);
     AuthorityDatabase.initializeProfile(f.admission);
     assert.equal(existsSync(f.path), true);
     assert.throws(() => AuthorityDatabase.initializeProfile(f.admission), /profile-database-initialization-already-exists/u);
-    await f.finish();
-    const database = open(f);
-    try { assert.equal(database.getMeta().profileId, f.admission.profileBinding.profileId); }
-    finally { database.close(); }
+
   } finally { await f.close(); }
 });
 

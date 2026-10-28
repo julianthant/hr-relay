@@ -265,11 +265,15 @@ export function createProfileOnboarding(input: {
         browsers.delete(operationId);
       }
     },
+    recoverClosed(operationId: string): void {
+      const operation = input.read(operationId), draft = requiredDraft(operation);
+      if (draft.finish !== undefined || browsers.has(operationId) || leases.size > 0) return unavailable();
+      input.update(operationId, latest => ({ operation: { ...latest, onboarding: { ...requiredDraft(latest), attempts: draft.attempts.map(entry => ({ ...entry,
+        providerClosedAt: entry.providerClosedAt ?? IsoInstantSchema.parse(input.clock.now().toISOString()) })) } }, result: undefined }));
+    },
     assertAbortable(operationId: string): void {
       const draft = requiredDraft(input.read(operationId));
-      if (draft.finish !== undefined || draft.duo.state !== "never-initialized" || draft.attempts.some(entry => entry.scope !== undefined
-        || entry.ceremony !== undefined || entry.portal !== undefined || entry.state === "unknown" || entry.state === "complete"
-        || entry.providerClosedAt === undefined)) return unavailable();
+      if (draft.finish !== undefined || draft.duo.state === "registered" || draft.attempts.some(entry => entry.providerClosedAt === undefined)) return unavailable();
       if (retainedFailures.length > 0) throw new AggregateError(retainedFailures, "profile-onboarding-custody-unproved");
     },
     verifyFinish(operationId: string): SignUpOperation {

@@ -161,7 +161,7 @@ interface Paths {
 }
 
 async function paths(mode: "ready" | "pending" | "uninitialized" = "uninitialized"): Promise<Paths> {
-  const profile = mode === "uninitialized" ? undefined : await createBoundProfileFixture(mode === "pending" ? { pending: true } : {});
+  const profile = mode === "uninitialized" ? undefined : await createBoundProfileFixture(mode === "pending" ? { pending: "storage" } : {});
   if (profile !== undefined) profiles.push(profile);
   const repoRoot = profile?.workspace ?? mkdtempSync(join_m0(realpathSync(tmpdir()), "hrauto-storage-backup-"));
   if (profile === undefined) roots.push(repoRoot);
@@ -405,14 +405,26 @@ afterEach(_afterEachFixture0);
     try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); }
     finally { database.close(); }
     assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), false);
+    for (const value of values) {
+      assert.equal([plan.output, applied.output].some(output => output.includes(value)), false);
+      assert.equal(readFileSync(p.authorityPath).includes(Buffer.from(value)), false);
+    }
+    assert.equal(readFileSync(environmentFile, "utf8"), source);
+  });
+
+  it("ignores retired cleanup-only names in a ready profile backup and repeated upgrade", async () => {
+    const p = await paths("ready");
+    const retired = ["I9_USER_ID", "I9_PASSWORD", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"];
+    const values = retired.map((_, index) => `synthetic-retired-private-${String(index)}`);
+    const source = retired.map((name, index) => `${name}=${values[index]}`).join("\n") + "\n";
+    const environmentFile = join_m0(p.repoRoot, ".env");
+    writeFileSync(environmentFile, source, { mode: 0o600 });
     const profile = profiles.find(value => value.workspace === p.repoRoot); assert.ok(profile);
-    await profile.finish();
-    admissions.set(p.repoRoot, profile.admission);
     assert.equal(boundProfileCredentials(profile.admission).read().revision, 2);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
     for (const value of values) {
-      assert.equal([plan.output, applied.output, backup.output].some((output) => output.includes(value)), false);
+      assert.equal(backup.output.includes(value), false);
       assert.equal(readFileSync(p.authorityPath).includes(Buffer.from(value)), false);
       for (const name of readdirSync(p.backupDirectory)) assert.equal(readFileSync(join_m0(p.backupDirectory, name)).includes(Buffer.from(value)), false);
     }
@@ -422,9 +434,8 @@ afterEach(_afterEachFixture0);
     assert.equal(z.object({ state: z.literal("already-upgraded") }).parse(JSON.parse(repeat.output)).state, "already-upgraded");
     assert.deepEqual(readFileSync(p.authorityPath), settled);
     assert.equal(readFileSync(environmentFile, "utf8"), source);
-    writeFileSync(environmentFile, source, { mode: 0o600 });
-    assert.equal(readFileSync(environmentFile, "utf8"), source);
   });
+
   it("ignores invalid retired migration values without reading or echoing them", async () => {
     const p = await paths(); const source = "HRAUTO_DEFAULT_WORKERS=synthetic-invalid-private-input\n";
     writeFileSync(join_m0(p.repoRoot, ".env"), source, { mode: 0o600 });

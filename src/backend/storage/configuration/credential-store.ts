@@ -1,3 +1,4 @@
+import { credentialKeyCustody } from "./credential-key-custody.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../source-closure.js';
 import {
   CREDENTIAL_DIRECTORY_MODE, CredentialLockRecordSchema, errorCode, fsyncPath, noSymlinkAncestry, statDirectory,
@@ -6,9 +7,8 @@ import {
   type CredentialInventory, type DirectoryIdentity,
 } from "./credential-safe-file.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
-import { CredentialInitializationSchema, deriveProfileNames, ProfileVerifierDocumentSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, LogoutOperationSchema, type ProfileRegistryRow, type LogoutOperation, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
+import { CredentialInitializationSchema, ProfileVerifierDocumentSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, LogoutOperationSchema, type ProfileRegistryRow, type LogoutOperation, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { emailKey, passwordMatches } from "./synthetic-verifier.js";
-import { verifyExistingDataBackup, verifyExistingDataBackupFiles, type ExistingDataBackup } from "../maintenance/existing-data-backup-files.js";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { linkSync, lstatSync, mkdirSync, readdirSync, renameSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -114,11 +114,7 @@ const CredentialEnvelopeSchema = z.strictObject({
   tag: z.string().length(24).regex(/^[A-Za-z0-9+/]{22}==$/u),
   ciphertext: z.string().min(4).max(Math.ceil(MAX_CREDENTIAL_DOCUMENT_BYTES / 3) * 4).regex(/^[A-Za-z0-9+/]+={0,2}$/u),
 });
-const CredentialKeyDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(1), installationId: z.uuid(), profileId: z.uuid(), keyId: z.uuid(),
-  key: z.string().length(44).regex(/^[A-Za-z0-9+/]{43}=$/u),
-});
-type CredentialKeyDocument = z.infer<typeof CredentialKeyDocumentSchema>;
+type CredentialKeyDocument = ReturnType<typeof credentialKeyCustody.read>;
 
 function parseCredentialJson(bytes: Uint8Array): unknown {
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown; }
@@ -208,9 +204,9 @@ function readDuoPurposeKey(issued: IssuedDuoPurpose) {
   assertCredentialKeyWitness(issued.keyPath, issued.witness, issued.custody.binding);
   const file = readPrivateFile(issued.keyPath, { label: "lock", maxBytes: 4096 });
   if (file === undefined) throw new Error("credential-key-required");
-  if (canonicalJsonStringify({ device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") })
+  if (canonicalJsonStringify({ device: file.identity.device, inode: file.identity.inode, digest: credentialKeyCustody.fileDigest(file.bytes) })
     !== canonicalJsonStringify(issued.witness.file)) throw new Error("credential-key-custody-changed");
-  const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(file.bytes));
+  const key = credentialKeyCustody.read(parseCredentialJson(file.bytes));
   return { ...issued, key };
 }
 
@@ -659,7 +655,7 @@ export function captureReadyUpgradeCredentialSource(machine: RuntimeAdmission, c
     const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
     const file = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
     if (keyFile === undefined || file === undefined) throw new Error("profile-upgrade-handoff-credential-required");
-    const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes));
+    const key = credentialKeyCustody.read(parseCredentialJson(keyFile.bytes));
     const envelope = CredentialEnvelopeSchema.parse(parseCredentialJson(file.bytes));
     if (key.installationId !== binding.installationId || key.profileId !== binding.profileId || envelope.installationId !== binding.installationId
       || envelope.profileId !== binding.profileId || envelope.keyId !== key.keyId) throw new Error("profile-upgrade-handoff-credential-binding-changed");
@@ -753,10 +749,10 @@ function captureKeyFile(keyPath: string, binding: ProfileDatabaseBinding): Crede
   noSymlinkAncestry(dirname(keyPath), new Map());
   const file = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
   if (file === undefined) throw new Error("credential-key-required");
-  const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(file.bytes));
+  const key = credentialKeyCustody.read(parseCredentialJson(file.bytes));
   credentialKeyBytes(key, binding);
   return CredentialKeyWitnessSchema.parse({ keyId: key.keyId, binding, file: { device: file.identity.device, inode: file.identity.inode,
-    digest: createHash("sha256").update(file.bytes).digest("hex") } });
+    digest: credentialKeyCustody.fileDigest(file.bytes) } });
 }
 function captureProfileCredentialsForControlUpgrade(machineRoot: string, binding: ProfileDatabaseBinding,
   keyWitness: CredentialKeyWitness, head: CredentialErasureHead) {
@@ -767,8 +763,8 @@ function captureProfileCredentialsForControlUpgrade(machineRoot: string, binding
   const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
   if (keyFile === undefined) throw new Error("credential-key-required");
   if (canonicalJsonStringify({ device: keyFile.identity.device, inode: keyFile.identity.inode,
-    digest: createHash("sha256").update(keyFile.bytes).digest("hex") }) !== canonicalJsonStringify(keyWitness.file)) throw new Error("credential-key-custody-changed");
-  const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes));
+    digest: credentialKeyCustody.fileDigest(keyFile.bytes) }) !== canonicalJsonStringify(keyWitness.file)) throw new Error("credential-key-custody-changed");
+  const key = credentialKeyCustody.read(parseCredentialJson(keyFile.bytes));
   let journal: ErasureJournal;
   if (head.state === "never-erased") journal = EMPTY_JOURNAL;
   else {
@@ -792,9 +788,9 @@ export function inspectProfileCredentialsForControlUpgrade(machineRoot: string, 
   return captureProfileCredentialsForControlUpgrade(machineRoot, binding, keyWitness, head).witness;
 }
 
-function credentialKeyMatcher(key: z.infer<typeof CredentialKeyDocumentSchema>, binding: ProfileDatabaseBinding, bytes: Uint8Array): (value: unknown) => boolean {
+function credentialKeyMatcher(key: CredentialKeyDocument, binding: ProfileDatabaseBinding): (value: unknown) => boolean {
   const little = Buffer.from(key.key, "utf16le");
-  const patterns = [credentialKeyBytes(key, binding), Buffer.from(key.key, "utf8"), little, Buffer.from(little).swap16(), Buffer.from(bytes)];
+  const patterns = [credentialKeyBytes(key, binding), Buffer.from(key.key, "utf8"), little, Buffer.from(little).swap16(), Buffer.from(encodePrivate(key))];
   const inspect = (value: unknown): boolean => {
     if (value instanceof Uint8Array) return patterns.some(pattern => Buffer.from(value.buffer, value.byteOffset, value.byteLength).includes(pattern));
     if (typeof value === "string") return inspect(Buffer.from(value, "utf8"));
@@ -818,7 +814,7 @@ export function attestStoppedControlCredentials(admission: RuntimeAdmission, cla
   const keyPath = join(source.machineRoot, "machine", "credential-keys", `${claim.profileId}.json`);
   const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
   if (keyFile === undefined) throw new Error("credential-key-required");
-  const containsKey = credentialKeyMatcher(capture.key, source.binding, keyFile.bytes);
+  const containsKey = credentialKeyMatcher(capture.key, source.binding);
   const inventory = assess({ capturedSecrets, capturedSecretsComplete: SECRET_NAMES.every(name => capture.document.record.entries[name] !== undefined), containsKey, keyScanOverlap: 4095,
     inspectEncrypted: path => {
       const bytes = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
@@ -961,7 +957,7 @@ function incompleteProfileCredentialOrigin(machineRoot: string, row: z.infer<typ
   assertCredentialKeyWitness(keyPath, key, binding);
   const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
   if (keyFile === undefined) throw new Error("credential-key-required");
-  const source = readAuthenticatedDocument(join(root, "credentials", "protected.json"), CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes)), binding);
+  const source = readAuthenticatedDocument(join(root, "credentials", "protected.json"), credentialKeyCustody.read(parseCredentialJson(keyFile.bytes)), binding);
   if (source?.document.latestRequest?.kind !== "apply") throw new Error("profile-incomplete-original-apply-required");
   const request = originalProfileApply(row, source.document);
   const verifierPath = join(machineRoot, "machine", "profile-verifiers.json");
@@ -980,8 +976,7 @@ export function inspectIncompleteProfileRecertification(machineRoot: string, row
   const { source } = incompleteProfileCredentialOrigin(machineRoot, row, key);
   return { device: source.identity.device, inode: source.identity.inode, digest: createHash("sha256").update(source.bytes).digest("hex") };
 }
-export function captureIncompleteProfileDraft(machine: RuntimeAdmission, admission: RuntimeAdmission, assertEmpty: () => void,
-  ownerClaim?: { owner: ExistingDataOwnerWitness; backup: ExistingDataBackup }): IncompleteProfileDraftWitness {
+export function captureIncompleteProfileDraft(machine: RuntimeAdmission, admission: RuntimeAdmission, assertEmpty: () => void): IncompleteProfileDraftWitness {
   admission.assertStoppedIncompleteProfileInventory();
   const binding = admission.profileBinding, registry = machine.readProfileRegistry(), row = registry.profiles.find(entry => entry.profileId === binding.profileId);
   if (row === undefined || row.registration.onboardingCompletion !== undefined || row.duoState !== "not-set-up" || row.lifecycle !== "ready"
@@ -989,10 +984,7 @@ export function captureIncompleteProfileDraft(machine: RuntimeAdmission, admissi
   const root = admission.stateRoot, databases = profileAuthorityFileWitnesses(root);
   const membership = unpublishedDraftAbortMembership(root);
   const allowed = new Set(["", "credentials", "credentials/protected.json", "artifacts", "state.db", "state.db-wal", "state.db-shm", "state.db-journal"]);
-  if (ownerClaim !== undefined) {
-    const backed = verifyExistingDataBackup(ownerClaim.backup, ownerClaim.owner, machine);
-    if (backed.profileId !== binding.profileId || ownerClaim.owner.profileId !== binding.profileId) throw new Error("existing-data-backup-owner-refused");
-  } else if (membership.some(entry => !allowed.has(entry.path)) || membership.some(entry => entry.path === "artifacts" && !entry.directory)) throw new Error("profile-incomplete-copy-membership-unproved");
+  if (membership.some(entry => !allowed.has(entry.path)) || membership.some(entry => entry.path === "artifacts" && !entry.directory)) throw new Error("profile-incomplete-copy-membership-unproved");
   assertEmpty();
   const keyPath = join(machine.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`), key = captureKeyFile(keyPath, binding);
   const { source, request, verifier, verifierPath, verifiers, pepper } = incompleteProfileCredentialOrigin(machine.stateRoot, row, key);
@@ -1001,12 +993,11 @@ export function captureIncompleteProfileDraft(machine: RuntimeAdmission, admissi
     createdAt: request.updatedAt, commandFingerprint: request.commandFingerprint, expectedRevision: request.expectedRevision,
     credentialInitialization: { mode: "initial", keyId: key.keyId, keyDocumentDigest: key.file.digest, keyFile: key.file, phase: "document-published" },
     onboarding: { accountId: randomUUID(), generation: 1, attempts: [], duo: { profileId: binding.profileId, state: "never-initialized", revision: 0 } },
-    ...(ownerClaim === undefined ? {} : { ownerClaim: ownerClaim.backup }), phase: "applying" });
+    phase: "applying" });
   const protectedFile = { device: source.identity.device, inode: source.identity.inode, digest: createHash("sha256").update(source.bytes).digest("hex") };
   const capture = deepFreeze(IncompleteProfileDraftCaptureSchema.parse({ operation, key, protectedFile, databases, membership }));
   const revalidate = () => {
     admission.assertStoppedIncompleteProfileInventory(); assertEmpty();
-    if (ownerClaim !== undefined) verifyExistingDataBackup(ownerClaim.backup, ownerClaim.owner, machine);
     if (canonicalJsonStringify(machine.readProfileRegistry()) !== canonicalJsonStringify(registry)
       || canonicalJsonStringify(unpublishedDraftAbortMembership(root)) !== canonicalJsonStringify(membership)
       || canonicalJsonStringify(profileAuthorityFileWitnesses(root)) !== canonicalJsonStringify(databases)) throw new Error("profile-incomplete-source-changed");
@@ -1028,92 +1019,10 @@ export function verifyIncompleteProfileDraft(witness: IncompleteProfileDraftWitn
   issued.revalidate(); return issued.capture;
 }
 
-export interface ExistingDataOwnerWitness { readonly profileId?: string; }
-const existingDataOwners = new WeakMap<ExistingDataOwnerWitness, {
-  installationId: string; stateRoot: string; profileId?: string;
-  file: { device: number; inode: number; digest: string }; key?: CredentialKeyWitness;
-  record: ProtectedStoreRecord; request: ProtectedSettingsApplyInput;
-}>();
-
-export function captureExistingDataOwner(machine: RuntimeAdmission, fields: { email: string; password: string }, profileId?: string, operation?: SignUpOperation): ExistingDataOwnerWitness {
-  requireRuntimeAdmission(machine).assertWritable();
-  const root = profileId === undefined ? machine.stateRoot : join(machine.stateRoot, "profiles", z.uuid().parse(profileId));
-  const path = join(root, "credentials", "protected.json");
-  noSymlinkAncestry(dirname(path), new Map());
-  statDirectory(dirname(path), "existing protected credentials", CREDENTIAL_DIRECTORY_MODE);
-  const file = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
-  if (file === undefined) throw new Error("existing-data-owner-unverifiable");
-  let document: CredentialDocument;
-  let key: CredentialKeyWitness | undefined;
-  if (profileId === undefined) {
-    document = convertVersionTwoDocument(parseCredentialJson(file.bytes));
-  } else {
-    const row = machine.readProfileRegistry().profiles.find(entry => entry.profileId === profileId);
-    if (operation === undefined) {
-      if (row === undefined || row.registration.onboardingCompletion !== undefined || row.lifecycle !== "ready" || row.credentialState !== "saved"
-        || row.duoState !== "not-set-up" || row.migratedFromLegacy !== undefined) throw new Error("existing-data-owner-source-refused");
-    } else {
-      if (row !== undefined || operation.profileId !== profileId || operation.ownerClaim === undefined
-        || machine.issueRegisteredProfileClaim(profileId).phase !== "setup") throw new Error("existing-data-owner-source-refused");
-      const pending = readPrivateFile(join(machine.stateRoot, "machine", "operations", `${operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
-      const context = machine.readInstallationContext();
-      if (pending === undefined || context === undefined
-        || canonicalJsonStringify(SignUpOperationSchema.parse(JSON.parse(pending.bytes.toString("utf8")))) !== canonicalJsonStringify(operation)
-        || verifyExistingDataBackupFiles(operation.ownerClaim, context.workspace, machine.locator.installationId).profileId !== profileId) throw new Error("existing-data-owner-source-refused");
-    }
-    const legacy = operation?.credentialInitialization?.mode === "proven-v2" && CredentialDocumentV2Schema.safeParse(parseCredentialJson(file.bytes)).success;
-    if (legacy) {
-      const initialization = operation.credentialInitialization;
-      if (initialization?.mode !== "proven-v2" || file.identity.device !== initialization.source.device || file.identity.inode !== initialization.source.inode
-        || createHash("sha256").update(file.bytes).digest("hex") !== initialization.source.digest) throw new Error("existing-data-owner-source-refused");
-      document = convertVersionTwoDocument(parseCredentialJson(file.bytes));
-    } else {
-      const binding = { installationId: machine.locator.installationId, profileId };
-      const keyPath = join(machine.stateRoot, "machine", "credential-keys", `${profileId}.json`);
-      key = captureKeyFile(keyPath, binding);
-      const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
-      if (keyFile === undefined) throw new Error("existing-data-owner-unverifiable");
-      const source = readAuthenticatedDocument(path, CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes)), binding);
-      if (source === undefined) throw new Error("existing-data-owner-unverifiable");
-      document = source.document;
-    }
-    if (row !== undefined) originalProfileApply(row, document);
-    const timekeeperName = row?.timekeeperName ?? (operation === undefined ? undefined : deriveProfileNames(operation.firstName, operation.lastName).timekeeperName);
-    if (document.record.entries.timekeeperName?.value !== timekeeperName) throw new Error("existing-data-owner-source-refused");
-  }
-  if (document.latestRequest?.kind !== "apply" || document.record.entries.ucpathUserId?.value !== fields.email
-    || !privateEqual(document.record.entries.ucpathPassword?.value, fields.password)) throw new Error("existing-data-owner-refused");
-  const witness = Object.freeze({ ...(profileId === undefined ? {} : { profileId }) });
-  existingDataOwners.set(witness, deepFreeze({ installationId: machine.locator.installationId, stateRoot: machine.stateRoot,
-    ...(profileId === undefined ? {} : { profileId }), file: { device: file.identity.device, inode: file.identity.inode,
-      digest: createHash("sha256").update(file.bytes).digest("hex") }, ...(key === undefined ? {} : { key }),
-    record: document.record, request: document.latestRequest.request }));
-  return witness;
-}
-
-export function verifyExistingDataOwner(witness: ExistingDataOwnerWitness, machine: RuntimeAdmission) {
-  const issued = existingDataOwners.get(witness);
-  if (issued === undefined || issued.installationId !== machine.locator.installationId || issued.stateRoot !== machine.stateRoot) throw new Error("existing-data-owner-unissued");
-  requireRuntimeAdmission(machine).assertLive();
-  const root = issued.profileId === undefined ? machine.stateRoot : join(machine.stateRoot, "profiles", issued.profileId);
-  noSymlinkAncestry(join(root, "credentials"), new Map());
-  statDirectory(join(root, "credentials"), "existing protected credentials", CREDENTIAL_DIRECTORY_MODE);
-  const file = readPrivateFile(join(root, "credentials", "protected.json"), { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
-  if (file === undefined || file.identity.device !== issued.file.device || file.identity.inode !== issued.file.inode
-    || createHash("sha256").update(file.bytes).digest("hex") !== issued.file.digest) throw new Error("existing-data-owner-source-changed");
-  if (issued.key !== undefined) assertCredentialKeyWitness(join(machine.stateRoot, "machine", "credential-keys", `${issued.profileId}.json`), issued.key, issued.key.binding);
-  return issued;
-}
 export interface UnpublishedDraftAbortWitness { readonly operationId: string; }
 const unpublishedDraftAborts = new WeakMap<UnpublishedDraftAbortWitness, {
   machine: RuntimeAdmission; admission: RuntimeAdmission; capture: z.infer<typeof UnpublishedDraftAbortCaptureSchema>;
 }>();
-export function authenticateUnpublishedDraftAbort(store: CredentialStore, operation: SignUpOperation,
-  fields: Readonly<{ email: string; password: string; timekeeperName: string }>): boolean {
-  const owner = committedStores.get(store);
-  if (owner === undefined) throw new Error("profile-draft-abort-store-unissued");
-  return owner.authenticateDraftAbort(operation, fields);
-}
 export function prepareUnpublishedDraftAbort(store: CredentialStore, operation: SignUpOperation): UnpublishedDraftAbortWitness {
   const owner = committedStores.get(store);
   if (owner === undefined) throw new Error("profile-draft-abort-store-unissued");
@@ -1131,7 +1040,6 @@ export function verifyUnpublishedDraftAbort(witness: UnpublishedDraftAbortWitnes
 }
 const committedStores = new WeakMap<CredentialStore, { readonly pendingLogoutInventory: (operation: LogoutOperation) => Readonly<{ assessment: CredentialInventory; revalidate(): void; dispose(): void }>; readonly admission: RuntimeAdmission; readonly stateRoot: string;
   readonly presence: () => readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[]; readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly keyPath: string; readonly containsKey: (value: unknown) => boolean; readonly inspectCopy: (path: string, capturedSecrets: readonly string[]) => Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> ; readonly migrationSource: () => CredentialMigrationSource; readonly readForErasure: (operationId: string) => ProtectedStoreRecord; readonly captureErasureHead: () => VerifiedCredentialErasureHead;
-  readonly authenticateDraftAbort: (operation: SignUpOperation, fields: Readonly<{ email: string; password: string; timekeeperName: string }>) => boolean;
   readonly prepareDraftAbort: (operation: SignUpOperation) => UnpublishedDraftAbortWitness }>();
 
 export function observeCredentialPresence(store: CredentialStore, admission: RuntimeAdmission): readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[] {
@@ -1211,34 +1119,17 @@ export function readForErasure(store: CredentialStore, operationId: string): Pro
   return owner.readForErasure(operationId);
 }
 
-export function captureCommittedCredentialReplay(store: CredentialStore, input: ProtectedSettingsApplyInput, claim?: SignUpOperation): CommittedCredentialWitness {
+export function captureCommittedCredentialReplay(store: CredentialStore, input: ProtectedSettingsApplyInput): CommittedCredentialWitness {
   const owner = committedStores.get(store);
   if (owner === undefined) throw new Error("profile-signup-credential-store-unissued");
   owner.admission.assertProfileInitialization();
   owner.admission.assertWritable();
   owner.journalAdmission.assertProfileErasureJournal(owner.admission, owner.journalPath);
-  let request = ProtectedSettingsApplyInputSchema.parse(input);
+  const request = ProtectedSettingsApplyInputSchema.parse(input);
   const binding = owner.admission.profileBinding;
   assertCanonicalProfileBinding(join(owner.stateRoot, "state.db"), binding);
   const database = lstatSync(join(owner.stateRoot, "state.db"));
   const key = captureKeyFile(owner.keyPath, binding);
-  if (claim !== undefined) {
-    const reference = claim.ownerClaim, context = owner.journalAdmission.readInstallationContext();
-    const pending = readPrivateFile(join(owner.journalAdmission.stateRoot, "machine", "operations", `${claim.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
-    if (reference === undefined || context === undefined || pending === undefined || claim.profileId !== binding.profileId
-      || canonicalJsonStringify(SignUpOperationSchema.parse(JSON.parse(pending.bytes.toString("utf8")))) !== canonicalJsonStringify(claim)
-      || verifyExistingDataBackupFiles(reference, context.workspace, binding.installationId).profileId !== binding.profileId) throw new Error("existing-data-claim-registration-unproved");
-    const keyFile = readPrivateFile(owner.keyPath, { label: "lock", maxBytes: 4096 });
-    if (keyFile === undefined) throw new Error("credential-key-required");
-    const authenticated = readAuthenticatedDocument(join(owner.stateRoot, "credentials", "protected.json"), CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes)), binding);
-    const original = authenticated?.document.latestRequest;
-    if (authenticated === undefined || original?.kind !== "apply" || !privateEqual(lastApplied(original.request), lastApplied(request)) || original.request.updatedAt !== request.updatedAt) throw new Error("existing-data-claim-registration-unproved");
-    for (const name of ["ucpathUserId", "ucpathPassword", "timekeeperName"] as const) {
-      const supplied = request.entries[name];
-      if (supplied === undefined || !("set" in supplied) || !privateEqual(authenticated.document.record.entries[name]?.value, supplied.set)) throw new Error("existing-data-owner-refused");
-    }
-    request = original.request;
-  }
   const before = captureCommitFiles(owner.stateRoot, owner.journalPath);
   const verified = store.verifyReplay(request);
   if (verified.state !== "applied") throw new Error("profile-signup-receipt-uncommitted");
@@ -1267,7 +1158,7 @@ export const CredentialKeyStagePublicationSchema = z.strictObject({ registry: Pr
 export type CredentialKeyStagePublication = z.infer<typeof CredentialKeyStagePublicationSchema>;
 export interface CommittedCredentialKeyStage { readonly operationId: string; }
 const committedKeyStages = new WeakMap<CommittedCredentialKeyStage, Readonly<{ capture: CredentialKeyStagePublication; revalidate(): void; afterIntent?: () => void }>>();
-export function assertCredentialKeyStagePublication(stateRoot: string, capture: Pick<CredentialKeyStagePublication, "priorOperation" | "operation" | "key">): void {
+export function assertCredentialKeyStageTransition(capture: Pick<CredentialKeyStagePublication, "priorOperation" | "operation" | "key">): void {
   const prior = capture.priorOperation, next = capture.operation, binding = capture.key.binding;
   if (prior.profileId !== binding.profileId || next.profileId !== prior.profileId || next.operationId !== prior.operationId
     || prior.credentialInitialization === undefined || next.credentialInitialization === undefined
@@ -1280,6 +1171,10 @@ export function assertCredentialKeyStagePublication(stateRoot: string, capture: 
     || canonicalJsonStringify({ mode: priorInitialization.mode, keyId: priorInitialization.keyId, phase: priorInitialization.phase,
       ...(priorInitialization.mode === "initial" ? {} : { source: priorInitialization.source }) }) !== canonicalJsonStringify({ mode: nextInitialization.mode,
       keyId: nextInitialization.keyId, phase: nextInitialization.phase, ...(nextInitialization.mode === "initial" ? {} : { source: nextInitialization.source }) })) throw new Error("credential-key-stage-intent-invalid");
+}
+export function assertCredentialKeyStagePublication(stateRoot: string, capture: Pick<CredentialKeyStagePublication, "priorOperation" | "operation" | "key">): void {
+  assertCredentialKeyStageTransition(capture);
+  const next = capture.operation, binding = capture.key.binding;
   const directory = join(stateRoot, "machine", "credential-keys"), stage = join(directory, `.credential-key.${next.operationId}.tmp`), final = join(directory, `${next.profileId}.json`);
   const staged = lstatSync(stage, { throwIfNoEntry: false }), published = lstatSync(final, { throwIfNoEntry: false });
   if ((staged === undefined) === (published === undefined)) throw new Error("credential-key-stage-outcome-uncertain");
@@ -1319,7 +1214,7 @@ export function assertCredentialInitializationPublication(stateRoot: string, jou
   const file = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
   if (file === undefined || file.identity.device !== capture.document.device || file.identity.inode !== capture.document.inode
     || createHash("sha256").update(file.bytes).digest("hex") !== capture.document.digest) throw new Error("credential-initialization-document-changed");
-  readAuthenticatedDocument(path, CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes)), capture.key.binding);
+  readAuthenticatedDocument(path, credentialKeyCustody.read(parseCredentialJson(keyFile.bytes)), capture.key.binding);
 }
 export function verifyCommittedCredentialInitialization(witness: CommittedCredentialInitialization, stateRoot: string, journalPath: string): CredentialInitializationPublication {
   const issued = initializedCredentials.get(witness);
@@ -1401,7 +1296,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     journalAdmission.assertProfileCredentialKey(admission, keyPath);
     const file = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
     if (file === undefined) throw new Error("credential-key-required");
-    const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(file.bytes));
+    const key = credentialKeyCustody.read(parseCredentialJson(file.bytes));
     credentialKeyBytes(key, binding);
     journalAdmission.assertProfileCredentialKeyAnchor(admission, key.keyId);
     return key;
@@ -1409,7 +1304,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   function containsKey(value: unknown): boolean {
     const file = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
     if (file === undefined) return false;
-    return credentialKeyMatcher(readKey(), binding, file.bytes)(value);
+    return credentialKeyMatcher(readKey(), binding)(value);
   }
   function readPrivateDocument(path: string): ReadDocument | undefined {
     if (readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES }) === undefined) return undefined;
@@ -2384,7 +2279,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         const existingKey = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
         if (existingKey !== undefined) {
           if (readKey().keyId !== initialization.keyId || initialization.keyDocumentDigest === undefined
-            || createHash("sha256").update(existingKey.bytes).digest("hex") !== initialization.keyDocumentDigest) throw new Error("credential-initialization-key-mismatch");
+            || credentialKeyCustody.fileDigest(existingKey.bytes) !== initialization.keyDocumentDigest) throw new Error("credential-initialization-key-mismatch");
           if (initialization.keyFile !== undefined && canonicalJsonStringify(captureKeyFile(keyPath, binding).file) !== canonicalJsonStringify(initialization.keyFile)) throw new Error("credential-key-custody-changed");
         }
         if (CredentialEnvelopeSchema.safeParse(decoded).success) {
@@ -2451,7 +2346,9 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
             assertInitializationInventoryProof(inventoryProof, admission, operation);
             const registryBeforeStage = journalAdmission.readProfileRegistry();
             hooks.beforeInitialKey?.();
-            const key = CredentialKeyDocumentSchema.parse({ schemaVersion: 1, ...binding, keyId: initialization.keyId, key: randomBytes(32).toString("base64") });
+            if (lstatSync(stagePath, { throwIfNoEntry: false }) !== undefined) throw new Error("credential-key-stage-outcome-uncertain");
+            const identity = { ...binding, keyId: initialization.keyId };
+            const key = credentialKeyCustody.resumeUnpublishedCreation(identity) ?? credentialKeyCustody.create(identity);
             writePrivateStage(stagePath, encodePrivate(key)); fsyncPath(directory);
             publicationStarted = true;
             const capturedKey = captureKeyFile(stagePath, binding), priorOperation = operation;
@@ -2616,28 +2513,19 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     if (!Number.isSafeInteger(legacy.record.revision + 1)) throw new Error("credential-migration-revision-invalid");
     return { state: "legacy", schemaVersion: legacy.schemaVersion, revision: legacy.record.revision,
       device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") };
-  }, authenticateDraftAbort: (input, fields) => {
-    const operation = journalAdmission.assertProfileCredentialInitialization(admission, SignUpOperationSchema.parse(input));
-    if (operation.onboarding?.abort === undefined || operation.onboarding.finish !== undefined) throw new Error("profile-draft-abort-request-required");
-    const retained = readPrivateDocument(unpublishedDraftAbortSourcePath(stateRoot, operation));
-    const source = retained ?? readPrivateDocument(protectedPath);
-    if (source?.document.latestRequest?.kind !== "apply" || source.document.latestRequest.request.commandId !== operation.commandId
-      || source.document.latestRequest.request.writeId !== operation.writeId || source.document.latestRequest.request.commandFingerprint !== operation.commandFingerprint
-      || source.document.record.revision !== operation.onboarding.abort.expectedRevision) throw new Error("profile-draft-abort-source-required");
-    return source.document.record.entries.ucpathUserId?.value === fields.email && source.document.record.entries.ucpathPassword?.value === fields.password
-      && source.document.record.entries.timekeeperName?.value === fields.timekeeperName;
   }, prepareDraftAbort: input => {
     const operation = journalAdmission.assertProfileCredentialInitialization(admission, SignUpOperationSchema.parse(input));
     const draft = operation.onboarding;
     if (operation.credentialInitialization?.mode !== "initial" || draft?.abort === undefined || draft.finish !== undefined
-      || draft.duo.state !== "never-initialized" || draft.attempts.some(attempt => attempt.scope !== undefined || attempt.ceremony !== undefined
-        || attempt.portal !== undefined || attempt.state === "unknown" || attempt.providerClosedAt === undefined)) throw new Error("profile-draft-abort-custody-unproved");
+      || draft.duo.state === "registered" || draft.attempts.some(attempt => attempt.providerClosedAt === undefined)) throw new Error("profile-draft-abort-custody-unproved");
+    const emptySource = (document: CredentialDocument) => privateEqual(document, initialDocument());
+    const originalSource = (document: CredentialDocument) => document.record.revision === draft.abort?.expectedRevision
+      && (emptySource(document) || document.latestRequest?.kind === "apply" && document.latestRequest.request.commandId === operation.commandId
+        && document.latestRequest.request.writeId === operation.writeId && document.latestRequest.request.commandFingerprint === operation.commandFingerprint);
     const sourcePath = unpublishedDraftAbortSourcePath(stateRoot, operation);
     const retained = readPrivateDocument(sourcePath);
     if (retained !== undefined) {
-      if (retained.document.latestRequest?.kind !== "apply" || retained.document.latestRequest.request.commandId !== operation.commandId
-        || retained.document.latestRequest.request.writeId !== operation.writeId || retained.document.latestRequest.request.commandFingerprint !== operation.commandFingerprint
-        || retained.document.record.revision !== draft.abort.expectedRevision) throw new Error("profile-draft-abort-source-required");
+      if (!originalSource(retained.document)) throw new Error("profile-draft-abort-source-required");
       const original = retained.bytes;
       assertOwnedAbortSource = () => {
         const current = readPrivateDocument(sourcePath);
@@ -2649,8 +2537,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     }
     const before = observeCurrent();
     if (lstatSync(sourcePath, { throwIfNoEntry: false }) === undefined) {
-      if (before.document.latestRequest?.kind !== "apply" || before.document.latestRequest.request.commandId !== operation.commandId
-        || before.document.latestRequest.request.writeId !== operation.writeId || before.document.record.revision !== draft.abort.expectedRevision) throw new Error("profile-draft-abort-source-required");
+      if (!originalSource(before.document)) throw new Error("profile-draft-abort-source-required");
       withLock(() => { const current = readCurrentUnderLock();
         if (!sameBytes(current.bytes, before.bytes)) throw new Error("profile-draft-abort-source-changed");
         writePrivateStage(sourcePath, before.bytes); fsyncPath(dirname(sourcePath));
@@ -2658,13 +2545,10 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       });
     }
     const source = readPrivateDocument(sourcePath), sourceFile = readPrivateFile(sourcePath, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
-    if (source === undefined || sourceFile === undefined || source.document.latestRequest?.kind !== "apply"
-      || source.document.latestRequest.request.commandId !== operation.commandId || source.document.latestRequest.request.writeId !== operation.writeId
-      || source.document.latestRequest.request.commandFingerprint !== operation.commandFingerprint
-      || source.document.record.revision !== draft.abort.expectedRevision) throw new Error("profile-draft-abort-source-required");
-    if (before.document.latestRequest?.kind === "apply" ? !sameBytes(before.bytes, sourceFile.bytes)
+    if (source === undefined || sourceFile === undefined || !originalSource(source.document)) throw new Error("profile-draft-abort-source-required");
+    if (originalSource(before.document) ? !sameBytes(before.bytes, sourceFile.bytes)
       : before.document.latestRequest?.kind !== "erase" || !privateEqual(before.document.latestRequest.request, draft.abort)
-        || !before.document.history.some(entry => entry.receipt.commandId === operation.commandId && entry.receipt.writeId === operation.writeId
+        || !emptySource(source.document) && !before.document.history.some(entry => entry.receipt.commandId === operation.commandId && entry.receipt.writeId === operation.writeId
           && entry.receipt.commandFingerprint === operation.commandFingerprint)) throw new Error("profile-draft-abort-source-changed");
     const sourceEvidence = { device: sourceFile.identity.device, inode: sourceFile.identity.inode, digest: createHash("sha256").update(sourceFile.bytes).digest("hex") };
     const assertSource = () => {

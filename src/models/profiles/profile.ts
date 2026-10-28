@@ -168,7 +168,6 @@ export const SignUpOperationSchema = z.strictObject({
   expectedRevision: z.number().int().safe().positive().optional(),
   credentialInitialization: CredentialInitializationSchema.optional(),
   onboarding: SignUpOnboardingSchema.optional(),
-  ownerClaim: z.strictObject({ claimId: z.uuid(), backupPath: z.string().min(1), backupDigest: z.string().regex(/^[0-9a-f]{64}$/u) }).optional(),
   phase: z.enum(["applying", "publishing"]),
 });
 
