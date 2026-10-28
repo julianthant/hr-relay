@@ -428,7 +428,7 @@ describe("profile session", () => {
   it("holds the profile lock until the current operation finishes", async () => {
     const root = await temp();
     let nested = false;
-    let nestedFailure: { error: unknown } | undefined;
+    const nestedFailures: unknown[] = [];
     const session = createProfileSession({
       machineRoot: root,
       credentialHooks: {
@@ -437,7 +437,7 @@ describe("profile session", () => {
           nested = true;
           try { session.signUp({
             firstName: "Sam", lastName: "Rivera", email: "sam@ucsd.edu", password: "secret-two", createdAt: "2026-09-06T12:00:00.000Z",
-          }); } catch (error) { nestedFailure = { error }; }
+          }); } catch (error) { nestedFailures.push(error); }
         },
       },
     });
@@ -445,7 +445,8 @@ describe("profile session", () => {
       firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
     }));
     assert.equal(alex.state, "active");
-    assert.ok(nestedFailure?.error instanceof PrivateFileLockUnavailableError);
+    assert.equal(nestedFailures.length, 1);
+    assert.ok(nestedFailures[0] instanceof PrivateFileLockUnavailableError);
     const registry = JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: { firstName: string }[] };
     assert.equal(registry.profiles.length, 1);
     assert.equal(registry.profiles[0]?.firstName, "Alex");
