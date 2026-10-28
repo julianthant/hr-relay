@@ -39,8 +39,7 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
   const workspace = profile.workspace, authorityPath = profile.path;
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(workspace, name));
-  const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null },
-    processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null } });
   let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
   let restarted: ReturnType<typeof acquireEntrypointAdmission> | undefined;
   let dashboardStopped = false;

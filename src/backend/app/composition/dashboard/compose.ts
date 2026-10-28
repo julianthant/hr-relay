@@ -1143,7 +1143,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
         onboardingDuo = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
           clock, closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
       }
-      const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: facts, processLockRoot, onboardingDuo });
+      const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: facts,  onboardingDuo });
       try { await profile.session.recoverOnboarding(); }
       catch (error) {
         try { await profile.close(); }

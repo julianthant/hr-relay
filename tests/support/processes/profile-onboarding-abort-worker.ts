@@ -22,7 +22,7 @@ function loseProcess(): never {
   const descriptor = openSync(path, "r"); try { fsync(descriptor); } finally { closeSync(descriptor); }
   process.exit(97);
 }
-const profile = composeProfileRuntime({ admission: machine, processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock,
+const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock,
   credentialHooks: { beforeRename() { if (armed && boundary === "protected-stage") loseProcess(); } } });
 const operations = join(machine.stateRoot, "machine", "operations");
 const names = readdirSync(operations).filter(name => name.endsWith(".json"));

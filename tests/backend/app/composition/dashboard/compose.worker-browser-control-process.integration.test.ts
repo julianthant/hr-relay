@@ -109,8 +109,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
   const boot = async () => {
     const bootMachine = acquireEntrypointAdmission(root, "shared");
     machine = bootMachine;
-    profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock,
-      processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot) });
+    profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock });
     const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
     assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("browser-control-profile-sign-in-refused");

@@ -35,8 +35,7 @@ export async function startSettingsActivationServer() {
     cpSync(PARITY_DIST_DIR, join(root, "dist", "dashboard"), { recursive: true });
     const machine = acquireEntrypointAdmission(root, "shared");
     held.machine = machine;
-    const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
-      processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot) });
+    const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
     held.profile = profile;
     const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     if (active.state !== 'active') throw new Error('parity-profile-sign-in-refused');

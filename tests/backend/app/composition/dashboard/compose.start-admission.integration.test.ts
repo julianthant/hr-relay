@@ -19,8 +19,7 @@ async function fixture() {
   const profile = await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(profile.workspace, name));
-  const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null },
-    processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null } });
   const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("profile activation required");

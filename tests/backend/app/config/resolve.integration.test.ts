@@ -278,8 +278,7 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
  const clock = manualClock(new Date(NOW));
  for (const name of ["package.json", "package-lock.json"])
   writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
- const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null },
-   processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot) });
+ const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null } });
  acquired.profile = profile;
  const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
  assert.equal(active.state, 'active');

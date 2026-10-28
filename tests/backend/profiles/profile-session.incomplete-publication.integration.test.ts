@@ -56,7 +56,7 @@ it("withdraws only the historical incomplete publication into a same-key private
   assert.equal(operation.onboarding?.duo.state, "never-initialized"); assert.equal(operation.onboarding?.finish, undefined);
   machine.release();
   const resumedMachine = acquireEntrypointAdmission(f.root, "exclusive"), profile = composeProfileRuntime({ admission: resumedMachine,
-    processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+     hostFacts: { primaryDisplay: null }, clock: systemClock });
   await profile.session.recoverOnboarding();
   assert.equal(existsSync(f.profileRoot), false);
   assert.equal(existsSync(f.operationPath), false);

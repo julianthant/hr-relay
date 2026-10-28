@@ -17,8 +17,8 @@ import { composeProfileRuntime, composeProfileActivity, composeSelectedProfileSt
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { CommandResultSchema, WorkerBrowserCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { admitWorkerPoolRoster, admitDirectWorker, admitWorkerVerification, retireWorkerVerification } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { acquireRuntimeProcessLock, bindWorkerProcessAdmission, readRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { admitWorkerPoolRoster, admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { WorkerChildEvidenceSchema } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
@@ -31,9 +31,8 @@ async function fixture() {
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
   const lifecycle = new RunRecordService({ database: context.database, clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("activity proof cannot enqueue"); } });
-  const processLockRoot = join(f.workspace, "process-locks");
   const supervisor = { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined };
-  const input = { admission: f.admission, database: context.database, clock, processLockRoot, lifecycle, supervisor };
+  const input = { admission: f.admission, database: context.database, clock, lifecycle, supervisor };
   return { ...f, context, input, async cleanup() { await context.account.close(); context.database.close(); await f.close(); } };
 }
 
@@ -90,41 +89,23 @@ it("observes actual empty canonical owners and awaits synthetic drain scheduling
   } finally { settle?.(); await f.cleanup(); }
 });
 
-it("refuses unknown OS identity and a missing process close acknowledgement after a genuine record positive", async () => {
-  const f = await fixture();
-  const record = acquireRuntimeProcessLock({ processLockRoot: f.input.processLockRoot, name: "workers", pid: process.pid,
-    admission: { kind: "unbound-worker", authorityPath: f.path } }, f.input.clock);
-  try {
-    const profileId = f.admission.profileBinding.profileId;
-    assert.equal(composeProfileActivity(f.input).hasUnquiescedWork(profileId), true);
-    const unknown = composeProfileActivity({ ...f.input, observeProcessIdentity: () => { throw new Error("synthetic process identity unavailable"); } });
-    assert.throws(() => unknown.hasUnquiescedWork(profileId), /identity unavailable/u);
-    const missingAck = composeProfileActivity({ ...f.input, observeProcessIdentity: () => ({ state: "gone" }) });
-    assert.throws(() => missingAck.hasUnquiescedWork(profileId), /closure-unproved/u);
-  } finally { record.release(); await f.cleanup(); }
-});
-
 it("includes an idle owned lifetime and refuses absent supervisor acknowledgement", async () => {
   const f = await fixture();
-  let worker: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
   try {
     const profileId = f.admission.profileBinding.profileId;
     assert.equal(composeProfileActivity(f.input).hasUnquiescedWork(profileId), false);
-    worker = bindWorkerProcessAdmission({ processLockRoot: f.input.processLockRoot, authorityPath: f.path, pid: process.pid, clock: f.input.clock,
-      open: () => f.context.database, close: () => undefined,
-      admit: () => f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-    commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
-    now: f.input.clock.now().toISOString()
-}, randomUUID()).workerId),
-    });
-    const started = f.context.database.authority.workerLeases.start({ workerId: worker.workerId, workflow: "person-lookup", browserSystems: ["crm"],
+    const slot = f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+      commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0,
+      now: f.input.clock.now().toISOString()
+    }, randomUUID()));
+    const started = f.context.database.authority.workerLeases.start({ workerId: slot.workerId, workflow: "person-lookup", browserSystems: ["crm"],
       processId: process.pid, requestedBy: "local-operator", now: f.input.clock.now().toISOString() });
     assert.equal(started.state, "started");
     const custody = f.context.database.readProfileResourceCustody();
     assert.equal(custody.slots.length, 1);
     assert.equal(custody.leases.length, 1);
     assert.throws(() => composeProfileActivity(f.input).hasUnquiescedWork(profileId), /supervisor-custody-unavailable/u);
-  } finally { worker?.processLock.release(); await f.cleanup(); }
+  } finally { await f.cleanup(); }
 });
 
 
@@ -157,28 +138,20 @@ async function stoppedPlanFixture(mode: "plan" | "direct" = "plan") {
   let planned: { slot: ReturnType<typeof plan>["slot"]; request: { commandId: string } } | undefined = mode === "plan" ? plan(f) : undefined;
   const child = spawn(process.execPath, ["-e", "process.stdout.write('ready'); process.stdin.resume(); process.stdin.on('end', () => process.exit(0))"],
     { stdio: ["pipe", "pipe", "pipe"] });
-  let held: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
   try {
     await once(child.stdout, "data"); assert.ok(child.pid);
-    held = bindWorkerProcessAdmission({ processLockRoot: f.input.processLockRoot, authorityPath: f.path, pid: child.pid, clock: f.input.clock,
-      open: () => f.context.database, close: () => undefined, admit: () => {
-    if (planned !== undefined)
-        return planned.slot.workerId;
-    assert.ok(child.pid);
-    const commandId = randomUUID();
-    const slot = f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-        commandId, workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: child.pid,
-        now: f.input.clock.now().toISOString()
-    }, randomUUID()));
-    planned = { slot, request: { commandId } };
-    return slot.workerId;
-} });
+    if (planned === undefined) {
+      const commandId = randomUUID();
+      const slot = f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+        commandId, workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, now: f.input.clock.now().toISOString()
+      }, randomUUID()));
+      planned = { slot, request: { commandId } };
+    }
     const now = f.input.clock.now().toISOString();
-    assert.equal(f.context.database.authority.workerLeases.start({ workerId: held.workerId, workflow: "person-lookup", browserSystems: [], processId: child.pid,
+    assert.equal(f.context.database.authority.workerLeases.start({ workerId: planned.slot.workerId, workflow: "person-lookup", browserSystems: [], processId: child.pid,
       requestedBy: "local-operator", now }).state, "started");
-    assert.equal(f.context.database.authority.workerLeases.reportLifecycle({ workerId: held.workerId, leaseGeneration: 1,
+    assert.equal(f.context.database.authority.workerLeases.reportLifecycle({ workerId: planned.slot.workerId, leaseGeneration: 1,
       lifecycle: { state: "stopped", startedAt: now, stoppedAt: now, reason: "operator" }, now }).state, "applied");
-    held.processLock.release(); held = undefined;
     const exit = once(child, "exit"); child.stdin.end();
     assert.deepEqual(await exit, [0, null]);
     const evidence = WorkerChildEvidenceSchema.parse({ state: "exited", pid: child.pid, outcome: "stopped", exitCode: 0, signal: null,
@@ -187,7 +160,7 @@ async function stoppedPlanFixture(mode: "plan" | "direct" = "plan") {
     assert.ok(planned); return { f, planned, input };
   } catch (error) {
     if (child.exitCode === null && child.signalCode === null) { const exit = once(child, "exit"); child.kill("SIGKILL"); await exit; }
-    held?.processLock.release(); await f.cleanup(); throw error;
+    await f.cleanup(); throw error;
   }
 }
 
@@ -292,20 +265,21 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
   const faults: string[] = [];
   const failures: unknown[] = [];
   let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
-  const profile = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null },
-    processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const lifetimeLock = await runtimeLifetimeLock();
+  const profile = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
   try {
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
     const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
     assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("retirement-fixture-sign-in-required");
-    dashboard = await composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), admission: f.machine, profile: { runtime: profile, token: active.token },
+    dashboard = await composeDashboardRuntime({ lifetimeLock, admission: f.machine, profile: { runtime: profile, token: active.token },
       clock, isolation: rebuildRuntimeIsolation, repoRoot: f.workspace, env: {}, backendPortOverride: 0, frontendPortOverride: 0,
       preflightRunnerFactory: healthyRuntimePreflightRunners, workerProcess: {
         launch: { command: process.execPath, prefixArgs: ["--import", "tsx", join(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), f.workspace],
           environment: {}, cwd: process.cwd() },
         spawn: request => {
-          const child = spawn(request.command, [...request.args], { cwd: request.cwd, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+          const child = spawn(request.command, [...request.args], { cwd: request.cwd, detached: true, stdio: ["ignore", "pipe", "pipe", "ipc"] });
+          void lifetimeLock.share(child).catch(error => { child.kill("SIGKILL"); child.emit("error", error); });
           children.push(child); child.stdout.resume(); child.stderr.resume();
           return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
         }, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => { faults.push(line); },
@@ -360,7 +334,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
       assert.ok(Date.parse(proof.checkedAt) < Date.parse(control.phase.completedAt));
     }
     const activity = composeProfileActivity({ admission: profile.selectedContext(active.token).admission, database,
-      processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot), clock,
+       clock,
       lifecycle: new RunRecordService({ database, clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("retirement fixture cannot enqueue"); } }),
       supervisor: { memberEvidence: () => { throw new Error("retired member must not require a live supervisor"); }, drainOwnedChildren: async () => { throw new Error("retirement fixture must not request another drain"); } } });
     const profileId = profile.selectedContext(active.token).admission.profileBinding.profileId;
@@ -376,7 +350,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
       assert.ok(typeof trigger?.sql === "string");
       try {
         raw.exec("DROP TRIGGER worker_slots_identity");
-        assert.ok(retired.retiredAt);
+        assert.ok(retired.slot.retiredAt);
         const altered = { ...retired, retiredAt: new Date(Date.parse(retired.retiredAt) + 1).toISOString() };
         raw.prepare("UPDATE worker_slots SET retired_at=?,payload_json=? WHERE id=?")
           .run(altered.retiredAt, canonicalJsonStringify(altered), retired.workerId);
@@ -425,24 +399,20 @@ it("refuses a real other-workflow plan bound to a previously valid stopped slot 
 
 it("authenticates canonical verification pending and exact retired provenance through both readers", async () => {
   const f = await fixture();
-  const ownerHandle = acquireRuntimeProcessLock({ processLockRoot: f.input.processLockRoot, name: "live-smoke", pid: process.pid }, f.input.clock);
-  let released = false;
+  const lock = await runtimeLifetimeLock();
   try {
-    const owner = readRuntimeProcessLock(f.input.processLockRoot, "live-smoke"); assert.ok(owner);
     const grantCommandId = randomUUID(), now = f.input.clock.now().toISOString();
-    const slot = f.context.database.withAuthorityTransaction(repositories => admitWorkerVerification(repositories, {
+    const slot = f.context.database.admitVerificationWorker({ ...f.admission.profileBinding,
       commandId: grantCommandId, workflow: "person-lookup", expectedPoolVersion: 0,
-      processLockRoot: f.input.processLockRoot, stateRoot: f.stateRoot, owner, now,
-    }, randomUUID()));
+      lockPort: lock.port, profileRunId: randomUUID(), system: "crm", credentialKey: "a".repeat(64), leaseGeneration: 1, now,
+    }, lock);
     assert.deepEqual(reservationReaders(f), [{ state: "pending", workerId: slot.workerId, reservationCommandId: grantCommandId }]);
     const retirementCommandId = randomUUID();
-    const retired = f.context.database.withAuthorityTransaction(repositories => retireWorkerVerification(repositories, {
+    const retired = f.context.database.retireVerificationWorker({ ...f.admission.profileBinding,
       commandId: retirementCommandId, grantCommandId, workerId: slot.workerId, expectedRevision: slot.membershipRevision,
-      expectedPoolVersion: 1, now, cleanup: { acquisitionId: owner.acquisitionId, browsersClosed: true,
-        profilesReleased: true, duoReleased: true, mode: "live", evidence: "browserless" },
-    }, randomUUID()));
-    assert.ok(retired.retiredAt);
-    ownerHandle.release(); released = true;
+      expectedPoolVersion: 1, now, cleanup: "closed",
+    }, lock);
+    assert.ok(retired.slot.retiredAt);
     assert.deepEqual(reservationReaders(f), [{ state: "settled", workerId: slot.workerId, reservationCommandId: grantCommandId }]);
     assert.equal(composeProfileActivity(f.input).hasUnquiescedWork(f.admission.profileBinding.profileId), false);
     const raw = new DatabaseSync(f.path);
@@ -455,5 +425,5 @@ it("authenticates canonical verification pending and exact retired provenance th
     } finally { raw.close(); }
     assert.throws(() => f.context.database.readProfileResourceCustody(), /worker-verification-retirement-unproved/u);
     closedReservationRefuses(f, /worker-verification-retirement-unproved/u);
-  } finally { if (!released) ownerHandle.release(); await f.cleanup(); }
+  } finally { await f.cleanup(); }
 });

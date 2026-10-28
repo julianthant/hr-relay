@@ -47,7 +47,7 @@ for (const pendingClose of [false, true]) it(pendingClose
       return context;
     } },
   });
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock,
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock,
     onboardingDuo: { ...provider, async showBrowser(draft) {
       owner = draft;
       await provider.showBrowser({ ...draft, async acquireCredentials() { acquisitions++; return draft.acquireCredentials(); } });

@@ -48,7 +48,7 @@ async function fixture() {
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
   const signUpFields = { firstName: "Synthetic", lastName: "Operator", email: "operator@ucsd.edu", password: "synthetic-password", createdAt: clock.now().toISOString() };
-  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(() => signUpFields.email), admission: machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot });
+  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(() => signUpFields.email), admission: machine, clock, hostFacts: { primaryDisplay: null } });
   const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(signUpFields));
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("signup required");
   const context = runtime.selectedContext(active.token), database = context.database;
@@ -179,7 +179,7 @@ it("does not resurrect an approval copied back by the real stopped restore", asy
     processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock, undefined, undefined, f.context.credentials);
   assert.equal((await restore.restore({ manifestPath: join(directory, `${manifest.backupFileName}.manifest.json`), stoppedSystemProof: proof })).state, "restored");
   assert.throws(() => f.authorization.consume(chat, proposal.id));
-  const restarted = composeProfileRuntime({ admission: f.machine, clock: f.clock, hostFacts: { primaryDisplay: null }, processLockRoot });
+  const restarted = composeProfileRuntime({ admission: f.machine, clock: f.clock, hostFacts: { primaryDisplay: null } });
   const active = restarted.session.signIn({ email: "operator@ucsd.edu", password: "synthetic-password", at: f.clock.now().toISOString() });
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("active restored profile required");
   const context = restarted.selectedContext(active.token);

@@ -22,7 +22,7 @@ import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../.
 it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s authority at the genuine supervisor after awaited preflight and never redispatches a failed effect", async change => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
-  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
   const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("active profile required");
   let release!: () => void, entered!: () => void;

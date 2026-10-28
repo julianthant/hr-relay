@@ -51,7 +51,7 @@ it("converts only stopped machine-control format while keeping an incomplete his
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
   maintenance.release();
   const machine = acquireEntrypointAdmission(f.workspace, "exclusive");
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts, clock: systemClock });
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts, clock: systemClock });
   const signed = profile.session.signIn({ email: historicalIncompleteProfileFields.email, password: historicalIncompleteProfileFields.password,
     at: new Date().toISOString() });
   assert.equal(signed.state, "refused");

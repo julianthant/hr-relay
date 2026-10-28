@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { composeDashboardRuntime as composeProductionDashboardRuntime, type DashboardComposeInput, type DashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
@@ -48,8 +48,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
         closed = true;
       };
       profileClosures.push(close);
-      runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
-        processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot) });
+      runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
       const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
       assert.equal(active.state, "active");
       if (active.state !== "active") throw new Error("fixture-profile-sign-in-required");

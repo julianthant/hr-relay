@@ -23,7 +23,7 @@ it("backs up a flat store without credentials, starts empty, and accepts an ordi
       assert.equal(record.files.some(entry => entry.path.startsWith("profile/credentials/")), false);
       assert.ok(record.files.some(entry => entry.path.startsWith("profile/backups/authority/") && entry.path.endsWith(".sqlite")));
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "flat-start-clean.json")), false);
-      const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+      const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
       try {
         const draft = profile.session.signUp({ firstName: "Fresh", lastName: "Fixture", email: "fresh-fixture@ucsd.edu", password: "disposable-new-password", createdAt: systemClock.now().toISOString() });
         assert.equal(draft.state, "onboarding");

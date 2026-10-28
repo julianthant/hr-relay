@@ -77,7 +77,7 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
   const fields = { firstName: "Synthetic", lastName: "Operator", email: "profile@ucsd.edu", password: "synthetic-profile-password", createdAt: clock.now().toISOString() };
-  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(() => fields.email), admission: machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot });
+  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(() => fields.email), admission: machine, clock, hostFacts: { primaryDisplay: null } });
   try {
 
     const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(fields)); assert.equal(active.state, "active");
@@ -129,7 +129,7 @@ for (const dimension of ["account", "settings"] as const) it(`revalidates real c
   const transport = vi.spyOn(globalThis, "fetch").mockImplementation(() => { throw new Error("G4 synthetic composition forbids transport"); });
   const createAccount = accounts.createChatGptAccountService;
   const accountFactory = vi.spyOn(accounts, "createChatGptAccountService").mockImplementation(options => ({ ...createAccount(options) }));
-  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, "process-locks") });
+  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
   try {
     const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("genuine session required");

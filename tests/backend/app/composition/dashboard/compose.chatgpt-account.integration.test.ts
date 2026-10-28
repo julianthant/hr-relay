@@ -31,8 +31,7 @@ for (const startupFailure of [false, true]) it(`drains a pending HTTP completion
       return authorization;
     }, close: async () => { assert.equal(httpClosed, true); assert.equal(requestAborted, true); await actual.close(); accountClosed = true; } };
   });
-  const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null },
-    processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot) });
+  const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null } });
   const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active");
   const primary = new Error("synthetic post-listen failure");
@@ -100,7 +99,7 @@ it("retains actual account, database and process custody when cleanup refuses af
     return handle;
   });
   const lockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
-  const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: lockRoot });
+  const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null } });
   const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("fixture-profile-sign-in-refused");

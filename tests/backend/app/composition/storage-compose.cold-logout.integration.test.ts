@@ -48,8 +48,7 @@ async function fixture() {
     restart() {
       owner.release(); f.admission.release(); f.machine.release();
       const machine = acquireEntrypointAdmission(f.workspace, "exclusive");
-      const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
-        processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+      const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
       return { machine, runtime, async close() { await runtime.close(); machine.release(); await f.close(); } };
     },
     async close() { owner.release(); await f.close(); } };

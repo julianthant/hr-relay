@@ -58,8 +58,7 @@ describe("composition-reads-no-environment-leaf", () => {
     for (const noisy of [false, true]) for (const role of ["dashboard", "worker"] as const) {
       const f = await createBoundProfileFixture(), root = f.workspace;
       const profileClock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
-      const profile = role === "dashboard" ? composeProfileRuntime({ admission: f.machine, clock: profileClock, hostFacts: { primaryDisplay: null },
-        processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot) }) : undefined;
+      const profile = role === "dashboard" ? composeProfileRuntime({ admission: f.machine, clock: profileClock, hostFacts: { primaryDisplay: null } }) : undefined;
       let context: ReturnType<typeof composeSelectedProfileStorage> | undefined;
       let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
       try {

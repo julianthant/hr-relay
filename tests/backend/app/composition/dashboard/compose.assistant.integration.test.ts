@@ -68,7 +68,7 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
   });
     owner.fetchProbe = fetchProbe;
     const clock = transport.clock;
-    const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+    const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
     owner.runtime = runtime;
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
     const sources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredSources);

@@ -20,8 +20,7 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
   const factory = vi.spyOn(accounts, "createChatGptAccountService").mockImplementation(options => {
     account = createAccount({ ...options, fetch: transport.transport }); return account;
   });
-  const runtime = composeProfileRuntime({ admission: profile.machine, clock: transport.clock, hostFacts: { primaryDisplay: null },
-    processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const runtime = composeProfileRuntime({ admission: profile.machine, clock: transport.clock, hostFacts: { primaryDisplay: null } });
   const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: transport.clock.now().toISOString() });
   assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("synthetic selected context required");

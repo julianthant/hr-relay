@@ -33,7 +33,7 @@ export async function createHistoricalIncompleteProfileFixture() {
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
   const machine = acquireEntrypointAdmission(root, "exclusive"), processLockRoot = join(root, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   const fields = { ...historicalIncompleteProfileFields, createdAt: new Date().toISOString() };
   const draft = profile.session.signUp(fields); if (draft.state !== "onboarding") throw new Error("fixture genuine Details required");
   const stateRoot = machine.stateRoot, profileRoot = join(stateRoot, "profiles", draft.profileId), machineRoot = join(stateRoot, "machine");

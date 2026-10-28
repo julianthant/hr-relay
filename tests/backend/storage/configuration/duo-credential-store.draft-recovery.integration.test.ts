@@ -33,7 +33,7 @@ function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider) {
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
   const machine = acquireEntrypointAdmission(root, "exclusive"), processLockRoot = join(root, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock,
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock,
     ...(onboardingDuo === undefined ? {} : { onboardingDuo }) });
   const draft = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
     password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
@@ -284,7 +284,7 @@ for (const boundary of ["source", "journal", "erase", "intent", "source-unlink",
     assert.equal(fired, true);
     await f.profile.close(); f.machine.release();
     const machine = acquireEntrypointAdmission(f.root, "exclusive");
-    const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+    const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
     const registry = machine.readProfileRegistry(); assert.equal(registry.profiles.length, 0); assert.equal(registry.activeProfileId, null);
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(keyPath), false); assert.equal(existsSync(intentPath), false);
@@ -392,7 +392,7 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
     assert.equal(fired, true); assert.ok(finishId);
     await f.profile.close(); f.machine.release();
     const machine = acquireEntrypointAdmission(f.root, "exclusive"), profile = composeProfileRuntime({ admission: machine,
-      processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+       hostFacts: { primaryDisplay: null }, clock: systemClock });
     const published = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId);
     if (published === undefined) {
       assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 0);
@@ -490,7 +490,7 @@ for (const boundary of ["source-fsync", "protected-stage"] as const) {
     assert.equal(groups.includes(String(ready.pid)), false);
     const fds = spawnSync("/usr/sbin/lsof", ["-nP", "-a", "-p", String(ready.pid)], { encoding: "utf8" });
     assert.equal(fds.error, undefined); assert.equal(fds.signal, null); assert.equal(fds.status, 1); assert.equal(fds.stdout.trim(), "");
-    const machine = acquireEntrypointAdmission(f.root, "exclusive"), profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot,
+    const machine = acquireEntrypointAdmission(f.root, "exclusive"), profile = composeProfileRuntime({ admission: machine,
       hostFacts: { primaryDisplay: null }, clock: systemClock });
     await profile.session.recoverOnboarding();
     const credentials = join(machine.stateRoot, "profiles", f.draft.profileId, "credentials");
@@ -534,7 +534,7 @@ for (const change of ["same-length", "replacement"] as const) {
 it("removes an unfinished sign-up at startup through the existing cancellation path", async () => {
   const f = privateDraftFixture(); await f.profile.close(); f.machine.release();
   const machine = acquireEntrypointAdmission(f.root, "exclusive");
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   try {
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(join(machine.stateRoot, "profiles", f.draft.profileId)), false);
@@ -552,7 +552,7 @@ it("removes a sign-up interrupted before its profile or credentials were initial
   assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), false);
   await f.profile.close(); f.machine.release();
   const machine = acquireEntrypointAdmission(f.root, "exclusive");
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   try {
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(join(machine.stateRoot, "profiles", draft.profileId)), false);
@@ -593,7 +593,7 @@ it("completes a recorded Finish at startup without reopening its draft", async (
   assert.deepEqual(readFileSync(duoPath), duoBytes);
   await f.profile.close(); f.machine.release();
   const machine = acquireEntrypointAdmission(f.root, "exclusive");
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   try {
     await profile.session.recoverOnboarding();
     const row = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId); assert.ok(row?.registration.onboardingCompletion);

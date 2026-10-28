@@ -30,8 +30,7 @@ vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<t
 async function fixture() {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
-  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null },
-    processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
   const signIn = () => runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   const active = signIn(); assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("synthetic active profile required");

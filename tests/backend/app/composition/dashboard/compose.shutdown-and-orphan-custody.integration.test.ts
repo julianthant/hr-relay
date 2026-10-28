@@ -40,7 +40,7 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
       const childOutput = (): string => records.map((record) =>
         `${record.member.workerId}: ${record.output.join("")}`).join("\n");
 
-      const profileRuntime = composeProfileRuntime({ admission: profile.machine, clock: systemClock, hostFacts: { primaryDisplay: null }, processLockRoot: lockRoot });
+      const profileRuntime = composeProfileRuntime({ admission: profile.machine, clock: systemClock, hostFacts: { primaryDisplay: null } });
       cleanups.push(async () => { await profileRuntime.close(); await profile.close(); });
       const active = profileRuntime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
       assert.equal(active.state, "active");

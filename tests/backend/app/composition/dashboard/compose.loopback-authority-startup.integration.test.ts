@@ -45,8 +45,7 @@ const readyProfiles = new Map<string, { fixture: Awaited<ReturnType<typeof creat
 function selectedProfile(fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
   const machine = acquireEntrypointAdmission(fixture.workspace, "shared");
   const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-  const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
-    processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
   const storage: { admission?: RuntimeAdmission } = {};
   const cleanup = async () => { await runtime.close(); storage.admission?.release(); machine.release(); };
   cleanups.push(cleanup);
@@ -562,8 +561,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       cleanups.push(async () => await owner.close());
       copyRuntimePackageFixture(repoRoot);
       const clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
-      const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null },
-        processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot) });
+      const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null } });
       const storage: { admission?: RuntimeAdmission } = {};
       cleanups.push(async () => { await profile.close(); storage.admission?.release(); });
       const signedIn = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password",

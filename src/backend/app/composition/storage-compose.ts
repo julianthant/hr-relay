@@ -26,7 +26,7 @@ import { basename, join, resolve } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { DashboardWorkerProcessSupervisor } from "../../runtime/workers/worker-supervisor.js";
 import { workerPoolMember } from "../../../models/run/worker-slot.js";
-import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans, type ProcessIdentityObserver } from "../../storage/sqlite/runtime-process-locks.js";
+import { observeRuntimeLockSnapshot } from "../../storage/sqlite/runtime-process-locks.js";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { acquireRecoveryRuntimeRestore, type RuntimeAdmission } from "../../storage/admission/admission.js";
@@ -57,25 +57,19 @@ export class RuntimeCustodyUncertainError extends AggregateError {
 }
 
 export function composeProfileActivity(input: Readonly<{
-  admission: RuntimeAdmission; database: AuthorityDatabase; processLockRoot: string; clock: Clock;
+  admission: RuntimeAdmission; database: AuthorityDatabase; clock: Clock;
   supervisor: Pick<DashboardWorkerProcessSupervisor, "memberEvidence" | "drainOwnedChildren"> | { readonly state: "not-constructed" };
   lifecycle: Pick<RunRecordService, "read" | "transition">;
-  observeProcessIdentity?: ProcessIdentityObserver;
 }>) {
   const profileId = input.admission.profileBinding.profileId;
   let drain: { state: "pending"; completion: Promise<void> } | { state: "complete" } | { state: "failed"; error: unknown } | undefined;
   const observe = () => {
     input.admission.assertLive();
     const before = input.database.readProfileResourceCustody();
-    const hooks = { observeProcessIdentity: input.observeProcessIdentity };
-    const locks = observeRuntimeLockSnapshot({ processLockRoot: input.processLockRoot,
-      sourceDatabaseIdentity: input.database.getSourceDatabaseIdentity() }, input.clock, hooks);
-    const orphans = inspectRuntimeProcessOrphans(input.processLockRoot, hooks);
-    if (orphans.staleWorkerRecords > 0) throw new Error("profile-worker-process-closure-unproved");
     for (const browser of before.browsers) {
       if (!before.slots.some(slot => slot.workerId === browser.workerId)) throw new Error("profile-browser-membership-unavailable");
     }
-    let busy = Object.entries(locks.processLocks).some(([name, state]) => name !== "server" && state.state === "active");
+    let busy = false;
     for (const slot of before.slots) {
       const reservation = before.reservations.find(value => value.workerId === slot.workerId);
       if (reservation === undefined || reservation.reservationCommandId !== slot.reservationCommandId) throw new Error("profile-worker-reservation-authority-unavailable");
@@ -229,7 +223,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
 }
 
 export function composeProfileRuntime(input: Readonly<{
-  admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock; processLockRoot: string;
+  admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock;
   credentialHooks?: CredentialStoreHooks;
   onboardingDuo?: ProfileOnboardingDuoProvider;
 }>) {
@@ -254,7 +248,7 @@ export function composeProfileRuntime(input: Readonly<{
     if (entry === undefined) throw new Error("profile-authority-unavailable");
     if (entry.supervision.state === "constructing") throw new RuntimeCustodyUncertainError([new Error("profile-supervisor-construction-unproved")]);
     if (entry.activity === undefined) entry.activity = composeProfileActivity({ admission: entry.admission, database: context.database,
-      processLockRoot: input.processLockRoot, clock: input.clock, supervisor: entry.supervision.state === "bound" ? entry.supervision.owner : entry.supervision,
+      clock: input.clock, supervisor: entry.supervision.state === "bound" ? entry.supervision.owner : entry.supervision,
       lifecycle: new RunRecordService({ database: context.database, clock: input.clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("profile custody cannot enqueue runs"); } }) });
     entry.inventory ??= composeProfileCredentialInventory({ machine, admission: entry.admission, database: context.database, hostFacts: input.hostFacts, clock: input.clock });
     return entry;

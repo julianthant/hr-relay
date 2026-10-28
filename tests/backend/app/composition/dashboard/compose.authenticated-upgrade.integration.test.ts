@@ -395,8 +395,7 @@ const retainedStartupOwners = new WeakMap<Error, {
 
 it("drains startup producers before inventory when the real HTTP listener cannot bind", async () => {
   const f = await createBoundProfileFixture();
-  const runtime = composeProfileRuntime({ admission: f.machine, clock: systemClock, hostFacts: { primaryDisplay: null },
-    processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const runtime = composeProfileRuntime({ admission: f.machine, clock: systemClock, hostFacts: { primaryDisplay: null } });
   const actualHttp = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
   const actualNotifications = await vi.importActual<typeof notificationOwner>("../../../../../src/backend/app/composition/dashboard/notifications.js");
   const actualInventory = await vi.importActual<typeof credentialInventoryOwner>("../../../../../src/backend/app/composition/profile-credential-inventory.js");
