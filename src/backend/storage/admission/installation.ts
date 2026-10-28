@@ -1,10 +1,11 @@
+import { credentialKeyCustody, CredentialKeyCustodyError, type CredentialKeyMigrationAdmission } from "../configuration/credential-key-custody.js";
 import { MutexOwnerSchema, MutexRecoveryReceiptSchema } from "./mutex-contracts.js";
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { retainedStorageBackup, SourceRecordSchema, StorageBackupSchema, inventory as backupFileInventory, file as backupFile } from "../maintenance/existing-data-backup-files.js";
 import { observeFlatBackupMutexRecovery } from "../maintenance/existing-data-backup.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
-import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
+import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStageTransition, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
 import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
@@ -1467,6 +1468,55 @@ function assertProfileCredentialKeyMembership(locator: RuntimeLocator, heads: re
     { installationId: locator.installationId, profileId: row.profileId });
 }
 
+function admitCredentialKeyMigration(control: string, locator: RuntimeLocator): CredentialKeyMigrationAdmission {
+  return (name, candidate) => {
+    const continuity = readProfileEvidence(join(control, "profile-registry.json"), z.union([ProfileContinuitySchema, PriorProfileContinuitySchema]));
+    if (continuity.schemaVersion === 1) readProfileEvidence(join(locator.stateRoot, "machine", "profile-registry-version.json"), z.strictObject({ schemaVersion: z.literal(2) }));
+    const profileId = candidate.binding.profileId, canonical = name === `${profileId}.json`;
+    const same = (value: unknown) => canonicalJsonStringify(value) === canonicalJsonStringify(candidate);
+    if (continuity.installationId !== locator.installationId || candidate.binding.installationId !== locator.installationId) throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_MISMATCH");
+    const anchor = continuity.erasures.find(row => row.profileId === profileId)?.credentialKey;
+    if (canonical && anchor !== undefined) {
+      if (!same(anchor)) throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_MISMATCH");
+      return;
+    }
+    if (continuity.schemaVersion === 1) throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_MISMATCH");
+    const operations = profileOperationInventory(locator.stateRoot);
+    for (const retained of continuity.operations) {
+      const observed = operations.find(row => row.operationId === retained.operationId);
+      if (canonicalJsonStringify(observed) !== canonicalJsonStringify(retained)) continue;
+      const operation = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${retained.operationId}.json`), ProfileOperationSchema);
+      if (operation.kind !== "sign-up" || operation.profileId !== profileId || !canonical && name !== `.credential-key.${operation.operationId}.tmp`) continue;
+      const initialization = operation.credentialInitialization;
+      if (initialization?.keyId === candidate.keyId && initialization.keyDocumentDigest === candidate.file.digest
+        && (initialization.keyFile === undefined ? canonical : canonicalJsonStringify(initialization.keyFile) === canonicalJsonStringify(candidate.file))) return;
+    }
+    const intentPath = join(control, "profile-publication.json");
+    if (lstatMaybe(intentPath)) {
+      const intent = readProfileEvidence(intentPath, ProfilePublicationSchema);
+      if (intent.kind === "profile" && intent.keyStage !== undefined && intent.installationId === locator.installationId) {
+        const capture = intent.keyStage, operation = capture.operation;
+        assertCredentialKeyStageTransition(capture);
+        const document = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
+        const current = profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, intent.erasures, intent.duo);
+        const observed = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema);
+        const others = (rows: typeof current.operations) => rows.filter(row => row.operationId !== operation.operationId);
+        const priorState = canonicalJsonStringify(observed) === canonicalJsonStringify(capture.priorOperation);
+        if ((canonical || name === `.credential-key.${operation.operationId}.tmp`) && same(capture.key)
+          && intent.operation?.kind === "write" && canonicalJsonStringify(intent.operation.operation) === canonicalJsonStringify(operation)
+          && canonicalJsonStringify(intent.document) === canonicalJsonStringify(document)
+          && canonicalJsonStringify(intent.erasures) === canonicalJsonStringify(intent.prior.erasures)
+          && canonicalJsonStringify(others(current.operations)) === canonicalJsonStringify(others(intent.prior.operations))
+          && (!priorState || canonicalJsonStringify(current) === canonicalJsonStringify(intent.prior))
+          && canonicalJsonStringify(capture.registry) === canonicalJsonStringify(document)
+          && (canonicalJsonStringify(continuity) === canonicalJsonStringify(intent.prior) || canonicalJsonStringify(continuity) === canonicalJsonStringify(current))
+          && (canonicalJsonStringify(observed) === canonicalJsonStringify(capture.priorOperation) || canonicalJsonStringify(observed) === canonicalJsonStringify(operation))) return;
+      }
+    }
+    throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_MISMATCH");
+  };
+}
+
 function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPublication = true, credentialPublication?: CredentialInitializationPublication, stagedPublication?: CredentialKeyStagePublication): ProfileRegistryDocument {
   if (lstatMaybe(join(control, "device-recertification.json"))) fail("device-recertification-pending");
   const path = join(locator.stateRoot, "machine", "profiles.json");
@@ -1821,6 +1871,7 @@ function settleUnpublishedDraftAbort(control: string, locator: RuntimeLocator, d
     unlinkSync(sourcePath); syncDir(dirname(sourcePath));
   }
   if (keyPresent) { assertCredentialKeyWitness(keyPath, capture.key, capture.key.binding); unlinkSync(keyPath); syncDir(dirname(keyPath)); }
+  credentialKeyCustody.delete(capture.key.binding);
   if (operationPresent) { unlinkSync(operationPath); syncDir(dirname(operationPath)); }
   finishRemoval();
 }
@@ -2104,6 +2155,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
     if (options?.recoverRelocation) assertRestoreHeld(workspace, options.recoverRelocation.restoreAdmission);
     const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined, mode === "exclusive" ? options?.recoverAuthorityRestore : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting, options.initializeFresh, options.machine) : fail("installation locator missing"));
+    credentialKeyCustody.migrateDirectory(join(resolved.stateRoot, "machine", "credential-keys"), resolved.installationId, admitCredentialKeyMigration(control, resolved), peers.length === 0);
     if (options?.machine === true) readMachineRegistry(control, resolved);
     admissionId = randomUUID();
     leasePath = join(control, "leases", `${admissionId}.json`);

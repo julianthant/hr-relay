@@ -1,3 +1,5 @@
+import { FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
+import { credentialKeyCustody } from "../../../src/backend/storage/configuration/credential-key-custody.js";
 import { createDuoCredentialStore } from "../../../src/backend/storage/configuration/duo-credential-store.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -45,6 +47,7 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
   continuity.duo = continuity.duo.map(entry => entry.profileId === active.profileId ? { profileId: active.profileId, state: "never-initialized", revision: 0 } : entry);
   writeFileSync(continuityPath, JSON.stringify(continuity), { mode: 0o600 });
   unlinkSync(join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`));
+  credentialKeyCustody.delete({ installationId: f.machine.locator.installationId, profileId: active.profileId });
   unlinkSync(join(f.machine.stateRoot, "machine", "credential-keys", `${active.profileId}.json`));
   assert.ok(record.lastApplied !== undefined);
   const retired = record.lastApplied;
@@ -156,7 +159,7 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
     if (["key-substitution", "key-malformed", "key-foreign"].includes(interruptedAt)) {
       const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${active.profileId}.json`);
       const key = JSON.parse(readFileSync(keyPath, "utf8")) as { key: string; profileId: string };
-      if (interruptedAt === "key-substitution") key.key = Buffer.alloc(32, 0x31).toString("base64");
+      if (interruptedAt === "key-substitution") new FakeKeyringEntry("Relay", `${f.machine.locator.installationId}:${active.profileId}`).setPassword(Buffer.alloc(32, 0x31).toString("base64"));
       if (interruptedAt === "key-foreign") key.profileId = randomUUID();
       writeFileSync(keyPath, interruptedAt === "key-malformed" ? "{}" : JSON.stringify(key), { mode: 0o600 });
       const before = readFileSync(keyPath);

@@ -1,3 +1,4 @@
+import { credentialKeyCustody } from "./credential-key-custody.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../source-closure.js';
 import {
   CREDENTIAL_DIRECTORY_MODE, CredentialLockRecordSchema, errorCode, fsyncPath, noSymlinkAncestry, statDirectory,
@@ -113,11 +114,7 @@ const CredentialEnvelopeSchema = z.strictObject({
   tag: z.string().length(24).regex(/^[A-Za-z0-9+/]{22}==$/u),
   ciphertext: z.string().min(4).max(Math.ceil(MAX_CREDENTIAL_DOCUMENT_BYTES / 3) * 4).regex(/^[A-Za-z0-9+/]+={0,2}$/u),
 });
-const CredentialKeyDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(1), installationId: z.uuid(), profileId: z.uuid(), keyId: z.uuid(),
-  key: z.string().length(44).regex(/^[A-Za-z0-9+/]{43}=$/u),
-});
-type CredentialKeyDocument = z.infer<typeof CredentialKeyDocumentSchema>;
+type CredentialKeyDocument = ReturnType<typeof credentialKeyCustody.read>;
 
 function parseCredentialJson(bytes: Uint8Array): unknown {
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown; }
@@ -207,9 +204,9 @@ function readDuoPurposeKey(issued: IssuedDuoPurpose) {
   assertCredentialKeyWitness(issued.keyPath, issued.witness, issued.custody.binding);
   const file = readPrivateFile(issued.keyPath, { label: "lock", maxBytes: 4096 });
   if (file === undefined) throw new Error("credential-key-required");
-  if (canonicalJsonStringify({ device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") })
+  if (canonicalJsonStringify({ device: file.identity.device, inode: file.identity.inode, digest: credentialKeyCustody.fileDigest(file.bytes) })
     !== canonicalJsonStringify(issued.witness.file)) throw new Error("credential-key-custody-changed");
-  const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(file.bytes));
+  const key = credentialKeyCustody.read(parseCredentialJson(file.bytes));
   return { ...issued, key };
 }
 
@@ -658,7 +655,7 @@ export function captureReadyUpgradeCredentialSource(machine: RuntimeAdmission, c
     const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
     const file = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
     if (keyFile === undefined || file === undefined) throw new Error("profile-upgrade-handoff-credential-required");
-    const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes));
+    const key = credentialKeyCustody.read(parseCredentialJson(keyFile.bytes));
     const envelope = CredentialEnvelopeSchema.parse(parseCredentialJson(file.bytes));
     if (key.installationId !== binding.installationId || key.profileId !== binding.profileId || envelope.installationId !== binding.installationId
       || envelope.profileId !== binding.profileId || envelope.keyId !== key.keyId) throw new Error("profile-upgrade-handoff-credential-binding-changed");
@@ -752,10 +749,10 @@ function captureKeyFile(keyPath: string, binding: ProfileDatabaseBinding): Crede
   noSymlinkAncestry(dirname(keyPath), new Map());
   const file = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
   if (file === undefined) throw new Error("credential-key-required");
-  const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(file.bytes));
+  const key = credentialKeyCustody.read(parseCredentialJson(file.bytes));
   credentialKeyBytes(key, binding);
   return CredentialKeyWitnessSchema.parse({ keyId: key.keyId, binding, file: { device: file.identity.device, inode: file.identity.inode,
-    digest: createHash("sha256").update(file.bytes).digest("hex") } });
+    digest: credentialKeyCustody.fileDigest(file.bytes) } });
 }
 function captureProfileCredentialsForControlUpgrade(machineRoot: string, binding: ProfileDatabaseBinding,
   keyWitness: CredentialKeyWitness, head: CredentialErasureHead) {
@@ -766,8 +763,8 @@ function captureProfileCredentialsForControlUpgrade(machineRoot: string, binding
   const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
   if (keyFile === undefined) throw new Error("credential-key-required");
   if (canonicalJsonStringify({ device: keyFile.identity.device, inode: keyFile.identity.inode,
-    digest: createHash("sha256").update(keyFile.bytes).digest("hex") }) !== canonicalJsonStringify(keyWitness.file)) throw new Error("credential-key-custody-changed");
-  const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes));
+    digest: credentialKeyCustody.fileDigest(keyFile.bytes) }) !== canonicalJsonStringify(keyWitness.file)) throw new Error("credential-key-custody-changed");
+  const key = credentialKeyCustody.read(parseCredentialJson(keyFile.bytes));
   let journal: ErasureJournal;
   if (head.state === "never-erased") journal = EMPTY_JOURNAL;
   else {
@@ -791,9 +788,9 @@ export function inspectProfileCredentialsForControlUpgrade(machineRoot: string, 
   return captureProfileCredentialsForControlUpgrade(machineRoot, binding, keyWitness, head).witness;
 }
 
-function credentialKeyMatcher(key: z.infer<typeof CredentialKeyDocumentSchema>, binding: ProfileDatabaseBinding, bytes: Uint8Array): (value: unknown) => boolean {
+function credentialKeyMatcher(key: CredentialKeyDocument, binding: ProfileDatabaseBinding): (value: unknown) => boolean {
   const little = Buffer.from(key.key, "utf16le");
-  const patterns = [credentialKeyBytes(key, binding), Buffer.from(key.key, "utf8"), little, Buffer.from(little).swap16(), Buffer.from(bytes)];
+  const patterns = [credentialKeyBytes(key, binding), Buffer.from(key.key, "utf8"), little, Buffer.from(little).swap16(), Buffer.from(encodePrivate(key))];
   const inspect = (value: unknown): boolean => {
     if (value instanceof Uint8Array) return patterns.some(pattern => Buffer.from(value.buffer, value.byteOffset, value.byteLength).includes(pattern));
     if (typeof value === "string") return inspect(Buffer.from(value, "utf8"));
@@ -817,7 +814,7 @@ export function attestStoppedControlCredentials(admission: RuntimeAdmission, cla
   const keyPath = join(source.machineRoot, "machine", "credential-keys", `${claim.profileId}.json`);
   const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
   if (keyFile === undefined) throw new Error("credential-key-required");
-  const containsKey = credentialKeyMatcher(capture.key, source.binding, keyFile.bytes);
+  const containsKey = credentialKeyMatcher(capture.key, source.binding);
   const inventory = assess({ capturedSecrets, capturedSecretsComplete: SECRET_NAMES.every(name => capture.document.record.entries[name] !== undefined), containsKey, keyScanOverlap: 4095,
     inspectEncrypted: path => {
       const bytes = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
@@ -960,7 +957,7 @@ function incompleteProfileCredentialOrigin(machineRoot: string, row: z.infer<typ
   assertCredentialKeyWitness(keyPath, key, binding);
   const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
   if (keyFile === undefined) throw new Error("credential-key-required");
-  const source = readAuthenticatedDocument(join(root, "credentials", "protected.json"), CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes)), binding);
+  const source = readAuthenticatedDocument(join(root, "credentials", "protected.json"), credentialKeyCustody.read(parseCredentialJson(keyFile.bytes)), binding);
   if (source?.document.latestRequest?.kind !== "apply") throw new Error("profile-incomplete-original-apply-required");
   const request = originalProfileApply(row, source.document);
   const verifierPath = join(machineRoot, "machine", "profile-verifiers.json");
@@ -1161,7 +1158,7 @@ export const CredentialKeyStagePublicationSchema = z.strictObject({ registry: Pr
 export type CredentialKeyStagePublication = z.infer<typeof CredentialKeyStagePublicationSchema>;
 export interface CommittedCredentialKeyStage { readonly operationId: string; }
 const committedKeyStages = new WeakMap<CommittedCredentialKeyStage, Readonly<{ capture: CredentialKeyStagePublication; revalidate(): void; afterIntent?: () => void }>>();
-export function assertCredentialKeyStagePublication(stateRoot: string, capture: Pick<CredentialKeyStagePublication, "priorOperation" | "operation" | "key">): void {
+export function assertCredentialKeyStageTransition(capture: Pick<CredentialKeyStagePublication, "priorOperation" | "operation" | "key">): void {
   const prior = capture.priorOperation, next = capture.operation, binding = capture.key.binding;
   if (prior.profileId !== binding.profileId || next.profileId !== prior.profileId || next.operationId !== prior.operationId
     || prior.credentialInitialization === undefined || next.credentialInitialization === undefined
@@ -1174,6 +1171,10 @@ export function assertCredentialKeyStagePublication(stateRoot: string, capture: 
     || canonicalJsonStringify({ mode: priorInitialization.mode, keyId: priorInitialization.keyId, phase: priorInitialization.phase,
       ...(priorInitialization.mode === "initial" ? {} : { source: priorInitialization.source }) }) !== canonicalJsonStringify({ mode: nextInitialization.mode,
       keyId: nextInitialization.keyId, phase: nextInitialization.phase, ...(nextInitialization.mode === "initial" ? {} : { source: nextInitialization.source }) })) throw new Error("credential-key-stage-intent-invalid");
+}
+export function assertCredentialKeyStagePublication(stateRoot: string, capture: Pick<CredentialKeyStagePublication, "priorOperation" | "operation" | "key">): void {
+  assertCredentialKeyStageTransition(capture);
+  const next = capture.operation, binding = capture.key.binding;
   const directory = join(stateRoot, "machine", "credential-keys"), stage = join(directory, `.credential-key.${next.operationId}.tmp`), final = join(directory, `${next.profileId}.json`);
   const staged = lstatSync(stage, { throwIfNoEntry: false }), published = lstatSync(final, { throwIfNoEntry: false });
   if ((staged === undefined) === (published === undefined)) throw new Error("credential-key-stage-outcome-uncertain");
@@ -1213,7 +1214,7 @@ export function assertCredentialInitializationPublication(stateRoot: string, jou
   const file = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
   if (file === undefined || file.identity.device !== capture.document.device || file.identity.inode !== capture.document.inode
     || createHash("sha256").update(file.bytes).digest("hex") !== capture.document.digest) throw new Error("credential-initialization-document-changed");
-  readAuthenticatedDocument(path, CredentialKeyDocumentSchema.parse(parseCredentialJson(keyFile.bytes)), capture.key.binding);
+  readAuthenticatedDocument(path, credentialKeyCustody.read(parseCredentialJson(keyFile.bytes)), capture.key.binding);
 }
 export function verifyCommittedCredentialInitialization(witness: CommittedCredentialInitialization, stateRoot: string, journalPath: string): CredentialInitializationPublication {
   const issued = initializedCredentials.get(witness);
@@ -1295,7 +1296,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     journalAdmission.assertProfileCredentialKey(admission, keyPath);
     const file = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
     if (file === undefined) throw new Error("credential-key-required");
-    const key = CredentialKeyDocumentSchema.parse(parseCredentialJson(file.bytes));
+    const key = credentialKeyCustody.read(parseCredentialJson(file.bytes));
     credentialKeyBytes(key, binding);
     journalAdmission.assertProfileCredentialKeyAnchor(admission, key.keyId);
     return key;
@@ -1303,7 +1304,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   function containsKey(value: unknown): boolean {
     const file = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
     if (file === undefined) return false;
-    return credentialKeyMatcher(readKey(), binding, file.bytes)(value);
+    return credentialKeyMatcher(readKey(), binding)(value);
   }
   function readPrivateDocument(path: string): ReadDocument | undefined {
     if (readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES }) === undefined) return undefined;
@@ -2278,7 +2279,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         const existingKey = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
         if (existingKey !== undefined) {
           if (readKey().keyId !== initialization.keyId || initialization.keyDocumentDigest === undefined
-            || createHash("sha256").update(existingKey.bytes).digest("hex") !== initialization.keyDocumentDigest) throw new Error("credential-initialization-key-mismatch");
+            || credentialKeyCustody.fileDigest(existingKey.bytes) !== initialization.keyDocumentDigest) throw new Error("credential-initialization-key-mismatch");
           if (initialization.keyFile !== undefined && canonicalJsonStringify(captureKeyFile(keyPath, binding).file) !== canonicalJsonStringify(initialization.keyFile)) throw new Error("credential-key-custody-changed");
         }
         if (CredentialEnvelopeSchema.safeParse(decoded).success) {
@@ -2345,7 +2346,9 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
             assertInitializationInventoryProof(inventoryProof, admission, operation);
             const registryBeforeStage = journalAdmission.readProfileRegistry();
             hooks.beforeInitialKey?.();
-            const key = CredentialKeyDocumentSchema.parse({ schemaVersion: 1, ...binding, keyId: initialization.keyId, key: randomBytes(32).toString("base64") });
+            if (lstatSync(stagePath, { throwIfNoEntry: false }) !== undefined) throw new Error("credential-key-stage-outcome-uncertain");
+            const identity = { ...binding, keyId: initialization.keyId };
+            const key = credentialKeyCustody.resumeUnpublishedCreation(identity) ?? credentialKeyCustody.create(identity);
             writePrivateStage(stagePath, encodePrivate(key)); fsyncPath(directory);
             publicationStarted = true;
             const capturedKey = captureKeyFile(stagePath, binding), priorOperation = operation;

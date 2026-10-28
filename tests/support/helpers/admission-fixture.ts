@@ -1,3 +1,4 @@
+import { credentialKeyCustody } from "../../../src/backend/storage/configuration/credential-key-custody.js";
 import type { ProfileOnboardingDuoProvider } from "../../../src/backend/profiles/onboarding-duo.js";
 import { registerBoundProfile, unregisterBoundProfile, assertBoundFixtureWorkersReleased, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
 export { registerBoundProfile, unregisterBoundProfile, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission, profileFixtureStorageAdmission, boundProfileAdmission } from "./synthetic-database-admission.js";
@@ -87,7 +88,7 @@ export function readAuthenticatedCredentialFixture(machineRoot: string, profileI
   const bytes = readFileSync(join(machineRoot, "profiles", profileId, "credentials", "protected.json"));
   if (bytes.byteLength > Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096) throw new Error("fixture-envelope-bound");
   const envelope = JSON.parse(bytes.toString("utf8")) as { schemaVersion: number; algorithm: string; installationId: string; profileId: string; keyId: string; nonce: string; tag: string; ciphertext: string };
-  const key = JSON.parse(readFileSync(join(machineRoot, "machine", "credential-keys", `${profileId}.json`), "utf8")) as { key: string; keyId: string; installationId: string; profileId: string };
+  const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(machineRoot, "machine", "credential-keys", `${profileId}.json`), "utf8")));
   if (envelope.schemaVersion !== 4 || envelope.algorithm !== "aes-256-gcm" || envelope.profileId !== profileId
     || key.profileId !== profileId || key.installationId !== envelope.installationId || key.keyId !== envelope.keyId) throw new Error("fixture-envelope-binding");
   const keyBytes = Buffer.from(key.key, "base64"), nonce = Buffer.from(envelope.nonce, "base64"), tag = Buffer.from(envelope.tag, "base64");
@@ -105,7 +106,7 @@ export function rewriteAuthenticatedCredentialFixture(machineRoot: string, profi
   const payload = change(readAuthenticatedCredentialFixture(machineRoot, profileId));
   const path = join(machineRoot, "profiles", profileId, "credentials", "protected.json");
   const envelope = JSON.parse(readFileSync(path, "utf8")) as { schemaVersion: number; algorithm: string; installationId: string; profileId: string; keyId: string };
-  const key = JSON.parse(readFileSync(join(machineRoot, "machine", "credential-keys", `${profileId}.json`), "utf8")) as { key: string };
+  const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(machineRoot, "machine", "credential-keys", `${profileId}.json`), "utf8")));
   const bytes = Buffer.from(canonicalJsonStringify(payload));
   if (bytes.byteLength > 16 * 1024 * 1024) throw new Error("fixture-payload-bound");
   const nonce = randomBytes(12), cipher = createCipheriv("aes-256-gcm", Buffer.from(key.key, "base64"), nonce, { authTagLength: 16 });

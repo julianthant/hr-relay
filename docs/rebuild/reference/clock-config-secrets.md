@@ -380,16 +380,42 @@ Function calls and trusted synthetic fixture bindings grant no production comman
 profile child and its machine journal owner. The schema-4 envelope authenticates the whole current
 record, value-free history and latest exact request with AES-256-GCM. Authentication finishes before
 plaintext is parsed or returned. In-memory entries remain `{ valueId, value, updatedAt }`.
-The stable random per-profile key lives at `machine/credential-keys/<profileId>.json`; the machine
-continuity row binds its exact private file identity and bytes. Ordinary reads cannot create or
-replace an established key, document or anchor.
+The random 32-byte per-profile key lives only in the OS secret store through
+`credential-key-custody.ts` and exact `@napi-rs/keyring` 2.1.0: service `Relay`, account
+`<installationId>:<profileId>`, with base64 key bytes. macOS uses Keychain and Windows uses
+Credential Manager. `machine/credential-keys/<profileId>.json` contains only schema-2 binding,
+key ID and key digest metadata; machine continuity still pins its private file identity and digest.
+Ordinary reads cannot create or replace an established key, document or anchor. Missing,
+mismatched, unavailable or uncertain OS custody raises the corresponding `CREDENTIAL_KEYCHAIN_*`
+code without exposing native error details or key material.
+
+Startup moves canonical schema-1 keys into the OS store under the installation mutex, only with
+no peer leases. Before importing or rewriting a key, admission matches its filename, binding,
+key ID and original file witness to retained profile continuity, an authenticated initialization
+operation, or the exact pending key-stage publication. Pending publication validates the owning
+initialization transition and publication envelope before any migration effect. Retained schema-1
+control with its schema-2 marker admits only its exact canonical key witness for stopped control
+conversion; ordinary runtime still refuses until that conversion completes. Journal recovery repeats that admission
+against the reconstructed original witness. It reads back and compares the entry before removing disk secret bytes. A
+non-secret migration intent and descriptor-checked rewrite preserve the original inode. Migrated
+metadata marks its historical witness: the old canonical document digest is reconstructed in memory
+from the OS entry, preserving existing control and operation witnesses. Interrupted rewrites resume
+only from the recorded inode and an exact recognized byte prefix; changed evidence refuses.
+The schema-1 reader exists only inside this forward migration, never on the credential read path.
+Existing backups made before migration still contain their original bytes and must be protected;
+new backups copy only metadata and ciphertext. Same-machine restore requires the matching OS entry;
+restore without it refuses and never regenerates a key.
 
 Fresh setup and explicit forward conversion use the existing sign-up operation and profile-publication
-journal. Key bytes first become durable in one private operation-named stage. Its exact inode,
-bytes and prior operation enter that journal through the actual factory witness before the same
+journal. Key bytes first become durable in the OS store, with verified readback. Only non-secret
+metadata enters the private operation-named stage. Its exact inode, bytes and prior operation enter that journal through the actual factory witness before the same
 inode is renamed to the canonical key path. Passive reads validate an interrupted stage publication;
 only fresh matching maintenance custody can complete it. A stage left before intent publication is
-an unowned orphan and refuses adoption. Proven schema-2 replay may supply current values. Unprovable schema-3 input requires the
+an unowned orphan and refuses adoption.
+If OS creation completed before metadata staging, the validated initialization may reuse those
+exact OS bytes only with no canonical/staged metadata, recorded key witness or encrypted document.
+It never replaces the retained entry; established missing or mismatched custody still refuses.
+Proven schema-2 replay may supply current values. Unprovable schema-3 input requires the
 verified operator to supply all five set/clear choices before activation; none of its old values are
 imported. The validated legacy revision is an opaque concurrency floor, with new history advancing
 from that revision. Legacy identities are deny-only, never successful replay authority. Ordinary reads
@@ -401,6 +427,9 @@ erase request is retained inside authenticated ciphertext. The external value-fr
 retains its own request identity. Complete inventory authenticates ciphertext before tombstone repair,
 checks decoded JSON and native copies, and refuses incomplete captures or unknown membership.
 The key does not provide general rollback resistance or a cryptographic-erasure guarantee.
+Ordinary protected-value erase and logout retain this key to authenticate erased history and retained
+settings. Cancelled unpublished sign-up removes the keychain entry after metadata removal, before
+operation removal; uncertain OS deletion retains the durable abort intent for settlement.
 
 The protected-settings reader verifies link count, size, descriptor identity, path identity,
 and stable readback. The document limit is
@@ -673,7 +702,7 @@ instead of reading the map directly.
 
 - The Settings dashboard connection to these saved settings, credentials, relocation, and readiness authorities is pending in the wiring base.
 - ChatGPT OAuth and Responses OCR are wired to the selected dashboard diagnostic and worker provider registry. Actual subscription/model support and workflow cutover still require their live checks and operator sign-off; provider keys are not supported.
-- The packaged desktop application's OS credential backend is pending; the current credential backend is the independent private local file.
+- Profile encryption keys use the OS credential store; encrypted credential records remain independent private local files.
 
 ### Profile storage admission
 

@@ -1,4 +1,5 @@
 import { observeCredentialPresence } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { createCredentialDoctorFixtures } from "../../../support/helpers/credential-doctor-fixtures.js";
 import { isDeepStrictEqual } from "node:util";
@@ -48,6 +49,8 @@ describe("credential history plaintext", () => {
 
   it("strips a restored password when the erasure journal survived the crash", async () => {
     const stored = await registeredFixture({ afterErasureJournal: () => { throw new Error("crash after journal"); } });
+    const metadata: unknown = JSON.parse(readFileSync(join(stored.machine.stateRoot, "machine", "credential-keys", `${stored.admission.profileBinding.profileId}.json`), "utf8"));
+    const key = credentialKeyCustody.read(metadata);
     const applied = stored.store.apply(request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -66,6 +69,7 @@ describe("credential history plaintext", () => {
     })), /crash after journal/);
     assert.equal(readFileSync(stored.path, "utf8").includes(SECRET), false);
     assert.equal(stored.recoverErasure().state, "applied");
+    assert.deepEqual(credentialKeyCustody.read(metadata), key);
     assert.equal(stored.readErasure().entries.ucpathPassword, undefined);
     assert.equal(readFileSync(stored.path, "utf8").includes(SECRET), false);
     writeFileSync(stored.path, before, { mode: 0o600 });
