@@ -21,7 +21,7 @@ export const childExecutionBuildManifest = parseBuildManifest({ kind: "hrauto-re
     ...["fixture-plan1-leaf", "fixture-plan1-child", "fixture-plan1-parent"]
       .map(id => entry(id, "tests/support/fixtures/plan1-operation-workflows.ts")),
     ...["fixture-child-runtime-nested", "fixture-child-runtime-root", "fixture-child-policy-cascade", "fixture-child-policy-independent",
-      "fixture-child-unawaited-independent", "fixture-child-unawaited-cascade"]
+      "fixture-child-mixed-policy", "fixture-child-unawaited-independent", "fixture-child-unawaited-cascade"]
       .map(id => entry(id, "tests/support/fixtures/child-execution-workflows.ts")),
     ...["fixture-child-crash-write", "fixture-child-crash-write-root", "fixture-child-prerequisites-root"]
       .map(id => entry(id, "tests/support/fixtures/child-execution-write-workflow.ts")),

@@ -1,4 +1,8 @@
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
+import { childMixedPolicyRoot, childMixedPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
+import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
+import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { join } from "node:path";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createKernelStubCommandFixtures } from "../../../support/helpers/backend/kernel-stub-command-fixtures.js";
@@ -22,13 +26,15 @@ import { createCommandKernelTestWorld, type Harness } from "../../../support/hel
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
-import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
-import { HASH_A, HASH_B, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand, runCommand } = createCommandKernelTestWorld();
 
+
+const delegationWorld = createRunExecutorTestWorld();
+afterEach(delegationWorld.cleanup);
 
 afterEach(async () => {
   for (const database of openDatabases.splice(0)) { releaseSeededWriteOwners(database, NOW); database.close(); }
@@ -80,48 +86,22 @@ describe("run arms", () => {
   });
 
   it("cancel is CAS-scoped and cascades through authority dependency edges only", async () => {
-    const harness = await createHarness();
-    const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
-    const parent = harness.database.authority.runs.get(parentId);
-    assert.ok(parent !== undefined);
-
-    const cascadeChildId = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
-    const independentChildId = "aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa";
-    assert.equal(harness.database.authority.runs.enqueue(kernelRejectMemberRecord(parent, parentId, cascadeChildId, "child:aaaa", "kr-170000-aaaa", "cascade-edge", NOW)).state, "inserted");
-    assert.equal(harness.database.authority.runs.enqueue(kernelRejectMemberRecord(parent, parentId, independentChildId, "child:bbbb", "kr-170000-bbbb", "independent-edge", NOW)).state, "inserted");
-
-    const manifest = (manifestId: string, edgeId: string, childRunId: string, childItemId: string, cascadeCancel: string) => ({
-      manifestId,
-      parentRunId: parentId,
-      edgeId,
-      inputSchemaHash: HASH_A,
-      resultSchemaHash: HASH_B,
-      cardinality: "one",
-      join: "one",
-      policy: { onChildFailed: "fail-parent", cascadeCancel, afterChildRetry: "resume-parent", visibility: "inline" },
-      children: [{ dependencyId: `${manifestId.slice(0, 8)}-3333-4333-8333-333333333333`, childRunId, childItemId, canonicalInputFingerprint: HASH_A }],
-      createdAt: NOW,
-      manifestFingerprint: HASH_A,
-    });
-    const dependency = (dependencyId: string, manifestId: string, edgeId: string, childRunId: string, childItemId: string, cascadeCancel: string) => ({
-      dependencyId,
-      manifestId,
-      edgeId,
-      parentRunId: parentId,
-      childRunId,
-      childItemId,
-      policy: { onChildFailed: "fail-parent", cascadeCancel, afterChildRetry: "resume-parent", visibility: "inline" },
-      state: "active",
-      version: 1,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const cascadeItem = deriveItemId("kernel-reject", "child:aaaa");
-    const independentItem = deriveItemId("kernel-reject", "child:bbbb");
-    harness.database.authority.delegationManifests.insert(manifest("dddddddd-1111-4111-8111-dddddddddddd", "cascade-edge", cascadeChildId, cascadeItem, "cascade"));
-    harness.database.authority.delegationManifests.insert(manifest("dddddddd-2222-4222-8222-dddddddddddd", "independent-edge", independentChildId, independentItem, "independent"));
-    harness.database.authority.dependencies.insert(dependency("dddddddd-3333-4333-8333-dddddddddddd", "dddddddd-1111-4111-8111-dddddddddddd", "cascade-edge", cascadeChildId, cascadeItem, "cascade"));
-    harness.database.authority.dependencies.insert(dependency("dddddddd-4444-4444-8444-dddddddddddd", "dddddddd-2222-4222-8222-dddddddddddd", "independent-edge", independentChildId, independentItem, "independent"));
+    const h = await delegationWorld.executorHarness({ descriptor: childMixedPolicyRoot.descriptor, stores: plan1Stores });
+    const { database, path } = h.authority;
+    const execution = canonicalChildExecution(h.deps, database, path,
+      id => childMixedPolicyModules.find(module => module.descriptor.id === id)?.descriptor);
+    const root = execution.start(childMixedPolicyRoot.descriptor,
+      { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+    assert.equal((await execution.step(root, delegationWorld.SIGNAL)).outcome.state, "yielded-delegation");
+    const parentId = root.envelope.runId;
+    const parent = database.authority.runs.get(parentId);
+    assert.ok(parent);
+    const children = database.authority.runs.listChildren(parentId);
+    const cascadeChildId = children.find(child => child.envelope.parent?.edgeId === "cascade")?.envelope.runId;
+    const independentChildId = children.find(child => child.envelope.parent?.edgeId === "independent")?.envelope.runId;
+    assert.ok(cascadeChildId);
+    assert.ok(independentChildId);
+    const harness = { database, kernel: execution.kernel };
 
     const stale = harness.kernel.execute(runCommand("cancel", parentId, parent.version + 7));
     assert.equal(stale.state, "conflict");
