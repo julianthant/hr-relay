@@ -29,6 +29,7 @@ import { issueDuoCredentialPurpose, openDuoCredentialDocument } from "../../../.
 import { DuoCredentialDocumentSchema } from "../../../../src/models/config/duo-credential-store.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 
 async function setup(options: { sharedMachine?: true } = {}) {
   const fixture = await createBoundProfileFixture(options), clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
@@ -386,7 +387,16 @@ const SchemaVersionReadbackSchema = z.object({ schemaVersion: z.number().int() }
 const DuoChildEventSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("ready"), pid: z.number().int().positive() }),
   z.strictObject({ type: z.literal("reserved"), attemptId: z.uuid(), count: z.number().int().positive().max(0xffff_ffff), revision: z.number().int().positive() }),
-  z.strictObject({ type: z.literal("failed"), code: z.literal("DUO_FIXTURE_RESERVATION_FAILED") }),
+  z.strictObject({ type: z.literal("failed"), code: z.literal("DUO_FIXTURE_RESERVATION_FAILED"),
+    phase: z.enum(["reserve", "reserve-then-crash"]), causes: z.array(z.strictObject({
+      name: z.enum(["Error", "TypeError", "RangeError", "AggregateError", "ZodError", "DuoCredentialCommitUncertainError",
+        "CredentialKeyCustodyError", "PrivateFileLockUnavailableError", "RuntimeLifetimeLockReleasedError", "AuthoritySourceClosureUnprovedError", "unclassified"]),
+      code: z.string().refine(value => value === "unclassified" || Object.hasOwn(ERROR_CATALOG, value)),
+      reason: z.enum(["duo-publication-pending", "duo-transaction-unissued", "duo-transaction-not-committed", "duo-document-membership-mismatch",
+        "duo-document-custody-changed", "duo-publication-file-changed", "duo-publication-prior-changed", "duo-profile-authority-changed",
+        "duo-machine-authority-changed", "duo-document-required", "duo-ready-credential-required", "duo-counter-exhausted",
+        "profile-registry-publication-busy", "profile-registry-observation-changed", "profile-registry-continuity-mismatch", "directory-integrity", "unclassified"]),
+    })).min(1).max(6) }),
 ]);
 async function duoChild(f: Awaited<ReturnType<typeof setup>>) {
   const child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
@@ -416,7 +426,7 @@ async function duoChild(f: Awaited<ReturnType<typeof setup>>) {
     return { pid: ready.pid,
       async reserve() {
         child.send("reserve"); const result = await event();
-        assert.equal(result.type, "reserved");
+        assert.equal(result.type, "reserved", result.type === "failed" ? `Duo reservation diagnostic: ${JSON.stringify(result)}` : undefined);
         if (result.type !== "reserved") throw new Error("Duo fixture child reservation required");
         return result;
       },

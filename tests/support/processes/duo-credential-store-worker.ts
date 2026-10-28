@@ -2,8 +2,29 @@ import { z } from "zod";
 import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { WorkerRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createDuoCredentialStore, DuoCredentialCommitUncertainError } from "../../../src/backend/storage/configuration/duo-credential-store.js";
+import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 
 import { manualClock } from "../../../src/rules/time/clock.js";
+
+function reservationCauses(error: unknown) {
+  const names = new Set(["Error", "TypeError", "RangeError", "AggregateError", "ZodError", "DuoCredentialCommitUncertainError",
+    "CredentialKeyCustodyError", "PrivateFileLockUnavailableError", "RuntimeLifetimeLockReleasedError", "AuthoritySourceClosureUnprovedError"]);
+  const reasons = ["duo-publication-pending", "duo-transaction-unissued", "duo-transaction-not-committed", "duo-document-membership-mismatch",
+    "duo-document-custody-changed", "duo-publication-file-changed", "duo-publication-prior-changed", "duo-profile-authority-changed",
+    "duo-machine-authority-changed", "duo-document-required", "duo-ready-credential-required", "duo-counter-exhausted",
+    "profile-registry-publication-busy", "profile-registry-observation-changed", "profile-registry-continuity-mismatch", "directory-integrity"];
+  const causes: { name: string; code: string; reason: string }[] = [];
+  let current = error;
+  for (let depth = 0; depth < 6; depth++) {
+    const message = current instanceof Error ? current.message : undefined;
+    causes.push({ name: current instanceof Error && names.has(current.name) ? current.name : "unclassified",
+      code: current instanceof Error && "code" in current && typeof current.code === "string" && Object.hasOwn(ERROR_CATALOG, current.code) ? current.code : "unclassified",
+      reason: message === undefined ? "unclassified" : reasons.find(reason => message.includes(reason)) ?? "unclassified" });
+    if (!(current instanceof Error) || current.cause === undefined) break;
+    current = current.cause;
+  }
+  return causes;
+}
 
 const [workspace, profileId, credentialId, at, port] = z.tuple([z.string().min(1), z.uuid(), z.string().min(1), z.iso.datetime(), z.coerce.number().int().positive()]).parse(process.argv.slice(2));
 const parentStop = new AbortController();
@@ -39,8 +60,8 @@ async function command(input: unknown): Promise<void> {
     const result = store.reserve(credentialId);
     if (command === "reserve-then-crash") process.exit(23);
     process.send?.({ type: "reserved", ...result });
-  } catch {
-    process.send?.({ type: "failed", code: "DUO_FIXTURE_RESERVATION_FAILED" });
+  } catch (error) {
+    process.send?.({ type: "failed", code: "DUO_FIXTURE_RESERVATION_FAILED", phase: command, causes: reservationCauses(error) });
     process.exitCode = 1;
   }
 }
