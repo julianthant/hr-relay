@@ -1,4 +1,4 @@
-import { deriveProfileNames } from "../../../../src/models/profiles/profile.js";
+import { deriveProfileNames, SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { finishProfileOnboarding, readyProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
 import * as fixtureAdmissions from '../../../support/helpers/synthetic-database-admission.js';
 import fs from "node:fs";
@@ -219,27 +219,53 @@ it("publishes ready only from an exact actual credential witness and rechecks po
     const original = path + ".held";
     const store = createCredentialStore({ admission: setup, stateRoot: setup.stateRoot, erasureJournalAdmission: f.machine,
       erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${draft.profileId}.json`) });
-    const publish = RuntimeAdmission.prototype.publishProfileRegistration;
-    const changed = vi.spyOn(RuntimeAdmission.prototype, "publishProfileRegistration").mockImplementation(function(this: RuntimeAdmission, operation, witness, verifier) {
-      if (this === f.machine) {
-        const request = ProtectedSettingsApplyInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
-          commandFingerprint: operation.commandFingerprint, expectedRevision: operation.expectedRevision,
-          protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: operation.createdAt,
-          entries: { ucpathUserId: { set: f.fields.email }, ucpathPassword: { set: f.fields.password },
-            timekeeperName: { set: deriveProfileNames(f.fields.firstName, f.fields.lastName).timekeeperName } } });
-        assert.throws(() => captureCommittedCredentialReplay({ ...store }, request), /profile-signup-credential-store-unissued/u);
-        assert.throws(() => publish.call(this, operation, { ...witness }, verifier), /profile-signup-receipt-mismatch/u);
-        assert.throws(() => publish.call(this, { ...operation, writeId: randomUUID() }, witness, verifier), /profile-signup-intent-mismatch/u);
-        renameSync(path, original);
-        writeFileSync(path, readFileSync(original), { mode: 0o600 });
+    const operationPath = join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
+    const publicationBoundary = new Error("fixture actual registration publication boundary");
+    const nativeRename = fs.renameSync;
+    let publicationBoundaryObserved = false;
+    const stopped = vi.spyOn(fs, "renameSync").mockImplementation((source, target) => {
+      nativeRename(source, target);
+      if (String(target) === operationPath && SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).phase === "publishing") {
+        publicationBoundaryObserved = true;
+        throw publicationBoundary;
       }
-      return publish.call(this, operation, witness, verifier);
     });
+    syncBuiltinESMExports();
+    try { await assert.rejects(f.session.completeOnboarding(draft.token, draft.operationId), error => error === publicationBoundary); }
+    finally { stopped.mockRestore(); syncBuiltinESMExports(); }
+    assert.equal(publicationBoundaryObserved, true);
+    const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
+    const request = ProtectedSettingsApplyInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
+      commandFingerprint: operation.commandFingerprint, expectedRevision: operation.expectedRevision,
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: operation.createdAt,
+      entries: { ucpathUserId: { set: f.fields.email }, ucpathPassword: { set: f.fields.password },
+        timekeeperName: { set: deriveProfileNames(f.fields.firstName, f.fields.lastName).timekeeperName } } });
+    const witness = captureCommittedCredentialReplay(store, request);
+    const verifier = createProfileVerifiers(f.machine.stateRoot).prepare(draft.profileId, f.fields.email, f.fields.password);
+    const publish = f.machine.publishProfileRegistration.bind(f.machine);
+    assert.throws(() => captureCommittedCredentialReplay({ ...store }, request), /profile-signup-credential-store-unissued/u);
+    assert.throws(() => publish(operation, { ...witness }, verifier), /profile-signup-receipt-mismatch/u);
+    assert.throws(() => publish({ ...operation, writeId: randomUUID() }, witness, verifier), /profile-signup-intent-mismatch/u);
+    const changedBinding = new DatabaseSync(path);
     try {
-      await assert.rejects(f.session.completeOnboarding(draft.token, draft.operationId), /profile-signup-database-changed/u);
+      changedBinding.exec("DROP TRIGGER database_states_binding_immutable");
+      changedBinding.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(randomUUID());
+    } finally { changedBinding.close(); }
+    try { assert.throws(() => publish(operation, witness, verifier), /profile-database-binding-mismatch/u); }
+    finally {
+      const restoredBinding = new DatabaseSync(path);
+      try {
+        restoredBinding.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(draft.profileId);
+        restoredBinding.exec("CREATE TRIGGER database_states_binding_immutable BEFORE UPDATE OF installation_id,profile_id ON database_states BEGIN SELECT RAISE(ABORT,'profile-database-binding-immutable'); END;");
+      } finally { restoredBinding.close(); }
+    }
+    renameSync(path, original);
+    writeFileSync(path, readFileSync(original), { mode: 0o600 });
+    try {
+      assert.throws(() => publish(operation, witness, verifier), /profile-signup-database-changed/u);
       assert.equal(f.registry.read().profiles.length, 0);
       assert.equal(createProfileVerifiers(f.machine.stateRoot).identify(f.fields.email), "unknown");
-    } finally { changed.mockRestore(); if (existsSync(original)) { rmSync(path); renameSync(original, path); } }
+    } finally { if (existsSync(original)) { rmSync(path); renameSync(original, path); } }
     const active = await f.session.completeOnboarding(draft.token, draft.operationId);
     assert.equal(f.registry.read().profiles[0]?.profileId, active.profileId);
     const current = f.registry.read();
@@ -300,8 +326,7 @@ it.each(["acquire", "release"] as const)("observes healthy profile evidence acro
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
     import fs from "node:fs";
     import { syncBuiltinESMExports } from "node:module";
-    import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "./src/backend/storage/admission/bootstrap-admission.ts";
+    import { acquireEntrypointAdmission } from "./src/backend/storage/admission/bootstrap-admission.ts";
     const [root, operation, ready, finish, done] = process.argv.slice(1);
     const pause = () => {
       fs.writeFileSync(ready, "ready");

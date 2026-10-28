@@ -1,3 +1,4 @@
+import { proveProfileRootsUnused } from "../maintenance/process-closure.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 
 import { randomUUID, createHash } from "node:crypto";
@@ -21,7 +22,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -87,6 +89,117 @@ export const WorkerProcessLockFileSchema = z.union([
   CurrentWorkerProcessLockFileSchema,
 ]);
 export type WorkerProcessLockFile = z.infer<typeof WorkerProcessLockFileSchema>;
+
+export const ProcessCustodyFileSchema = z.strictObject({ path: z.string().min(1), device: z.number().int().nonnegative(),
+  inode: z.number().int().nonnegative(), digest: FingerprintSchema });
+const ProcessCustodyRootSchema = ProcessCustodyFileSchema.omit({ digest: true }).extend({ mode: z.number().int(), owner: z.number().int().nonnegative() });
+const RecoverySingletonClaimSchema = z.strictObject({ role: z.enum(["server", "live-smoke", "geocode"]),
+  generation: PositiveIntSchema, acquisitionId: z.uuid(), pid: PositiveIntSchema, processIdentity: ProcessStartIdentitySchema,
+  observation: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("gone") }),
+    z.strictObject({ state: z.literal("alive"), identity: ProcessStartIdentitySchema })]), file: ProcessCustodyFileSchema })
+  .refine(claim => claim.observation.state === "gone" || !processIdentityEquals(claim.processIdentity, claim.observation.identity));
+export const WorkerProcessRecoveryCaptureSchema = z.strictObject({ workspace: z.string().min(1), installationId: z.uuid(),
+  processLockRoot: z.string().min(1), original: WorkerProcessLockFileSchema, file: ProcessCustodyFileSchema,
+  singletonClaims: z.array(RecoverySingletonClaimSchema),
+  witnesses: z.array(ProcessCustodyFileSchema).length(4), roots: z.tuple([ProcessCustodyRootSchema, ProcessCustodyRootSchema, ProcessCustodyRootSchema]) });
+export type WorkerProcessRecoveryCapture = z.infer<typeof WorkerProcessRecoveryCaptureSchema>;
+export const WorkerProcessRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1),
+  kind: z.literal("offline-worker-process-recovery"), capture: WorkerProcessRecoveryCaptureSchema, captureDigest: FingerprintSchema,
+  proof: z.strictObject({ sourceDigest: FingerprintSchema, nativeDigest: FingerprintSchema, runtimeDigest: FingerprintSchema,
+    originalOwner: z.literal("gone"), processes: z.literal("absent"), openFiles: z.literal("absent"), workingDirectories: z.literal("absent"),
+    nativeResources: z.literal("closed"), checkedAt: IsoInstantSchema, recoveringPid: PositiveIntSchema,
+    recoveringIdentity: ProcessStartIdentitySchema, restoreAdmissionId: z.uuid() }), digest: FingerprintSchema });
+export const WORKER_PROCESS_RECOVERY_DIRECTORY = "worker-process-recovery";
+export function processCustodyDigest(value: unknown): string {
+  return createHash("sha256").update(canonicalJsonStringify(value)).digest("hex");
+}
+
+export const StartupProcessClosureSchema = z.strictObject({
+  schemaVersion: z.literal(1), kind: z.literal("startup-process-closure"), processLockRoot: z.string().min(1),
+  original: z.union([WorkerProcessLockFileSchema, RuntimeProcessLockFileSchema]), file: ProcessCustodyFileSchema,
+  installationId: z.uuid(), profileId: z.uuid(), authorityPath: z.string().min(1),
+  witnesses: z.array(ProcessCustodyFileSchema).length(2), roots: z.array(ProcessCustodyRootSchema).min(2),
+  browserRoots: z.array(z.string().min(1)).min(1), heldWriteIntentIds: z.array(z.uuid()),
+  checkedAt: IsoInstantSchema, recoveringPid: PositiveIntSchema, recoveringIdentity: ProcessStartIdentitySchema,
+  proof: z.strictObject({ originalOwner: z.literal("gone"), browserProcesses: z.literal("absent"),
+    browserOpenFiles: z.literal("absent"), browserWorkingDirectories: z.literal("absent"), nativeWrites: z.enum(["settled", "HELD"]) }),
+  digest: FingerprintSchema,
+});
+const STARTUP_PROCESS_CLOSURE_DIRECTORY = "startup-process-closure";
+
+function startupClosureDirectory(root: string) {
+  const directory = join(root, STARTUP_PROCESS_CLOSURE_DIRECTORY);
+  if (!existsSync(directory)) return undefined;
+  const info = lstatSync(directory);
+  if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(directory) !== directory || (info.mode & 0o777) !== 0o700
+    || process.getuid !== undefined && info.uid !== process.getuid()) throw new Error("startup-process-closure-directory-unsafe");
+  if (readdirSync(directory).some(name => !/^[0-9a-f-]{36}\.json$/u.test(name) || !z.uuid().safeParse(name.slice(0, -5)).success)) throw new Error("startup-process-closure-publication-uncertain");
+  return directory;
+}
+
+function assertStartupClosureOriginal(receipt: z.infer<typeof StartupProcessClosureSchema>) {
+  const { original, processLockRoot: root } = receipt;
+  const expected = original.name === "workers" ? workerProcessLockPath(root, original.acquisitionId)
+    : join(root, `${original.name}-claims`, `${original.generation}.claim.json`);
+  if (receipt.file.path !== expected || root !== resolve(root)
+    || Date.parse(receipt.checkedAt) < Date.parse(original.releasedAt ?? original.acquiredAt)
+    || receipt.proof.nativeWrites !== (receipt.heldWriteIntentIds.length === 0 ? "settled" : "HELD")) throw new Error("startup-process-closure-unproved");
+  if (original.name === "workers" ? observeProcessIdentity(original.pid).state !== "gone"
+    : recordOwnerIsAlive(original, observeProcessIdentity)) throw new Error("startup-process-closure-owner-unproved");
+  const file = readProcessCustodyFile(expected);
+  if (canonicalJsonStringify(file.witness) !== canonicalJsonStringify(receipt.file)
+    || canonicalJsonStringify(JSON.parse(file.bytes.toString("utf8"))) !== canonicalJsonStringify(original)) throw new Error("startup-process-closure-original-changed");
+  for (const witness of receipt.witnesses) if (canonicalJsonStringify(readProcessCustodyFile(witness.path).witness) !== canonicalJsonStringify(witness)) throw new Error("startup-process-closure-witness-changed");
+  for (const root of receipt.roots) {
+    const info = lstatSync(root.path);
+    if (realpathSync(root.path) !== root.path || !info.isDirectory() || info.isSymbolicLink() || info.dev !== root.device
+      || info.ino !== root.inode || info.mode !== root.mode || info.uid !== root.owner) throw new Error("startup-process-closure-root-changed");
+  }
+}
+
+export function readStartupProcessClosure(root: string, original: WorkerProcessLockFile | RuntimeProcessLockFile) {
+  const directory = startupClosureDirectory(root);
+  if (directory === undefined) return undefined;
+  const path = join(directory, `${original.acquisitionId}.json`);
+  if (!existsSync(path)) return undefined;
+  const receipt = StartupProcessClosureSchema.parse(JSON.parse(readProcessCustodyFile(path).bytes.toString("utf8")));
+  const { digest, ...body } = receipt;
+  if (digest !== processCustodyDigest(body) || receipt.processLockRoot !== root
+    || canonicalJsonStringify({ ...receipt.original, releasedAt: null }) !== canonicalJsonStringify({ ...original, releasedAt: null })) throw new Error("startup-process-closure-receipt-unproved");
+  assertStartupClosureOriginal(receipt);
+  return receipt;
+}
+
+export function publishStartupProcessClosure(input: Omit<z.input<typeof StartupProcessClosureSchema>, "schemaVersion" | "kind" | "checkedAt" | "recoveringPid" | "recoveringIdentity" | "proof" | "digest">, clock: Clock) {
+  const original = z.union([WorkerProcessLockFileSchema, RuntimeProcessLockFileSchema]).parse(input.original);
+  const existing = readStartupProcessClosure(input.processLockRoot, original);
+  if (existing !== undefined) return existing;
+  const owner = observeProcessIdentity(process.pid);
+  if (owner.state !== "alive") throw new Error("startup-process-closure-recovering-owner-unproved");
+  const body = { ...input, schemaVersion: 1 as const, kind: "startup-process-closure" as const,
+    checkedAt: clock.now().toISOString(), recoveringPid: process.pid, recoveringIdentity: owner.identity,
+    proof: { originalOwner: "gone" as const, browserProcesses: "absent" as const, browserOpenFiles: "absent" as const,
+      browserWorkingDirectories: "absent" as const, nativeWrites: input.heldWriteIntentIds.length === 0 ? "settled" as const : "HELD" as const } };
+  const receipt = StartupProcessClosureSchema.parse({ ...body, digest: processCustodyDigest(body) });
+  assertStartupClosureOriginal(receipt);
+  if (receipt.browserRoots.length > 0) proveProfileRootsUnused(receipt.browserRoots);
+  const directory = join(input.processLockRoot, STARTUP_PROCESS_CLOSURE_DIRECTORY);
+  if (!existsSync(directory)) { mkdirSync(directory, { mode: 0o700 }); fsyncPath(input.processLockRoot); }
+  startupClosureDirectory(input.processLockRoot);
+  const final = join(directory, `${input.original.acquisitionId}.json`), stage = join(directory, `.${input.original.acquisitionId}.tmp`);
+  writeFileSync(stage, canonicalJsonStringify(receipt), { mode: 0o600, flag: "wx" }); fsyncPath(stage);
+  assertStartupClosureOriginal(receipt);
+  linkSync(stage, final); fsyncPath(directory); unlinkSync(stage); fsyncPath(directory);
+  const readback = readStartupProcessClosure(input.processLockRoot, original);
+  if (canonicalJsonStringify(readback) !== canonicalJsonStringify(receipt)) throw new Error("startup-process-closure-readback-unproved");
+  return receipt;
+}
+
+export function readStartupProcessRecords(root: string) {
+  startupClosureDirectory(root);
+  const singletons = (["server", "live-smoke", "geocode"] as const).flatMap(role => readSingletonClaims(root, role));
+  return [...singletons, ...readWorkerProcessLocks(root)];
+}
 
 const CurrentRestoreAdmissionFileSchema = z.strictObject({
   schemaVersion: z.literal(2),
@@ -424,7 +537,9 @@ function readSingletonClaims(root: string, role: SingletonRole): readonly z.outp
         const release = GeocodeReleaseSchema.parse(JSON.parse(readClaimRuntimeFile(root, role, releaseName).text));
         if (release.generation !== claim.generation || release.acquisitionId !== claim.acquisitionId) throw new Error(`${role}-release-identity-invalid`);
         claims.push({ ...claim, releasedAt: release.releasedAt });
-      } catch (error) { if (errnoOf(error) !== "ENOENT") throw error; claims.push(claim); }
+      } catch (error) { if (errnoOf(error) !== "ENOENT") throw error;
+        const recovered = readStartupProcessClosure(root, claim);
+        claims.push(recovered === undefined ? claim : { ...claim, releasedAt: recovered.checkedAt }); }
     }
     for (const name of names.filter(name => name.endsWith(".release.json"))) if (!claims.some(claim => name === `${claim.generation}-${claim.acquisitionId}.release.json`)) throw new Error(`${role}-release-unbound`);
     return claims.sort((a, b) => a.generation - b.generation);
@@ -645,37 +760,120 @@ export function acquireRuntimeRestoreAdmission(
   }
 }
 
-function readWorkerProcessLockRecord(directory: string, name: string): WorkerProcessLockFile {
-  let descriptor: number | undefined;
-  let result: WorkerProcessLockFile | undefined, primary: { error: unknown } | undefined;
-  let descriptorIdentity: object | undefined;
+export function readProcessCustodyFile(path: string, maxBytes = 1_048_576) {
+  const parent = dirname(path), before = lstatSync(path);
+  if (realpathSync(parent) !== parent || !lstatSync(parent).isDirectory() || !before.isFile() || before.isSymbolicLink()
+    || before.nlink !== 1 || before.size > maxBytes || (before.mode & 0o077) !== 0
+    || process.getuid !== undefined && before.uid !== process.getuid()) throw new Error("worker-process-recovery-file-unsafe");
+  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  let bytes: Buffer | undefined, primary: { error: unknown } | undefined;
   try {
-    const root = resolve(directory, "..");
-    if (realpathSync(directory) !== resolve(directory) || !lstatSync(directory).isDirectory()) throw new Error("worker-process-custody-directory-unsafe");
-    const path = join(directory, name), before = lstatSync(path);
-    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.size > 16_384
-      || (before.mode & 0o077) !== 0 || process.getuid !== undefined && before.uid !== process.getuid()) throw new Error("worker-process-custody-file-unsafe");
-    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    const opened = fstatSync(descriptor); descriptorIdentity = opened;
-    if (!opened.isFile() || opened.nlink !== 1 || opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("worker-process-custody-file-changed");
-    const record = WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(descriptor, "utf8")));
-    const after = lstatSync(path);
-    if (after.dev !== opened.dev || after.ino !== opened.ino || after.size !== opened.size
-      || name !== `${record.acquisitionId}.lock.json`) throw new Error("worker-process-custody-file-binding-mismatch");
+    const opened = fstatSync(descriptor);
+    if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("worker-process-recovery-source-changed");
+    bytes = readFileSync(descriptor);
+    const after = fstatSync(descriptor), live = lstatSync(path);
+    const identity = (stat: typeof before) => [stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, stat.mtimeMs, stat.ctimeMs];
+    if (canonicalJsonStringify(identity(before)) !== canonicalJsonStringify(identity(after))
+      || canonicalJsonStringify(identity(before)) !== canonicalJsonStringify(identity(live)) || bytes.length !== before.size) throw new Error("worker-process-recovery-source-changed");
+  } catch (error) { primary = { error }; }
+  try { closeSync(descriptor); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { descriptor: { descriptor, identity: before } }); }
+  if (primary !== undefined) throw primary.error;
+  if (bytes === undefined) throw new Error("worker-process-recovery-read-unproved");
+  return { bytes, witness: { path, device: before.dev, inode: before.ino, digest: createHash("sha256").update(bytes).digest("hex") } };
+}
+
+export function captureWorkerProcessRecoveryFile(processLockRoot: string, acquisitionId: string) {
+  const directory = join(processLockRoot, WORKER_PROCESS_LOCK_DIRECTORY), name = `${z.uuid().parse(acquisitionId)}.lock.json`;
+  const original = readWorkerProcessLockRecord(directory, name), file = readProcessCustodyFile(join(directory, name));
+  if (canonicalJsonStringify(WorkerProcessLockFileSchema.parse(JSON.parse(file.bytes.toString("utf8")))) !== canonicalJsonStringify(original)) throw new Error("worker-process-recovery-source-changed");
+  return { original, file: file.witness };
+}
+
+export function assertWorkerProcessRecoveryCapture(capture: WorkerProcessRecoveryCapture): void {
+  const parsed = WorkerProcessRecoveryCaptureSchema.parse(capture), workspace = resolve(parsed.workspace);
+  const state = join(workspace, rebuildRuntimeIsolation.stateRoot), artifacts = join(workspace, rebuildRuntimeIsolation.artifactRoot);
+  if (workspace !== parsed.workspace || realpathSync(workspace) !== workspace
+    || parsed.processLockRoot !== join(workspace, rebuildRuntimeIsolation.processLockRoot)
+    || parsed.original.releasedAt !== null || !("workerId" in parsed.original)
+    || parsed.file.path !== join(parsed.processLockRoot, WORKER_PROCESS_LOCK_DIRECTORY, `${parsed.original.acquisitionId}.lock.json`)
+    || canonicalJsonStringify(parsed.witnesses.map(file => file.path)) !== canonicalJsonStringify([
+      join(workspace, ".tracker/control/installation.json"), join(workspace, ".tracker/control/locator.json"),
+      join(state, ".runtime-owner.json"), join(artifacts, ".runtime-owner.json")])
+    || canonicalJsonStringify(parsed.roots.map(root => root.path)) !== canonicalJsonStringify([state, artifacts, parsed.processLockRoot])) throw new Error("worker-process-recovery-binding-unproved");
+  if (canonicalJsonStringify(captureWorkerProcessRecoveryFile(parsed.processLockRoot, parsed.original.acquisitionId))
+    !== canonicalJsonStringify({ original: parsed.original, file: parsed.file })) throw new Error("worker-process-recovery-source-changed");
+  for (const file of parsed.witnesses) if (canonicalJsonStringify(readProcessCustodyFile(file.path).witness) !== canonicalJsonStringify(file)) throw new Error("worker-process-recovery-source-changed");
+  for (const root of parsed.roots) {
+    const stat = lstatSync(root.path);
+    if (realpathSync(root.path) !== root.path || !stat.isDirectory() || stat.isSymbolicLink()
+      || stat.dev !== root.device || stat.ino !== root.inode || stat.mode !== root.mode || stat.uid !== root.owner
+      || (stat.mode & 0o022) !== 0 || process.getuid !== undefined && stat.uid !== process.getuid()) throw new Error("worker-process-recovery-root-changed");
+  }
+}
+
+export function validateWorkerProcessRecoveryReceipt(input: unknown) {
+  const receipt = WorkerProcessRecoveryReceiptSchema.parse(input), { digest, ...body } = receipt;
+  if (digest !== processCustodyDigest(body) || receipt.captureDigest !== processCustodyDigest(receipt.capture)
+    || receipt.capture.original.releasedAt !== null || !("workerId" in receipt.capture.original)
+    || Date.parse(receipt.proof.checkedAt) < Date.parse(receipt.capture.original.acquiredAt)) throw new Error("worker-process-recovery-receipt-unproved");
+  return receipt;
+}
+
+export function assertWorkerProcessRecoveryRuntimeStopped(root: string, acquisitionId: string, observer: ProcessIdentityObserver = observeProcessIdentity) {
+  const singletonClaims: z.infer<typeof RecoverySingletonClaimSchema>[] = [];
+  for (const role of ["server", "live-smoke", "geocode"] as const) {
+    for (const record of readSingletonClaims(root, role)) {
+      if (record.releasedAt !== null) continue;
+      const observation = observer(record.pid);
+      if (recordOwnerIsAlive(record, () => observation)) throw new Error("worker-process-recovery-other-owner-unreleased");
+      const file = readProcessCustodyFile(join(root, `${role}-claims`, `${record.generation}.claim.json`));
+      if (canonicalJsonStringify(CurrentRuntimeProcessLockFileSchema.parse(JSON.parse(file.bytes.toString("utf8")))) !== canonicalJsonStringify(record)) {
+        throw new Error("worker-process-recovery-source-changed");
+      }
+      singletonClaims.push(RecoverySingletonClaimSchema.parse({ role, generation: record.generation, acquisitionId: record.acquisitionId,
+        pid: record.pid, processIdentity: record.processIdentity, observation, file: file.witness }));
+    }
+  }
+  for (const record of iterateWorkerProcessLocks(root)) if (record.releasedAt === null && record.acquisitionId !== acquisitionId
+    && !workerProcessRecoveryProved(root, record, observer)) throw new Error("worker-process-recovery-other-owner-unreleased");
+  return singletonClaims;
+}
+
+export function workerProcessRecoveryProved(root: string, record: WorkerProcessLockFile, observer: ProcessIdentityObserver = observeProcessIdentity): boolean {
+  if (readStartupProcessClosure(root, record) !== undefined) return true;
+  const directory = join(root, WORKER_PROCESS_RECOVERY_DIRECTORY);
+  const stat = lstatSync(directory, { throwIfNoEntry: false });
+  if (stat === undefined) return false;
+  if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(directory) !== directory || (stat.mode & 0o077) !== 0
+    || process.getuid !== undefined && stat.uid !== process.getuid()) throw new Error("worker-process-recovery-receipt-unsafe");
+  for (const name of readdirSync(directory)) if (!/^[0-9a-f-]{36}\.json$/u.test(name) || !z.uuid().safeParse(name.slice(0, -5)).success) throw new Error("worker-process-recovery-publication-uncertain");
+  const path = join(directory, `${record.acquisitionId}.json`);
+  if (lstatSync(path, { throwIfNoEntry: false }) === undefined) return false;
+  const receipt = validateWorkerProcessRecoveryReceipt(JSON.parse(readProcessCustodyFile(path).bytes.toString("utf8")));
+  if (receipt.capture.processLockRoot !== root || canonicalJsonStringify(receipt.capture.original) !== canonicalJsonStringify(record)) throw new Error("worker-process-recovery-receipt-mismatch");
+  assertWorkerProcessRecoveryCapture(receipt.capture);
+  for (const name of ["server-claims", "live-smoke-claims", "geocode-claims", WORKER_PROCESS_LOCK_DIRECTORY]) {
+    const path = join(root, name);
+    if (lstatSync(path, { throwIfNoEntry: false }) !== undefined && readdirSync(path).some(entry => entry.startsWith(".")
+      || entry.endsWith(".tmp") || entry.endsWith(".channel.json"))) throw new Error("worker-process-recovery-publication-uncertain");
+  }
+  if (observer(record.pid).state !== "gone") throw new Error("worker-process-recovery-owner-not-gone");
+  return true;
+}
+
+function readWorkerProcessLockRecord(directory: string, name: string): WorkerProcessLockFile {
+  try {
+    const root = resolve(directory, ".."), file = readProcessCustodyFile(join(directory, name), 16_384);
+    const record = WorkerProcessLockFileSchema.parse(JSON.parse(file.bytes.toString("utf8")));
+    if (name !== `${record.acquisitionId}.lock.json`) throw new Error("worker-process-custody-file-binding-mismatch");
     if ("admission" in record && (record.admission.processLockRoot !== root
       || record.admission.authorityPath !== resolve(record.admission.authorityPath))) throw new Error("worker-process-admission-root-mismatch");
-    result = record;
+    return record;
   } catch (error) {
-    primary = { error: new Error(`worker process-lock record ${name} is malformed or unsafe`, { cause: error }) };
+    if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
+    throw new Error(`worker process-lock record ${name} is malformed or unsafe`, { cause: error });
   }
-  if (descriptor !== undefined) {
-    try { closeSync(descriptor); }
-    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
-      { descriptor: { descriptor, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
-  }
-  if (primary !== undefined) throw primary.error;
-  if (result === undefined) throw new Error("worker-process-lock-result-missing");
-  return result;
 }
 
 function readWorkerProcessLocks(root: string): readonly WorkerProcessLockFile[] {
@@ -860,9 +1058,47 @@ export function inspectRuntimeProcessOrphans(
   readRuntimeProcessLock(root, "workers");
   let staleWorkerRecords = 0;
   for (const record of iterateWorkerProcessLocks(root)) {
-    if (record.releasedAt === null && !recordOwnerIsAlive(record, observer)) staleWorkerRecords += 1;
+    if (record.releasedAt === null && !recordOwnerIsAlive(record, observer) && !workerProcessRecoveryProved(root, record, observer)) staleWorkerRecords += 1;
   }
   return Object.freeze({ staleServerRecords, staleWorkerRecords });
+}
+
+export function inspectStoppedDeviceRecertificationCustody(processLockRoot: string) {
+  if (process.platform !== "darwin") throw new Error("device-recertification-boot-unproved");
+  const boot = spawnSync("/usr/sbin/sysctl", ["-n", "kern.boottime"], { encoding: "utf8" });
+  const seconds = /^\{\s*sec = (\d+),/u.exec(boot.stdout)?.[1];
+  if (boot.error !== undefined || boot.status !== 0 || seconds === undefined) throw new Error("device-recertification-boot-unproved");
+  const bootStartedAt = Number(seconds) * 1000;
+  if (!Number.isSafeInteger(bootStartedAt) || bootStartedAt <= 0) throw new Error("device-recertification-boot-unproved");
+  const root = resolve(processLockRoot);
+  for (const role of ["server", "live-smoke", "geocode"] as const) {
+    if (existsSync(join(root, `${role}-claims`)) && readdirSync(claimDirectory(root, role)).some(name => name.startsWith(".") || name.endsWith(".tmp") || name.endsWith(".channel.json"))) throw new Error("device-recertification-process-custody-unproved");
+  }
+  const workerDirectory = join(root, WORKER_PROCESS_LOCK_DIRECTORY), workerStat = lstatSync(workerDirectory, { throwIfNoEntry: false });
+  if (workerStat !== undefined && (!workerStat.isDirectory() || workerStat.isSymbolicLink() || (workerStat.mode & 0o077) !== 0
+    || process.getuid !== undefined && workerStat.uid !== process.getuid() || readdirSync(workerDirectory).some(name => name.startsWith(".")))) throw new Error("device-recertification-worker-custody-unproved");
+  const singletons = (["server", "live-smoke", "geocode"] as const).flatMap(role => readSingletonClaims(root, role));
+  readRuntimeProcessLock(root, "workers");
+  const workers = [...iterateWorkerProcessLocks(root)];
+  if (workers.some(record => record.releasedAt === null)) throw new Error("device-recertification-worker-custody-unproved");
+  const retained = singletons.filter(record => record.releasedAt === null);
+  for (const record of retained) {
+    const startedAt = Number(record.processIdentity.startToken) * 1000;
+    if (record.name !== "server" || record.processIdentity.platform !== "darwin" || !/^\d+$/u.test(record.processIdentity.startToken)
+      || !Number.isSafeInteger(startedAt) || startedAt <= 0 || startedAt >= bootStartedAt
+      || Date.parse(record.acquiredAt) >= bootStartedAt || Date.parse(record.acquiredAt) < startedAt
+      || observeProcessIdentity(record.pid).state !== "gone") throw new Error("device-recertification-server-custody-unproved");
+  }
+  const files = ["server-claims", "live-smoke-claims", "geocode-claims", WORKER_PROCESS_LOCK_DIRECTORY].flatMap(name => {
+    const directory = join(root, name);
+    if (!existsSync(directory)) return [];
+    return ["", ...readdirSync(directory).sort()].map(child => {
+      const info = lstatSync(join(directory, child));
+      return { path: `${name}/${child}`, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid,
+        links: info.nlink, size: info.size, modified: info.mtimeMs, changed: info.ctimeMs };
+    });
+  });
+  return { bootStartedAt, singletons, workers, files };
 }
 
 export function runtimeProcessLockIsActive(processLockRoot: string, name: RuntimeProcessLockName): boolean {
@@ -971,6 +1207,9 @@ export function bindWorkerProcessAdmission<T>(input: Readonly<{
     workerCustodyHandles.set(stable, { ...custody, authorityPath: resolve(input.authorityPath), startupFresh: true });
     return Object.freeze({ value: opened.value, workerId, processLock: stable });
   } catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) throw new WorkerProcessCustodyUncertainError([
+      retainAuthoritySourceClosure([error], { admission: { input, opened, stable }, processLock: initial }),
+    ]);
     const failures: unknown[] = [error];
     let closed = opened === undefined;
     if (opened !== undefined) {

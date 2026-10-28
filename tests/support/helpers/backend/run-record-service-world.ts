@@ -80,7 +80,7 @@ export function createRunRecordServiceTestWorld() {
       priority: "bulk", shape: "single", dryRun: true,
       input: QUEUED_RUN.input, runtimeConfig,
     };
-    return { database, service, clock, request, runtimeConfig, published, root };
+    return { database, service, clock, request, runtimeConfig, published, root, admission: profile.admission, machine: profile.machine };
   }
 
   function created(service: RunRecordService, request: CreateRunRequest) {

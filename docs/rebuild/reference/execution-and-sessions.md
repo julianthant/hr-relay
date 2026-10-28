@@ -92,15 +92,33 @@ external write.
 
 ### 3.0 Startup claim recovery
 
-After `workerLeases.start` succeeds, composition calls `sweepWorkerClaims` for its own `workerId`
-before claiming. The new lifetime proves old ownership ended, regardless of run heartbeat age.
+Before supervisor construction or worker admission, `startup-crash-recovery.ts` reconciles the
+selected profile. It proves dead ownership from retained process birth and the exact original file,
+and uses the offline recovery's strict OS process, open-file and working-directory absence proof
+across installation browser roots. Live owners are left alone; uncertain identity or closure refuses
+with `STARTUP_CRASH_RECOVERY_REFUSED` before claiming work.
+A singleton claim whose PID now has a different start identity has a gone original owner. Worker
+records require the PID itself to be gone; a reused identity still refuses.
 
-`src/backend/runs/lifecycle/run-record-service.ts` owns both sweep scopes: startup uses `workerId`,
-periodic maintenance uses `staleBefore`. Exactly one is required; both preserve write-intent checks.
+Immutable receipts in `startup-process-closure/` settle process custody only; original claims and
+worker files stay untouched. Receipts bind installation witnesses, physical roots, original file
+identity and digest, authority/profile identity, and the recovering process. Unresolved writes are
+recorded as `HELD`; a process receipt never authorizes resubmission or proves native resource closure.
 
-An unfinished `attempting` write routes to recovery before requeue. A run without a legal park
-transition remains held. Startup refuses with the run and required operator resolution named.
-An unavailable or inconsistent write lookup cannot mean that no write exists.
+The explicit `recover-crash` lifecycle door fences the exact version, claim and retained worker birth,
+and journals the process-closure receipt digest. A run with no unfinished write ends failed with
+`RUN_INTERRUPTED_BY_CRASH`, a structured failure and terminal result. An attempting or parked write
+keeps its original intent and attempt and surfaces as `parked-write` with
+`RUN_CRASH_WRITE_UNRESOLVED`. Other unproved write states refuse. Normal worker terminalization
+continues to require current live execution authority. Proved-dead leases are stopped as crashed.
+
+Never-claimed, ownerless queues from a previous local calendar day are cancelled through the normal
+lifecycle transition after checking that no intent or checkpoint exists. The cancellation records
+`RUN_STALE_QUEUE_CANCELLED`; today's queues and previously claimed queues are preserved. Each cleanup
+action publishes a durable notification; lifecycle events and failure/park messages feed Logs and Queue.
+Repeated reconciliation preserves existing receipts, settled runs and notification identities.
+
+Periodic claim maintenance still uses `sweepWorkerClaims` with `staleBefore`, preserving write checks.
 
 ### 3.1 Dispatch and fairness
 
@@ -265,6 +283,51 @@ runtime admission. Shutdown does not create a backup.
 
 `src/backend/storage/sqlite/runtime-process-locks.ts` owns acquisition-specific process records
 and OS process-birth checks. Database closure precedes their release.
+
+An abandoned bound-worker process record can also be settled by explicit offline
+`storage recover-worker-process --acquisition <uuid> --plan --json`, followed by
+`--acquisition <uuid> --capture <digest> --apply --json`. Plan reads existing custody without
+acquiring admission, opening SQLite or creating files. Apply requires the exact capture under fixed
+restore admission and exclusive installation custody. This finite path supports an established
+canonical flat native6 installation without profile-registry evidence; it does not authenticate an
+owner or initialize a registry.
+
+Recovery preserves the original bytes, physical file identity and nullable `releasedAt`. Its separate
+immutable receipt binds the entire original record, canonical root and owner/locator witnesses,
+fresh gone-owner and process/open-file/cwd observations, and independently closed native
+lease/browser/Duo/control/run/write custody. Unresolved HR writes remain held. Changed sources,
+unknown observations or failed resource closure refuse. Existing backup and claim consumers retain
+their current native and owner proofs. Finite stopped device recertification still requires released
+worker records. Unreleased singleton claims are admissible only when the normal process start-identity
+check proves their owners gone; live or unprovable owners refuse. Their identities, file witnesses and
+observations are bound into the capture and receipt without changing any claim file.
+
+Receipts live in the fixed lock root's `worker-process-recovery/` directory. Publication uses a
+private staged file, no-overwrite link, stage removal and directory fsync. A crash before the sole
+final name is durable, partial bytes, an extra stage or multiple links refuses; it is never cleaned
+up automatically. A complete sole final receipt is independently authenticated on fresh reads,
+including exact original bytes/inode and current owning witnesses; no private flag or claimed prior
+readback grants authority. A publisher that fails readback or custody release reports failure even
+if a complete receipt remains available for independent verification. Receipt proof describes the
+historical process closure event; it never replaces a consumer's current database/resource guards.
+
+### Offline cancellation of never-claimed queued runs
+
+`storage cancel-queued-runs --plan --json` captures an established flat native6 installation
+without changing source files or acquiring admission. `storage cancel-queued-runs --capture
+<digest> --apply --json` rechecks that exact capture under restore admission and exclusive
+installation custody, proves process/open-file/cwd absence, then cancels all eligible queued runs
+in one transaction. Plan or apply refuses any other nonterminal run, prior claim, requeue,
+checkpoint, write intent, delegation, active native resource, live owner or uncertain custody.
+A stale dead worker process record can remain for subsequent `recover-worker-process`; this command
+neither releases nor rewrites process records. Changes to captured database files, native inventory,
+installation witnesses or process custody require a new plan.
+
+The finite native6 path shares the ordinary lifecycle transition validator and version-fenced row
+update. It records terminal `cancelled` with reason `cancelled offline: stale queued run`, the normal
+lifecycle command and audit, terminal result evidence and timeline event. It changes no schema or
+credentials and grants no profile runtime authority. The supported existing-data claim and upgrade
+retain the cancelled outcome and reason.
 
 ## 7. Verification owners
 

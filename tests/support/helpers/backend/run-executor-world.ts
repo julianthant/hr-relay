@@ -29,6 +29,7 @@ import { sequentialIdFactory, WORKFLOW_ID } from "../../fixtures/phase1f-run-fix
 import { fixtureBuildManifest } from "../../fixtures/workflow-definition-fixtures.js";
 import { happySessionHarness, healthyCrmDriver, healthyUcpathDriver, ManualScheduler, openAuthorityHarness, recordingEmitter, recordingLogger, sessionFactoryHarness, sessionManagerFor, type AuthorityHarness, type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
+import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { CONFIG_SNAPSHOT, UUID_4, UUID_5, UUID_6 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
@@ -62,7 +63,7 @@ export function createRunExecutorTestWorld() {
     const authority = await openAuthorityHarness();
     authorityHarnesses.set(authority.database, authority);
     const sessions = options.sessions ?? happySessionHarness();
-    const manager = await sessionManagerFor(sessions, authority.clock);
+    const manager = await sessionManagerFor(sessions, authority.clock, undefined, undefined, duoCeremonyGatesOver(authority.database, authority.clock));
     let sessionsClosed = false;
     const closeSessions = async () => { await manager.closeAll("worker-stop"); sessionsClosed = true; };
     sessionClosures.add(closeSessions);

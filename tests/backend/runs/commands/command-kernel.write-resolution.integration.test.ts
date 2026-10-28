@@ -30,7 +30,7 @@ describe("write resolution", () => {
     harness.clock.advanceWall(Date.parse("2026-08-03T09:00:00.000Z") - harness.clock.nowMs());
     const run = RunRecordSchema.parse(writeFixtureQueuedRun());
     harness.database.authority.runs.enqueue({ ...run, envelope: { ...run.envelope, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId } });
-    const ports = testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "kernel.sqlite"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
+    const ports = testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "state.db"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
     const slot = harness.database.authority.workerSlots.list(writeFixtureDescriptor.id)[0];
     world.probeResults.push(absentProbeEvidence(NOW)); world.commitThrows = new Error("probe returned unknown");
     await runWorkerLoop({ ...ports, workflowId: writeFixtureDescriptor.id, workerId: slot.workerId, descriptor: writeFixtureDescriptor,

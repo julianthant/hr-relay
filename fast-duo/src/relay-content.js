@@ -58,7 +58,9 @@
           } });
           if (!receipt?.success || controller.signal.aborted || !sameObservation(before, observation())) throw new Error('ONBOARDING_DUO_NATIVE_UNRECORDED');
         } catch (error) {
-          try { await nativeFailure(request); } finally { throw error; }
+          try { await nativeFailure(request); }
+          catch (reportError) { throw new AggregateError([error, reportError], 'ONBOARDING_DUO_NATIVE_UNRECORDED', { cause: reportError }); }
+          throw error;
         }
         registration = { requestId: request.requestId, rpId: request.rpId, origin: location.origin, method: 'touch' };
         void checkAcceptance();

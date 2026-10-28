@@ -1,3 +1,4 @@
+import { reconcileStartupCrash } from "../../runs/lifecycle/startup-crash-recovery.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { createChatGptOcrAdapter, CHATGPT_OCR_MODEL } from "../../processing/providers/chatgpt-ocr-adapter.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
@@ -17,6 +18,8 @@ import { composeRuntimePreflight } from "../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
 import { claimWithPreflight } from "../preflight/worker-admission.js";
 import { createWorkerBrowserControl, createWorkerResetControl, createWorkerResetObserver } from "../../runtime/workers/worker-browser-control.js";
+import { checkParkedWrite } from "../../runtime/writes/write-recovery.js";
+import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 import { selectRunRuntime } from "../../runs/settings/run-settings.js";
 import { createRunResourcesFactory, type BrowserProfileAuthority } from "./worker/run-resources.js";
 import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
@@ -525,6 +528,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
       assertCurrent();
       readSettings(repositories);
+      reconcileStartupCrash({ machine, admission, database, lifecycle: new RunRecordService({ database, clock, ids, buildManifest, publishQueued: () => { throw new Error("startup-recovery-cannot-enqueue"); } }), processLockRoot, clock });
       if (launch === undefined) {
         const before = repositories.workerPools.get(workflowId);
         return admitDirectWorker(repositories, { commandId: ids.uuid(), workflow: workflowId, poolIndex,
@@ -856,7 +860,25 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
             || reset.work.current.claimGeneration !== claim.claimGeneration || reset.work.current.attempt !== run.envelope.attempt) throw new Error("worker-reset-observer-authority-unavailable");
           return true;
         },
-        browserControl: createWorkerBrowserControl({ database, workerId, leaseGeneration, clock, signal: stopController.signal }),
+        browserControl: createWorkerBrowserControl({ database, workerId, leaseGeneration, clock, signal: stopController.signal,
+          checkParkedWrite: async (sessions, request, expiresAt) => {
+            const owner = database.getMeta();
+            if (request.requestedBy !== "local-operator" || request.source !== "run-detail"
+              || owner.installationId !== request.target.installationId || owner.profileId !== request.target.profileId) throw new WorkerControlRefusal("parked-check-profile-changed");
+            const controller = new AbortController();
+            const stop = () => controller.abort(stopController.signal.reason);
+            stopController.signal.addEventListener("abort", stop, { once: true });
+            if (stopController.signal.aborted) stop();
+            const deadline = scheduler.schedule(clock.monotonicMs() + Math.max(0, Date.parse(expiresAt) - clock.nowMs()),
+              () => controller.abort(new Error("parked-check-deadline")));
+            try {
+              return await checkParkedWrite({ repositories: database.authority, descriptor: executionDescriptor(request.target.workflowId),
+                target: request.target, commandId: request.commandId, requestedBy: request.requestedBy, signal: controller.signal, sessions,
+                configureRun: run => { assertCurrent(); sessions.configureExecution(run.envelope.workflow, stores);
+                  const resources = ownedResources.forRun(run); sessions.configureRunResources(resources); return resources; },
+                probe: { stores, clock, scheduler, taskDeadlineMs: resolved.config.timeouts.taskMs, log } });
+            } finally { deadline.cancel(); stopController.signal.removeEventListener("abort", stop); }
+          } }),
         browserActivity: activity => {
           retireWorkerStartupCustody(processLock);
           const key = Symbol(activity);

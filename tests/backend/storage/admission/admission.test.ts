@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { initializeAdmissionFixture, fixtureAdmission, releaseAdmissionFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, initializeAdmissionFixture, fixtureAdmission, releaseAdmissionFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdirSync,mkdtempSync,readdirSync,symlinkSync,realpathSync,rmSync } from "node:fs";
@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { it } from "vitest";
 import { RuntimeAdmission,acquireExclusiveRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { pendingDiagnosticArtifacts,reclaimDiagnosticStages } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { AuthorityDatabase as NativeDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 
 const sourceUrl = (relative: string) => new URL(relative, import.meta.url).href;
 function child(source: string) {
@@ -26,11 +26,7 @@ function child(source: string) {
 
 it.each(["ordinary", "pinned"] as const)("keeps a killed %s publisher witness across restart and requires actual stopped exclusive cleanup", async retention => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "diagnostic-crash-")));
-  const initial = RuntimeAdmission.acquireInitial(root, (pair, inspection) => ({ kind: "verified-existing", pair,
-    authorityGeneration: NativeDatabase.inspectExistingReadOnly(inspection, join(pair.stateRoot, "state.db")).authorityGeneration,
-    databaseIdentity: NativeDatabase.sourceDatabaseIdentity(join(pair.stateRoot, "state.db")) }), (pair, admission) => {
-    NativeDatabase.open(admission, { path: join(pair.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "diagnostic-crash" }).close();
-  });
+  const initial = acquireEntrypointAdmission(root, "exclusive");
   const artifactRoot = initial.artifactRoot;
   const admittedInventory = readdirSync(artifactRoot).sort();
   initial.release();
@@ -57,20 +53,21 @@ it.each(["ordinary", "pinned"] as const)("keeps a killed %s publisher witness ac
   } finally { publisher?.process.kill("SIGKILL"); if (publisher !== undefined) await publisher.exited; rmSync(root, { recursive: true, force: true }); }
 });
 
-it("delegates stopped-stage installation context only while its exclusive parent is live", () => {
+it("delegates stopped-stage installation context only while its exclusive parent is live", async () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "orphan-staged-admission-")));
   initializeAdmissionFixture(workspace);
   const shared = fixtureAdmission(workspace);
   assert.throws(() => shared.assertExclusive(), /exclusive offline admission required/u);
   releaseAdmissionFixture(workspace);
-  const parent = acquireExclusiveRuntimeAdmission(workspace);
+  const profile = await createBoundProfileFixture({ workspace });
+  const parent = profile.admission;
   const staged = parent.stoppedStagedAuthority(join(parent.stateRoot, `.restore-${randomUUID()}.sqlite.tmp`));
   try {
     assert.deepEqual(staged.readInstallationContext(), parent.readInstallationContext());
     assert.equal(staged.readInstallationContext()?.workspace, workspace);
     parent.release();
     assert.throws(() => staged.readInstallationContext(), /missing or released admission/u);
-  } finally { staged.release(); parent.release(); rmSync(workspace, { recursive: true, force: true }); }
+  } finally { staged.release(); await profile.close(); }
 });
 
 

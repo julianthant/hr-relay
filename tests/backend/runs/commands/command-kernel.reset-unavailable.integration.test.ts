@@ -50,7 +50,7 @@ describe("public Stop admission", () => {
         if (active === undefined) throw new Error("missing fixture runtime");
         const queued = RunRecordSchema.parse(personLookupQueuedRun());
         h.database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope, configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
-        const next = h.database.authority.runs.claimNext({ workerId, workflow: slot.workflow, now: h.clock.now().toISOString() });
+        const next = h.database.authority.runs.claimNext({ workerId, workflow: slot.workflow, workerLifetime: { membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration }, now: h.clock.now().toISOString() });
         expect(next.state).toBe("claimed");
         if (next.state !== "claimed") throw new Error("next work unavailable");
         expect(h.database.authority.workerLeases.reportLifecycle({ workerId, leaseGeneration: lease.leaseGeneration,

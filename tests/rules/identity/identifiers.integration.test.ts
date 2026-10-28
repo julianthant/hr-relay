@@ -56,9 +56,9 @@ const { plan } = createSeparationStartFixtures(openDatabase, CLOCK);
 describe_m0("separations — start planning through the existing service", () => {
 afterEach_m0(_afterEachFixture0);
 
-  it_m0("plans one item per document, and refuses a submission the ingress does not admit", () => {
+  it_m0("plans one item per document, and refuses a submission the ingress does not admit", async () => {
 
-    const planned = plan([SUBMISSION, { ...SUBMISSION, actionId: "6a7a33b2ac106d428b3217e0" }]);
+    const planned = await plan([SUBMISSION, { ...SUBMISSION, actionId: "6a7a33b2ac106d428b3217e0" }]);
     assert_m0.equal(planned.planned.length, 1);
     assert_m0.equal(planned.planned[0]?.matchKey, "separations:4510");
     assert_m0.equal(

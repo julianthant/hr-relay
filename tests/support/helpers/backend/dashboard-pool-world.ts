@@ -383,7 +383,7 @@ export function instrumentPool(
     seq += 1;
     events.push({ commandId, type, phase, seq, atMonotonicMs: clock.monotonicMs() });
   };
-  const wrap = <Method extends Exclude<keyof WorkerPoolRuntimeSeam, "assertResetOwner" | "assertLifecycleOwner" | "beginLifecycle">>(method: Method): WorkerPoolRuntimeSeam[Method] =>
+  const wrap = <Method extends Exclude<keyof WorkerPoolRuntimeSeam, "assertResetOwner" | "assertLifecycleOwner" | "beginLifecycle" | "checkParkedWrite">>(method: Method): WorkerPoolRuntimeSeam[Method] =>
     async (context: Parameters<WorkerPoolRuntimeSeam[Method]>[0]) => {
       record(context.command.commandId, context.command.type, "enter");
       try {
@@ -396,6 +396,7 @@ export function instrumentPool(
     assertResetOwner: pool.assertResetOwner?.bind(pool),
     assertLifecycleOwner: pool.assertLifecycleOwner?.bind(pool),
     beginLifecycle: pool.beginLifecycle?.bind(pool),
+    checkParkedWrite: pool.checkParkedWrite?.bind(pool),
     planPoolWorkerCount: wrap("planPoolWorkerCount"),
     spawnPoolWorker: wrap("spawnPoolWorker"),
     stopPoolWorker: wrap("stopPoolWorker"),

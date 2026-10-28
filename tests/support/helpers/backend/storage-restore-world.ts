@@ -139,7 +139,7 @@ export function createStorageRestoreTestWorld() {
       registerBoundProfile(admission, machine); registered = true;
       const heldMachine = machine;
       let heldAdmission = admission;
-      const fixture = { get admission() { return heldAdmission; }, close() {
+      const fixture = { get admission() { return heldAdmission; }, async close() {
         unregisterBoundProfile(heldAdmission); heldAdmission.release(); heldMachine.release();
         rmSync(scratch, { recursive: true, force: true }); retainedAttemptScratch.delete(scratch);
       } };

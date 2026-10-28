@@ -1,7 +1,8 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { fileURLToPath } from "node:url";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
-import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
+import { acquireStorageBackupEntrypointAdmission, acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../../storage/admission/installation.js";
 import { acquireRuntimeRestoreAdmission, acquireRuntimeProcessLock, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
@@ -46,14 +47,35 @@ export async function runSecureEnvironmentBootstrap(
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
   const workspace = fileURLToPath(new URL("../../../..", import.meta.url));
+  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "cancel-queued-runs") {
+    const { runOfflineQueuedRunCancellation } = await import("../../storage/maintenance/cancel-queued-runs.js");
+    const { report, json } = await runOfflineQueuedRunCancellation(workspace, entrypointArgs.slice(2));
+    process.stdout.write(json ? `${JSON.stringify(report)}\n` : `storage queued runs: ${report.state}; ${String(report.runIds.length)} runs\n`);
+    return;
+  }
+  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-worker-process") {
+    const { runOfflineWorkerProcessRecovery } = await import("../../storage/maintenance/worker-process-recovery.js");
+    try {
+      const { report, json } = runOfflineWorkerProcessRecovery(workspace, entrypointArgs.slice(2));
+      process.stdout.write(json ? `${JSON.stringify(report)}\n` : `storage worker process: ${report.state}; acquisition ${report.acquisitionId}\n`);
+    } catch (error) {
+      process.stderr.write(`WORKER_PROCESS_RECOVERY_REFUSED: ${ERROR_CATALOG.WORKER_PROCESS_RECOVERY_REFUSED.text}\n`);
+      throw error;
+    }
+    return;
+  }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-admission") {
     const empty = entrypointArgs.length === 3 && entrypointArgs[2] === "--empty";
     if (!empty && (entrypointArgs.length !== 4 || entrypointArgs[2] !== "--pid"
       || !/^[1-9]\d*$/u.test(entrypointArgs[3] ?? ""))) throw new Error("storage recover-admission usage: --pid <abandoned-owner-pid> | --empty");
     const recover = dependencies.runAdmissionRecovery ?? ((root: string, expectedPid: number | "empty") => {
       const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), pid: process.pid });
+      let retain = false;
       try { return recoverAbandonedAdmissionMutex(root, restore, expectedPid); }
-      finally { restore.release(); }
+      catch (error) {
+        if (error instanceof AuthoritySourceClosureUnprovedError) { retain = true; throw retainAuthoritySourceClosure([error], { restore }); }
+        throw error;
+      } finally { if (!retain) restore.release(); }
     });
     const result = recover(workspace, empty ? "empty" : Number(entrypointArgs[3]));
     process.stdout.write(`storage admission recovered: ${result.acquisitionId}; receipt ${result.receiptPath}\n`);
@@ -143,7 +165,9 @@ export async function runSecureEnvironmentBootstrap(
     && !["doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
   let initialWorkerCustody: RuntimeProcessLockHandle | undefined;
-  const admission = (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
+  const admission = await (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
+    : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(workspace, requested)
+    : storageCommand === "backup" ? acquireStorageBackupEntrypointAdmission(workspace)
     : acquireEntrypointAdmission(workspace, requested)))(mode);
   let shutdown: "release" | "retain" = "release";
   let runtimeFailure: unknown;

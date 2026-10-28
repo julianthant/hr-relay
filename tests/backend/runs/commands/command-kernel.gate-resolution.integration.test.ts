@@ -79,7 +79,7 @@ describe("gate resolution", () => {
     assert.equal(started.state, "applied");
     const runId = singleAppliedRunId(started);
     const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
-      path: join(harness.stateRoot, "kernel.sqlite"), workflow: identityCheckDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
+      path: join(harness.stateRoot, "state.db"), workflow: identityCheckDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
     });
     const claimed = harness.database.authority.runs.claimNext({ workflow: identityCheckDescriptor.id, workerId, workerLifetime, now: NOW });
     assert.equal(claimed.state, "claimed");
@@ -285,7 +285,7 @@ describe("gate resolution", () => {
     const before = harness.database.authority.runs.get(staged.runId);
     const generation = harness.database.getMeta().authorityGeneration;
     const history = harness.database.authority.timelineEvents.page({});
-    using raw = new DatabaseSync(join(harness.stateRoot, "kernel.sqlite"));
+    using raw = new DatabaseSync(join(harness.stateRoot, "state.db"));
     raw.exec("CREATE TRIGGER injected_gate_event_failure BEFORE INSERT ON timeline_events BEGIN SELECT RAISE(ABORT, 'injected gate event failure'); END");
     assert.throws(() => harness.kernel.execute(command), /injected gate event failure/);
     assert.deepEqual(harness.database.authority.runs.get(staged.runId), before);

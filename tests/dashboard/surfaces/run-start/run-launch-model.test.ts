@@ -17,6 +17,29 @@ const sourceOf = (raw: typeof RAW) => { const source = ViewRouteSchema.parse({ l
 const SOURCE = sourceOf(RAW);
 
 describe('served rerun launch source identity', () => {
+  it('keeps correction text local to the exact source and authority', async () => {
+    let controller: ReturnType<typeof useRunLaunch> | undefined;
+    let route: AppRouteState = { start: false };
+    function Probe({ authority }: { authority: object }) {
+      controller = useRunLaunch(false, 'main', authority);
+      return null;
+    }
+    function Harness({ authority }: { authority: object }) {
+      const [current, setCurrent] = useState(route);
+      route = current;
+      return createElement(ViewNavigationProvider, { route: current, setRoute: setCurrent, children: createElement(Probe, { authority }) });
+    }
+    const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+    const authority = {};
+    await act(async () => root?.render(createElement(Harness, { authority })));
+    await act(async () => controller?.openRerun(SOURCE, '4510'));
+    assert.equal(controller?.rerunInputText, '4510');
+    assert.equal(JSON.stringify(route).includes('4510'), false, 'correction values never enter navigation state');
+    await act(async () => root?.render(createElement(Harness, { authority: {} })));
+    assert.equal(controller?.rerunInputText, undefined, 'new authority cannot reuse the local correction');
+    await act(async () => controller?.openRerun(sourceOf({ ...RAW, expectedVersion: 5 })));
+    assert.equal(controller?.rerunInputText, undefined);
+  });
   it('keeps the rerun source identity while unrelated launch coordinates change', async () => {
     const seen: unknown[] = [];
     let update: RouteSetter | undefined;

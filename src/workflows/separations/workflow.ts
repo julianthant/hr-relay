@@ -432,7 +432,7 @@ export const SeparationsCanonicalInput = defineCanonicalInput(
       timekeeperName: "Synthetic Timekeeper",
     },
     {
-      operatorEmployeeId: "sample",
+      operatorEmployeeId: SeparationsMatchIdentity.example.packet.emplId,
       documentNumber: "4524",
       timekeeperName: "Synthetic Timekeeper",
       searchTimeoutMs: 30_000,

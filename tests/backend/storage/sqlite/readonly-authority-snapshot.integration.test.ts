@@ -1,3 +1,6 @@
+import { createHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { readPrivateFile, fsyncPath } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import assert from "node:assert/strict";
@@ -219,4 +222,46 @@ for (const failSync of [false, true]) it(`retains the real sync descriptor and p
     assert.throws(() => fs.fstatSync(held), error => error instanceof Error && Reflect.get(error, "code") === "EBADF");
     assert.equal(digest(path), before); proved = true;
   } finally { sync.mockRestore(); syncBuiltinESMExports(); close.mockRestore(); syncBuiltinESMExports(); if (proved) await f.close(); }
+});
+
+it("reads a closed incomplete profile inventory without changing source database identity", async () => {
+  const f = await createHistoricalIncompleteProfileFixture();
+  await using _fixture = { async [Symbol.asyncDispose]() { await f.close(); } };
+  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  using _machine = { [Symbol.dispose]() { machine.release(); } };
+  const admission = machine.forStoppedIncompleteProfileInventory(f.profileId);
+  using _admission = { [Symbol.dispose]() { admission.release(); } };
+  const identity = () => ["", "-wal", "-shm", "-journal"].map(suffix => {
+    const value = fs.lstatSync(f.databasePath + suffix, { bigint: true, throwIfNoEntry: false });
+    return { suffix, ...(value === undefined ? { absent: true } : {
+      device: String(value.dev), inode: String(value.ino), mode: String(value.mode), size: String(value.size),
+      modified: String(value.mtimeNs), changed: String(value.ctimeNs) }) };
+  });
+  const before = identity(), failures: unknown[] = [];
+  try { assert.equal(AuthorityDatabase.readIncompleteOnboardingInventory(admission).empty, true); }
+  catch (error) { failures.push(error); }
+  try { assert.deepEqual(identity(), before); }
+  catch (error) { failures.push(error); }
+  if (failures.length) throw new AggregateError(failures, "incomplete profile readonly source stability");
+});
+
+it("withdraws a genuine incomplete profile while preserving safe SQLite 0644 custody", async () => {
+  const f = await createHistoricalIncompleteProfileFixture();
+  await using _fixture = { async [Symbol.asyncDispose]() { await f.close(); } };
+  fs.chmodSync(f.databasePath, 0o644);
+  const capture = () => ["", "-wal", "-shm", "-journal"].map(suffix => {
+    const path = f.databasePath + suffix, value = fs.lstatSync(path, { bigint: true, throwIfNoEntry: false });
+    return { suffix, ...(value === undefined ? { absent: true } : {
+      device: String(value.dev), inode: String(value.ino), mode: String(value.mode), size: String(value.size),
+      modified: String(value.mtimeNs), changed: String(value.ctimeNs), digest: digest(path) }) };
+  });
+  const before = capture(), key = digest(f.keyPath), protectedDocument = digest(f.protectedPath);
+  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+  using _machine = { [Symbol.dispose]() { machine.release(); } };
+  await machine.reclassifyIncompleteProfileAsDraft(f.profileId);
+  assert.equal(machine.readProfileRegistry().profiles.length, 0);
+  assert.equal(fs.lstatSync(f.databasePath).mode & 0o777, 0o644);
+  assert.deepEqual(capture(), before);
+  assert.equal(digest(f.keyPath), key);
+  assert.equal(digest(f.protectedPath), protectedDocument);
 });

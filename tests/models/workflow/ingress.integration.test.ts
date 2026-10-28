@@ -49,12 +49,12 @@ const { plan } = createSeparationStartFixtures(openDatabase, CLOCK);
 describe("separations — start planning through the existing service", () => {
 
 
-  it("plans a run from typed text alone", () => {
+  it("plans a run from typed text alone", async () => {
     const surface = separationsDescriptor.surfaces.inputRun;
     assert.ok(surface, "separations declares a typed-text start surface");
     const entries = parseInputRunText(surface.parser, "4502; 4510");
     assert.equal(entries.length, 2);
-    const planned = plan(entries.map((entry) => toRawSubmission(entry)));
+    const planned = await plan(entries.map((entry) => toRawSubmission(entry)));
     assert.equal(planned.refused.length, 0);
     assert.deepEqual(planned.planned.map(({ matchKey }) => matchKey), [
       "separations:4502",

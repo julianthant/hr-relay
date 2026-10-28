@@ -19,7 +19,7 @@
       - button "Ready" [disabled]
   - heading "Opening your setup browser…" [level=1]
   - paragraph: Relay is opening a browser with Fast Duo installed.
-  - text: Security key Touch ID
+  - text: Security key Not started Touch ID Not started
   - region "Next action":
     - heading "Preparing Fast Duo" [level=2]
     - paragraph: The setup page opens in a browser with the Fast Duo extension ready.

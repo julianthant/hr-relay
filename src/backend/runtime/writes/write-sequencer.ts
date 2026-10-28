@@ -498,6 +498,7 @@ function taskCtx(
 export interface ProbeReadDeps extends BoundedTaskDeps {
   readonly stores: TaskStoreRegistry;
   readonly sessions: Pick<TransactionSessionHost, "withDriver">;
+  readonly retainCallback?: (settlement: Promise<unknown>) => void;
 }
 
 /** The runtime probe verdict — the exact output of `probeVerdictSchema(proofSchema)`. */
@@ -546,7 +547,7 @@ export async function executeIdempotencyProbe(
   }
   const proofSchema = commitContract.writeSafety.completion.proofSchema;
   const raw = await deps.sessions.withDriver(need, input.instance, input.signal, async (driver) => {
-    const { raw: output } = await invokeBoundedTask(deps, probeRef.taskId, input.signal, (innerSignal, recordData) => {
+    const invocation = beginBoundedTask(deps, probeRef.taskId, input.signal, (innerSignal, recordData) => {
       const run = RunnableTaskSchema.parse(probeTask.impl.run);
       const confirmed = input.confirmedForInput?.(probeRef.taskId, probeInput);
       return withBrowserActionBinding(input.actionBinderForInput?.(probeRef.taskId, probeInput), () => run({
@@ -555,6 +556,8 @@ export async function executeIdempotencyProbe(
           ...(confirmed === undefined ? {} : { confirmed }) },
       }));
     }, input.onRecord === undefined ? undefined : (batch) => input.onRecord?.(probeRef.taskId, batch));
+    deps.retainCallback?.(invocation.settlement);
+    const { raw: output } = await invocation.bounded;
     return output;
   });
   try {

@@ -34,16 +34,17 @@ export interface StorageUpgradeInput {
   readonly processLockRoot: string;
   readonly plan: boolean;
 }
-function requireStopped(admission:RuntimeAdmission,input:StorageUpgradeInput,clock:Clock):void {
-  admission.assertStoppedProfileUpgrade(join(input.stateRoot,"state.db"),input.processLockRoot);
+function requireStopped(admission:RuntimeAdmission,input:StorageUpgradeInput,clock:Clock,backup=false):void {
+  if (backup) admission.assertStoppedAuthorityBackup(join(input.stateRoot,"state.db"),input.processLockRoot);
+  else admission.assertStoppedProfileUpgrade(join(input.stateRoot,"state.db"),input.processLockRoot);
   const snapshot=observeRuntimeLockSnapshot({processLockRoot:input.processLockRoot,
     sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(join(input.stateRoot,"state.db"))},clock);
   if(Object.values(snapshot.processLocks).some(lock=>lock.state==="active"))throw new Error("runtime-active: stop server, workers and geocode before storage upgrade");
 }
 export async function backupStoppedAuthority(admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,heldRestore?:RestoreAdmissionHandle) {
-  requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(join(stateRoot,"state.db"),processLockRoot);admission.assertStateRoot(stateRoot);
+  requireRuntimeAdmission(admission).assertStoppedAuthorityBackup(join(stateRoot,"state.db"),processLockRoot);admission.assertStateRoot(stateRoot);
   const input={stateRoot,processLockRoot,plan:false};
-  requireStopped(admission,input,clock);
+  requireStopped(admission,input,clock,true);
   const restore=heldRestore??acquireRuntimeRestoreAdmission({processLockRoot:input.processLockRoot,pid:process.pid},clock);
   const verifyHeld=()=>{const path=join(processLockRoot,"restore-admission.lock.json"),stat=lstatSync(path);
     if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||(stat.mode&0o777)!==0o600)throw new Error("restore-admission-invalid");
@@ -53,13 +54,13 @@ export async function backupStoppedAuthority(admission:RuntimeAdmission,stateRoo
   let result: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
   try {
     verifyHeld();
-    requireStopped(admission,input,clock);
+    requireStopped(admission,input,clock,true);
     const schemaVersion=AuthorityDatabase.inspectStoppedUpgrade(admission,join(stateRoot,"state.db"),processLockRoot,clock).schemaVersion;
     const source=openAuthorityBackupSourceReadOnly(admission,join(stateRoot,"state.db"),250,schemaVersion);
     let report: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
     let primary: { error: unknown } | undefined;
     try {report=await new AuthorityBackupService(admission,source,{directory:join(stateRoot,"backups","authority")},clock)
-      .request({trigger:"operator",requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(admission,input,clock);
+      .request({trigger:"operator",requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(admission,input,clock,true);
     }catch(error){primary={error};}
     const failures: unknown[] = [];
     try{source.close();}catch(error){failures.push(error);}

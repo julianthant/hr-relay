@@ -138,7 +138,7 @@ function gateSection(overrides: Record<string, unknown> = {}) {
         displayName: "Hernandez, Jose Santos",
         origin: "the EID this run checked (document-eid)",
       })),
-      approvalShape: built.approvalShape,
+      approvalShape: built.approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
       actions: [{
         key: "resolve-gate-approved",
         label: "Approve this person",

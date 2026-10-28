@@ -22,6 +22,7 @@ import { ActorIdSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { IdentityApprovalResultSchema } from "../../../src/rules/separations/identity-approval.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
+import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
@@ -60,7 +61,7 @@ type Harness = { state?: ReturnType<typeof useRunWiring>; outcomes: CommandOutco
 async function harness(client: DashboardClient, confirm?: RunWiringConfirm): Promise<Harness> {
   const h: Harness = { outcomes: [], refreshed: 0, render: async () => undefined };
   const scope = Object.freeze({ actorId: ActorIdSchema.parse("local-operator"), client, authority: {}, dayRequest: {} });
-  const dayState = { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loading" as const }, connection: { state: "connecting" as const }, refresh: () => { h.refreshed++; } };
+  const dayState = { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh: () => { h.refreshed++; } };
   const binding = { scope, executor: new CommandExecutor(() => scope), feedback: (outcome: CommandOutcome) => { h.outcomes.push(outcome); },
     authority: { epoch: scope.authority, catalog: [], nowIso: AT, today: "2026-08-03", day: "2026-08-03", dayState, selection: { route: { start: false }, workflowId: "separations" } } } as unknown as DashboardCommandBinding;
   function Probe({ selected }: { selected: LogSelection }) { h.state = useRunWiring(client, selected, binding, confirm); return null; }
@@ -144,6 +145,22 @@ describe("served Logs decision authority", () => {
     assert.ok(h.state?.onDecision); assert.ok(gateLogActions(gate)[0]);
     await act(async () => h.state?.onDecision?.(gate.gateId, gateLogActions(gate)[0], {}));
     assert.equal(sent.length, 0);
+  });
+
+  it("refuses a retained confirmation callback after its hook owner unmounts", async () => {
+    const gate = servedGate(fixtures.ONE_CLICK);
+    const selected = selectionAt(3);
+    const requested: (() => void)[] = [];
+    const sent: CommandRequest[] = [];
+    const h = await harness(gateClient(gate, selected, sent), (_pending, onConfirmed) => { requested.push(onConfirmed); });
+    await h.render(selected);
+    await act(async () => h.state?.onDecision?.(gate.gateId, gateLogActions(gate)[0], {}));
+    assert.equal(requested.length, 1);
+    await act(async () => root?.unmount());
+    root = undefined;
+    await act(async () => { requested[0](); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(sent.length, 0);
+    assert.deepEqual(h.outcomes.map(outcome => [outcome.kind, outcome.kind === "refused" ? outcome.reason : undefined]), [["refused", "not-attempted"]]);
   });
 
   it("offers a name-mismatch gate as a pick and never a rejection", () => {

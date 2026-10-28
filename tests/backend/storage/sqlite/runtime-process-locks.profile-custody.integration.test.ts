@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { it } from "vitest";
@@ -34,4 +35,21 @@ for (const refuseChildClose of [false, true]) it(`closes actual profile storage 
     else assert.throws(() => f.admission.assertLive());
     assert.deepEqual(events, refuseChildClose ? ["database closed"] : ["database closed", "child released"]);
   } finally { f.admission.release(); initial.release(); await f.close(); }
+});
+
+it("retains the opened database, profile and process when startup proof has unproved source closure", async () => {
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const processLockRoot = join(f.workspace, "process-locks");
+  const initial = acquireRuntimeProcessLock({ processLockRoot, name: "workers", pid: process.pid,
+    admission: { kind: "unbound-worker", authorityPath: f.path } }, clock);
+  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "child-custody-test" }, clock);
+  const failure = new AuthoritySourceClosureUnprovedError([new Error("synthetic source close failure")]);
+  const closed: string[] = [];
+  try {
+    assert.throws(() => bindWorkerProcessAdmission({ processLockRoot, authorityPath: f.path, pid: process.pid, clock, initialCustody: initial,
+      open: () => database, admit: () => { throw failure; }, close: () => { closed.push("database"); },
+      releaseStorageCustody: () => { closed.push("profile"); } }), WorkerProcessCustodyUncertainError);
+    assert.deepEqual(closed, []); f.admission.assertLive(); assert.ok(database.getMeta());
+    assert.equal(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, clock).processLocks.workers.state, "active");
+  } finally { database.close(); initial.release(); await f.close(); }
 });

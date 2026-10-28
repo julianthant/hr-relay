@@ -1,7 +1,7 @@
 import type { ParkedWriteDetailWire } from "../../../models/dashboard/run-detail.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { CommandRequestSchema } from "../../../rules/commands/commands.js";
 import type { DashboardClient } from "../../client/index.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { CommandRequest, CommandResult, BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
 import type { DashboardDayWire, QueueSurfaceWire } from "../../../models/dashboard/projection.js";
 import type { CommandReadbackVerification } from "./command-executor.js";
@@ -260,6 +260,21 @@ export async function verifyShellCommandEffect(
     const detail = await client.runDetail(request.target.runId);
     return detail.runId === request.target.runId && detail.rowRevision > request.target.expectedVersion
       ? { state: "matched", evidence: detail } : mismatch(detail);
+  }
+  if (request.family === "worker-browser" && request.type === "check-parked-write") {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 2
+      || !reply.affectedTargets.some(target => target.family === "run" && target.runId === request.target.runId)
+      || !reply.affectedTargets.some(target => target.family === "worker-browser" && target.workerId === request.target.workerId)) return mismatch(reply);
+    const detail = await client.runDetail(request.target.runId);
+    if (detail.runId !== request.target.runId || detail.rowRevision.valueOf() !== request.target.runVersion.valueOf() || detail.header.traceId !== request.target.traceId || detail.header.attempt !== request.target.runAttempt
+      || detail.header.workflowId !== request.target.workflowId || !detail.availableSections.includes("parked-write")) return mismatch(detail);
+    const section = await client.runSection(request.target.runId, "parked-write");
+    if (section.section !== "parked-write") return mismatch(section);
+    const write = section.payload, observed = write.lastCheck;
+    return write.runId === request.target.runId && write.writeIntentId === request.target.writeIntentId
+      && write.generation === request.target.intentGeneration && write.runAttempt === request.target.runAttempt
+      && observed?.commandId === request.commandId && observed.requestedBy === request.requestedBy && observed.held
+      && canonicalJsonStringify(observed.target) === canonicalJsonStringify(request.target) ? { state: "matched", evidence: observed } : mismatch(section);
   }
   if (request.family === "gate") {
     const detail = await client.runDetail(request.target.runId);

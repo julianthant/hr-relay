@@ -1,4 +1,5 @@
 import { AssistantModelPreferenceCommandRequestSchema } from "../../../rules/commands/commands.js";
+import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { notificationMatchesCollection, type NotificationRecord, type NotificationCollectionOperation } from "../../../models/notifications/notifications.js";
 import { assistantKnowledgeArtifact, ASSISTANT_INPUT_PROJECTION_VERSION } from "../../assistant/context.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -70,6 +71,7 @@ const PHASE1_ACTIVE = {
   "workflow-batch": ["set-batch-grouping"],
   start: ["start-run"],
   "worker-browser": [
+    "check-parked-write",
     "plan-worker-count",
     "spawn-worker",
     "stop-worker",
@@ -244,6 +246,7 @@ export const WorkerPlanAcknowledgementSchema = z.strictObject({
 
 // Keep the async pool seam structural to avoid importing the worker loop back into its command dependency.
 export interface WorkerPoolRuntimeSeam {
+  checkParkedWrite?(context: WorkerRuntimeContext): Promise<unknown>;
   beginLifecycle?(context: WorkerRuntimeContext): void;
   assertLifecycleOwner?(operation: "remove" | "retry", workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
   assertResetOwner?(workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
@@ -289,6 +292,7 @@ export interface CommandKernelDependencies {
   /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
   readonly settings?: SettingsApplicationExecutor;
   readonly authorityProfileId?: string;
+  readonly authorityInstallationId?: string;
   readonly prepareAssistantModelPreference?: (request: z.infer<typeof AssistantModelPreferenceCommandRequestSchema>) => Promise<() => true>;
   readonly assistantSurface?: () => readonly Readonly<{ method: string; path: string }>[];
   readonly workflowSources?: Readonly<Record<string, "mock" | "served">>;
@@ -327,7 +331,6 @@ function reject(request: CommandRequest, code: string, message: string): never {
 }
 
 // Invalid served proof is a typed rejection that rolls back the transaction, not a transport failure.
-export { rejectCommandRequest } from "./command-refusal.js";
 
 function conflict(request: CommandRequest, currentVersion: number, message: string): never {
   throw new CommandRefusal({ state: "conflict", commandId: request.commandId, currentVersion, message });
@@ -1852,6 +1855,28 @@ function validateWorkerPoolCommand(
   if (workflow !== undefined && repositories.workerSlots.verifications(workflow).length !== 0) reject(request, "invalid-state", "worker-verification-reserved");
   requireWorkerControlBasis(repositories, request);
   switch (request.type) {
+    case "check-parked-write": {
+      const target = request.target;
+      if (request.requestedBy !== "local-operator" || request.source !== "run-detail"
+        || dependencies.authorityProfileId !== target.profileId || dependencies.authorityInstallationId !== target.installationId
+        || dependencies.workflowSources?.[target.workflowId] !== "served" || dependencies.workerRuntime.pool.checkParkedWrite === undefined
+        || dependencies.workerRuntime.pool.assertResetOwner === undefined) {
+        reject(request, "capability-unavailable", "PARKED_CHECK_UNAVAILABLE");
+      }
+      const lease = repositories.workerLeases.get(target.workerId), member = repositories.workerSlots.get(target.workerId);
+      if (lease?.lifecycle.state !== "idle" || member === undefined || member.retiredAt !== null || member.workflow !== target.workflowId
+        || member.membershipRevision !== target.membershipRevision || lease.workflow !== target.workflowId || lease.version !== target.expectedVersion
+        || lease.processId !== target.processId || lease.lifecycle.startedAt !== target.startedAt
+        || repositories.runs.listByWorker(target.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state))) {
+        reject(request, "invalid-state", "parked-check-worker-unavailable");
+      }
+      try {
+        dependencies.workerRuntime.pool.assertResetOwner(target.workerId, target.membershipRevision, { leaseGeneration: target.controlBasis.leaseGeneration, processId: target.processId, startedAt: target.startedAt });
+        requireParkedWriteCheckTarget(repositories, target, dependencies.descriptors.resolve(target.workflowId));
+      }
+      catch (error) { if (error instanceof WorkerControlRefusal) reject(request, "invalid-state", error.message); throw error; }
+      return lease.version;
+    }
     case "plan-worker-count": {
       resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
       return checkWorkerPoolVersion(repositories, request, request.target.workflowId, request.target.expectedVersion);
@@ -1926,6 +1951,9 @@ async function settleWorkerPoolEffect(
   context: WorkerRuntimeContext,
 ): Promise<WorkerPoolSettledAcknowledgement> {
   switch (request.type) {
+    case "check-parked-write":
+      if (pool.checkParkedWrite === undefined) throw new WorkerControlRefusal("PARKED_CHECK_UNAVAILABLE");
+      return WorkerEffectAcknowledgementSchema.parse(await pool.checkParkedWrite(context));
     case "plan-worker-count": {
       const acknowledgement = WorkerPlanAcknowledgementSchema.parse(await pool.planPoolWorkerCount(context));
       return { kind: "plan", workerIds: acknowledgement.workerIds, retirements: acknowledgement.retirements };
@@ -1961,6 +1989,11 @@ function applyWorkerPoolCommand(
   acknowledgement: WorkerPoolSettledAcknowledgement,
 ): CommandApplication {
   switch (request.type) {
+    case "check-parked-write":
+      if (acknowledgement.kind !== "parked-write-check" || acknowledgement.result.commandId !== request.commandId
+        || acknowledgement.result.requestedBy !== request.requestedBy
+        || canonicalJsonStringify(acknowledgement.result.target) !== canonicalJsonStringify(request.target)) throw new Error("parked-check-result-identity-mismatch");
+      return applied(request, [workerTarget(request.target.workerId), runTarget(request.target.runId)], []);
     case "plan-worker-count": {
       if (acknowledgement.kind !== "plan") {
         throw new Error("plan-worker-count settled without a plan acknowledgement; the pool seam is inconsistent");
@@ -2159,7 +2192,7 @@ async function executeWorkerPoolCommand(
     }
     return admitted;
   }
-  const browser = request.type === "refresh-browser" || request.type === "reopen-browser";
+  const browser = request.type === "refresh-browser" || request.type === "reopen-browser" || request.type === "check-parked-write";
   const controls = dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls);
   const pre = dependencies.authority.withAuthorityTransaction((repositories) => {
     repositories.commands.assertIdentity(request);

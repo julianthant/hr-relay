@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { StartPlanWire } from "../../models/dashboard/start-plan.js";
 import { createRunLaunchService } from "../surfaces/run-start/run-launch-model.js";
 import type { FailureDetailWire } from "../../models/dashboard/run-detail.js";
@@ -322,10 +322,13 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   for (const section of sections) {
     if (section.section === "parked-write") {
       const write = section.payload;
+      const checked = write.lastCheck;
+      const message = checked === undefined ? write.parkedMessage
+        : formatErrorCatalogFailure(createErrorCatalogFailure(checked.code, {})).text;
       order.set(write.writeIntentId, requireNative(write.native).order); node.set(write.writeIntentId, requireNative(write.native).nodeId);
       steps.push({ id: write.writeIntentId, time: fmtActionClock(write.parkedAt), title: "Write parked", system: write.system,
         entries: [{ kind: "decision", id: write.writeIntentId, time: fmtActionClock(write.parkedAt), decision: { title: "Write parked", state: "parked",
-          message: write.parkedMessage, actions: parkedWriteLogActions(write) } }] });
+          message, actions: parkedWriteLogActions(write) } }] });
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
       const resolution = resolveErrorCatalogFailure(failure, "http-response");
@@ -458,15 +461,15 @@ const correctionLaunches = new WeakMap<CommandExecutionScope, Map<string, Correc
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
   const { row } = selection;
   const request = useMemo(() => ({ client, runId: row.runId, revision: row.rowRevision, day: binding?.authority.day, selection: { row, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
-    epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
-  [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
+    epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
+  [client, row, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
   [client, row.runId, binding?.authority.day, binding?.authority.epoch, binding?.authority.dayState.request, binding?.scope]);
   const currentCommandOwner = useRef(commandOwner);
   currentCommandOwner.current = commandOwner;
   const mounted = useRef(false);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const bindingRef = useRef(binding);
   bindingRef.current = binding;
   const [command, setCommand] = useState<{ owner: GateCommandOwner; envelope: CommandRequest; state: "pending" | "uncertain" | "refused" | "settled"; feedback?: string }>();
@@ -474,21 +477,23 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   commandRef.current = command;
   const active = useRef(request);
   active.current = request;
-  const refreshedBehind = useRef<string | undefined>(undefined);
+  const refreshBudget = useMemo(() => ({ client, runId: row.runId, actorId: binding?.scope.actorId,
+    epoch: binding?.authority.epoch, day: binding?.authority.day, revisions: new Set<number>() }),
+  [client, row.runId, binding?.scope.actorId, binding?.authority.epoch, binding?.authority.day]);
   const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>({ request, value: { state: "loading" } });
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
-    && settled.request.epoch === request.epoch;
+    && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
   const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
     : { state: "loading", ...(sameRun && settled.value.snapshot ? { snapshot: settled.value.snapshot } : {}) }, [settled, request, sameRun]);
   useEffect(() => {
+    if (request.dayState !== undefined && request.dayState !== "loaded") return;
     const controller = new AbortController();
     void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
       if (active.current === request && !controller.signal.aborted) setSettled({ request, value: { state: "loaded", snapshot } });
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
-      const behind = `${request.runId}:${String(request.revision)}`;
-      if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && refreshedBehind.current !== behind) {
-        refreshedBehind.current = behind;
+      if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && !refreshBudget.revisions.has(request.revision)) {
+        refreshBudget.revisions.add(request.revision);
         request.refreshDay();
         return;
       }
@@ -503,7 +508,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         ...(current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
     return () => controller.abort();
-  }, [client, request, row.runId]);
+  }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
   const detailGate = value.snapshot?.detail.gate;
   const parked = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "parked-write") : undefined;
@@ -546,7 +551,9 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const currentDecisionMatches = useRef(matchesDecision);
   currentDecisionMatches.current = matchesDecision;
   const send = useCallback(async (envelope: CommandRequest, replay = false) => {
-    if (binding === undefined || binding.scope.client !== client || bindingRef.current?.scope !== binding.scope) return;
+    if (!mounted.current || currentCommandOwner.current !== commandOwner || binding === undefined
+      || binding.scope.client !== client || bindingRef.current?.scope !== binding.scope
+      || envelope.requestedBy !== binding.scope.actorId) return;
     if (replay && envelope.family !== "gate" && !currentDecisionMatches.current(envelope)) {
       binding.feedback({ kind: "refused", commandId: envelope.commandId, reason: "not-attempted",
         feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})) });
@@ -578,7 +585,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   }, [commandOwner, send]);
   const dispatchIfDecisionCurrent = useRef<(envelope: CommandRequest) => void>(() => undefined);
   dispatchIfDecisionCurrent.current = (envelope: CommandRequest) => {
-    if (value.state === "loaded" && matchesDecision(envelope) && !(commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) {
+    if (mounted.current && currentCommandOwner.current === commandOwner && value.state === "loaded" && matchesDecision(envelope) && !(commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) {
       dispatch(envelope);
       return;
     }

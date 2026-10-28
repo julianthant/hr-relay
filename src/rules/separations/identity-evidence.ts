@@ -16,6 +16,7 @@ import {
   JobSummaryClassificationSchema,
   classifyJobSummary,
 } from "./job-summary-classification.js";
+import type { JobSummaryClassification } from "./job-summary-classification.js";
 import { SeparationWritePlanSchema } from "./write-plan.js";
 import type { SeparationWritePlan } from "./write-plan.js";
 
@@ -71,6 +72,7 @@ export const IdentityNameSearchSchema = z.discriminatedUnion("status", [
 export const IdentityApprovalShapeSchema = z.enum([
   "one-click",
   "choose-a-candidate",
+  "type-the-eid",
 ]);
 export type IdentityApprovalShape = z.infer<typeof IdentityApprovalShapeSchema>;
 
@@ -132,7 +134,33 @@ function nameSearchFrom(selection: UcpathPersonSelection): z.infer<typeof Identi
       : { status: "not-found", candidateEids: [] },
   );
 }
-
+/** The control's shape, decided by the RISK and nothing else; the order of the tests is the policy, and only a single unambiguous candidate is a one-click approve. */
+export function deriveApprovalShape(input: Readonly<{
+  nameTier: z.infer<typeof NameSimilarityTierSchema>;
+  emplIdSource: IdentityEidSource;
+  documentEidConflicts: boolean;
+  nameSearchStatus: "resolved" | "ambiguous" | "not-found";
+  nameSearchAgrees: boolean;
+  disposition: JobSummaryClassification["disposition"];
+}>): IdentityApprovalShape {
+  if (
+    input.nameTier === "different"
+    || input.documentEidConflicts
+    || input.emplIdSource === "name-resolved"
+    || input.disposition === "indeterminate-status"
+  ) {
+    return "type-the-eid";
+  }
+  if (
+    input.nameTier === "similar"
+    || input.nameSearchStatus === "ambiguous"
+    || !input.nameSearchAgrees
+    || input.disposition !== "single-active-job"
+  ) {
+    return "choose-a-candidate";
+  }
+  return "one-click";
+}
 
 /** Deliberately NOT exported and deliberately NOT schema-backed: it is a function's argument list, not a boundary, and the packet it builds is parsed through its schema before it is returned. */
 interface IdentityEvidenceInput {
@@ -235,7 +263,14 @@ export function buildIdentityEvidencePacket(
     jobs,
     plan: SeparationWritePlanSchema.parse(input.plan),
     approvableEids,
-    approvalShape: approvableEids.length > 1 ? "choose-a-candidate" : "one-click",
+    approvalShape: deriveApprovalShape({
+      nameTier,
+      emplIdSource: input.emplIdSource,
+      documentEidConflicts: input.documentEidConflicts,
+      nameSearchStatus: nameSearch.status,
+      nameSearchAgrees,
+      disposition: jobs.disposition,
+    }),
     observedAt: input.jobSummary.observedAt,
   }), input.protectedBindings);
 }

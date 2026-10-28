@@ -391,7 +391,7 @@ export const WorkerBrowserRequirementsWireSchema = z.discriminatedUnion("state",
 export const WorkerControlWireSchema = z.strictObject({
   basis: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("present"), value: WorkerControlBasisSchema }), z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) })]),
   ownership: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("owned") }), z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) })]),
-  operation: z.strictObject({ commandId: CommandIdSchema, type: z.enum(["plan-worker-count", "spawn-worker", "pause-worker", "resume-worker", "stop-worker", "refresh-browser", "reopen-browser", "remove-worker", "retry-worker"]),
+  operation: z.strictObject({ commandId: CommandIdSchema, type: z.enum(["plan-worker-count", "spawn-worker", "pause-worker", "resume-worker", "stop-worker", "refresh-browser", "reopen-browser", "remove-worker", "retry-worker", "check-parked-write"]),
     state: z.enum(["admitted", "ready", "executing", "succeeded", "refused", "uncertain"]), at: IsoInstantSchema,
     browserSessionId: BrowserSessionIdSchema.optional(), message: z.string().optional(), unresolved: z.boolean() }).optional(),
 });

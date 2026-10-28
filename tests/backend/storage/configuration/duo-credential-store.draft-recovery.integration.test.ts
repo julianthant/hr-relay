@@ -1,22 +1,28 @@
+import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { execFileSync, fork, spawnSync } from "node:child_process";
+import nativeChildProcess from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { z } from "zod";
 import nativeFs, { readdirSync, writeFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { randomBytes, generateKeyPairSync, randomUUID } from "node:crypto";
+import nativeCrypto from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import { it, vi } from "vitest";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDraftDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
-import type { ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
+import type { DraftDuoBrowserOwner, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
+import { ProfileOnboardingDuoProviderError } from "../../../../src/backend/profiles/onboarding-duo-provider.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
+import { issueDraftDuoCredentialPurpose, openDuoCredentialDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 
 function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider) {
@@ -36,13 +42,152 @@ function draftFixture() {
   const base = privateDraftFixture(), { root, machine, profile, draft } = base;
   const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(draft.profileId));
   const store = createDraftDuoCredentialStore(admission, machine, draft.operationId, 1, systemClock), pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  const input = { credentialId: randomUUID(), scope: { armId: randomUUID(), contextId: randomUUID(), tabId: 1, accountId: randomUUID(),
-    origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com", armedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 600_000).toISOString() },
+  const armedAt = systemClock.nowMs();
+  const input = { credentialId: randomUUID(), scope: { armId: randomUUID(), contextId: randomBytes(16).toString("hex"), tabId: 1, accountId: randomUUID(),
+    origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com", armedAt: new Date(armedAt).toISOString(), expiresAt: new Date(armedAt + 600_000).toISOString() },
     privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
     publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64") };
   store.enroll(input); store.confirm(input.credentialId, input.scope);
   return { ...base, admission, store, input, async close() { admission.release(); await profile.close(); machine.release(); rmSync(root, { recursive: true }); } };
 }
+
+it("opens draft Duo documents with two fresh isolated binding observations per independent read", async () => {
+  const f = draftFixture();
+  try {
+    const purpose = issueDraftDuoCredentialPurpose(f.admission, f.machine, f.draft.operationId, 1);
+    const bytes = readFileSync(join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`));
+    const revision = f.store.read().revision, spawn = nativeChildProcess.spawnSync, decipher = nativeCrypto.createDecipheriv;
+    let observations = 0, decryptions = 0, requiredObservations = 0;
+    const spy = vi.spyOn(nativeChildProcess, "spawnSync").mockImplementation((...args: Parameters<typeof spawn>) => {
+      if (Array.isArray(args[1]) && args[1].includes(join(f.admission.stateRoot, "state.db"))) observations++;
+      return spawn(...args);
+    });
+    const decipherSpy = vi.spyOn(nativeCrypto, "createDecipheriv").mockImplementation((...args: Parameters<typeof decipher>) => {
+      assert.ok(observations >= requiredObservations, "current DB binding must be checked before decrypting credential material");
+      decryptions++;
+      return decipher(...args);
+    });
+    syncBuiltinESMExports();
+    try {
+      for (let read = 1; read <= 2; read++) {
+        requiredObservations = observations + 1;
+        assert.equal(openDuoCredentialDocument(purpose, bytes, revision).credentials[0]?.credentialId, f.input.credentialId);
+        assert.equal(observations, read * 2);
+      }
+      assert.ok(decryptions > 0);
+    } finally { spy.mockRestore(); decipherSpy.mockRestore(); syncBuiltinESMExports(); }
+  } finally { await f.close(); }
+});
+
+for (const boundary of ["binding-child-before", "binding-child-after", "key-read", "current-document-read", "final-document-read", "decrypt", "between-reads"] as const) {
+  it(`refuses draft stable identity drift at ${boundary} while opening Duo material`, async () => {
+    const f = draftFixture();
+    const operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
+    const original = readFileSync(operationPath);
+    try {
+      const purpose = issueDraftDuoCredentialPurpose(f.admission, f.machine, f.draft.operationId, 1);
+      const documentPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`);
+      const bytes = readFileSync(documentPath), revision = f.store.read().revision;
+      const target = nativeFs.statSync(boundary === "key-read"
+        ? join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`) : documentPath);
+      let fired = false;
+      const mutate = () => {
+        if (fired) return;
+        fired = true;
+        const operation = SignUpOperationSchema.parse(JSON.parse(original.toString("utf8")));
+        writeFileSync(operationPath, JSON.stringify({ ...operation, commandFingerprint: "b".repeat(64) }));
+      };
+      const spawn = nativeChildProcess.spawnSync, read = nativeFs.readFileSync, decipher = nativeCrypto.createDecipheriv;
+      let children = 0, documentReads = 0;
+      const spawnSpy = vi.spyOn(nativeChildProcess, "spawnSync").mockImplementation((...args: Parameters<typeof spawn>) => {
+        const result = spawn(...args);
+        if (Array.isArray(args[1]) && args[1].includes(join(f.admission.stateRoot, "state.db"))) {
+          children++;
+          if (boundary === "binding-child-before" && children === 1 || boundary === "binding-child-after" && children === 2) mutate();
+        }
+        return result;
+      });
+      const decipherSpy = vi.spyOn(nativeCrypto, "createDecipheriv").mockImplementation((...args: Parameters<typeof decipher>) => {
+        const result = decipher(...args);
+        if (boundary === "decrypt") mutate();
+        return result;
+      });
+      const readSpy = vi.spyOn(nativeFs, "readFileSync").mockImplementation((...args: Parameters<typeof read>) => {
+        const result = read(...args);
+        if ((boundary === "key-read" || boundary === "current-document-read" || boundary === "final-document-read") && typeof args[0] === "number") {
+          const observed = nativeFs.fstatSync(args[0]);
+          if (observed.dev === target.dev && observed.ino === target.ino) {
+            documentReads++;
+            if (boundary !== "final-document-read" || documentReads === 2) mutate();
+          }
+        }
+        return result;
+      });
+      syncBuiltinESMExports();
+      try {
+        if (boundary === "between-reads") {
+          assert.equal(openDuoCredentialDocument(purpose, bytes, revision).credentials[0]?.credentialId, f.input.credentialId);
+          mutate();
+        }
+        assert.throws(() => openDuoCredentialDocument(purpose, bytes, revision), (error: unknown) => error instanceof Error
+          && /^(?:duo-draft-authority-changed|runtime-control: profile-registry-(?:continuity-mismatch|observation-changed))$/u.test(error.message));
+        assert.equal(fired, true);
+      } finally { spawnSpy.mockRestore(); readSpy.mockRestore(); decipherSpy.mockRestore(); syncBuiltinESMExports(); }
+    } finally { writeFileSync(operationPath, original); await f.close(); }
+  });
+}
+
+it("rejects database schema drift introduced by the final canonical Duo document read", async () => {
+  const f = draftFixture();
+  const db = new DatabaseSync(join(f.admission.stateRoot, "state.db"));
+  const version = db.prepare("PRAGMA user_version").get()?.user_version;
+  assert.equal(typeof version, "number");
+  try {
+    const purpose = issueDraftDuoCredentialPurpose(f.admission, f.machine, f.draft.operationId, 1);
+    const documentPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`);
+    const bytes = readFileSync(documentPath), target = nativeFs.statSync(documentPath), revision = f.store.read().revision;
+    const read = nativeFs.readFileSync;
+    let reads = 0;
+    const spy = vi.spyOn(nativeFs, "readFileSync").mockImplementation((...args: Parameters<typeof read>) => {
+      const result = read(...args);
+      if (typeof args[0] === "number") {
+        const observed = nativeFs.fstatSync(args[0]);
+        if (observed.dev === target.dev && observed.ino === target.ino && ++reads === 2) db.exec("PRAGMA user_version=0");
+      }
+      return result;
+    });
+    syncBuiltinESMExports();
+    try {
+      assert.throws(() => openDuoCredentialDocument(purpose, bytes, revision), /profile-database-schema-mismatch/u);
+      assert.equal(reads, 2);
+    } finally { spy.mockRestore(); syncBuiltinESMExports(); }
+  } finally { db.exec(`PRAGMA user_version=${String(version)}`); db.close(); await f.close(); }
+});
+
+it("viewing an actual draft creates no attempt and unknown enrollment cannot be rearmed by viewing or opening its browser", async () => {
+  let browser: DraftDuoBrowserOwner | undefined, starts = 0;
+  const f = privateDraftFixture({
+    async showBrowser(owner) { owner.assertCurrent(); browser = owner; },
+    async openPortal(owner) { owner.assertCurrent(); },
+    async closeBrowser() { return { state: "closed" }; },
+    async start(_attempt, _bind, reportFailure) { starts++; await reportFailure(new ProfileOnboardingDuoProviderError("unknown", "provider")); },
+    async cancel() { return { state: "closed" }; },
+  });
+  try {
+    await f.profile.session.showOnboardingBrowser(f.draft.token, f.draft.operationId);
+    await f.profile.session.openOnboardingPortal(f.draft.token, f.draft.operationId);
+    assert.equal(starts, 0); assert.ok(browser);
+    const pending = await f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key");
+    assert.equal(pending.methods.key.state, "unknown");
+    await f.profile.session.showOnboardingBrowser(f.draft.token, f.draft.operationId);
+    await f.profile.session.openOnboardingPortal(f.draft.token, f.draft.operationId);
+    await assert.rejects(f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key"));
+    assert.equal(starts, 1); assert.equal(browser.readState().methods.key.state, "unknown");
+    assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
+    await assert.rejects(f.profile.close(), error => error instanceof RuntimeCustodyUncertainError
+      && error.errors.some(cause => cause instanceof AggregateError && cause.message === "profile-onboarding-custody-unproved"));
+  } finally { f.machine.release(); }
+});
 
 for (const boundary of ["intent", "rename", "operation", "continuity", "unlink"] as const) {
   it(`recovers the exact draft Duo transaction after ${boundary} without publishing a profile`, async () => {
@@ -134,7 +279,7 @@ for (const boundary of ["source", "journal", "erase", "intent", "source-unlink",
     }
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(keyPath), false); assert.equal(existsSync(intentPath), false);
     assert.equal(existsSync(protectedPath), true);
-    assert.equal(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "profile-verifiers.json"), "utf8")).profiles.length, 0);
+    assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true });
   });
 }
@@ -142,9 +287,12 @@ for (const boundary of ["source", "journal", "erase", "intent", "source-unlink",
 async function readyFixture() {
   let active = false;
   const provider: ProfileOnboardingDuoProvider = {
+    async showBrowser(owner) { owner.assertCurrent(); },
+    async openPortal(owner) { owner.assertCurrent(); },
+    async closeBrowser() { return { state: "closed" }; },
     async start(attempt, bind, _reportFailure) {
       assert.equal(active, false); active = true;
-      const capability = await bind({ contextId: randomUUID(), tabId: attempt.method === "key" ? 1 : 2,
+      const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
         accountName: "draft-recovery", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
       const credentialId = randomUUID();
       if (attempt.method === "key") {
@@ -167,7 +315,7 @@ async function readyFixture() {
   }
   assert.equal(f.profile.session.readOnboarding(f.draft.token, f.draft.operationId).step, "ready");
   assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
-  assert.equal(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "profile-verifiers.json"), "utf8")).profiles.length, 0);
+  assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
   return f;
 }
 
@@ -203,7 +351,7 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
       processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
     const published = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId);
     if (published === undefined) {
-      assert.equal(JSON.parse(readFileSync(verifierPath, "utf8")).profiles.length, 0);
+      assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 0);
       const resumed = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
         password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
       if (resumed.state !== "onboarding") throw new Error("fixture genuine Finish resume required");
@@ -215,7 +363,7 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
     }
     const row = machine.readProfileRegistry().profiles.find(entry => entry.profileId === f.draft.profileId);
     assert.equal(row?.registration.onboardingCompletion?.finishId, finishId);
-    assert.equal(JSON.parse(readFileSync(verifierPath, "utf8")).profiles.length, 1);
+    assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 1);
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(intentPath), false);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true });
   });
@@ -295,7 +443,7 @@ for (const boundary of ["source-fsync", "protected-stage"] as const) {
     const processRow = execFileSync("/bin/ps", ["-p", String(ready.pid), "-o", "pid=,ppid=,pgid="], { encoding: "utf8" }).trim().split(/\s+/u).map(Number);
     assert.deepEqual(processRow, [ready.pid, process.pid, ready.pid]);
     child.send("cancel");
-    const [code, signal] = await closed; assert.equal(code, 97); assert.equal(signal, null); assert.equal(child.connected, false); assert.equal(stderrBytes, 0);
+    const [code, signal] = z.tuple([z.number().nullable(), z.string().nullable()]).parse(await closed); assert.equal(code, 97); assert.equal(signal, null); assert.equal(child.connected, false); assert.equal(stderrBytes, 0);
     const proof = z.object({ boundary: z.literal(boundary), pid: z.number(), identity: ProcessStartIdentitySchema }).parse(JSON.parse(readFileSync(join(f.root, "onboarding-process-loss.json"), "utf8")));
     assert.equal(proof.pid, ready.pid); assert.deepEqual(proof.identity, identity.identity); assert.equal(observeProcessIdentity(ready.pid).state, "gone");
     const groups = execFileSync("/bin/ps", ["-axo", "pgid="], { encoding: "utf8" }).trim().split(/\s+/u);

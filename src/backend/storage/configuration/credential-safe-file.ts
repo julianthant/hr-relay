@@ -1,6 +1,6 @@
 import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
-import { join, parse, resolve } from "node:path";
+import { join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 import { ProcessStartIdentitySchema } from "../sqlite/runtime-process-locks.js";
@@ -139,14 +139,16 @@ export function ensureChildDirectory(
 }
 
 interface PrivateFileOptions {
-  readonly label: "protected.json" | "lock" | "ChatGPT" | "Duo credential" | "erasure journal";
+  readonly label: "protected.json" | "lock" | "ChatGPT" | "Duo credential" | "erasure journal" | "authority database" | "managed data";
   readonly maxBytes: number;
   readonly allowedLinkCounts?: readonly number[];
 }
 
 export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: DirectoryIdentity; stat: Stats } | undefined {
   const { label, maxBytes, allowedLinkCounts = [1] } = options;
-  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential" || label === "erasure journal";
+  const ordinary = label === "authority database" || label === "managed data";
+  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || ordinary;
+  const invalidMode = (mode: number): boolean => ordinary ? (mode & 0o022) !== 0 : (mode & 0o7777) !== CREDENTIAL_FILE_MODE;
   const unavailable = lock ? "directory-integrity: credential lock is unavailable" : `credential store ${label} is unavailable`;
   const invalid = lock ? "directory-integrity: credential lock permissions or identity are invalid" : `directory-integrity: ${label} permissions or identity are invalid`;
   let pathStatus;
@@ -154,7 +156,7 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
   catch (error) { throw new Error(unavailable, { cause: error }); }
   if (pathStatus === undefined) return undefined;
   if (!pathStatus.isFile() || pathStatus.isSymbolicLink() || !allowedLinkCounts.includes(pathStatus.nlink)
-    || ((lock || record) && (pathStatus.mode & 0o7777) !== CREDENTIAL_FILE_MODE)
+    || ((lock || record) && invalidMode(pathStatus.mode))
     || (expectedUid !== undefined && pathStatus.uid !== expectedUid)) {
     throw new Error(lock || record ? invalid : "directory-integrity: protected.json must be one private regular file");
   }
@@ -166,7 +168,7 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
   let primary: { error: unknown } | undefined;
   try {
     const before = fstatSync(descriptor); descriptorIdentity = before;
-    if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || (before.mode & 0o7777) !== CREDENTIAL_FILE_MODE
+    if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || invalidMode(before.mode)
       || (expectedUid !== undefined && before.uid !== expectedUid)
       || (lock && before.size > maxBytes)
       || (record && (before.dev !== pathStatus.dev || before.ino !== pathStatus.ino))) throw new Error(invalid);
@@ -310,4 +312,17 @@ export function companionCredentialEntries(directory: string, record: "protected
     permitted.add(name);
   }
   return permitted;
+}
+
+export function unpublishedDraftAbortMembership(root: string) {
+  const entries: { path: string; directory: boolean; device: number; inode: number; size: number; mode: number; modified: number; changed: number }[] = [];
+  const visit = (path: string): void => {
+    const info = lstatSync(path);
+    if (info.isSymbolicLink() || !info.isFile() && !info.isDirectory() || info.isFile() && info.nlink !== 1
+      || process.getuid !== undefined && info.uid !== process.getuid() || (info.mode & 0o022) !== 0) throw new Error("profile-draft-abort-membership-unsafe");
+    entries.push({ path: relative(root, path), directory: info.isDirectory(), device: info.dev, inode: info.ino, size: info.size,
+      mode: info.mode, modified: info.mtimeMs, changed: info.ctimeMs });
+    if (info.isDirectory()) for (const name of readdirSync(path).sort()) visit(join(path, name));
+  };
+  visit(root); return entries;
 }

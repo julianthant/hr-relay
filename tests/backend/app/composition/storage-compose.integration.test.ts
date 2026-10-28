@@ -408,7 +408,7 @@ afterEach(_afterEachFixture0);
     const profile = profiles.find(value => value.workspace === p.repoRoot); assert.ok(profile);
     await profile.finish();
     admissions.set(p.repoRoot, profile.admission);
-    assert.equal(boundProfileCredentials(profile.admission).read().revision, 1);
+    assert.equal(boundProfileCredentials(profile.admission).read().revision, 2);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
     for (const value of values) {
@@ -493,7 +493,7 @@ afterEach(_afterEachFixture0);
     assert.ok(manifest);
     const credentialPath = join_m0(p.stateRoot, "credentials", "protected.json");
     const admission = admissions.get(p.repoRoot); assert.ok(admission);
-    assert.equal(boundProfileCredentials(admission).read().revision, 1);
+    assert.equal(boundProfileCredentials(admission).read().revision, 2);
     assert.ok(existsSync(credentialPath));
     const profile = profiles.find(value => value.workspace === p.repoRoot); assert.ok(profile);
     const keyPath = join_m0(profile.machine.stateRoot, "machine", "credential-keys", `${admission.profileBinding.profileId}.json`);

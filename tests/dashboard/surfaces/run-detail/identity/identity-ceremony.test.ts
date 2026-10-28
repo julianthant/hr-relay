@@ -56,13 +56,14 @@ function available(detail: IdentityGateDetail) {
 
 describe("identityCeremonyFor — the server names the ceremony (ref write-safety §14.6 risk 1)", () => {
   it("derives the shape from the candidate count: one is a confirm, several are a pick", () => {
-    assert.equal(ONE_CLICK.approvalShape, "one-click");
+    assert.equal(gateDetail(ONE_CLICK).approvalShape, "one-click");
     assert.equal(ONE_CLICK.approvableEids.length, 1);
     // A name mismatch with two candidates is still a pick, never typed entry.
     for (const packet of [CHOOSE, NAME_MISMATCH]) {
-      assert.equal(packet.approvalShape, "choose-a-candidate");
+      assert.equal(gateDetail(packet).approvalShape, "choose-a-candidate");
       assert.equal(packet.approvableEids.length, 2);
     }
+    assert.equal(NAME_MISMATCH.approvalShape, "type-the-eid", "the stored risk shape is unchanged");
   });
 
   it("maps each shape to its own control", () => {

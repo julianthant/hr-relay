@@ -8,6 +8,7 @@ import { ExecutorSpanEventSchema } from "../../../src/backend/logs/span-emitter.
 import type { ProtectedInputBinding } from "../../../src/models/write-safety/protected-input.js";
 
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
+import type { DuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import type { BrowserDriver, TaskLogger } from "../../../src/workflow-kit/task.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import type { TestClock } from "../../../src/rules/time/clock.js";
@@ -366,6 +367,7 @@ export async function sessionManagerFor(
   clock: TestClock,
   onEvent?: (event: WorkerSessionEvent) => void,
   scheduler: MonotonicDeadlineScheduler = new ManualScheduler(clock),
+  duoCeremony?: DuoCeremonyGateFactory,
 ): Promise<WorkerSessionManager> {
   const manager = new WorkerSessionManager({
     workerId: EXECUTOR_WORKER_ID,
@@ -375,7 +377,7 @@ export async function sessionManagerFor(
     clock,
     scheduler,
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: await fixtureDuoCeremonyGates(clock),
+    duoCeremony: duoCeremony ?? await fixtureDuoCeremonyGates(clock),
     ...(onEvent === undefined ? {} : { onEvent }),
   });
 

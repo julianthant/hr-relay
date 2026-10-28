@@ -198,7 +198,8 @@ and marker claims for other requests refuse validation.
 A pre-dispatch validation failure can say Nothing was sent. A failure after dispatch is unknown:
 the backend may have recorded the command. Retain the original request/command identity and check
 that attempt before another submission. Unknown external writes remain parked and offer
-`resolve-write-present` or `resolve-write-absent` with exact intent identity and evidence. They
+`recheck-write` or `resolve-write-absent` with exact intent identity. Recheck reads the real system;
+the operator does not supply completion proof. They
 never auto-retry. Navigation shortcuts to Review, Resolve, or failure evidence do not execute a
 command. Machine verification is not operator approval.
 
@@ -310,3 +311,29 @@ both software FastDuo and native Mac Touch ID, proved provider closure and expli
 registry/verifier/active-session publication. Only the ordinary returned session cookie mounts
 bootstrap, Queue, Run and HR data authority. Failed or unknown publication remains a defined HOLD;
 public error codes never expose private causes or credential values.
+
+The login surface offers an explicit Claim existing data action using the existing form and
+canonical client. `/api/v1/profile/claim-existing-data` requires exact loopback mutation admission,
+validated details, a claim UUID and literal owner-claim consent. It verifies ownership before issuing
+the maintenance handoff and returns `PROFILE_OWNER_CLAIM_STARTING` without a session cookie. The
+initiating response settles before transport and profile closure, backup and stopped publication.
+After reconnection, the operator repeats the explicit claim; authenticated recovery returns the
+original private operation with its limited onboarding cookie. A fresh browser request UUID does
+not replace the retained operation or repeat its completed effects. Ordinary signup stays separate.
+
+For an adopted flat installation, the same public shell refuses ordinary signup/sign-in with
+`PROFILE_OWNER_CLAIM_REQUIRED` before constructing private profile or onboarding machinery. The
+claim's stopped handoff verifies its backup, publishes its resumable native transition and reopens
+the same loopback port. Restart may finish only that original authorized transition; a flat source
+without a claim journal stays unclaimed. The resulting authority remains the existing private draft
+until genuine current Duo methods and explicit Finish complete.
+
+Show setup browser may refresh unavailable public authority with the current cookie, then shows only
+that same operation and profile. A signed-out or stale session requires the original Details through
+the existing sign-up route; it never cancels the retained draft. Unknown method outcomes stay unknown.
+Show focuses the owned extension tab or recreates that tab once in the same live context. A closed
+window is replaced only after the exact context close event, all tracked pages, the observed process,
+and startup, tab, portal and pump callbacks prove closure. A lost worker-stop acknowledgment during
+window shutdown is superseded only by that complete proof and validated owned-profile deletion;
+otherwise its cause and the closure failure remain uncertain and replacement is refused. Show never
+starts enrollment or submits SSO. Explicit Open Duo retains the existing once-per-context login path.

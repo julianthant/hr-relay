@@ -17,7 +17,7 @@ import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } fro
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import assert from "node:assert/strict";
-import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
+import { randomBytes, createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { it, vi } from "vitest";
@@ -31,12 +31,12 @@ async function setup(options: { sharedMachine?: true } = {}) {
   const fixture = await createBoundProfileFixture(options), clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
   const store = createDuoCredentialStore(fixture.admission, fixture.machine, clock);
   const baseline = store.read();
-  assert.equal(baseline.state, 'initialized');
+  assert.equal(baseline.state, 'registered');
   assert.equal(baseline.revision, 2);
   assert.deepEqual(baseline.credentials.map(({ state, highWater }) => ({ state, highWater })), [{ state: 'ready', highWater: 0 }]);
   const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const input = { credentialId: Buffer.from(randomUUID()).toString("base64url"),
-    scope: { armId: randomUUID(), contextId: randomUUID(), tabId: 1, accountId: randomUUID(), origin: "https://login.duosecurity.com", rpId: "duosecurity.com",
+    scope: { armId: randomUUID(), contextId: randomBytes(16).toString("hex"), tabId: 1, accountId: randomUUID(), origin: "https://login.duosecurity.com", rpId: "duosecurity.com",
       armedAt: clock.now().toISOString(), expiresAt: new Date(clock.nowMs() + 600_000).toISOString() },
     privateKeyPkcs8: key.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
     publicKeySpki: key.publicKey.export({ type: "spki", format: "der" }).toString("base64") };

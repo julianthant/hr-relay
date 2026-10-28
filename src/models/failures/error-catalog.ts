@@ -13,6 +13,17 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Crash cleanup could not prove ownership or resource closure. Preserve the held resources and resolve custody before starting work.", EmptyParametersSchema),
+  RUN_INTERRUPTED_BY_CRASH: catalogEntry("The run was interrupted by a crash and ended as failed. Review the result before starting another run.", EmptyParametersSchema),
+  RUN_CRASH_WRITE_UNRESOLVED: catalogEntry("The run was interrupted by a crash with an unresolved write. The write remains held for operator resolution and will not be retried.", EmptyParametersSchema),
+  RUN_STALE_QUEUE_CANCELLED: catalogEntry("The never-claimed run was queued on a previous local day and was cancelled during startup.", EmptyParametersSchema),
+  STARTUP_PROCESS_CLOSED: catalogEntry("A process left by a crash was proved gone and its process custody was settled. Any unresolved writes remain held.", EmptyParametersSchema),
+  PARKED_CHECK_ABSENT: catalogEntry("The target state was not found. The write remains held.", EmptyParametersSchema),
+  PARKED_CHECK_AMBIGUOUS: catalogEntry("The target evidence is ambiguous. The write remains held.", EmptyParametersSchema),
+  PARKED_CHECK_UNKNOWN: catalogEntry("The target state could not be determined. The write remains held.", EmptyParametersSchema),
+  PARKED_CHECK_UNAVAILABLE: catalogEntry("This exact parked occurrence cannot be checked with the current subject, worker or read capability. The write remains held.", EmptyParametersSchema),
+  PARKED_CHECK_OCCURRENCE_UNPROVED: catalogEntry("A matching target state was observed, but it cannot be attributed to the original attempt. The write remains held.", EmptyParametersSchema),
+  DOCUMENT_UNAVAILABLE: catalogEntry("The Kuali separation document could not be opened. Review the document number before starting a new run.", EmptyParametersSchema),
   CREDENTIAL_CONTEXT_REQUIRED: catalogEntry("The selected profile credential authority is unavailable. Restart the runtime before continuing.", EmptyParametersSchema),
   RUNTIME_CUSTODY_UNCERTAIN: catalogEntry("Runtime resource closure is unproved. Preserve the current installation and process custody before restarting.", EmptyParametersSchema),
   PROFILE_BROWSER_ROOT_REFUSED: catalogEntry("Browser storage must stay inside the selected profile in an owned directory without links.", EmptyParametersSchema),
@@ -195,6 +206,10 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   TRAINING_REMINDER_REPEATED: catalogEntry(
     "The UCSD training reminder appeared again after Continue Log In.",
+    EmptyParametersSchema,
+  ),
+  WORKER_PROCESS_RECOVERY_REFUSED: catalogEntry(
+    "Relay couldn't prove that the abandoned worker's resources are closed. Its original custody and HR records remain held.",
     EmptyParametersSchema,
   ),
   ORPHAN_VERIFICATION_RETIREMENT_REFUSED: catalogEntry(
@@ -461,6 +476,9 @@ export const ERROR_CATALOG = Object.freeze({
     "A verified backup and local storage upgrade are starting. Sign in again after Relay restarts.",
     EmptyParametersSchema,
   ),
+  PROFILE_OWNER_CLAIM_REQUIRED: catalogEntry("Existing data needs its owner's explicit claim. Use Claim existing data to continue.", EmptyParametersSchema),
+  PROFILE_OWNER_CLAIM_STARTING: catalogEntry("Relay is backing up and preserving your existing data. Continue the same claim after Relay reconnects.", EmptyParametersSchema),
+  PROFILE_OWNER_CLAIM_UNAVAILABLE: catalogEntry("Ownership or a safe transition could not be verified. Existing data remains held for recovery.", EmptyParametersSchema),
   PROFILE_UPGRADE_UNAVAILABLE: catalogEntry(
     "The authenticated storage upgrade could not finish. Storage custody is retained; do not retry the upgrade.",
     EmptyParametersSchema,

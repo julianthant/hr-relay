@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
+import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { z } from "zod";
 import { DuoEnrollmentScopeSchema } from "../../models/config/duo-credential-store.js";
 import { assertFinishedProfileOnboarding, type SignUpDuoAttempt, type SignUpOperation } from "../../models/profiles/profile.js";
-import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
+import type { ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import type { Clock } from "../../rules/time/clock.js";
 import type { createDraftDuoCredentialStore } from "../storage/configuration/duo-credential-store.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
-import type { DraftDuoAttempt, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
+import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
 
 export function duoAccountMatches(email: string, observed: string): boolean {
   const canonical = email.trim().toLowerCase(), account = observed.trim().toLowerCase();
@@ -22,10 +23,13 @@ export function createProfileOnboarding(input: {
   readonly read: (operationId: string) => SignUpOperation;
   readonly update: <T>(operationId: string, change: (operation: SignUpOperation) => Readonly<{ operation: SignUpOperation; result: T }>) => T;
   readonly email: (operation: SignUpOperation) => string;
+  readonly credentials: (operation: SignUpOperation) => Readonly<{ userId: string; password: string }>;
+  readonly publicState: (operation: SignUpOperation) => ProfileOnboardingState;
   readonly store: (operation: SignUpOperation) => ReturnType<typeof createDraftDuoCredentialStore>;
 }) {
   const leases = new Map<string, { revoked: boolean; closed: boolean; attempt: DraftDuoAttempt; capability?: DraftDuoCapability }>();
   const retainedFailures: unknown[] = [];
+  const browsers = new Map<string, DraftDuoBrowserOwner>();
   const unavailable = (): never => { throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); };
   const requiredDraft = (operation: SignUpOperation) => {
     if (operation.onboarding === undefined || operation.phase !== "applying" && !(operation.phase === "publishing" && operation.onboarding.finish !== undefined)) return unavailable();
@@ -39,6 +43,27 @@ export function createProfileOnboarding(input: {
       || receipt.method !== attempt.method || receipt.state !== "pending" && receipt.state !== "complete"
       || Date.parse(attempt.expiresAt) <= input.clock.nowMs()) return unavailable();
     return { operation, receipt };
+  }
+  function browserOwner(operationId: string): DraftDuoBrowserOwner {
+    const existing = browsers.get(operationId);
+    if (existing) { existing.assertCurrent(); return existing; }
+    const operation = input.read(operationId), draft = requiredDraft(operation);
+    const currentDraft = () => {
+      const latest = input.read(operationId), current = requiredDraft(latest);
+      if (latest.profileId !== operation.profileId || current.accountId !== draft.accountId || current.generation !== draft.generation
+        || current.abort !== undefined || current.finish !== undefined) return unavailable();
+      return latest;
+    };
+    const browser: DraftDuoBrowserOwner = Object.freeze({ operationId, profileId: operation.profileId,
+      accountId: draft.accountId, generation: draft.generation,
+      assertCurrent() { currentDraft(); },
+      async acquireCredentials() { const value = input.credentials(currentDraft()); currentDraft(); return value; },
+      readState() { return input.publicState(currentDraft()); },
+      async start(method: ProfileOnboardingMethod) { currentDraft(); await owner.start(operationId, method); currentDraft(); },
+      async cancel(method: ProfileOnboardingMethod, attemptId: string) { currentDraft(); await owner.cancelAttempt(operationId, method, attemptId); currentDraft(); },
+      confirm(method: ProfileOnboardingMethod, attemptId: string) { currentDraft(); owner.confirm(operationId, method, attemptId); currentDraft(); },
+    });
+    browsers.set(operationId, browser); return browser;
   }
   function updateAttempt<T>(attempt: DraftDuoAttempt, change: (operation: SignUpOperation, receipt: SignUpDuoAttempt) => Readonly<{ receipt: SignUpDuoAttempt; result: T }>): T {
     current(attempt);
@@ -81,7 +106,7 @@ export function createProfileOnboarding(input: {
         return { operation: { ...operation, onboarding: { ...draft, attempts: draft.attempts.map(entry => entry.attemptId === attempt.attemptId
           ? { ...entry, state: kind === "unknown" ? "unknown" as const : "closed" as const } : entry) } }, result: undefined };
       });
-    } catch (failure) { retainedFailures.push(error, failure); throw new AggregateError([error, failure], "profile-onboarding-failure-retention-unproved"); }
+    } catch (failure) { retainedFailures.push(error, failure); throw new AggregateError([error, failure], "profile-onboarding-failure-retention-unproved", { cause: failure }); }
     const lease = leases.get(attempt.attemptId); if (lease !== undefined) lease.revoked = true;
   }
   async function bind(attempt: DraftDuoAttempt, observed: DraftDuoObservedContext): Promise<DraftDuoCapability> {
@@ -96,7 +121,7 @@ export function createProfileOnboarding(input: {
     const assertCurrent = () => { const latest = current(attempt).receipt;
       if (JSON.stringify(latest.scope) !== JSON.stringify(scope)) return unavailable();
     };
-    const capability: DraftDuoCapability = Object.freeze({ attempt, scope, assertCurrent,
+    const capability: DraftDuoCapability = Object.freeze<DraftDuoCapability>({ attempt, scope, assertCurrent,
       async persistPending(credential) {
         assertCurrent(); if (attempt.method !== "key") return unavailable();
         const latest = current(attempt).operation;
@@ -154,6 +179,14 @@ export function createProfileOnboarding(input: {
     return capability;
   }
   const owner = {
+    async showBrowser(operationId: string): Promise<void> {
+      if (!input.provider) return unavailable();
+      const browser = browserOwner(operationId); await input.provider.showBrowser(browser); browser.assertCurrent();
+    },
+    async openPortal(operationId: string): Promise<void> {
+      if (!input.provider) return unavailable();
+      const browser = browserOwner(operationId); await input.provider.openPortal(browser); browser.assertCurrent();
+    },
     async start(operationId: string, method: ProfileOnboardingMethod): Promise<void> {
       const provider = input.provider; if (provider === undefined) return unavailable();
       const before = requiredDraft(input.read(operationId));
@@ -168,26 +201,26 @@ export function createProfileOnboarding(input: {
         const attempt: DraftDuoAttempt = Object.freeze({ operationId, profileId: operation.profileId, accountId: draft.accountId,
           generation: draft.generation, attemptId: randomUUID(), method, expiresAt: new Date(input.clock.nowMs() + 600_000).toISOString() });
         return { operation: { ...operation, onboarding: { ...draft, attempts: [...draft.attempts, {
-          attemptId: attempt.attemptId, generation: attempt.generation, method, expiresAt: attempt.expiresAt, state: "pending" as const }] } }, result: attempt };
+          attemptId: attempt.attemptId, generation: attempt.generation, method, expiresAt: IsoInstantSchema.parse(attempt.expiresAt), state: "pending" as const }] } }, result: attempt };
       });
       leases.set(attempt.attemptId, { revoked: false, closed: false, attempt });
-      try { await provider.start(attempt, observed => bind(attempt, observed), error => reportFailure(attempt, error)); }
+      try { await provider.showBrowser(browserOwner(operationId)); await provider.start(attempt, observed => bind(attempt, observed), error => reportFailure(attempt, error)); }
       catch (error) {
         if (error instanceof Error) await reportFailure(attempt, error);
         else { retainedFailures.push(error); await reportFailure(attempt, new Error("profile-onboarding-provider-failure", { cause: error })); }
         try { await owner.cancelAttempt(operationId, method, attempt.attemptId); }
         catch (cleanup) {
           retainedFailures.push(error, cleanup);
-          throw new AggregateError([error, cleanup], "profile-onboarding-provider-closure-unproved");
+          throw new AggregateError([error, cleanup], "profile-onboarding-provider-closure-unproved", { cause: cleanup });
         }
-        if (error instanceof Error && input.failureKind(error) === "unavailable") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-        if (error instanceof Error && input.failureKind(error) === "refused") throw new ProfileSessionRefusedError("PROFILE_SIGN_IN_REFUSED");
+        if (error instanceof Error && input.failureKind(error) === "unavailable") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE", { cause: error });
+        if (error instanceof Error && input.failureKind(error) === "refused") throw new ProfileSessionRefusedError("PROFILE_SIGN_IN_REFUSED", { cause: error });
         throw error;
       }
     },
     confirm(operationId: string, method: ProfileOnboardingMethod, attemptId: string): void {
       const lease = leases.get(attemptId); if (lease === undefined || lease.attempt.operationId !== operationId || lease.attempt.method !== method) return unavailable();
-      updateAttempt(lease.attempt, (_operation, receipt) => ({ receipt: { ...receipt, operatorConfirmedAt: input.clock.now().toISOString() }, result: undefined }));
+      updateAttempt(lease.attempt, (_operation, receipt) => ({ receipt: { ...receipt, operatorConfirmedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) }, result: undefined }));
       settleAttempt(lease.attempt);
     },
     async cancelAttempt(operationId: string, method: ProfileOnboardingMethod, attemptId: string): Promise<void> {
@@ -204,7 +237,7 @@ export function createProfileOnboarding(input: {
         return { operation: { ...latest, onboarding: { ...current, attempts: current.attempts.map(entry => {
           if (entry.attemptId !== attemptId) return entry;
           if (closure.state !== "closed" || entry.state === "unknown" || entry.scope !== undefined && entry.state !== "complete") return { ...entry, state: "unknown" as const };
-          return { ...entry, state: entry.state === "complete" ? "complete" as const : "closed" as const, providerClosedAt: input.clock.now().toISOString() };
+          return { ...entry, state: entry.state === "complete" ? "complete" as const : "closed" as const, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) };
         }) } }, result: undefined };
       });
       if (closure.state !== "closed") return unavailable();
@@ -213,19 +246,23 @@ export function createProfileOnboarding(input: {
       const operation = input.read(operationId), draft = requiredDraft(operation), provider = input.provider;
       const pending = draft.attempts.filter(entry => entry.generation === draft.generation
         && entry.providerClosedAt === undefined && leases.get(entry.attemptId)?.closed !== true);
-      if (pending.length === 0) return;
-      if (provider === undefined) return unavailable();
+      if (pending.length > 0 && provider === undefined) return unavailable();
       for (const receipt of pending) {
         const lease = leases.get(receipt.attemptId); if (lease === undefined) return unavailable();
         lease.revoked = true;
-        const closure = await provider.cancel(lease.attempt);
+        const closure = await provider!.cancel(lease.attempt);
         if (closure.state !== "closed") return unavailable();
         lease.closed = true;
         input.update(operationId, latest => { const current = requiredDraft(latest);
           if (current.generation !== draft.generation) return unavailable();
           return { operation: { ...latest, onboarding: { ...current, attempts: current.attempts.map(entry => entry.attemptId === receipt.attemptId
-            ? { ...entry, providerClosedAt: input.clock.now().toISOString() } : entry) } }, result: undefined };
+            ? { ...entry, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) } : entry) } }, result: undefined };
         });
+      }
+      const browser = browsers.get(operationId);
+      if (browser !== undefined) {
+        if (provider === undefined || (await provider.closeBrowser(browser)).state !== "closed") return unavailable();
+        browsers.delete(operationId);
       }
     },
     assertAbortable(operationId: string): void {
@@ -248,10 +285,11 @@ export function createProfileOnboarding(input: {
   return { ...owner,
     hasLiveAttempt(attemptId: string): boolean { const lease = leases.get(attemptId); return lease !== undefined && !lease.revoked && !lease.closed; },
     async close(): Promise<void> {
-      for (const operationId of new Set([...leases.values()].filter(lease => !lease.closed).map(lease => lease.attempt.operationId))) await owner.drain(operationId);
+      for (const operationId of new Set([...browsers.keys(), ...[...leases.values()].filter(lease => !lease.closed).map(lease => lease.attempt.operationId)])) await owner.drain(operationId);
     },
     assertClosed(): void {
       if ([...leases.values()].some(lease => !lease.closed)) return unavailable();
+      if (browsers.size > 0) return unavailable();
       if (retainedFailures.length > 0) throw new AggregateError(retainedFailures, "profile-onboarding-custody-unproved");
     },
   };

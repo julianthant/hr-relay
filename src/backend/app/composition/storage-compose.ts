@@ -1,4 +1,4 @@
-import { AuthoritySourceClosureUnprovedError } from '../../storage/source-closure.js';
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { assertProfileBrowserRoot, composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeProfilePendingLogoutInventory, composeProfileCredentialInventory } from "./profile-credential-inventory.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
@@ -475,8 +475,12 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
-  "       storage backup [--json]",
+  "       storage backup [--json]  verified SQLite backup; stopped flat native6 includes private coupled companions",
   "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
+  "       storage cancel-queued-runs --plan [--json]",
+  "       storage cancel-queued-runs --capture <digest> --apply [--json]",
+  "       storage recover-worker-process --acquisition <uuid> --plan [--json]",
+  "       storage recover-worker-process --acquisition <uuid> --capture <digest> --apply [--json]",
   "       storage recover-duo-publication",
   "       storage restore --from <manifest.json> [--json]",
   "       storage recover-restore --operation <id> --from <manifest.json> --outcome <unchanged|replaced> [--json]",
@@ -914,33 +918,54 @@ async function backupCommand(
   repoRoot: string,
   admission: RuntimeAdmission,
 ): Promise<StorageCommandOutcome> {
-  const json = rest.includes("--json");
-  const stateRoot = admission.stateRoot;
-  const authorityPath = join(stateRoot, "state.db");
-  if (!existsSync(authorityPath)) {
-    return {
-      output: `storage backup REFUSED — no authority database exists at ${basename(stateRoot)}/state.db; `
-        + "start the dashboard once to create it, then back it up",
-      exitCode: 1,
-    };
-  }
-  const { backupStoppedAuthority } = await import("../../storage/maintenance/upgrade.js");
-  const report = await backupStoppedAuthority(admission,stateRoot, clock,join(repoRoot,isolation.processLockRoot));
-    const manifest = report.manifests.at(-1);
-    if (manifest === undefined) {
-      throw new Error("verified backup run reported no manifest");
+  const context = admission.readInstallationContext();
+  const selected = !admission.isFlatBackup() && context !== undefined && context.locator.stateRoot === admission.stateRoot
+    ? captureSelectedProfileStorage(admission) : undefined;
+  if (selected !== undefined) admission.assertExclusive();
+  const claim = selected === undefined ? undefined : admission.issueRegisteredProfileClaim(selected.profileId);
+  if (claim !== undefined && claim.phase !== "runtime") throw new Error("profile-onboarding-incomplete");
+  const profile = claim === undefined ? undefined : admission.admitProfile(claim);
+  const storage = profile ?? admission;
+  let outcome: StorageCommandOutcome;
+  try {
+    selected?.assertCurrent();
+    const json = rest.includes("--json"), stateRoot = storage.stateRoot;
+    const authorityPath = join(stateRoot, "state.db");
+    if (!existsSync(authorityPath)) {
+      outcome = {
+        output: `storage backup REFUSED — no authority database exists at ${basename(stateRoot)}/state.db; `
+          + "complete profile setup and select that READY profile before requesting its backup",
+        exitCode: 1,
+      };
+    } else {
+      const { backupStoppedAuthority } = await import("../../storage/maintenance/upgrade.js");
+      const report = storage.isFlatBackup()
+        ? await (await import("../../storage/maintenance/existing-data-backup.js")).backupFlatStorage(storage, clock)
+        : await backupStoppedAuthority(storage, stateRoot, clock, join(repoRoot, isolation.processLockRoot));
+      selected?.assertCurrent();
+      const manifest = report.manifests.at(-1);
+      if (manifest === undefined) throw new Error("verified backup run reported no manifest");
+      outcome = {
+        output: json
+          ? JSON.stringify(report, null, 2)
+          : [
+              `backup: verified — ${manifest.backupFileName}`,
+              `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
+              `  manifest ${manifest.backupFileName}.manifest.json${"coupledBackup" in report ? "" : " (restore with: storage restore --from <that manifest>)"}`,
+              ...("coupledBackup" in report ? [`  private coupled companions: ${report.coupledBackup.backupPath}; owner claim remains in the dashboard`] : []),
+            ].join("\n"),
+        exitCode: 0,
+      };
     }
-    return {
-      output: json
-        ? JSON.stringify(report, null, 2)
-        : [
-            `backup: verified — ${manifest.backupFileName}`,
-            `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
-            `  manifest ${manifest.backupFileName}.manifest.json (restore with: storage restore --from <that manifest>)`,
-          ].join("\n"),
-      exitCode: 0,
-    };
-
+  } catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: storage });
+    try { profile?.release(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: storage }); }
+    throw error;
+  }
+  try { profile?.release(); }
+  catch (error) { throw retainAuthoritySourceClosure([error], { admission: storage }); }
+  return outcome;
 }
 
 /** Clears a ChatGPT credential lock whose recorded owner process is gone; a live owner is refused. */

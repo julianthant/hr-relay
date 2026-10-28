@@ -1,4 +1,6 @@
 import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
+import { CanonicalCrashRecoveryRequestSchema } from "./run-store-contracts.js";
+import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { notificationCollectionTarget, type NotificationCollectionOperation, type NotificationCollectionTarget } from "../../../models/notifications/notifications.js";
@@ -10,7 +12,7 @@ import { terminalDelegationDependencyRecord } from "../../../models/run/result.j
 import { delegationJoinDisposition } from "../../../rules/workflow/dependencies.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
-import { authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, type RuntimeProcessLockHandle, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
+import { readStartupProcessClosure, readProcessCustodyFile, WorkerProcessLockFileSchema, authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, type RuntimeProcessLockHandle, type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { authenticateParkedWriteRecheck, authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
@@ -22,11 +24,11 @@ import { generatedArtifactFromRow } from "./generated-artifacts.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
 import { workerSlotFromRow } from "./worker-slots.js";
 import { authenticateWorkerSupervisorEffect, consumeWorkerSupervisorEffect, type WorkerSupervisorEffect, authenticateWorkerControlClosure, consumeWorkerControlClosure, type WorkerControlClosure, assertWorkerResetParkedWrite, workerControlFromRow, workerBrowserFromRow } from "./worker-control.js";
-import { readAppSettings } from "./settings-storage.js";
+import { readAppSettings, writeAppSettings } from "./settings-storage.js";
 import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
 import { requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody } from "./worker-slots.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
-import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
+import { runRecordColumns, runRecordFromRow, updateRunRecord, transitionRunRecord } from "./run-record-row.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { selectTransactions } from "./transaction-selection.js";
@@ -40,7 +42,7 @@ import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-prove
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
-import type { VerifiedRelocationActivationIntent } from "../admission/installation.js";
+import type { InstallationLease, VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
@@ -56,7 +58,7 @@ import { ConfirmationPublicationSchema, confirmationPublicationFromRow, type Con
 import { timelineAppendContent, timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
-import { withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
+import { withReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { TimelinePageRequestSchema } from "../../../models/events/timeline.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";
@@ -68,7 +70,7 @@ import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync, lstatSync, openSync, closeSync, fsyncSync, unlinkSync, constants } from "node:fs";
-import { dirname, resolve, join } from "node:path";
+import { dirname, relative, resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -94,7 +96,7 @@ import { ActorIdSchema, ArtifactIdSchema, BrowserSystemIdSchema, CommandAuditIdS
 import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../../../models/run/record.js";
 import { DeletedRunRecordSchema, RunDeleteInputSchema, type DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import { RunResultRecordSchema, createRunTerminalEvidenceResult, deriveTerminalFailureDigest, terminalEvidenceResult, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, type RunResultRecord } from "../../../models/run/result.js";
-import { TerminalAuthorizationRecordSchema, type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
+import { FailureTerminalAuthorizationRecordSchema, TerminalAuthorizationRecordSchema, type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
 import { StartPlanRecordSchema, isStartPlanExpired, type StartPlanRecord } from "../../../models/run/start-plan.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
@@ -1408,8 +1410,51 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   }
 }
 
-function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock): void {
-  requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(path, processLockRoot);
+function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>) {
+  const settings = readAppSettings(database);
+  const settingsAuthority = settings === undefined
+    ? Object.freeze({ state: "never-initialized" as const })
+    : Object.freeze({ state: "initialized" as const, record: settings });
+  const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
+    .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
+  const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
+  const browsers = database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow);
+  const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
+  const controls = database.prepare("SELECT * FROM worker_controls ORDER BY command_id").all().map(row => {
+    const record = workerControlFromRow(row), authenticated = readWorkerControl(database, record.commandId);
+    if (authenticated === undefined) throw new Error("worker-control-command-binding-mismatch");
+    return authenticated;
+  });
+  const reservations = readWorkerReservationCustody(database, slots, controls);
+  const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
+  const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
+  const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
+  const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
+  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+}
+
+function flatQueuedRunCancellationInventory(database: DatabaseSync, assertResourcesClosed: (facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) => void) {
+  const inspection = inspectNativeAuthority(database, 6);
+  if (inspection.installationId !== undefined || inspection.profileId !== undefined) throw new Error("queued-run-cancellation-binding-refused");
+  const facts = maintenanceInventory(database, inspection);
+  const candidates = facts.runs.filter(run => run.lifecycle.state !== "terminal");
+  for (const run of candidates) {
+    if (run.lifecycle.state !== "queued" || run.claimGeneration !== 0 || runClaim(run) !== undefined
+      || run.lifecycle.requeuedFrom !== undefined || run.envelope.parent !== undefined
+      || database.prepare("SELECT 1 FROM write_intents WHERE run_id=? LIMIT 1").get(run.envelope.runId) !== undefined
+      || database.prepare("SELECT 1 FROM run_checkpoints WHERE run_id=? LIMIT 1").get(run.envelope.runId) !== undefined
+      || database.prepare("SELECT 1 FROM run_delegations WHERE parent_run_id=? LIMIT 1").get(run.envelope.runId) !== undefined) {
+      throw new Error("queued-run-cancellation-ineligible");
+    }
+  }
+  assertResourcesClosed({ ...facts, runs: facts.runs.filter(run => run.lifecycle.state === "terminal") });
+  const { installationId: _installationId, profileId: _profileId, ...nativeInspection } = inspection;
+  return { digest: sha256Hex(canonicalJsonStringify({ inspection: nativeInspection, facts })), candidates };
+}
+
+function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, backup = false): void {
+  if (backup) requireRuntimeAdmission(admission).assertStoppedAuthorityBackup(path, processLockRoot);
+  else requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(path, processLockRoot);
   requireDatabaseSourcePath(path);
   const locks = observeRuntimeLockSnapshot({ processLockRoot,
     sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) }, clock);
@@ -1831,7 +1876,35 @@ export class AuthorityDatabase implements Disposable {
       const counts = Object.freeze(AUTHORITY_TABLE_REGISTRY.map(table => Object.freeze({ table: table.name,
         count: z.strictObject({ count: z.number().int().safe().nonnegative() }).parse(database.prepare(`SELECT COUNT(*) AS count FROM ${table.name}`).get()).count })));
       const artifactReferenceCount = readManagedArtifactReferencesFromDatabase(database).length;
-      const empty = counts.every(row => row.table === "database_states" || row.table === "database_upgrades" || row.count === 0) && artifactReferenceCount === 0;
+      let empty = counts.every(row => row.table === "database_states" || row.table === "database_upgrades" || row.count === 0) && artifactReferenceCount === 0;
+      const initializationTables = new Set<AuthorityTableName>(["settings", "commands", "command_audits", "settings_snapshots"]);
+      if (!empty && artifactReferenceCount === 0
+        && counts.every(row => row.table === "database_states" || row.table === "database_upgrades" || initializationTables.has(row.table) || row.count === 0)
+        && counts.every(row => !["settings", "commands", "command_audits"].includes(row.table) || row.count === 1)) {
+        const settings = readAppSettings(database), active = settings?.active;
+        if (settings !== undefined && settings.saved === null && active != null
+          && canonicalJsonStringify(settings.initialization.settings) === canonicalJsonStringify(initialSettingsFileRecord())
+          && active.settingsRevision === 1 && active.settingsFingerprint === settings.initialization.settings.settingsFingerprint) {
+          const initial = settings.initialization;
+          const command = z.object({ parent_id: z.null(), state: z.literal("succeeded"), outcome_json: z.string() })
+            .parse(database.prepare("SELECT * FROM commands WHERE id=?").get(initial.commandId));
+          const audit = nativeOrdinaryRecordFromRow("command_audits", database.prepare("SELECT * FROM command_audits WHERE id=?").get(initial.auditId));
+          if (canonicalJsonStringify(JSON.parse(command.outcome_json)) !== canonicalJsonStringify(audit)) throw new Error("profile-incomplete-inventory-initialization-mismatch");
+          const snapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
+            .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
+          const endpoints = new Set([initial.configSnapshotId, active.configSnapshotId]);
+          for (const snapshot of snapshots) {
+            // Intermediate startup snapshots have no retained activation authority.
+            if (!endpoints.has(snapshot.configSnapshotId)) throw new Error("profile-incomplete-inventory-snapshot-unbound");
+            if (snapshot.revision !== 1 || snapshot.capturedBy !== LOCAL_OPERATOR_ACTOR_ID
+              || snapshot.configSnapshotId === initial.configSnapshotId && (snapshot.fingerprint !== initial.configFingerprint || snapshot.capturedAt !== initial.initializedAt)
+              || snapshot.configSnapshotId === active.configSnapshotId && (snapshot.fingerprint !== active.configFingerprint || snapshot.capturedAt !== active.activatedAt)) {
+              throw new Error("profile-incomplete-inventory-snapshot-mismatch");
+            }
+          }
+          empty = snapshots.length === endpoints.size && active.generation === snapshots.length;
+        }
+      }
       owner.assertStoppedIncompleteProfileInventory();
       return Object.freeze({ authorityGeneration: inspection.authorityGeneration, counts, artifactReferenceCount, empty });
     });
@@ -1842,28 +1915,99 @@ export class AuthorityDatabase implements Disposable {
     owner.assertLive();
     return withAuthorityDatabaseReadOnly(owner, path, database => {
       const inspection = inspectNativeAuthority(database, owner.profileMaintenanceSchemaVersion());
-      const binding = owner.profileBinding;
-      if (inspection.installationId !== binding.installationId || inspection.profileId !== binding.profileId) throw new Error("profile-maintenance-binding-mismatch");
-      const settings = readAppSettings(database);
-      const settingsAuthority = settings === undefined
-        ? Object.freeze({ state: "never-initialized" as const })
-        : Object.freeze({ state: "initialized" as const, record: settings });
-      const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
-        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
-      const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
-      const browsers = database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow);
-      const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
-      const controls = database.prepare("SELECT * FROM worker_controls ORDER BY command_id").all().map(row => {
-        const record = workerControlFromRow(row), authenticated = readWorkerControl(database, record.commandId);
-        if (authenticated === undefined) throw new Error("worker-control-command-binding-mismatch");
-        return authenticated;
-      });
-      const reservations = readWorkerReservationCustody(database, slots, controls);
-      const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
-      const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
-      const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
-      const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
-      return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+      const binding = inspection.schemaVersion === 6 ? undefined : owner.profileBinding;
+      if (inspection.schemaVersion === 6
+        ? inspection.installationId !== undefined || inspection.profileId !== undefined
+        : inspection.installationId !== binding?.installationId || inspection.profileId !== binding?.profileId) throw new Error("profile-maintenance-binding-mismatch");
+      return maintenanceInventory(database, inspection);
+    });
+  }
+
+  static async readFlatQueuedRunCancellation(path: string) {
+    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
+    return withReadonlyAuthoritySnapshot(path, database => flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed));
+  }
+
+  // This finite native6 command cannot grant ordinary profile runtime authority.
+  static async cancelQueuedRunsNative6(lease: InstallationLease, restore: RestoreAdmissionHandle, expectedDigest: string, clock: Clock) {
+    const { assertInstallationLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
+    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
+    assertInstallationLease(lease);
+    if (lease.mode !== "exclusive") throw new Error("queued-run-cancellation-exclusive-required");
+    const workspace = lease.readInstallationContext().workspace;
+    const installation = inspectFlatOfflineRunMaintenance(workspace);
+    const stateRoot = lease.locator.stateRoot, path = join(stateRoot, "state.db");
+    const assertHeld = () => {
+      lease.assertHeld(); assertRuntimeRestoreAdmission(restore, installation.processLockRoot);
+      const locks = observeRuntimeLockSnapshot({ processLockRoot: installation.processLockRoot,
+        sourceDatabaseIdentity: authoritySourceDatabaseIdentity(path) }, clock);
+      if (Object.values(locks.processLocks).some(lock => lock.state !== "stopped")) throw new Error("queued-run-cancellation-runtime-active");
+      if (canonicalJsonStringify(inspectFlatOfflineRunMaintenance(workspace)) !== canonicalJsonStringify(installation)
+        || lease.locator.installationId !== installation.installationId) throw new Error("queued-run-cancellation-installation-changed");
+    };
+    assertHeld(); requireDatabaseSourcePath(path);
+    const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, allowExtension: false, timeout: 5000 });
+    let runIds: string[] | undefined;
+    let failure: { error: unknown } | undefined;
+    try {
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        const inventory = flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed);
+        if (inventory.digest !== expectedDigest) throw new Error("queued-run-cancellation-capture-changed");
+        const now = clock.now().toISOString();
+        for (const current of inventory.candidates) {
+          const commandId = randomUUID();
+          const lifecycle = { state: "terminal" as const, outcome: "cancelled" as const, endedAt: now,
+            errorSummary: "cancelled offline: stale queued run" };
+          const request = { commandId, runId: current.envelope.runId, expectedVersion: current.version, lifecycle };
+          const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId, operation: "transition", request,
+            requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0transition\0${canonicalJsonStringify(request)}`),
+            fence: { kind: "version", expectedVersion: current.version }, recordedAt: now });
+          const updated = transitionRunRecord(current, RunRecordSchema.parse({ ...current, lifecycle }), now);
+          updateRunRecord(database, updated);
+          insertNativeCommand(database, command);
+          const audit = RunLifecycleCommandAuditRecordSchema.parse({ kind: "run-lifecycle", auditId: commandId, request: command,
+            result: { kind: "run", runId: current.envelope.runId, appliedVersion: updated.version, terminal: { outcome: "cancelled", endedAt: now } }, completedAt: now });
+          database.prepare("INSERT INTO command_audits(id,command_id,code,payload_json,created_at) VALUES(?,?,NULL,?,?)")
+            .run(commandId, commandId, canonicalJsonStringify(audit), now);
+          settleNativeCommand(database, audit);
+          const result = createRunTerminalEvidenceResult(updated, { kind: "lifecycle-evidence", outcome: "cancelled", commandId: command.commandId,
+            auditId: audit.auditId, requestFingerprint: command.requestFingerprint, appliedVersion: updated.version });
+          database.prepare("INSERT INTO run_results(run_id,workflow,attempt,result_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
+            .run(result.runId, result.workflowId, result.attempt, result.resultDigest, canonicalJsonStringify(result), result.createdAt);
+          createTimelineRepository({ database, read: work => work(), mutate: work => work().result,
+            assertOwner: event => { if (event.scope.kind !== "run" || event.scope.runId !== updated.envelope.runId) throw new Error("timeline-lifecycle-owner-mismatch"); } })
+            .append({ schemaVersion: 1, eventId: lifecycleCommandId("timeline-lifecycle", commandId), workflow: updated.envelope.workflow,
+              scope: { kind: "run", runId: updated.envelope.runId }, occurredAt: now, recordedAt: now, retentionDate: localDatePart(clock.now()),
+              source: { kind: "native" }, payload: { kind: "span", event: { t: "span.ended", kind: "run", outcome: "cancelled",
+                pid: process.pid, ts: now, workflow: updated.envelope.workflow, runId: updated.envelope.runId, attempt: updated.envelope.attempt,
+                traceId: updated.envelope.traceId, spanPath: updated.envelope.traceId } } });
+        }
+        if (inventory.candidates.length > 0) database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,search_generation=NULL,search_state='invalid',updated_at=? WHERE id=1").run(now);
+        inspectNativeAuthority(database, 6); assertHeld();
+        database.exec("COMMIT");
+        runIds = inventory.candidates.map(run => run.envelope.runId);
+      } catch (error) {
+        try { database.exec("ROLLBACK"); }
+        catch (rollback) { throw retainAuthoritySourceClosure([error, rollback], { database, admission: lease, restore }); }
+        throw error;
+      }
+    } catch (error) { failure = { error }; }
+    try { database.close(); }
+    catch (error) { throw retainAuthoritySourceClosure(failure === undefined ? [error] : [failure.error, error], { database, admission: lease, restore }); }
+    if (failure !== undefined) throw failure.error;
+    if (runIds === undefined) throw new Error("queued-run-cancellation-result-unavailable");
+    return runIds;
+  }
+
+  static readFlatBackupRecoveryInventory(path: string, restore: RestoreAdmissionHandle) {
+    assertRuntimeRestoreAdmission(restore, join(dirname(path), "locks"));
+    return withReadonlyAuthoritySnapshot(path, database => {
+      const inspection = inspectNativeAuthority(database, 6);
+      if (inspection.installationId !== undefined || inspection.profileId !== undefined) throw new Error("flat-backup-recovery-binding-refused");
+      const facts = maintenanceInventory(database, inspection);
+      assertRuntimeRestoreAdmission(restore, join(dirname(path), "locks"));
+      return { inspection, facts };
     });
   }
 
@@ -1895,7 +2039,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static inspectStoppedUpgrade(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock) {
-    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock, true);
     const snapshot = createReadonlyAuthoritySnapshot(path);
     let database: DatabaseSync | undefined;
     let result: ReturnType<typeof inspectNativeAuthority> | undefined;
@@ -1936,6 +2080,65 @@ export class AuthorityDatabase implements Disposable {
     return result;
   }
 
+
+  static async rebaseClaimedProfileConfiguration(machine: RuntimeAdmission, admission: RuntimeAdmission,
+    operation: import("../../../models/profiles/profile.js").SignUpOperation, processLockRoot: string, clock: Clock): Promise<void> {
+    machine.assertProfileCredentialInitialization(admission, operation);
+    const { readFlatProfileClaimReceipt } = await import("../maintenance/flat-profile-claim.js");
+    const receipt = readFlatProfileClaimReceipt(machine, operation);
+    if (receipt === undefined) throw new Error("existing-data-flat-receipt-required");
+    const path = join(admission.stateRoot, "state.db");
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
+    let primary: { error: unknown } | undefined;
+    try {
+      database.exec("BEGIN EXCLUSIVE");
+      try {
+        inspectNormalAuthority(database);
+        const app = readAppSettings(database);
+        if (app?.active == null) throw new Error("existing-data-flat-settings-unavailable");
+        const row = database.prepare("SELECT payload_json FROM settings_snapshots WHERE id=?").get(receipt.activationPrior.configSnapshotId);
+        if (row === undefined) throw new Error("existing-data-flat-settings-unavailable");
+        const source = ConfigSnapshotRecordSchema.parse(JSON.parse(z.strictObject({ payload_json: z.string() }).parse(row).payload_json));
+        if (source.fingerprint !== receipt.activationPrior.configFingerprint) throw new Error("existing-data-flat-settings-changed");
+        const config = { ...source.config, paths: { ...source.config.paths, stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot,
+          browserProfileRoot: join(admission.stateRoot, "browsers"), duoCredential: join(admission.stateRoot, "credentials", "duo-webauthn.json"),
+          reportsDir: join(admission.stateRoot, "files", "reports"), downloadsDir: join(admission.stateRoot, "files", "downloads"),
+          onboardingDocsDir: join(admission.stateRoot, "files", "onboarding"), i9CheckTrackerPath: join(admission.stateRoot, "files", "reports", "i9-check-tracker.xlsx") } };
+        const snapshot = ConfigSnapshotRecordSchema.parse({ ...source, configSnapshotId: receipt.activationSnapshotId, config,
+          fingerprint: createHash("sha256").update(canonicalJsonStringify(config)).digest("hex"), capturedAt: receipt.claimedAt });
+        const next = ActiveRuntimeConfigRecordSchema.parse({ ...receipt.activationPrior, generation: receipt.activationPrior.generation + 1,
+          configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint, activatedAt: snapshot.capturedAt });
+        const existing = database.prepare("SELECT payload_json FROM settings_snapshots WHERE id=?").get(snapshot.configSnapshotId);
+        if (existing === undefined) {
+          if (canonicalJsonStringify(app.active) !== canonicalJsonStringify(receipt.activationPrior)) throw new Error("existing-data-flat-settings-changed");
+          database.prepare("INSERT INTO settings_snapshots(id,revision,fingerprint,payload_json,captured_at) VALUES(?,?,?,?,?)")
+            .run(snapshot.configSnapshotId, snapshot.revision, snapshot.fingerprint, canonicalJsonStringify(snapshot), snapshot.capturedAt);
+          for (const row of database.prepare("SELECT * FROM browser_sessions ORDER BY id").all()) {
+            const browser = workerBrowserFromRow(row);
+            if (browser.health !== "closed") throw new Error("existing-data-flat-browser-closure-unproved");
+            if (browser.profileDirectory === undefined) throw new Error("existing-data-flat-browser-path-unproved");
+            const local = relative(receipt.sourceStateRoot, browser.profileDirectory);
+            if (!local.startsWith("browsers/") || resolve(receipt.sourceStateRoot, local) !== browser.profileDirectory) throw new Error("existing-data-flat-browser-path-unproved");
+            const moved = { ...browser, profileDirectory: join(admission.stateRoot, local) };
+            if (database.prepare("UPDATE browser_sessions SET payload_json=? WHERE id=? AND payload_json=?")
+              .run(canonicalJsonStringify(moved), browser.sessionId, canonicalJsonStringify(browser)).changes !== 1) throw new Error("existing-data-flat-browser-path-changed");
+          }
+          writeAppSettings(database, { ...app, active: next });
+          database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(snapshot.capturedAt);
+        } else if (canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(z.strictObject({ payload_json: z.string() }).parse(existing).payload_json))) !== canonicalJsonStringify(snapshot)
+          || canonicalJsonStringify(app.active) !== canonicalJsonStringify(next)) throw new Error("existing-data-flat-activation-changed");
+        inspectNormalAuthority(database); database.exec("COMMIT");
+      } catch (error) {
+        try { database.exec("ROLLBACK"); }
+        catch (rollback) { throw retainAuthoritySourceClosure([error, rollback], { database }); }
+        throw error;
+      }
+    } catch (error) { primary = { error }; }
+    try { database.close(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database }); }
+    if (primary !== undefined) throw primary.error;
+  }
 
   readUpgradePhases() {
     return this.withAuthorityReadSnapshot(() => {
@@ -2367,6 +2570,82 @@ export class AuthorityDatabase implements Disposable {
 
   withAuthorityReadSnapshot<Result>(read: () => Result): Result {
     return this.#withReadSnapshot(read);
+  }
+
+  assertPristineQueuedRun(runId: string, expectedVersion: number): void {
+    const run = this.#readRunRow(RunIdSchema.parse(runId));
+    if (run === undefined || run.version !== expectedVersion || run.lifecycle.state !== "queued" || run.claimGeneration !== 0
+      || this.#database.prepare("SELECT 1 FROM write_intents WHERE run_id=? LIMIT 1").get(runId) !== undefined
+      || this.#database.prepare("SELECT 1 FROM run_checkpoints WHERE run_id=? LIMIT 1").get(runId) !== undefined) throw new Error("startup-stale-queue-custody-unproved");
+  }
+
+  crashRunRecoveryProof(runId: string) {
+    return this.withAuthorityReadSnapshot(() => {
+      const run = this.#readRunRow(RunIdSchema.parse(runId));
+      const claim = run === undefined ? undefined : runClaim(run);
+      if (run === undefined || claim === undefined || !("workerLifetime" in run.lifecycle) || run.lifecycle.workerLifetime === undefined) throw new Error("crash-recovery-claim-unproved");
+      const custody = this.workerLifetimeCustody(claim.workerId);
+      if (custody.state !== "dead" && custody.state !== "released") throw new Error("crash-recovery-owner-unproved");
+      if (run.lifecycle.workerLifetime.leaseGeneration !== custody.birth.leaseGeneration
+        || run.lifecycle.workerLifetime.membershipRevision !== custody.birth.member.membershipRevision) throw new Error("crash-recovery-lifetime-changed");
+      const originalFile = readProcessCustodyFile(join(custody.birth.processLockRoot, "workers", `${custody.birth.owner.acquisitionId}.lock.json`));
+      const original = WorkerProcessLockFileSchema.parse(JSON.parse(originalFile.bytes.toString("utf8")));
+      if (canonicalJsonStringify({ ...original, releasedAt: null }) !== canonicalJsonStringify(custody.birth.owner)) throw new Error("crash-recovery-original-changed");
+      const receipt = readStartupProcessClosure(custody.birth.processLockRoot, original);
+      const meta = this.getMeta();
+      if (receipt === undefined || receipt.authorityPath !== resolve(this.#path) || receipt.installationId !== meta.installationId
+        || receipt.profileId !== meta.profileId || !receipt.browserRoots.includes(join(dirname(this.#path), "browsers"))) throw new Error("crash-recovery-process-closure-unproved");
+      return { birth: custody.birth, originalFile: originalFile.witness, closureDigest: receipt.digest };
+    });
+  }
+
+  recoverCrashedRun(input: unknown): RunRecord {
+    const request = CanonicalCrashRecoveryRequestSchema.parse(input);
+    return this.withAuthorityTransaction(repositories => {
+      const current = this.#readRunRow(request.runId), claim = current === undefined ? undefined : runClaim(current);
+      if (current === undefined || current.version !== request.expectedVersion || claim?.workerId !== request.claim.workerId
+        || claim.claimGeneration !== request.claim.claimGeneration || Date.parse(request.now) < Date.parse(current.envelope.enqueuedAt)) throw new Error("crash-recovery-claim-changed");
+      const proof = this.crashRunRecoveryProof(request.runId);
+      if (canonicalJsonStringify(proof) !== canonicalJsonStringify({ birth: request.birth, originalFile: request.originalFile, closureDigest: request.closureDigest })) throw new Error("crash-recovery-proof-changed");
+      const intents = repositories.writeIntents.listByRun(request.runId);
+      const unfinished = intents.find(intent => intent.status !== "committed" && intent.status !== "observed-present");
+      if (unfinished !== undefined) {
+        if (unfinished.status !== "attempting" && unfinished.status !== "parked") throw new Error("crash-recovery-write-outcome-unproved");
+        const parked = RunRecordSchema.parse({ ...current, version: current.version + 1, updatedAt: request.now,
+          lifecycle: { state: "parked-write", writeIntentId: unfinished.writeIntentId, intentGeneration: unfinished.generation,
+            parkedAt: request.now, code: "unknown", message: `RUN_CRASH_WRITE_UNRESOLVED: ${ERROR_CATALOG.RUN_CRASH_WRITE_UNRESOLVED.text}` } });
+        this.#writeRunRow(parked, "update");
+        return parked;
+      }
+      const code = "RUN_INTERRUPTED_BY_CRASH", summary = ERROR_CATALOG[code].text;
+      const failure = FailureRecordSchema.parse({ diagnosticSafetyVersion: 1,
+        failureId: lifecycleCommandId("crash-failure", request.commandId),
+        fingerprint: sha256Hex(`hrauto:failure-class:v1\0${current.envelope.workflow}\0absent-node\0absent-task\0${code}`),
+        runId: current.envelope.runId, traceId: current.envelope.traceId, attempt: current.envelope.attempt,
+        workflowId: current.envelope.workflow, code, summary, transient: false,
+        writeState: intents.length === 0 ? "not-attempted" : intents.some(intent => intent.status === "observed-present") ? "verified" : "committed",
+        causeChain: [{ code, summary, role: "primary", transient: false }],
+        remediation: [{ kind: "operator-action", message: summary }], occurredAt: request.now });
+      const authorization = FailureTerminalAuthorizationRecordSchema.parse({ kind: "failed", runId: current.envelope.runId,
+        workflowId: current.envelope.workflow, attempt: current.envelope.attempt, descriptorVersion: current.envelope.descriptorVersion,
+        contractFingerprint: current.envelope.contractFingerprint, expectedVersion: current.version, claim: request.claim,
+        authorizedAt: request.now, failureId: failure.failureId });
+      this.#assertTerminalAuthorizationMatchesRun(authorization, current);
+      const terminal = RunRecordSchema.parse({ ...current, version: current.version + 1, updatedAt: request.now, completion: completionFromAuthorization(authorization),
+        lifecycle: { state: "terminal", outcome: "failed", endedAt: request.now, failureId: failure.failureId,
+          errorSummary: summary, diagnosticSafetyVersion: 1 } });
+      const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
+      if (violation !== undefined) throw new Error(`crash-recovery-transition-refused: ${violation}`);
+      this.#insertFailure(failure);
+      this.#terminalizationHooks?.afterFailureStorageStep?.("failure");
+      this.#insertRunResult(createRunTerminalEvidenceResult(terminal, { kind: "failed-evidence", authorization,
+        failureDigest: deriveTerminalFailureDigest(failure) }));
+      this.#terminalizationHooks?.afterFailureStorageStep?.("result");
+      this.#writeRunRow(terminal, "update");
+      this.#terminalizationHooks?.afterFailureStorageStep?.("run");
+      this.#assertTerminalAuthorizationConsequence(authorization, terminal);
+      return terminal;
+    });
   }
 
   terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport {
@@ -4531,8 +4810,7 @@ export class AuthorityDatabase implements Disposable {
     this.#authorityWrite("runs", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...values)
-        : this.#database.prepare(`UPDATE runs SET ${keys.map(key => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
-          .run(...values, record.envelope.runId, record.version - 1);
+        : { changes: updateRunRecord(this.#database, record) };
       const changes = sqliteChanges(result.changes);
       if (changes !== 1) throw new Error(`run ${record.envelope.runId} ${mode} affected ${String(changes)} rows`);
       this.#lifecycleHooks?.afterRunWrite?.(record);
@@ -4573,11 +4851,7 @@ export class AuthorityDatabase implements Disposable {
         }
       }
       const candidate = next(current);
-      if ("workerId" in current.lifecycle && "workerId" in candidate.lifecycle
-        && canonicalJsonStringify(current.lifecycle.workerLifetime ?? null) !== canonicalJsonStringify(candidate.lifecycle.workerLifetime ?? null)) throw new Error("run-claim-lifetime-immutable");
-      const violation = runTransitionViolation(current.lifecycle, candidate.lifecycle);
-      if (violation !== undefined) throw new Error(`run ${runId}: ${violation}`);
-      const updated = RunRecordSchema.parse({ ...candidate, version: current.version + 1, updatedAt: now });
+      const updated = transitionRunRecord(current, candidate, now);
       this.#writeRunRow(updated, "update");
       return RunUpdateOutcomeSchema.parse({ state: "applied", run: updated });
     });

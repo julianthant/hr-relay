@@ -1,3 +1,4 @@
+import { z } from "zod";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync, realpathSync, unlinkSync, symlinkSync, linkSync } from "node:fs";
@@ -7,7 +8,7 @@ import { describe, it } from "vitest";
 import type { BrowserContext, Worker } from "playwright";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../src/backend/profiles/onboarding-duo-provider.js";
-import type { DraftDuoAttempt, DraftDuoCapability, DraftDuoObservedContext } from "../../../src/backend/profiles/onboarding-duo.js";
+import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext } from "../../../src/backend/profiles/onboarding-duo.js";
 
 function world(method: "key" | "touch" = "key") {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "relay-onboarding-provider-")));
@@ -17,15 +18,20 @@ function world(method: "key" | "touch" = "key") {
   writeFileSync(join(extensionDirectory, "relay-manifest.json"), "{}");
   writeFileSync(join(extensionDirectory, "LICENSE"), "synthetic license fixture");
   writeFileSync(join(extensionDirectory, "THIRD_PARTY_NOTICES.md"), "synthetic notices fixture");
-  for (const name of ["relay-background.js", "relay-content.js", "relay-inpage.js", "relay-native.js", "service.js", "crypto.js", "accounts.js", "sign-count.js", "username.js"]) writeFileSync(join(extensionDirectory, "src", name), "");
+  mkdirSync(join(extensionDirectory, "src", "icons"), { mode: 0o700 });
+  for (const name of ["options.html", "options.js", "popup.html", "popup.js", "relay-options.js", "styles.css", "icons/autopilot.svg", "icons/key-round.svg", "icons/plus.svg", "icons/shield-check.svg", "relay-background.js", "relay-content.js", "relay-inpage.js", "relay-native.js", "service.js", "crypto.js", "accounts.js", "sign-count.js", "username.js"]) writeFileSync(join(extensionDirectory, "src", name), "");
   writeFileSync(join(extensionDirectory, "unlisted.txt"), "synthetic unlisted source");
   const clock = manualClock(new Date("2026-10-01T00:00:00.000Z"));
   const attempt: DraftDuoAttempt = { operationId: randomUUID(), profileId: randomUUID(), accountId: randomUUID(), generation: 1,
     attemptId: randomUUID(), method, expiresAt: "2026-10-01T00:10:00.000Z" };
   const requests: unknown[] = [];
   let waiter: ((value: unknown) => void) | undefined;
+  let browserWaiter: ((value: unknown) => void) | undefined;
+  let blockedStop = false, releaseStop: (() => void) | undefined, portalPages = 0;
+  let lostActiveStopAck = false, blockedPump = false, missingProcessExit = false;
+  let startupHold: Promise<void> | undefined, releaseStartup: (() => void) | undefined, startupEntered: (() => void) | undefined;
   const replies = new Map<string, (value: unknown) => void>();
-  let closed = false;
+  let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
   let launchCount = 0;
   let profile = "";
   const listeners: (() => void)[] = [];
@@ -40,33 +46,59 @@ function world(method: "key" | "touch" = "key") {
   const worker = {
     url: () => "chrome-extension://owned-extension/src/relay-background.js",
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
-      if (input.method === "install") return;
+      if (input.method === "install") { startupEntered?.(); await startupHold; return; }
+      if (input.method === "browserInstall") return;
+      if (input.method === "browserNext") return new Promise(resolve => { browserWaiter = resolve; });
+      if (input.method === "browserStop") { if (lostStopAck) throw new Error("synthetic worker already closed"); browserWaiter?.(null); browserWaiter = undefined; return; }
       if (input.method === "assertContext") { if (!documentCurrent) throw new Error("synthetic document drift"); return; }
       if (input.method === "next") {
         if (requests.length) return requests.shift();
         return new Promise(resolve => { waiter = resolve; });
       }
       if (input.method === "reply") { replies.get(String(input.args[0]))?.(input.args[1]); return; }
-      if (input.method === "stop") { waiter?.(null); waiter = undefined; return; }
+      if (input.method === "stop") {
+        if (blockedStop) await new Promise<void>(resolve => { releaseStop = resolve; });
+        if (!blockedPump) { waiter?.(null); waiter = undefined; }
+        if (lostActiveStopAck) throw new Error("synthetic active worker already closed");
+        return;
+      }
       throw new Error("unexpected operation");
     },
   } as unknown as Worker;
-  const page = { goto: async () => undefined, close: async () => undefined, isClosed: () => closed };
-  const context = { serviceWorkers: () => [worker], pages: () => closed ? [] : [page], on: (_event: string, callback: () => void) => { listeners.push(callback); },
-    close: async () => { closed = true; for (const listener of listeners) listener(); waiter?.(null); waiter = undefined; } } as unknown as BrowserContext;
-  const provider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory, clock, closeProofMs: 50,
+  function makePage() {
+    let pageClosed = false;
+    let url = "about:blank";
+    return { bringToFront: async () => { focusCount++; }, url: () => url,
+      goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; throw new Error("synthetic navigation failure"); } url = destination; },
+      close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
+  }
+  let pages = [makePage()];
+  const context = { serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), on: (_event: string, callback: () => void) => { listeners.push(callback); },
+    newPage: async () => { const page = makePage(); pages.push(page); return page; },
+    close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); if (!blockedPump) { waiter?.(null); waiter = undefined; } browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
+  const realProvider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory, clock, closeProofMs: 50,
     launcher: { launch: async input => {
-      launchCount++; profile = input.profileDirectory;
+      launchCount++; closed = false; pages = [makePage()]; listeners.length = 0; profile = input.profileDirectory;
       assert.equal(existsSync(join(input.extensionDirectory, "unlisted.txt")), false);
       assert.equal(readFileSync(join(input.extensionDirectory, "LICENSE"), "utf8"), "synthetic license fixture");
       assert.equal(readFileSync(join(input.extensionDirectory, "THIRD_PARTY_NOTICES.md"), "utf8"), "synthetic notices fixture");
       assert.equal(input.headless, false);
-      const preferences = JSON.parse(readFileSync(join(profile, "Default", "Preferences"), "utf8"));
+      const preferences = z.strictObject({ credentials_enable_service: z.boolean(), profile: z.strictObject({ password_manager_enabled: z.boolean() }) }).parse(JSON.parse(readFileSync(join(profile, "Default", "Preferences"), "utf8")));
       assert.equal(preferences.credentials_enable_service, false);
       assert.equal(preferences.profile.password_manager_enabled, false);
       return context;
-    }, observeProcess: () => ({ pid: 123, observation: closed ? { state: "gone" } : { state: "alive", identity: { platform: "darwin", startToken: "synthetic-process" } } }) },
+    }, observeProcess: () => ({ pid: 123, observation: closed && !missingProcessExit ? { state: "gone" } : { state: "alive", identity: { platform: "darwin", startToken: "synthetic-process" } } }) },
   });
+  const owner: DraftDuoBrowserOwner = { ...attempt, assertCurrent() { if (!current) throw new Error("synthetic revoked"); },
+    async acquireCredentials() { throw new Error("unexpected credential acquisition"); },
+    readState() { throw new Error("unexpected UI state"); }, async start() { throw new Error("unexpected UI start"); },
+    async cancel() { throw new Error("unexpected UI cancel"); }, confirm() { throw new Error("unexpected UI confirmation"); } };
+  const provider = { ...realProvider,
+    async start(...args: Parameters<typeof realProvider.start>) {
+      if (Date.parse(args[0].expiresAt) > clock.nowMs()) await realProvider.showBrowser(owner);
+      return realProvider.start(...args);
+    },
+  };
   const bind = async (input: DraftDuoObservedContext): Promise<DraftDuoCapability> => {
     observed = input;
     return {
@@ -89,17 +121,199 @@ function world(method: "key" | "touch" = "key") {
     else requests.push(request);
     return result;
   }
-  return { provider, attempt, bind, calls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
-    launches: () => launchCount, profile: () => profile,
+  return { provider, rawProvider: realProvider, owner, attempt, bind, calls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+    loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, launches: () => launchCount, profile: () => profile,
+    portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
+    loseActiveStopAck: () => { lostActiveStopAck = true; }, blockPump: () => { blockedPump = true; },
+    withholdProcessExit: () => { missingProcessExit = true; },
+    releasePump: () => { blockedPump = false; waiter?.(null); waiter = undefined; },
+    blockStartup: () => { startupHold = new Promise(resolve => { releaseStartup = resolve; }); return new Promise<void>(resolve => { startupEntered = resolve; }); },
+    releaseStartup: () => { releaseStartup?.(); },
     async cleanup() {
-      try { await provider.cancel(attempt); } catch (error) { assert.ok(error instanceof ProfileOnboardingDuoProviderError); }
+      try { await provider.cancel(attempt); await provider.closeBrowser(owner); } catch (error) { assert.ok(error instanceof ProfileOnboardingDuoProviderError); }
       assert.ok(closed || launchCount === 0);
       rmSync(directory, { recursive: true, force: true });
     } };
 }
-const BIND = { documentId: "00000000-0000-4000-8000-000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
+const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
 
 describe("draft Duo provider", () => {
+  for (const proof of ["proved", "missing-event", "missing-process"] as const) it(`lost active-stop ACK requires settled attempt and ${proof} physical closure`, async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      await w.send("bind", BIND);
+      await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+        transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
+      await w.send("software-created", { credentialId: "public-id", requestId: randomUUID() });
+      w.loseActiveStopAck(); if (proof === "missing-event") w.withholdCloseEvent();
+      if (proof === "missing-process") w.withholdProcessExit();
+      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
+      assert.ok(w.calls.includes("unknown")); assert.ok(!w.calls.includes("portal-accepted"));
+      if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }
+      else { await assert.rejects(w.provider.showBrowser(w.owner), error => {
+        assert.ok(error instanceof ProfileOnboardingDuoProviderError);
+        assert.ok(error.cause instanceof AggregateError);
+        const stop: unknown = error.cause.errors[0];
+        assert.ok(stop instanceof ProfileOnboardingDuoProviderError); assert.ok(stop.cause instanceof Error);
+        assert.equal(stop.cause.message, "synthetic active worker already closed");
+        assert.ok(error.cause.errors[1] instanceof ProfileOnboardingDuoProviderError);
+        return true;
+      }); assert.equal(w.launches(), 1); }
+    } finally { await w.closeBrowser(); await w.cleanup(); }
+  });
+  it("hanging startup cannot prove active stop-only closure or permit replacement", async () => {
+    const w = world();
+    const entered = w.blockStartup();
+    const starting = w.provider.start(w.attempt, w.bind, w.reportFailure);
+    try {
+      await entered; w.loseActiveStopAck();
+      let settled = false;
+      const closing = w.provider.closeBrowser(w.owner).then(result => { settled = true; return result; });
+      await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(settled, false);
+      assert.deepEqual(await closing, { state: "uncertain" });
+      await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
+    } finally { w.releaseStartup(); await starting; await w.closeBrowser(); await w.cleanup(); }
+  });
+  it("hanging pump cannot become eligible when it settles after the unchanged deadline", async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      w.blockPump(); w.loseActiveStopAck();
+      let settled = false;
+      const closing = w.provider.closeBrowser(w.owner).then(result => { settled = true; return result; });
+      await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(settled, false);
+      assert.deepEqual(await closing, { state: "uncertain" });
+      w.releasePump(); await new Promise<void>(resolve => setImmediate(resolve));
+      await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
+    } finally { w.releasePump(); await w.closeBrowser(); await w.cleanup(); }
+  });
+  it("a late dispatch retention failure cannot be superseded by physical closure", async () => {
+    const w = world();
+    let release!: () => void, entered!: () => void, unknowns = 0;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const dispatching = new Promise<void>(resolve => { entered = resolve; });
+    try {
+      await w.provider.start(w.attempt, async input => ({ ...await w.bind(input),
+        async recordCeremony() { entered(); await held; throw new Error("synthetic late dispatch failure"); },
+        async retainUnknown() { if (++unknowns > 1) throw new Error("synthetic late retention failure"); },
+      }), w.reportFailure);
+      await w.send("bind", BIND);
+      await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+        transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
+      const ceremony = w.send("software-created", { credentialId: "public-id", requestId: randomUUID() });
+      await dispatching; w.loseActiveStopAck();
+      let settled = false;
+      const closing = w.provider.closeBrowser(w.owner).then(result => { settled = true; return result; });
+      await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(settled, false); release();
+      assert.deepEqual(await ceremony, { ok: false });
+      assert.deepEqual(await closing, { state: "uncertain" }); assert.equal(unknowns, 2);
+      await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
+    } finally { release(); await w.closeBrowser(); await w.cleanup(); }
+  });
+  it("a changed attempt or browser owner cannot replace a closing retained attempt", async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure); w.blockStop();
+      const closing = w.provider.closeBrowser(w.owner);
+      await assert.rejects(w.rawProvider.start({ ...w.attempt, attemptId: randomUUID() }, w.bind, w.reportFailure));
+      await assert.rejects(w.provider.cancel({ ...w.attempt, attemptId: randomUUID() }));
+      await assert.rejects(w.provider.showBrowser({ ...w.owner, generation: w.owner.generation + 1 }));
+      w.releaseStop(); assert.deepEqual(await closing, { state: "closed" }); assert.equal(w.launches(), 1);
+    } finally { w.releaseStop(); await w.closeBrowser(); await w.cleanup(); }
+  });
+  for (const proof of ["proved", "unproved"] as const) it(`lost worker-stop ACK requires ${proof} context closure before a new browser`, async () => {
+    const w = world();
+    try {
+      await w.provider.showBrowser(w.owner); w.loseBrowserStopAck();
+      if (proof === "unproved") w.withholdCloseEvent();
+      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
+      if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }
+      else { await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1); }
+    } finally { await w.closeBrowser(); await w.cleanup(); }
+  });
+
+  it("reopens only the setup tab in its live context once for concurrent Show commands", async () => {
+    const w = world();
+    try {
+      await w.provider.showBrowser(w.owner);
+      await w.closeSetup();
+      await Promise.all([w.provider.showBrowser(w.owner), w.provider.showBrowser(w.owner)]);
+      assert.equal(w.launches(), 1); assert.equal(w.pages(), 1); assert.equal(w.portalPages(), 0);
+      assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
+  it("focuses an existing setup and waits for proved closed-browser settlement before reopening", async () => {
+    const w = world();
+    try {
+      await w.provider.showBrowser(w.owner);
+      await w.provider.showBrowser(w.owner);
+      assert.equal(w.focuses(), 1); assert.equal(w.launches(), 1);
+      await w.closeBrowser();
+      await w.provider.showBrowser(w.owner);
+      assert.equal(w.launches(), 2);
+      assert.equal(w.portalPages(), 0);
+      assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
+  it("single-flights concurrent portal commands and retains failed initialization instead of claiming a later success", async () => {
+    const w = world();
+    try {
+      await w.provider.showBrowser(w.owner);
+      const attempts = await Promise.allSettled([w.provider.openPortal(w.owner), w.provider.openPortal(w.owner)]);
+      assert.ok(attempts.every(result => result.status === "rejected"));
+      assert.equal(w.portalPages(), 1);
+      await assert.rejects(w.provider.openPortal(w.owner));
+      assert.equal(w.portalPages(), 1);
+    } finally { await w.cleanup(); }
+  });
+
+  it("bounded failed arm closure stays uncertain and cannot permit a replacement attempt", async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure); w.blockStop();
+      await assert.rejects(w.provider.cancel(w.attempt), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
+      await assert.rejects(w.provider.start({ ...w.attempt, attemptId: randomUUID() }, w.bind, w.reportFailure));
+      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "uncertain" });
+      await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
+      assert.equal(w.launches(), 1);
+    } finally { w.releaseStop(); await w.closeBrowser(); await w.cleanup(); }
+  });
+
+  it("retains broker and unknown-retention failures while fencing attempt and browser custody", async () => {
+    const w = world();
+    const original = new Error("synthetic broker failure"), retention = new Error("synthetic unknown-retention failure");
+    try {
+      await w.provider.start(w.attempt, async input => ({ ...await w.bind(input),
+        async persistPending() { throw original; },
+        async retainUnknown() { throw retention; },
+      }), w.reportFailure);
+      assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
+      assert.deepEqual(await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+        transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() }), { ok: false });
+      await assert.rejects(w.provider.cancel(w.attempt), error => {
+        assert.ok(error instanceof ProfileOnboardingDuoProviderError);
+        assert.equal(error.kind, "unknown");
+        let cause: unknown = error;
+        while (cause instanceof Error && !(cause instanceof AggregateError)) cause = cause.cause;
+        assert.ok(cause instanceof AggregateError);
+        assert.equal(cause.errors.length, 2);
+        assert.equal(cause.errors[0], original);
+        assert.equal(cause.errors[1], retention);
+        return true;
+      });
+      assert.deepEqual(w.failures, []);
+      await assert.rejects(w.provider.start({ ...w.attempt, attemptId: randomUUID() }, w.bind, w.reportFailure),
+        error => error instanceof ProfileOnboardingDuoProviderError && error.reason === "busy");
+      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "uncertain" });
+      await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
+      assert.equal(w.launches(), 1);
+      assert.ok(existsSync(w.profile()));
+    } finally { await w.closeBrowser(); await w.cleanup(); }
+  });
+
   it("binds real observed username independently of issuer account ID and keeps repeated start idempotent", async () => {
     const w = world();
     try {
@@ -118,6 +332,8 @@ describe("draft Duo provider", () => {
       await w.send("portal-accepted", { credentialId: "public-id", requestId });
       assert.deepEqual(w.calls, ["persist", "fast-duo", "provision", "reserve", "portal-accepted"]);
       assert.deepEqual(await w.provider.cancel(w.attempt), { state: "closed" });
+      assert.equal(existsSync(w.profile()), true);
+      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
       assert.equal(existsSync(w.profile()), false);
     } finally { await w.cleanup(); }
   });
@@ -212,6 +428,11 @@ describe("draft Duo provider", () => {
       assert.deepEqual(w.failures, []);
       assert.ok(w.calls.includes("unknown"));
       assert.ok(!w.calls.includes("portal-accepted"));
+      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
+      const retained = [...w.calls];
+      await w.provider.showBrowser(w.owner);
+      assert.equal(w.launches(), 2); assert.equal(w.portalPages(), 0);
+      assert.deepEqual(w.calls, retained);
     } finally { await w.cleanup(); }
   });
 

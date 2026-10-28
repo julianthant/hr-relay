@@ -29,8 +29,9 @@ import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app
 import { CommandResultSchema, CommandRequestSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
-import { RunIdSchema } from "../../../src/rules/identity/ids.js";
+import { RunIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
+import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const OTHER = "00000000-0000-4000-8000-000000000002";
@@ -246,6 +247,83 @@ describe("served Logs wiring", () => {
     assert.ok(jump);
     await act(async () => jump.click());
     assert.equal(writes, 0);
+  });
+  it("retains held-probe evidence alongside the declared parked-write recovery actions", async () => {
+    const native = nativeOf(RUN, 40);
+    const target = { workerId: "person-lookup-worker-1", workflowId: selection().row.workflowId, expectedVersion: 2,
+      controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: AT,
+      installationId: OTHER, profileId: NOTE, itemId: OTHER, runId: RUN, runVersion: selection().row.rowRevision,
+      runAttempt: FIXTURE_PARKED_WRITE.runAttempt, traceId: native.traceId, nodeId: native.nodeId, writeIntentId: FIXTURE_PARKED_WRITE.writeIntentId,
+      intentVersion: 1, intentGeneration: FIXTURE_PARKED_WRITE.generation, writeAttemptId: NOTE, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
+    const lastCheck = { commandId: NOTE, requestedBy: "local-operator", target, observedAt: AT, held: true, provenance: "system-probe",
+      state: "ambiguous", code: "PARKED_CHECK_OCCURRENCE_UNPROVED", probeTaskId: "ucpath/match-existing-termination", evidenceDigest: "c".repeat(64) };
+    const parked = RunDetailSectionResponseSchema.parse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native,
+      check: { state: "available", target }, lastCheck } });
+    const servedDetail = RunDetailWireSchema.parse({ ...detail(), availableSections: ["logs", "parked-write"] });
+    const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : path.endsWith("/parked-write") ? parked : servedDetail);
+    const snapshot = await readRunLogs(client, selection(), new AbortController().signal);
+    const entry = projectRunLogs(snapshot, client).steps.find(step => step.id === FIXTURE_PARKED_WRITE.writeIntentId)?.entries[0];
+    assert.equal(entry?.kind, "decision");
+    if (entry?.kind !== "decision") throw new Error("parked decision absent");
+    assert.equal(entry.decision.state, "parked");
+    assert.deepEqual(entry.decision.actions?.map(action => action.label), ["Check again", "Check result"]);
+    assert.equal(entry.decision.actions?.[0].input, undefined);
+    assert.equal(entry.decision.message, formatErrorCatalogFailure(createErrorCatalogFailure("PARKED_CHECK_OCCURRENCE_UNPROVED", {})).text);
+    assert.equal(entry.decision.footer, undefined);
+    const request = CommandRequestSchema.parse({ commandId: NOTE, requestedBy: "local-operator", requestedAt: AT, source: "run-detail",
+      family: "worker-browser", type: "check-parked-write", target });
+    const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId,
+      affectedTargets: [{ family: "worker-browser", workerId: target.workerId }, { family: "run", runId: RUN }] });
+    assert.equal((await verifyShellCommandEffect(client, "2026-08-03", request, reply)).state, "matched");
+    assert.equal((await verifyShellCommandEffect(client, "2026-08-03", CommandRequestSchema.parse({ ...request, commandId: OTHER }), reply)).state, "mismatch");
+    const foreignProfile = CommandRequestSchema.parse({ ...request, target: { ...target, profileId: RUN } });
+    assert.equal((await verifyShellCommandEffect(client, "2026-08-03", foreignProfile, reply)).state, "mismatch");
+    assert.equal(RunDetailSectionResponseSchema.safeParse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native,
+      check: { state: "available", target: { ...target, writeAttemptId: "invalid" } } } }).success, false);
+    assert.equal(RunDetailSectionResponseSchema.safeParse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native,
+      check: { state: "available", target: { ...target, runAttempt: target.runAttempt + 1 } } } }).success, false);
+  });
+  it("accepts the held-check command only after its exact readback settles", async () => {
+    const h = await launchHarness();
+    try {
+      const selected = { ...selection(), row: { ...selection().row, workflowId: WorkflowIdSchema.parse("separations") } };
+      const native = nativeOf(RUN, 40);
+      const target = { workerId: "separations-worker-1", workflowId: selected.row.workflowId, expectedVersion: 2,
+        controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: AT,
+        installationId: OTHER, profileId: NOTE, itemId: OTHER, runId: RUN, runVersion: selected.row.rowRevision,
+        runAttempt: FIXTURE_PARKED_WRITE.runAttempt, traceId: native.traceId, nodeId: native.nodeId, writeIntentId: FIXTURE_PARKED_WRITE.writeIntentId,
+        intentVersion: 1, intentGeneration: FIXTURE_PARKED_WRITE.generation, writeAttemptId: NOTE, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
+      const servedDetail = RunDetailWireSchema.parse({ ...detail(selected), availableSections: ["logs", "parked-write"] });
+      const sent: CommandRequest[] = [];
+      let lastCheck: unknown, release!: () => void;
+      const client: DashboardClient = { ...h.client, runDetail: async () => servedDetail,
+        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section, payload: page() }
+          : { section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native, check: { state: "available", target },
+            ...(lastCheck === undefined ? {} : { lastCheck }) } }),
+        executeCommand: async raw => {
+          const envelope = CommandRequestSchema.parse(raw); sent.push(envelope);
+          await new Promise<void>(resolve => { release = resolve; });
+          lastCheck = { commandId: envelope.commandId, requestedBy: envelope.requestedBy, target, observedAt: AT, held: true,
+            provenance: "system-probe", state: "ambiguous", code: "PARKED_CHECK_OCCURRENCE_UNPROVED",
+            probeTaskId: "ucpath/match-existing-termination", evidenceDigest: "c".repeat(64) };
+          return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId,
+            affectedTargets: [{ family: "worker-browser", workerId: target.workerId }, { family: "run", runId: RUN }] });
+        } };
+      const request = CommandRequestSchema.parse({ commandId: NOTE, requestedBy: h.binding.scope.actorId, requestedAt: AT,
+        source: "run-detail", family: "worker-browser", type: "check-parked-write", target });
+      let settled = false;
+      const pending = client.executeCommand(request).then(async reply => {
+        const readback = await verifyShellCommandEffect(client, "2026-08-03", request, reply);
+        settled = true;
+        return readback;
+      });
+      assert.equal(sent.length, 1);
+      assert.equal(settled, false);
+      release();
+      assert.equal((await pending).state, "matched");
+      assert.equal(sent.length, 1);
+      assert.deepEqual(sent[0].target, target);
+    } finally { await h.dispose(); }
   });
   it("keeps failed-write uncertainty and failure identity separate from retry permission", async () => {
     const original = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;

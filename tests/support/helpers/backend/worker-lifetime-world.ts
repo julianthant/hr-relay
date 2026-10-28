@@ -1,3 +1,8 @@
+import type { RunRecord } from "../../../../src/models/run/record.js";
+import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../fixtures/phase1c-contract-fixtures.js";
+import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
+import { writeFenceFixtureInput } from "../write-fence-fixture.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { z } from "zod";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
@@ -45,8 +50,12 @@ async function stop(child: ChildProcess) {
   child.kill("SIGTERM");
   await exited;
 }
-export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof createRunRecordServiceTestWorld>, options?: { fenceInOwner?: boolean }) {
+export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof createRunRecordServiceTestWorld>, options?: { fenceInOwner?: boolean; installationLocks?: boolean }) {
   const h = await world.fixture(), children: ChildProcess[] = [], handles: RuntimeProcessLockHandle[] = [];
+  const installation = h.machine.readInstallationContext();
+  if (options?.installationLocks === true && installation === undefined) throw new Error("fixture-installation-missing");
+  const processLockRoot = options?.installationLocks === true && installation !== undefined
+    ? join(installation.workspace, rebuildRuntimeIsolation.processLockRoot) : join(h.root, "locks");
   const slot = h.database.authority.workerSlots.list()[0];
   if (slot === undefined) throw new Error("missing member");
   const lease = h.database.authority.workerLeases.get(slot.workerId);
@@ -63,7 +72,7 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
     await once(child, "spawn");
     if (options?.fenceInOwner === true) await readOwnerLine(child);
     if (child.pid === undefined) throw new Error("missing actual child pid");
-    const bound = bindWorkerProcessAdmission({ processLockRoot: join(h.root, "locks"), authorityPath, workerId: slot.workerId,
+    const bound = bindWorkerProcessAdmission({ processLockRoot, authorityPath, workerId: slot.workerId,
       pid: child.pid, clock: h.clock, open: () => h.database, admit: () => WorkerIdSchema.parse(slot.workerId), close: () => undefined });
     handles.push(bound.processLock);
     return { child, pid: child.pid, handle: bound.processLock };
@@ -108,3 +117,16 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
     dispose: async () => { for (const child of children) await stop(child); for (const handle of handles) handle.release(); } };
 }
 
+
+export async function attemptingOwnedWrite(h: Pick<Awaited<ReturnType<typeof ownedWorkerLifetimeFixture>>, "database" | "fence">, run: RunRecord) {
+  const proof = { ...WRITE_INTENT_ATTEMPTING.bindingProof, runId: run.envelope.runId,
+    attempt: run.envelope.attempt, afterPrepareSpanPath: `${run.envelope.traceId}/crm-dates/prepare` };
+  const bindingProofDigest = deriveWriteBindingProofDigest(proof);
+  const intent = { ...WRITE_INTENT_ATTEMPTING, writeIntentId: randomUUID(), workflowId: run.envelope.workflow,
+    itemId: run.envelope.itemId, runId: run.envelope.runId, runAttempt: run.envelope.attempt, bindingProof: proof, bindingProofDigest };
+  await h.fence(writeFenceFixtureInput(h.database, { intent, attempt: { ...WRITE_ATTEMPT, writeIntentId: intent.writeIntentId,
+    runId: intent.runId, runAttempt: intent.runAttempt, bindingProof: proof, bindingProofDigest } }));
+  const stored = h.database.authority.writeIntents.get(intent.writeIntentId);
+  if (stored === undefined || stored.status !== "attempting") throw new Error("fixture-write-fence-missing");
+  return stored;
+}

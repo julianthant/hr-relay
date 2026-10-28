@@ -33,8 +33,8 @@ describe("approved log decisions", () => {
     assert.equal(decisionAnswerValid(candidate, { candidate: "DEMO-2196" }), true);
     const eid = example("employee-not-found").decision.actions?.find(item => item.input?.kind === "text"); assert.ok(eid);
     for (const value of ["", "   ", "1023456", "1023456a"]) assert.equal(decisionAnswerValid(eid, { text: value }), false);
-    assert.equal(decisionAnswerValid(eid, { text: " 10000002 " }), true);
-    assert.match(decisionActionResult(eid, { text: " 10000002 " }).message, /^Employee ID: 10000002\. /u);
+    assert.equal(decisionAnswerValid(eid, { text: " 10873698 " }), true);
+    assert.match(decisionActionResult(eid, { text: " 10873698 " }).message, /^Employee ID: 10873698\. /u);
   });
   it("offers Check again beside every manual entry when Relay cannot find something", () => {
     for (const id of ["parked", "employee-not-found", "document-not-found"]) {
@@ -48,11 +48,11 @@ describe("approved log decisions", () => {
     assert.equal(button("Continue run").disabled, true);
     assert.match(document.body.textContent ?? "", /Employee ID required/u);
     const input = document.querySelector('[role="dialog"] input') as HTMLInputElement;
-    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "10000002"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "10873698"); input.dispatchEvent(new Event("input", { bubbles: true })); });
     assert.equal(button("Continue run").disabled, false);
     assert.match(document.body.textContent ?? "", /Relay reads this EID in UCPath before continuing/u);
     await act(async () => button("Continue run").click());
-    assert.deepEqual(calls, [["employee-not-found-enter", { text: "10000002" }]]);
+    assert.deepEqual(calls, [["employee-not-found-enter", { text: "10873698" }]]);
   });
   it("never offers a submit retry while the result is unknown", () => {
     for (const id of ["parked", "verification", "park-unavailable", "failure-attempting", "failure-unknown", "failure-unavailable", "screenshot-unavailable"]) {

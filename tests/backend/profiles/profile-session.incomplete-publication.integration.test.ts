@@ -1,3 +1,4 @@
+import { ProfileVerifierDocumentSchema } from "../../../src/models/profiles/profile.js";
 import { DatabaseSync } from "node:sqlite";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
 import { initialSettingsFileRecord } from "../../../src/models/config/settings.js";
@@ -5,7 +6,9 @@ import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { DeletedRunRecordSchema } from "../../../src/models/run/deleted-run.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { runRecordColumns } from "../../../src/backend/storage/sqlite/run-record-row.js";
-import { insertNativeCommand, settleNativeCommand } from "../../../src/backend/storage/sqlite/command-record-row.js";
+import { commandFromRow, insertNativeCommand, settleNativeCommand } from "../../../src/backend/storage/sqlite/command-record-row.js";
+import { createSettingsActivationRepositories } from "../../../src/backend/storage/sqlite/settings-activation.js";
+import { nativeOrdinaryRecordFromRow } from "../../../src/backend/storage/sqlite/native-record-row.js";
 import { inspectNativeAuthority } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { CanonicalDeleteRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../src/rules/commands/commands.js";
@@ -25,7 +28,6 @@ import { acquireEntrypointAdmission } from "../../../src/backend/storage/admissi
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { composeProfileRuntime } from "../../../src/backend/app/composition/storage-compose.js";
-import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
@@ -47,7 +49,7 @@ it("withdraws only the historical incomplete publication into a same-key private
   assert.throws(() => readonly.assertWritable()); assert.throws(() => readonly.assertProfileRuntime()); assert.throws(() => readonly.assertCredentialRead()); readonly.release();
   await machine.reclassifyIncompleteProfileAsDraft(f.profileId);
   assert.equal(machine.readProfileRegistry().profiles.length, 0); assert.equal(machine.readProfileRegistry().activeProfileId, null);
-  assert.equal(JSON.parse(readFileSync(f.verifierPath, "utf8")).profiles.length, 0);
+  assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(f.verifierPath, "utf8"))).profiles.length, 0);
   assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true); assert.equal(readFileSync(f.databasePath).equals(f.databaseBytes), true); assert.equal(readFileSync(f.protectedPath).equals(f.protectedBytes), true);
   const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(f.operationPath, "utf8")));
   assert.equal(operation.operationId, f.operation.operationId); assert.equal(operation.commandId, f.operation.commandId); assert.equal(operation.writeId, f.operation.writeId);
@@ -82,7 +84,7 @@ for (const boundary of ["intent", "operation", "verifier", "registry", "continui
     finally { renameSpy.mockRestore(); unlinkSpy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(fired, true); machine.release();
     const recovered = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root);
-    assert.equal(recovered.readProfileRegistry().profiles.length, 0); assert.equal(JSON.parse(readFileSync(f.verifierPath, "utf8")).profiles.length, 0);
+    assert.equal(recovered.readProfileRegistry().profiles.length, 0); assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(f.verifierPath, "utf8"))).profiles.length, 0);
     assert.equal(SignUpOperationSchema.parse(JSON.parse(readFileSync(f.operationPath, "utf8"))).profileId, f.profileId);
     assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true); assert.equal(readFileSync(f.databasePath).equals(f.databaseBytes), true); assert.equal(readFileSync(f.protectedPath).equals(f.protectedBytes), true);
     assert.equal(existsSync(intentPath), false); recovered.release(); await f.close();
@@ -147,8 +149,13 @@ function seedClosedHistoricalActivity(f: Awaited<ReturnType<typeof historicalPre
       { stateRoot: f.profileRoot, artifactRoot: join(f.profileRoot, "artifacts") });
     const snapshot = ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: 1, fingerprint: resolved.fingerprint,
       capturedAt: at, capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
-    raw.prepare("INSERT INTO settings_snapshots (id,revision,fingerprint,payload_json,captured_at) VALUES (?,?,?,?,?)")
-      .run(snapshot.configSnapshotId, snapshot.revision, snapshot.fingerprint, canonicalJsonStringify(snapshot), snapshot.capturedAt);
+    createSettingsActivationRepositories({ database: raw,
+      mutate: work => work().result,
+      readRecord(table, key, schema) {
+        const row = raw.prepare(`SELECT * FROM ${table} WHERE id=?`).get(key);
+        return row === undefined ? undefined : schema.parse(table === "commands" ? commandFromRow(row) : nativeOrdinaryRecordFromRow(table, row));
+      },
+    }).runtimeConfig.initialize(snapshot);
     const runId = randomUUID(), itemId = randomUUID(), traceId = `se-120000-${String(1000 + (kind === "deleted" ? 1 : 2))}`;
     const fixture = ledgerCommitFixture(kind === "deleted" ? 71 : 72, { runId, itemId, traceId, workflowId: separationsDescriptor.id,
       configFingerprint: snapshot.fingerprint, instance: "test" });
@@ -160,14 +167,14 @@ function seedClosedHistoricalActivity(f: Awaited<ReturnType<typeof historicalPre
       shape: "single", priority: "interactive", dryRun: false, attempt: 1, enqueuedAt: at },
       input: { raw: {}, parsed: { schemaHash: sha256Hex("historical fixture input"), value: {}, protectedBindings: [] }, ingressSchemaHash: sha256Hex("historical fixture input") },
       lifecycle: kind === "deleted" ? { state: "terminal", outcome: "interrupted", endedAt: at }
-        : { state: "parked-write", writeIntentId: intent.writeIntentId, code: "unknown", message: "Historical outcome remains unknown" },
+        : { state: "parked-write", writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, parkedAt: at, code: "unknown", message: "Historical outcome remains unknown" },
       claimGeneration: 1, version: 5, createdAt: at, updatedAt: at });
     const columns = runRecordColumns(run), keys = Object.keys(columns);
     raw.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...Object.values(columns));
     if (kind === "unknown") {
       const attempt = WriteAttemptRecordSchema.parse({ ...fixture.attempt, outcome: { state: "parked", code: "unknown", message: "Historical outcome remains unknown", authorityReason: reason } });
       raw.prepare("INSERT INTO write_intents (id,system,idempotency_key,idempotency_key_digest,status,generation,run_id,payload_json,publication_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,NULL,?,?)")
-        .run(intent.writeIntentId, intent.system, intent.idempotencyKey, intent.idempotencyKeyDigest, intent.status, intent.generation, intent.runId,
+        .run(intent.writeIntentId, intent.system, intent.idempotencyKey, intent.idempotencyKeyDigest, intent.status, intent.generation, runId,
           canonicalJsonStringify(intent), intent.createdAt, intent.updatedAt);
       raw.prepare("INSERT INTO write_attempts (id,intent_id,generation,run_id,payload_json,created_at) VALUES (?,?,?,?,?,?)")
         .run(attempt.writeAttemptId, attempt.writeIntentId, attempt.generation, attempt.runId, canonicalJsonStringify(attempt), attempt.recordedAt);
@@ -209,5 +216,21 @@ for (const history of ["deleted", "unknown"] as const) {
     assert.equal(readFileSync(f.databasePath).equals(database), true); assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true);
     assert.equal(readFileSync(f.protectedPath).equals(f.protectedBytes), true); assert.equal(existsSync(f.operationPath), false);
     machine.release(); await f.close();
+  });
+}
+
+for (const history of ["deleted", "unknown"] as const) {
+  it(`refuses device recertification of valid ${history} historical activity without changing its witnesses`, async () => {
+    const f = await historicalPrematureFixture();
+    try {
+      seedClosedHistoricalActivity(f, history);
+      const prior = JSON.parse(readFileSync(f.controlPath, "utf8")) as { device: number; erasures: { credentialKey: { file: { device: number } } }[] };
+      const key = prior.erasures[0]?.credentialKey; assert.ok(key); prior.device += 4; key.file.device += 4;
+      writeFileSync(f.controlPath, JSON.stringify(prior));
+      const control = readFileSync(f.controlPath), database = readFileSync(f.databasePath), credentials = readFileSync(f.protectedPath);
+      await assert.rejects(RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.root), /profile-incomplete-activity-present/);
+      assert.equal(readFileSync(f.controlPath).equals(control), true); assert.equal(readFileSync(f.databasePath).equals(database), true);
+      assert.equal(readFileSync(f.protectedPath).equals(credentials), true); assert.equal(existsSync(join(f.root, ".tracker/control/device-recertification.json")), false);
+    } finally { await f.close(); }
   });
 }

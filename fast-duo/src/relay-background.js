@@ -1,7 +1,15 @@
 import { createService } from './service.js';
 import { isDuoOrigin, normalizeUsername } from './accounts.js';
+import { base64ToBytes, bytesToBase64url } from './crypto.js';
 
 const accountKey = name => normalizeUsername(name).replace(/^([^@]+)@ucsd\.edu$/, '$1');
+const canonicalJson = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
+  ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
+function requireDuoSender(api, sender) {
+  if (sender.id !== api.runtime.id || !isDuoOrigin(sender.url) || sender.origin !== new URL(sender.url).origin
+    || !Number.isInteger(sender.tab?.id) || sender.frameId !== 0 || sender.documentLifecycle !== 'active'
+    || typeof sender.documentId !== 'string' || sender.documentId.length !== 32 || !/^[\da-f]{32}$/i.test(sender.documentId)) throw new Error('ONBOARDING_DUO_SCOPE');
+}
 export function createRelayWorker(api) {
   let installed;
   let service;
@@ -14,7 +22,8 @@ export function createRelayWorker(api) {
   const replies = new Map();
   const call = (kind, data) => new Promise((resolve, reject) => {
     if (stopped) { reject(new Error('ONBOARDING_DUO_REVOKED')); return; }
-    const request = { id: crypto.randomUUID(), kind, data };
+    const request = { id: crypto.randomUUID(), kind, data: data.credentialId === undefined ? data
+      : { ...data, credentialId: bytesToBase64url(base64ToBytes(data.credentialId)) } };
     replies.set(request.id, { resolve, reject });
     if (waiter) { const receive = waiter; waiter = undefined; receive(request); }
     else requests.push(request);
@@ -24,9 +33,7 @@ export function createRelayWorker(api) {
   };
   function requireSender(sender) {
     requireCurrent();
-    if (sender.id !== api.runtime.id || !isDuoOrigin(sender.url) || sender.origin !== new URL(sender.url).origin
-      || !Number.isInteger(sender.tab?.id) || sender.frameId !== 0 || sender.documentLifecycle !== 'active'
-      || typeof sender.documentId !== 'string' || !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(sender.documentId)) throw new Error('ONBOARDING_DUO_SCOPE');
+    requireDuoSender(api, sender);
   }
   async function documentObservation(tabId, documentId) {
     try { return await api.tabs.sendMessage(tabId, { type: 'RELAY_OBSERVE' }, { documentId }); }
@@ -46,7 +53,7 @@ export function createRelayWorker(api) {
       || typeof observed.accountNames[0] !== 'string' || !/^[a-z0-9][a-z0-9._@+-]{0,127}$/i.test(observed.accountNames[0])) throw new Error('ONBOARDING_DUO_SCOPE');
     const confirmed = await documentObservation(tab.id, sender.documentId);
     requireCurrent();
-    if (JSON.stringify(confirmed) !== JSON.stringify(observed)) throw new Error('ONBOARDING_DUO_SCOPE');
+    if (canonicalJson(confirmed) !== canonicalJson(observed)) throw new Error('ONBOARDING_DUO_SCOPE');
     return { documentId: sender.documentId, tabId: tab.id, url: tab.url, origin: observed.origin,
       accountName: normalizeUsername(observed.accountNames[0]), accountRevision: observed.accountRevision };
   }
@@ -141,7 +148,7 @@ export function createRelayWorker(api) {
         async set(values) {
           await session.set(values);
           const stored = await session.get(Object.keys(values));
-          if (JSON.stringify(stored) !== JSON.stringify(values)) throw new Error('ONBOARDING_DUO_SESSION_UNAVAILABLE');
+          if (canonicalJson(stored) !== canonicalJson(values)) throw new Error('ONBOARDING_DUO_SESSION_UNAVAILABLE');
         },
         remove: keys => session.remove(keys),
       };
@@ -180,10 +187,89 @@ export function createRelayWorker(api) {
 }
 
 if (typeof chrome !== 'undefined') {
-  const relay = createRelayWorker(chrome);
-  globalThis.relayOnboarding = relay;
+  let relay;
+  let browserInstalled = false;
+  let browserStopped = false;
+  let waiter;
+  const requests = [];
+  const replies = new Map();
+  const requireBrowser = () => { if (!browserInstalled || browserStopped) throw new Error('ONBOARDING_DUO_REVOKED'); };
+  function browserReceive(message, sender) {
+    requireBrowser();
+    if (sender.id !== chrome.runtime.id || !['src/options.html', 'src/popup.html'].some(path => sender.url === chrome.runtime.getURL(path))
+      || sender.tab !== undefined && (!Number.isInteger(sender.tab.id) || sender.tab.id < 0 || sender.tab.url !== sender.url)
+      || sender.frameId !== undefined && sender.frameId !== 0
+      || sender.documentLifecycle !== 'active' || typeof sender.documentId !== 'string' || sender.documentId.length !== 32 || !/^[0-9a-f]{32}$/i.test(sender.documentId)
+      || sender.origin !== chrome.runtime.getURL('').slice(0, -1)) throw new Error('ONBOARDING_DUO_SCOPE');
+    const kinds = { STATE: 'state', RELAY_OPEN_PORTAL: 'portal', RELAY_START: 'start', RELAY_CANCEL: 'cancel', RELAY_CONFIRM: 'confirm' };
+    if (!Object.hasOwn(kinds, message.type) || Object.keys(message).some(key => !['type', 'method', 'attemptId'].includes(key))) throw new Error('ONBOARDING_DUO_REQUEST');
+    const kind = kinds[message.type];
+    if (['state', 'portal'].includes(kind) && (message.method !== undefined || message.attemptId !== undefined)
+      || ['start', 'cancel', 'confirm'].includes(kind) && !['key', 'touch'].includes(message.method)
+      || kind === 'start' && message.attemptId !== undefined
+      || ['cancel', 'confirm'].includes(kind) && (typeof message.attemptId !== 'string' || !/^[0-9a-f-]{36}$/i.test(message.attemptId))) throw new Error('ONBOARDING_DUO_REQUEST');
+    return new Promise((resolve, reject) => {
+      const request = { id: crypto.randomUUID(), kind,
+        ...(message.method === undefined ? {} : { method: message.method }),
+        ...(message.attemptId === undefined ? {} : { attemptId: message.attemptId }) };
+      replies.set(request.id, { resolve, reject });
+      if (waiter) { const receive = waiter; waiter = undefined; receive(request); }
+      else requests.push(request);
+    });
+  }
+  globalThis.relayOnboarding = Object.freeze({
+    async browserInstall() {
+      if (browserInstalled || browserStopped) throw new Error('ONBOARDING_DUO_REVOKED');
+      await chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+      browserInstalled = true;
+    },
+    browserNext() {
+      requireBrowser();
+      if (requests.length) return Promise.resolve(requests.shift());
+      if (waiter) throw new Error('ONBOARDING_DUO_BROKER_BUSY');
+      return new Promise(resolve => { waiter = resolve; });
+    },
+    browserReply(id, result) {
+      requireBrowser(); const reply = replies.get(id);
+      if (!reply) throw new Error('ONBOARDING_DUO_REQUEST');
+      replies.delete(id);
+      if (result.ok) reply.resolve({ relaySetup: true, profile: result.value });
+      else reply.reject(new Error('ONBOARDING_DUO_REFUSED'));
+    },
+    async browserStop() {
+      browserStopped = true;
+      for (const reply of replies.values()) reply.reject(new Error('ONBOARDING_DUO_REVOKED'));
+      replies.clear(); requests.length = 0;
+      if (waiter) { waiter(null); waiter = undefined; }
+      if (relay) { await relay.stop(); relay = undefined; }
+      await chrome.storage.session.clear();
+    },
+    async install(input) { requireBrowser(); if (relay) throw new Error('ONBOARDING_DUO_BUSY'); relay = createRelayWorker(chrome); await relay.install(input); },
+    next() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.next(); },
+    reply(...args) { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.reply(...args); },
+    assertContext() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.assertContext(); },
+    async stop() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); const arm = relay; await arm.stop(); relay = undefined; },
+  });
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    relay.receive(message, sender).then(result => sendResponse({ success: true, result }),
+    const work = async () => {
+      if (sender.url?.startsWith(chrome.runtime.getURL(''))) return browserReceive(message, sender);
+      if (!relay) {
+        requireBrowser(); requireDuoSender(chrome, sender);
+        if (!['RELAY_CAPABILITIES', 'DUO_AUTOPILOT_SIGN'].includes(message?.type)
+          || message.request?.origin !== sender.origin || message.request?.rpId !== 'duosecurity.com') throw new Error('ONBOARDING_DUO_SCOPE');
+        const tab = await chrome.tabs.get(sender.tab.id);
+        const document = await chrome.tabs.sendMessage(sender.tab.id, { type: 'RELAY_OBSERVE' }, { documentId: sender.documentId });
+        const after = await chrome.tabs.get(sender.tab.id);
+        const confirmed = await chrome.tabs.sendMessage(sender.tab.id, { type: 'RELAY_OBSERVE' }, { documentId: sender.documentId });
+        requireBrowser();
+        if (relay || tab.id !== sender.tab.id || after.id !== tab.id || after.url !== tab.url || tab.url !== sender.url
+          || document?.url !== sender.url || document.origin !== sender.origin || document.documentActive !== true
+          || canonicalJson(confirmed) !== canonicalJson(document)) throw new Error('ONBOARDING_DUO_SCOPE');
+        return message.type === 'RELAY_CAPABILITIES' ? { softwareKey: false } : { passThrough: true };
+      }
+      return relay.receive(message, sender);
+    };
+    work().then(result => sendResponse({ success: true, result }),
       () => sendResponse({ success: false, error: 'ONBOARDING_DUO_REFUSED' }));
     return true;
   });

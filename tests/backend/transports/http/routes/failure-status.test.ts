@@ -1,3 +1,5 @@
+import { StartupCrashRecoveryRefusedError } from "../../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
@@ -149,4 +151,10 @@ it("returns fixed catalog text for a failed dashboard read while preserving its 
   const error = new DashboardReadFailedError(cause);
   assert.equal(error.cause, cause);
   assert.deepEqual(failureStatus(error), { status: 500, body: { state: "error", code: "DASHBOARD_READ_FAILED", message: "The dashboard could not load this from the local service. Try again.", retryable: false } });
+});
+
+it("returns the defined crash cleanup refusal without disclosing its private proof failure", () => {
+  assert.deepEqual(failureStatus(new StartupCrashRecoveryRefusedError(new Error("private OS custody details"))), {
+    status: 409, body: { state: "error", code: "STARTUP_CRASH_RECOVERY_REFUSED", message: ERROR_CATALOG.STARTUP_CRASH_RECOVERY_REFUSED.text, retryable: false },
+  });
 });

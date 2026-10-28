@@ -20,7 +20,7 @@ import { testRunContinuation, testAdmittedWorker, testWorkerLifetime } from "../
 import { WRITE_FIXTURE_IMPL_FINGERPRINT,WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_KEY_DIGEST,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_OBSERVATION,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_STAGED_STATE,WRITE_FIXTURE_WORKER_ID,WRITE_FIXTURE_WORKFLOW_ID,buildWriteFixtureRegistry,createWriteFixtureWorld,writeFixtureDescriptor,writeFixtureQueuedRun,writeFixtureSessionManager,writeFixtureSessions,type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
 import { ManualScheduler,recordingLogger,type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
-import { boundFixtureWorker } from "../synthetic-database-admission.js";
+import { boundFixtureWorker, detachBoundFixtureWorkers } from "../synthetic-database-admission.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 
 interface Harness {
@@ -59,7 +59,7 @@ export function createWriteRecoveryTestWorld() {
       if (held.failure !== undefined) throw held.failure;
       if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
       disposeAttempted = true;
-      try { database.close(); await profile.close(); }
+      try { await held.manager?.closeAll("worker-stop"); detachBoundFixtureWorkers(database); database.close(); await profile.close(); }
       catch (error) { held.primary = error; disposeFailure = retainAuthoritySourceClosure([error], { admission: held }); held.failure = disposeFailure; retainedWriteRecoveryOwners.add(held); throw disposeFailure; }
     });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
