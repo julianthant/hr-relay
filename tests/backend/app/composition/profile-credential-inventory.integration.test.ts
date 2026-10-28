@@ -65,9 +65,10 @@ async function fixture(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>
 const failedUpgradeFixtures = new Set<Readonly<{ profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; owners: readonly unknown[]; primary: unknown }>>();
 
 async function upgradedFixture(version: 6 | 7 | 8) {
-  const f = await createBoundProfileFixture({ pending: true }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const f = await createBoundProfileFixture({ pending: "onboarding" }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const databases: DatabaseSync[] = [];
   try {
+    rmSync(f.path);
     const raw = new DatabaseSync(f.path);
     databases.push(raw);
     let sourceFailure: { error: unknown } | undefined;
