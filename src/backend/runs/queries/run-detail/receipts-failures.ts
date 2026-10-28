@@ -1,3 +1,6 @@
+import { failureCodeFromTaskCode } from "../../../../models/failures/error-catalog.js";
+import { StartPlanRequestSchema } from "../../../../models/dashboard/start-plan.js";
+import { RerunRefusedError, previewRerunWarnings } from "../../start/rerun.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
 import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
 import { projectFailureDisplay } from "../../../../models/dashboard/failure-display.js";
@@ -92,7 +95,8 @@ export function buildReceiptFailureSection(
   } };
   return RunDetailSectionResponseSchema.parse({
     section: "failure",
-    payload: { state: "available", value: { ...native, ...failureDetailWire(
+    payload: { state: "available", value: { ...native,
+      ...failureRecovery(deps, authority, failure), ...failureDetailWire(
       runId,
       failure,
       trust,
@@ -100,6 +104,33 @@ export function buildReceiptFailureSection(
       deps.captures,
     ) } },
   });
+}
+
+export function failureRecovery(deps: RunDetailQueryDeps, run: RunRecord, failure: FailureRecord): object {
+  const canonical = deps.canonical;
+  const descriptor = canonical?.descriptors.resolve(run.envelope.workflow);
+  const correction = descriptor?.failureCorrections?.find(entry => entry.nodeId === failure.nodeId && failureCodeFromTaskCode(entry.code) === failure.code);
+  if (canonical === undefined || descriptor === undefined || correction === undefined || failure.writeState !== "not-attempted"
+    || descriptor.contractFingerprint !== run.envelope.contractFingerprint || descriptor.version !== run.envelope.descriptorVersion) return {};
+  const source = { runId: run.envelope.runId, expectedVersion: run.version, intent: "rerun" as const,
+    selectedStepKeys: descriptor.timeline.filter(step => !run.envelope.stepOmissions?.some(omission => omission.step === step.key)).map(step => step.key),
+    failureCorrection: { failureId: failure.failureId, inputField: correction.inputField } };
+  // The canonical rerun owner excludes uncertain writes and incompatible source evidence.
+  try {
+    const warnings = canonical.database.withAuthorityReadSnapshot(() => previewRerunWarnings(canonical.database.authority, descriptor, source));
+    if (warnings.warnings.length > 0) return {};
+  } catch (error) {
+    if (error instanceof RerunRefusedError) return {};
+    throw error;
+  }
+  return { recovery: { correction, expectedVersion: run.version,
+    retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: run.version,
+      confirm: { title: "Check again", body: "Retry this run from its retained checkpoints.", confirmLabel: "Check again", tone: "neutral" } },
+    confirm: { title: correction.actionLabel, body: "Relay reads the entered value in the real system before continuing. Identity still requires operator approval.", confirmLabel: correction.actionLabel, tone: "neutral" },
+    request: StartPlanRequestSchema.parse({ workflowId: descriptor.id, rerunSource: source, submissions: [{}],
+      selectedStepKeys: source.selectedStepKeys, dryRun: run.envelope.dryRun, browserMode: run.envelope.browserMode ?? "headless",
+      captureBrowserScreenshots: run.envelope.captureBrowserScreenshots ?? false, priority: run.envelope.priority,
+      ...(run.envelope.requestedInstance === undefined ? {} : { requestedInstance: run.envelope.requestedInstance }) }) } };
 }
 
 function receiptAbsenceReason(authority: RunRecord, trust?: RunDetailTrustDeps): string {

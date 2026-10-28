@@ -5,14 +5,15 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
-import { gateLogActions, parkedWriteLogActions, readRunLogs, useRunWiring, type RunWiringConfirm } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { projectRunLogs, failureLogActions, gateLogActions, parkedWriteLogActions, readRunLogs, useRunWiring, type RunWiringConfirm } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { PendingCommand } from "../../../src/dashboard/surfaces/shared/actions/actions.js";
 import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
-import { ParkedWriteDetailWireSchema, IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
+import { FailureDetailWireSchema, ParkedWriteDetailWireSchema, IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
+import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../src/models/dashboard/start-plan.js";
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
@@ -323,5 +324,107 @@ describe("served parked-write Logs decisions", () => {
     const h = await harness(parkedClient(selected, sent).client); await h.render(selected);
     const write = parkedAt(); await act(async () => h.state?.onDecision?.(write.writeIntentId, parkedWriteLogActions(write)[0], {}));
     assert.equal(sent.length, 0);
+  });
+});
+
+const FAILURE = "00000000-0000-4000-8000-000000000004";
+
+function failedAt(selected: LogSelection) {
+  return FailureDetailWireSchema.parse({ runId: RUN, traceId: selected.row.traceId, attempt: 1, workflowId: "separations",
+    failureId: FAILURE, nodeId: "job-summary", taskId: "ucpath/read-job-summary", fingerprint: "a".repeat(64), code: "EMPLOYEE_NOT_FOUND",
+    summary: "Employee absent", transient: false, writeState: "not-attempted", subject: { state: "absent", reason: "No subject" },
+    causeChain: [{ code: "EMPLOYEE_NOT_FOUND", summary: "Employee absent", role: "primary", transient: false }],
+    remediation: [{ kind: "operator-action", message: "Enter an EID" }], sameFingerprintSeen: 1,
+    diagnosticBundle: { state: "absent", reason: "None" }, occurredAt: AT, native: native(5, "job-summary"), recovery: {
+      correction: { nodeId: "job-summary", code: "employee-not-found", inputField: "operatorEmployeeId", label: "Employee ID", actionLabel: "Enter EID", pattern: "^10\\d{6}$" },
+      expectedVersion: 3, retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: 3,
+        confirm: { title: "Check again", confirmLabel: "Check again", tone: "neutral" } },
+      confirm: { title: "Enter EID", confirmLabel: "Enter EID", tone: "neutral" },
+      request: { workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}], selectedStepKeys: ["identity-check", "job-summary"],
+        rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check", "job-summary"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
+    } });
+}
+function failureClient(selected: LogSelection, sent: CommandRequest[], planned: unknown[], execute: (command: CommandRequest) => Promise<unknown>) {
+  const failed = failedAt(selected);
+  const client = { artifactUrl: (id: string) => `/artifacts/${id}`,
+    runDetail: async () => {
+      const detail = detailAt(selected, selected.row.rowRevision, { availableSections: ["logs", "failure"] });
+      assert.ok(detail.timeline.steps);
+      return { ...detail, timeline: { ...detail.timeline, steps: [...detail.timeline.steps,
+        { key: "job-summary", label: "Job Summary", state: "failed" as const, members: [{ nodeId: "job-summary", categoryKey: "job-summary", label: "Job Summary", state: "failed" as const }] }] } };
+    },
+    runSection: async (_run: string, section: string) => section === "logs" ? logs()
+      : RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: failed } }),
+    submitStartPlan: async (input: unknown) => {
+      const request = StartPlanRequestSchema.parse(input); planned.push(request);
+      return StartPlanWireSchema.parse({ wireVersion: 1, startPlanId: FAILURE, workflowId: "separations", expectedVersion: 1,
+        expiresAt: "2026-08-03T13:00:00.000Z", dryRun: request.dryRun, browserMode: request.browserMode, captureBrowserScreenshots: request.captureBrowserScreenshots,
+        priority: "interactive", plannedBy: "local-operator", configSnapshotId: FAILURE, rerun: { source: request.rerunSource, warnings: [], warningDigest: "a".repeat(64) },
+        fingerprints: Object.fromEntries(["descriptorFingerprint", "configFingerprint", "ingressSchemaHash", "canonicalInputSchemaHash", "inputFingerprint"].map(key => [key, "a".repeat(64)])),
+        planned: [{ logicalKey: RUN, title: "Separation 4502", matchKey: "4502" }], refused: [] });
+    },
+    executeCommand: async (input: unknown) => { const request = CommandRequestSchema.parse(input); sent.push(request); return execute(request); },
+  } as unknown as DashboardClient;
+  return { failed, client };
+}
+
+describe("served not-found failure actions", () => {
+  it("projects only served actions and rejects a contradictory failure join", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], planned: unknown[] = [];
+    const fixture = failureClient(selected, sent, planned, async () => { throw new Error("unused"); });
+    const snapshot = await readRunLogs(fixture.client, selected, new AbortController().signal);
+    const decision = projectRunLogs(snapshot, fixture.client).steps.flatMap(step => step.entries).find(entry => entry.kind === "decision");
+    assert.ok(decision?.kind === "decision");
+    assert.deepEqual(decision.decision.actions?.map(action => action.label), ["Check again", "Enter EID"]);
+    assert.equal(decision.decision.footer, undefined);
+    assert.deepEqual(failureLogActions(FailureDetailWireSchema.parse({ ...fixture.failed, recovery: undefined })), []);
+    assert.equal(FailureDetailWireSchema.safeParse({ ...fixture.failed, code: "another-failure" }).success, false);
+    assert.equal(FailureDetailWireSchema.safeParse({ ...fixture.failed, recovery: { ...fixture.failed.recovery, expectedVersion: 4 } }).success, false);
+  });
+
+  for (const actionIndex of [0, 1]) it(`confirms, targets and refuses failure action ${actionIndex} through the existing command executor`, async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], planned: unknown[] = [], confirms: PendingCommand[] = [], callbacks: (() => void)[] = [];
+    let release: ((value: unknown) => void) | undefined;
+    const fixture = failureClient(selected, sent, planned, () => new Promise(resolve => { release = resolve; }));
+    const h = await harness(fixture.client, (pending, send) => { confirms.push(pending); callbacks.push(send); }); await h.render(selected);
+    const action = failureLogActions(fixture.failed)[actionIndex];
+    await act(async () => { h.state?.onDecision?.(FAILURE, action, { text: "10800001" }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(sent.length, 0); assert.equal(confirms.length, 1);
+    assert.deepEqual(confirms[0].target, { runId: RUN, expectedVersion: 3 });
+    assert.equal(confirms[0].action.confirm?.confirmLabel, action.label);
+    if (actionIndex === 1) assert.deepEqual(StartPlanRequestSchema.parse(planned[0]).submissions, [{ operatorEmployeeId: "10800001" }]);
+    else assert.deepEqual(planned, []);
+    await act(async () => callbacks[0]());
+    assert.equal(sent.length, 1); assert.equal(h.state?.command?.state, "pending"); assert.equal(h.state?.onDecision, undefined);
+    assert.equal(sent[0].type, actionIndex === 0 ? "retry" : "start-run");
+    await act(async () => release?.(CommandResultSchema.parse({ state: "rejected", commandId: sent[0].commandId, code: "invalid-state", message: "Source changed" })));
+    assert.equal(h.state?.command?.state, "refused"); assert.ok(h.state?.onDecision); assert.ok(h.state?.command?.feedback);
+  });
+
+  it("refuses invalid EIDs and stale confirmation before dispatch", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], planned: unknown[] = [], callbacks: (() => void)[] = [];
+    const fixture = failureClient(selected, sent, planned, async () => { throw new Error("unused"); });
+    const h = await harness(fixture.client, (_pending, send) => callbacks.push(send)); await h.render(selected);
+    const action = failureLogActions(fixture.failed)[1];
+    await act(async () => h.state?.onDecision?.(FAILURE, action, { text: "bad" }));
+    assert.equal(planned.length, 0); assert.equal(callbacks.length, 0);
+    await act(async () => { h.state?.onDecision?.(FAILURE, action, { text: "10800001" }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(callbacks.length, 1);
+    await h.render(selectionAt(4));
+    await act(async () => callbacks[0]());
+    assert.deepEqual(sent, []); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+  });
+
+  it("retains an uncertain correction across remount and replays the identical start command", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], planned: unknown[] = [], callbacks: (() => void)[] = [];
+    const fixture = failureClient(selected, sent, planned, async () => { throw new Error("reply lost"); });
+    const h = await harness(fixture.client, (_pending, send) => callbacks.push(send)); await h.render(selected);
+    await act(async () => { h.state?.onDecision?.(FAILURE, failureLogActions(fixture.failed)[1], { text: "10800001" }); await new Promise(resolve => setTimeout(resolve, 0)); });
+    await act(async () => callbacks[0]());
+    assert.equal(h.state?.command?.state, "uncertain"); assert.equal(h.state?.onDecision, undefined);
+    await h.render(selectionAt(3), 1);
+    assert.equal(h.state?.command?.state, "uncertain"); assert.ok(h.state?.replay);
+    await act(async () => h.state?.replay?.());
+    assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(planned.length, 1);
   });
 });

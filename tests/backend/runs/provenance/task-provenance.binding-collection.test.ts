@@ -182,6 +182,7 @@ const IDENTITY_JOBS = {
 function identityComparisonCheckpoint(): RunCheckpointRecord {
   const value = JsonValueSchema.parse(MatchIdentityOutputSchema.parse({
     packet: IDENTITY_PACKET,
+    approvalRequired: IDENTITY_PACKET.emplIdSource === "name-resolved" || IDENTITY_PACKET.emplIdSource === "operator-entered",
     evidenceDigest: deriveIdentityEvidenceDigest(IDENTITY_PACKET),
   }));
   const leaves = (node: unknown, prefix: string): string[] => {
@@ -494,6 +495,7 @@ describe("task provenance collector", () => {
     const namePacket = { ...IDENTITY_PACKET, emplIdSource: "name-resolved" as const };
     const nameValue = JsonValueSchema.parse(MatchIdentityOutputSchema.parse({
       packet: namePacket,
+      approvalRequired: namePacket.emplIdSource === "name-resolved" || namePacket.emplIdSource === "operator-entered",
       evidenceDigest: deriveIdentityEvidenceDigest(namePacket),
     }));
     const nameComparison = RunCheckpointRecordSchema.parse({

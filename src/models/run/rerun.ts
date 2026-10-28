@@ -16,6 +16,7 @@ export const RerunSourceSchema = z.strictObject({
   runId: RunIdSchema,
   expectedVersion: PositiveIntSchema,
   intent: z.literal("rerun"),
+  failureCorrection: z.strictObject({ failureId: z.string().min(1), inputField: z.string().min(1) }).optional(),
   selectedStepKeys: z.array(z.string().min(1)).min(1),
   copiedFrom: z.array(z.strictObject({
     nodeId: NodeIdSchema,

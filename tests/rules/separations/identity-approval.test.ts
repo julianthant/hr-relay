@@ -1,3 +1,4 @@
+import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { SeparationsMatchIdentity } from "../../../src/models/workflows/separations/match-identity.js";
@@ -81,4 +82,14 @@ describe("identity authority refusals", () => {
     const { comparisons: _missing, ...malformed } = packet;
     assert.throws(() => verifyIdentityApproval(malformed as never, undefined));
   });
+});
+
+it("never machine-verifies an operator-entered EID, even when the document agrees", () => {
+  const packet = IdentityEvidencePacketSchema.parse({ ...SeparationsMatchIdentity.example.packet, emplIdSource: "operator-entered" });
+  const evidenceDigest = deriveIdentityEvidenceDigest(packet);
+  assert.deepEqual(verifyIdentityApproval(packet, undefined), { state: "refused", code: "identity-approval-required", reason: "a name-resolved or operator-entered EID requires an operator identity decision" });
+  const result = verifyIdentityApproval(packet, { decision: "approved", eid: packet.emplId, chosenFrom: "checked", evidenceDigest });
+  assert.equal(result.state, "approved");
+  if (result.state === "approved") assert.equal(result.subject.authority, "operator-approval");
+  assert.equal(verifyIdentityApproval(packet, { decision: "approved", eid: packet.emplId, chosenFrom: "checked", evidenceDigest: FingerprintSchema.parse("a".repeat(64)) }).state, "refused");
 });

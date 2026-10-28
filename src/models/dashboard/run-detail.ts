@@ -1,4 +1,8 @@
+import { failureCodeFromTaskCode } from "../failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { StartPlanRequestSchema } from "./start-plan.js";
+import { ActionConfirmWireSchema } from "./actions.js";
+import { FailureCorrectionSchema } from "../workflow/failure-correction.js";
 import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
 import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
@@ -574,6 +578,10 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
 export const FailureDetailWireSchema = z.strictObject({
   native: NativeRunEventWireSchema.optional(),
   display: FailureDisplaySchema.optional(),
+  recovery: z.strictObject({
+    correction: FailureCorrectionSchema, expectedVersion: z.number().int().positive(),
+    retry: ActionDescriptorWireSchema, confirm: ActionConfirmWireSchema, request: StartPlanRequestSchema,
+  }).optional(),
   resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
   runId: RunIdSchema,
   failureId: FailureIdSchema,
@@ -617,6 +625,15 @@ export const FailureDetailWireSchema = z.strictObject({
   ]),
   occurredAt: IsoInstantSchema,
 }).superRefine((failure, context) => {
+  const recovery = failure.recovery;
+  if (recovery !== undefined) {
+    const source = recovery.request.rerunSource;
+    if (failure.writeState !== "not-attempted" || failureCodeFromTaskCode(recovery.correction.code) !== failure.code || recovery.correction.nodeId !== failure.nodeId
+      || recovery.retry.kind !== "command" || recovery.retry.command !== "retry" || recovery.retry.expectedVersion !== recovery.expectedVersion
+      || source?.runId !== failure.runId || source.expectedVersion !== recovery.expectedVersion
+      || source.failureCorrection?.failureId !== failure.failureId || source.failureCorrection.inputField !== recovery.correction.inputField
+      || recovery.request.workflowId !== failure.workflowId) context.addIssue({ code: "custom", path: ["recovery"], message: "Failure recovery must target this exact failure and revision" });
+  }
   if (failure.sameFingerprintSeen < 1) {
     context.addIssue({
       code: "custom",

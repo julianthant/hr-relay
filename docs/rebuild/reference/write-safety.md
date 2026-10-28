@@ -224,11 +224,12 @@ Confirmed-action publication is separate from settlement. `run-executor.ts` publ
 `match-identity.ts`, `verifyIdentityApproval`, and the registered graph distinguish independently supplied EIDs from name resolution:
 
 - `document-eid` and `canonical-eid` require an exact UCPath actual-detail read-back and coherent declared origin. They produce `machine-verification` without a gate result.
-- `name-resolved` requires the operator's typed identity gate result even when similarity is high. The graph's gate condition is exactly `packet.emplIdSource == "name-resolved"`.
+- `name-resolved` and `operator-entered` require the operator's identity gate result even when similarity is high. The comparison derives `approvalRequired` for these two origins, and every identity gate tests that fact.
+- The optional `operatorEmployeeId` run input is entered only through the declared Job Summary not-found action in Logs. It is absent from start and rerun forms. The action plans a source-version-bound rerun changing only that field, preserving execution options, omissions and private retained input. The entered EID is read exactly in UCPath; the original document EID text or absence remains unchanged in the identity packet. It never becomes a document EID or a machine-verified canonical EID.
 
 ### 14.5 Identity authority and approval evidence
 
-The post-gate task verifies the packet digest, approved EID membership, and `chosenFrom` label. It refuses an EID the packet never showed. A supplied-EID packet cannot consume an operator result. Rejection is a failed identity verification and cannot reach a write.
+The post-gate task verifies the packet digest, approved EID membership, and `chosenFrom` label. It refuses an EID the packet never showed. A document-EID or independently supplied canonical-EID packet cannot consume an operator result. An operator-entered EID cannot proceed without one. Failure correction provenance retains the source run, version, failure ID and input field in the rerun plan and consumed run authorization. The entered EID is classified as a direct identifier; its identity origin and approval requirement are decision facts in receipts and evidence. Rejection is a failed identity verification and cannot reach a write.
 
 `identity-evidence.ts` produces the decision packet, disagreements-first comparisons, and server-owned `approvalShape`: `choose-a-candidate` when the packet shows several approvable EIDs, otherwise `one-click`. Disagreeing fields make the served approval confirmation destructive. The packet includes the write plan from `write-plan.ts`; its digest binds the planned values as well as identity. Protected timekeeper values use retained protected-input binding identity in this packet and its digest.
 
@@ -236,7 +237,7 @@ The actual `IdentityApprovalResultSchema` carries the decision, selected EID, ch
 
 ### 14.6 Approval ceremony risks
 
-Risk 1 is a client that downgrades the server's required identity ceremony to one-click approval. `src/dashboard/surfaces/run-detail/identity/identity-ceremony.ts` accepts the served `one-click` or `choose-a-candidate` shape and refuses unknown or contradictory packets. Candidate choice has no default selection. The dashboard serves and composes approvals only; it offers no rejection. Only the operator's decision is composed locally; the EID origin and evidence digest come from the served packet.
+Risk 1 is a client that downgrades the server's required identity ceremony to one-click approval. `src/dashboard/surfaces/run-detail/identity/identity-ceremony.ts` accepts the served `one-click` or `choose-a-candidate` shape and refuses unknown or contradictory packets. Candidate choice has no default selection. Operator-entered EIDs use the same served ceremony as name-resolved identities: UCPath's returned person is shown before approval, with no write before the gate is resolved. The dashboard serves and composes approvals only; it offers no rejection. Only the operator's decision is composed locally; the EID origin and evidence digest come from the served packet.
 
 `src/rules/separations/identity-approval.ts` remains the authority: an unshown EID, changed evidence digest, contradictory origin, rejection, or missing required approval refuses before a write. Fresh page binding separately prevents an approved person from being replaced by a different staged subject.
 

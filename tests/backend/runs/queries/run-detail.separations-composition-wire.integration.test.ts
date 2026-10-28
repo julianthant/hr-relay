@@ -176,6 +176,7 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
       schemaHash: deriveSchemaHash(MatchIdentityOutputSchema, "output"),
       value: MatchIdentityOutputSchema.parse({
         packet,
+        approvalRequired: packet.emplIdSource === "name-resolved" || packet.emplIdSource === "operator-entered",
         evidenceDigest: deriveIdentityEvidenceDigest(packet),
       }),
     },

@@ -20,7 +20,7 @@ import { SeparationWritePlanSchema } from "./write-plan.js";
 import type { SeparationWritePlan } from "./write-plan.js";
 
 /** Retain the source of the EID being checked. */
-export const IdentityEidSourceSchema = z.enum(["document-eid", "canonical-eid", "name-resolved"]);
+export const IdentityEidSourceSchema = z.enum(["document-eid", "canonical-eid", "name-resolved", "operator-entered"]);
 export type IdentityEidSource = z.infer<typeof IdentityEidSourceSchema>;
 
 export const IdentityCandidateSchema = z.strictObject({
@@ -185,6 +185,8 @@ export function buildIdentityEvidencePacket(
         ? "the checked EID is the one the separation document carries"
         : input.emplIdSource === "canonical-eid"
           ? "the harness supplied the checked EID independently; UCPath's actual detail read-back must match it"
+          : input.emplIdSource === "operator-entered"
+            ? "the operator entered this EID in Logs; UCPath read it exactly, and identity still requires operator approval"
           : "the separation document did not supply this EID; it was resolved by name (S18), so the "
             + "document itself confirms nothing about who this is",
     },

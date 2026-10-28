@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { ErrorCodeSchema } from "../../../src/rules/identity/ids.js";
 import { projectFailureDisplay } from "../../../src/models/dashboard/failure-display.js";
-import { failureCodeFromTaskCode } from "../../../src/backend/runtime/execution/run-failure.js";
+import { failureCodeFromTaskCode } from "../../../src/models/failures/error-catalog.js";
 
 describe("failure display", () => {
   it("describes an approved employment-record mismatch under the declared task code", () => {

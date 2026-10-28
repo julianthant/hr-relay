@@ -109,7 +109,7 @@ export function verifyIdentityApproval(
     });
   }
 
-  if (result !== undefined && packet.emplIdSource !== "name-resolved") {
+  if (result !== undefined && packet.emplIdSource !== "name-resolved" && packet.emplIdSource !== "operator-entered") {
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-supplied-eid-unproved",
@@ -118,11 +118,11 @@ export function verifyIdentityApproval(
   }
 
   if (result === undefined) {
-    if (packet.emplIdSource === "name-resolved") {
+    if (packet.emplIdSource === "name-resolved" || packet.emplIdSource === "operator-entered") {
       return IdentityApprovalVerificationSchema.parse({
         state: "refused",
         code: "identity-approval-required",
-        reason: "an EID resolved by name requires an operator identity decision",
+        reason: "a name-resolved or operator-entered EID requires an operator identity decision",
       });
     }
     if (packet.emplIdSource === "document-eid" && packet.documentEidText !== packet.emplId) {
