@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { it, vi } from "vitest";
-import { acquireRuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { acquireRuntimeLifetimeLock, RuntimeAlreadyRunningError, RuntimeLifetimeLock, RuntimeLifetimeLockReleasedError, WorkerRuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
@@ -20,21 +20,22 @@ async function fixture() {
   const source = new URL("../../../../src/backend/storage/admission/lifetime-lock.ts", import.meta.url).href;
   await writeFile(path, `
 import { spawn } from 'node:child_process';
-import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, shareRuntimeLifetimeLock } from ${JSON.stringify(source)};
+import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from ${JSON.stringify(source)};
 if (process.argv[2] === 'worker') {
   const lock = await receiveRuntimeLifetimeLock(Number(process.argv[3]), () => {
-    lock.close(() => process.exit(0));
+    void lock.close().then(() => process.exit(0));
   });
+  if (lock instanceof RuntimeLifetimeLock || !(lock instanceof WorkerRuntimeLifetimeLock)) throw new Error('worker lock type is not distinct');
   process.send({ kind: 'held' });
 } else {
   const lock = await acquireRuntimeLifetimeLock(0);
-  const port = lock.address().port;
+  const port = lock.port;
   const child = spawn(process.execPath, [...process.execArgv, import.meta.filename, 'worker', String(port)], {
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
   });
   child.on('error', error => { throw error; });
   child.on('message', () => process.send({ kind: 'held', port, workerPid: child.pid }));
-  await shareRuntimeLifetimeLock(lock, child);
+  await lock.share(child);
 }
 `);
   const parent = spawn(process.execPath, ["--import", import.meta.resolve("tsx"), path, "parent"], {
@@ -95,15 +96,11 @@ it("retains exclusion after parent SIGKILL while its child is blocked, then perm
     killOwned(world.workerPid);
     await vi.waitFor(async () => {
       const successor = await acquireRuntimeLifetimeLock(world.port);
-      const closed = once(successor, "close");
-      successor.close();
-      await closed;
+      await successor.close();
     });
     for (let index = 0; index < 3; index += 1) {
       const successor = await acquireRuntimeLifetimeLock(world.port);
-      const closed = once(successor, "close");
-      successor.close();
-      await closed;
+      await successor.close();
     }
   } finally { await world.close(); }
 });
@@ -114,28 +111,23 @@ it("lets a cooperative worker close its shared handle on parent disconnect", asy
     await stop(world.parent);
     await vi.waitFor(async () => {
       const successor = await acquireRuntimeLifetimeLock(world.port);
-      const closed = once(successor, "close");
-      successor.close();
-      await closed;
+      await successor.close();
     });
   } finally { await world.close(); }
 });
 
 it("refuses both dashboard and offline commands before admission when another lifetime holds the port", async () => {
   const lock = await acquireRuntimeLifetimeLock(0);
-  const address = lock.address();
-  assert.ok(address !== null && typeof address !== "string");
+  assert.ok(lock instanceof RuntimeLifetimeLock);
   try {
     for (const args of [["cli", "dashboard"], ["cli", "storage", "backup"]]) {
       await assert.rejects(runSecureEnvironmentBootstrap(args, {
-        acquireLifetimeLock: () => acquireRuntimeLifetimeLock(address.port),
+        acquireLifetimeLock: () => acquireRuntimeLifetimeLock(lock.port),
         acquireAdmission: () => assert.fail("busy lifetime reached storage admission"),
       }), RuntimeAlreadyRunningError);
     }
   } finally {
-    const closed = once(lock, "close");
-    lock.close();
-    await closed;
+    await lock.close();
   }
 });
 
@@ -166,4 +158,16 @@ it("keeps machine publication with the controller and creates no PID lease or ad
     controller?.release();
     await rm(directory, { recursive: true });
   }
+});
+
+it("revokes controller authority as soon as close starts and keeps repeated close idempotent", async () => {
+  const lock = await acquireRuntimeLifetimeLock(0);
+  assert.ok(lock instanceof RuntimeLifetimeLock);
+  assert.ok(!(lock instanceof WorkerRuntimeLifetimeLock));
+  lock.assertHeld();
+  const closing = lock.close();
+  assert.throws(() => lock.assertHeld(), RuntimeLifetimeLockReleasedError);
+  assert.equal(lock.close(), closing);
+  await closing;
+  assert.throws(() => lock.assertHeld(), RuntimeLifetimeLockReleasedError);
 });

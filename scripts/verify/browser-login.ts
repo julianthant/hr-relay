@@ -343,7 +343,7 @@ export function createSmokeProfileAdmission(input: Readonly<{
 async function main(): Promise<void> {
   const lock = await acquireRuntimeLifetimeLock(rebuildRuntimeIsolation.lockPort);
   try { await runAdmittedSmoke(); }
-  finally { await new Promise<void>((resolve, reject) => lock.close(error => { if (error !== undefined) reject(error); else resolve(); })); }
+  finally { await lock.close(); }
 }
 
 async function runAdmittedSmoke(): Promise<void> {

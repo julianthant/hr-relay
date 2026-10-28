@@ -1,6 +1,5 @@
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
-import type { Server } from "node:net";
-import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
+import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, type RuntimeLifetimeLock, type WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { fileURLToPath } from "node:url";
 
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
@@ -17,14 +16,14 @@ import { RuntimeCustodyUncertainError } from "../composition/storage-compose.js"
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
 export interface RuntimeLifetime {
-  readonly lock: Server;
+  readonly lock: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock;
   readonly parentSignal: AbortSignal;
 }
 
 export interface SecureEnvironmentBootstrapDependencies {
   readonly assertEnvironment?: () => void;
   readonly runCli?: (admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void, lifetime?: RuntimeLifetime) => Promise<void>;
-  readonly acquireLifetimeLock?: (port: number) => Promise<Server>;
+  readonly acquireLifetimeLock?: (port: number) => Promise<RuntimeLifetimeLock>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
   readonly validateDashboardBundle?: (workspace: string) => void;
@@ -69,7 +68,7 @@ export async function runSecureEnvironmentBootstrap(
     retain = error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError;
     throw error;
   } finally {
-    if (!retain) await new Promise<void>((resolve, reject) => lock.close(error => { if (error !== undefined) reject(error); else resolve(); }));
+    if (!retain) await lock.close();
   }
 }
 

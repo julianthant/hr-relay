@@ -23,6 +23,7 @@ import { composeStorageCommand } from "./backend/app/composition/storage-compose
 import { composeWorkerRuntime } from "./backend/app/composition/worker-compose.js";
 import type { RuntimeProcessLockHandle } from "./backend/storage/sqlite/runtime-process-locks.js";
 import type { RuntimeAdmission } from "./backend/storage/admission/admission.js";
+import { RuntimeLifetimeLock } from "./backend/storage/admission/lifetime-lock.js";
 import type { RuntimeLifetime } from "./backend/app/bootstrap/secure-env-bootstrap.js";
 
 /** Compose and start one admitted CLI invocation; secure bootstrap awaits it, so a shutdown failure reaches the entrypoint. */
@@ -41,8 +42,9 @@ export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: (
     return;
   }
   registerDashboardComposer(async (runtimeIsolation, options) => {
+    if (!(lifetime?.lock instanceof RuntimeLifetimeLock)) throw new Error("dashboard-runtime-lifetime-lock-required");
     const application = await composeDashboardApplication({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend,
-      ...(lifetime === undefined ? {} : { lifetimeLock: lifetime.lock }) });
+      lifetimeLock: lifetime.lock });
     acceptDashboardAdmission?.();
     return application;
   });
