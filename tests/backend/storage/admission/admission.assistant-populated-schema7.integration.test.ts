@@ -7,7 +7,7 @@ import { z } from "zod";
 import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { ProfileBrowserRootRefusalError } from "../../../../src/backend/storage/admission/admission-identity.js";
 import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
-import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 
@@ -85,7 +85,7 @@ it("upgrades actual populated prior Settings rows without rewriting their exact 
     } finally { raw.close(); }
     assert.equal((await f.run(true)).state, "planned");
     const result = await f.run(); assert.equal(result.state, "upgraded");
-    assert.equal(result.fromSchemaVersion, 7); assert.equal(result.toSchemaVersion, 8);
+    assert.equal(result.fromSchemaVersion, 7); assert.equal(result.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const upgraded = new DatabaseSync(f.path, { readOnly: true });
     try {
       const retained = Object.fromEntries(Object.keys(prior.tables).map(table => [table, upgraded.prepare(`SELECT * FROM ${table} ORDER BY id`).all().map(row => ({ ...row }))]));
@@ -100,7 +100,7 @@ it("upgrades actual populated prior Settings rows without rewriting their exact 
       assert.ok(settings?.saved);
       assert.deepEqual({ revision: settings.saved.revision, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
         settingsFingerprint: settings.saved.settingsFingerprint, settings: settings.saved.settings }, prior.settings);
-      assert.equal(inspection.prepare("PRAGMA user_version").get()?.user_version, 8);
+      assert.equal(inspection.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
       assert.equal(inspection.prepare("SELECT COUNT(*) AS count FROM assistant_grants").get()?.count, 0);
     } finally { inspection.close(); }
     const beforeRuntime = storageTree(f.root);
