@@ -28,7 +28,7 @@ function world(method: "key" | "touch" = "key") {
   let waiter: ((value: unknown) => void) | undefined;
   let browserWaiter: ((value: unknown) => void) | undefined;
   let blockedStop = false, releaseStop: (() => void) | undefined, portalPages = 0;
-  let lostActiveStopAck = false, blockedPump = false, missingProcessExit = false;
+  let lostActiveStopAck = false, blockedPump = false;
   let startupHold: Promise<void> | undefined, releaseStartup: (() => void) | undefined, startupEntered: (() => void) | undefined;
   const replies = new Map<string, (value: unknown) => void>();
   let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
@@ -87,7 +87,7 @@ function world(method: "key" | "touch" = "key") {
       assert.equal(preferences.credentials_enable_service, false);
       assert.equal(preferences.profile.password_manager_enabled, false);
       return context;
-    }, observeProcess: () => ({ pid: 123, observation: closed && !missingProcessExit ? { state: "gone" } : { state: "alive", identity: { platform: "darwin", startToken: "synthetic-process" } } }) },
+    } },
   });
   const owner: DraftDuoBrowserOwner = { ...attempt, assertCurrent() { if (!current) throw new Error("synthetic revoked"); },
     async acquireCredentials() { throw new Error("unexpected credential acquisition"); },
@@ -125,7 +125,6 @@ function world(method: "key" | "touch" = "key") {
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
     loseActiveStopAck: () => { lostActiveStopAck = true; }, blockPump: () => { blockedPump = true; },
-    withholdProcessExit: () => { missingProcessExit = true; },
     releasePump: () => { blockedPump = false; waiter?.(null); waiter = undefined; },
     blockStartup: () => { startupHold = new Promise(resolve => { releaseStartup = resolve; }); return new Promise<void>(resolve => { startupEntered = resolve; }); },
     releaseStartup: () => { releaseStartup?.(); },
@@ -138,7 +137,7 @@ function world(method: "key" | "touch" = "key") {
 const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
 
 describe("draft Duo provider", () => {
-  for (const proof of ["proved", "missing-event", "missing-process"] as const) it(`lost active-stop ACK requires settled attempt and ${proof} physical closure`, async () => {
+  for (const proof of ["proved", "missing-event"] as const) it(`lost active-stop ACK requires settled attempt and ${proof} physical closure`, async () => {
     const w = world();
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
@@ -147,7 +146,6 @@ describe("draft Duo provider", () => {
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
       await w.send("software-created", { credentialId: "public-id", requestId: randomUUID() });
       w.loseActiveStopAck(); if (proof === "missing-event") w.withholdCloseEvent();
-      if (proof === "missing-process") w.withholdProcessExit();
       assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
       assert.ok(w.calls.includes("unknown")); assert.ok(!w.calls.includes("portal-accepted"));
       if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }

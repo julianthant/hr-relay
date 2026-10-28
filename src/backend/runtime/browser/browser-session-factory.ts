@@ -1,4 +1,3 @@
-import type { ProcessIdentityObservation } from "../../storage/sqlite/runtime-process-locks.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { DuoCredentialSchema, DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { workerProfileDirectory } from "../../storage/maintenance/profile-inventory.js";
@@ -70,7 +69,6 @@ export interface PersistentContextLauncher {
     viewport: Readonly<{ width: number; height: number }>;
     timeoutMs?: number;
   }>): Promise<BrowserContext>;
-  observeProcess?(profileDirectory: string, pid?: number): Readonly<{ pid: number; observation: ProcessIdentityObservation }>;
 }
 
 export class BrowserProfileStillClosingError extends Error {

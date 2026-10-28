@@ -549,6 +549,10 @@ request after disconnect. Standalone execution composes its own service while ho
 root listener. Shutdown retains the controller until active geocode work drains; failed closure
 refuses release. There are no geocode election, endpoint or PID files.
 
+Duo onboarding closes its owned pages and context, requires the context close event, and settles
+startup and extension message pumps before replacement. Failed retention or closure stays uncertain;
+a Chromium PID or profile marker does not establish closure.
+
 Standalone browser verification holds the exclusive runtime listener throughout its admitted lifetime.
 Its reservation binds the installation/profile, lock port, fresh scratch profile, browser system and
 Duo credential. Startup retires an interrupted verification-only reservation before new admission,
