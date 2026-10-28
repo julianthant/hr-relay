@@ -1,6 +1,7 @@
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { PrivateFileLockUnavailableError } from "../../../src/backend/storage/configuration/credential-safe-file.js";
 import { FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
+import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { finishProfileOnboarding, readyProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -789,6 +790,16 @@ it("allocates distinct durable activation generations under cross-process exclus
   const session = createProfileSession({ machineRoot: root });
   const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" };
   const first = await finishProfileOnboarding(session, session.signUp(fields)); assert.equal(first.state, "active"); if (first.state !== "active") return;
+  const phases = ["admit", "session-create", "activate", "close"] as const;
+  const errorNames = ["Error", "TypeError", "RangeError", "AggregateError", "ZodError", "ProfileRegistryAuthorityError",
+    "ProfileSessionRefusedError", "CredentialStoreCommitUncertainError", "CredentialKeyCustodyError",
+    "PrivateFileLockUnavailableError", "RuntimeLifetimeLockReleasedError", "AuthoritySourceClosureUnprovedError", "unclassified"] as const;
+  const reasons = ["profile-registry-publication-busy", "profile-registry-observation-changed", "profile-registry-continuity-mismatch",
+    "profile-storage-claim-unavailable", "profile-storage-claim-changed", "unclassified"] as const;
+  const codeSchema = z.string().refine(value => value === "unclassified" || Object.hasOwn(ERROR_CATALOG, value));
+  const causeSchema = z.strictObject({ name: z.enum(errorNames), code: codeSchema, reason: z.enum(reasons) });
+  const diagnosticSchema = z.strictObject({ state: z.literal("diagnostic"), phase: z.enum(phases),
+    causes: z.array(causeSchema).min(1).max(6), cleanup: z.array(causeSchema).min(1).max(6).optional() });
   const source = `
     import { createProfileSession } from ${JSON.stringify(new URL("../../../src/backend/profiles/profile-session.ts", import.meta.url).href)};
     import { acquireSharedRuntimeAdmission } from ${JSON.stringify(new URL("../../../src/backend/storage/admission/admission.ts", import.meta.url).href)};
@@ -799,24 +810,42 @@ it("allocates distinct durable activation generations under cross-process exclus
     const firstLine = await lines.next();
     const { root, fields } = JSON.parse(firstLine.value);
     const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
-    let admission, session;
+    const errorNames = ${JSON.stringify(errorNames)}, codes = ${JSON.stringify(Object.keys(ERROR_CATALOG))}, reasons = ${JSON.stringify(reasons)};
+    const describe = error => {
+      const causes = [];
+      let current = error;
+      for (let depth = 0; depth < 6; depth++) {
+        causes.push({ name: current instanceof Error && errorNames.includes(current.name) ? current.name : 'unclassified',
+          code: current instanceof Error && codes.includes(current.code) ? current.code : 'unclassified',
+          reason: current instanceof Error ? reasons.find(value => current.message.includes(value)) ?? 'unclassified' : 'unclassified' });
+        if (!(current instanceof Error) || current.cause === undefined) break;
+        current = current.cause;
+      }
+      return causes;
+    };
+    let admission, session, output, diagnostic, phase = 'admit';
     try {
       admission = acquireSharedRuntimeAdmission(resolve(root, "../.."), lifetime);
+      phase = 'session-create';
       session = createProfileSession({ machineRoot: root, admission });
       process.stdout.write('ready\\n');
       const activation = await lines.next();
       if (activation.value !== 'activate') throw new Error('activation-barrier-invalid');
+      phase = 'activate';
       const signed = session.signIn({ ...fields, at: '2026-09-06T12:03:00.000Z' });
-      process.stdout.write(JSON.stringify({ state: signed.state, ...(signed.state === 'active' ? { epoch: signed.epoch } : {}) }));
+      output = { state: signed.state, ...(signed.state === 'active' ? { epoch: signed.epoch } : {}) };
     } catch (error) {
-      const allowed = ['profile-registry-publication-busy', 'profile-registry-observation-changed', 'profile-registry-continuity-mismatch', 'profile-storage-claim-unavailable', 'profile-storage-claim-changed'];
-      let cause = error, code = 'unclassified';
-      for (let depth = 0; depth < 6 && cause instanceof Error; depth++, cause = cause.cause) {
-        const matched = allowed.find(value => cause.message.includes(value)); if (matched) code = matched;
-      }
-      process.stdout.write(JSON.stringify({ state: 'diagnostic', code }));
+      diagnostic = { state: 'diagnostic', phase, causes: describe(error) };
       process.exitCode = 1;
-    } finally { await session?.closeOnboarding(); session?.close(); admission?.release(); await lifetime.close(); process.stdin.destroy(); process.disconnect(); }
+    } finally {
+      try { await session?.closeOnboarding(); session?.close(); admission?.release(); await lifetime.close(); process.stdin.destroy(); process.disconnect(); }
+      catch (error) {
+        if (diagnostic === undefined) diagnostic = { state: 'diagnostic', phase: 'close', causes: describe(error) };
+        else diagnostic.cleanup = describe(error);
+        process.exitCode = 1;
+      }
+      process.stdout.write(JSON.stringify(diagnostic ?? output));
+    }
   `;
   const controller = machineAdmissions.get(root);
   assert.ok(controller);
@@ -839,8 +868,8 @@ it("allocates distinct durable activation generations under cross-process exclus
       child.once("close", code => {
         try {
           if (code !== 0) {
-            const diagnostic = z.strictObject({ state: z.literal("diagnostic"), code: z.enum(["profile-registry-publication-busy", "profile-registry-observation-changed", "profile-registry-continuity-mismatch", "profile-storage-claim-unavailable", "profile-storage-claim-changed", "unclassified"]) }).parse(JSON.parse(stdout));
-            throw new Error(`profile activation diagnostic: ${diagnostic.code}`);
+            const diagnostic = diagnosticSchema.parse(JSON.parse(stdout));
+            throw new Error(`profile activation diagnostic: ${JSON.stringify(diagnostic)}`);
           }
           assert.equal(code, 0);
           resolve(z.strictObject({ state: z.literal("active"), epoch: z.number().int().positive() }).parse(JSON.parse(stdout)).epoch);
