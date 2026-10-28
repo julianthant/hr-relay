@@ -110,6 +110,7 @@ export function readDuoPublicationEnvelope(bytes: Uint8Array): Readonly<{ profil
 
 export function resumeIssuedDuoTransaction(transaction: IssuedDuoTransaction, capture: DuoPublicationCapture): void {
   const issued = transactions.get(transaction);
+  if (issued !== undefined && !issued.used && !issued.publicationStarted && issued.capture === undefined) throw new Error("duo-publication-pending");
   if (issued === undefined || !issued.used || !issued.publicationStarted || issued.capture === undefined) throw new Error("duo-transaction-unissued");
   if (canonicalJsonStringify(issued.capture) !== canonicalJsonStringify(capture)) throw new Error("duo-publication-prior-changed");
   const { binding } = issued.draftOperationId === undefined ? duoCredentialPurposeBinding(issued.purpose) : duoDraftPublicationRecoveryBinding(issued.purpose);
