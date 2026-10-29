@@ -1,19 +1,21 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import nativeFs, { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import nativeFs, { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, it, vi } from "vitest";
+import { z } from "zod";
+import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { credentialKeychainTestEnvironment } from "../../support/helpers/credential-keychain-fake.js";
 import { createHistoricalFlatProfileFixture } from "../../support/fixtures/storage/historical-flat-profile-fixture.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
-import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { composeStorageCommand } from "../../../src/backend/app/composition/storage-compose.js";
@@ -26,10 +28,26 @@ import { runSecureEnvironmentBootstrap } from "../../../src/backend/app/bootstra
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const roots: string[] = [];
 const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+const lifetimes: RuntimeLifetimeLock[] = [];
 afterEach(async () => {
+  for (const lifetime of lifetimes.splice(0)) await lifetime.close();
   for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
+
+function calibrateFixtureLockPort(workspace: string, port: number): void {
+  z.number().int().positive().max(65535).parse(port);
+  const calibrated = { ...rebuildRuntimeIsolation, lockPort: port };
+  assert.deepEqual({ ...calibrated, lockPort: rebuildRuntimeIsolation.lockPort }, rebuildRuntimeIsolation);
+  assert.deepEqual(Object.keys(calibrated), Object.keys(rebuildRuntimeIsolation));
+  writeFileSync(join(workspace, "src/backend/app/config/runtime-isolation.ts"),
+    `import { defineRuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";\nconst production = defineRuntimeIsolation(${JSON.stringify(rebuildRuntimeIsolation)});\nexport const rebuildRuntimeIsolation = Object.freeze({ ...production, lockPort: ${port} });\n`);
+  const configPath = join(workspace, "config/runtime-isolation.json");
+  const record = z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(configPath, "utf8")));
+  const rebuild = z.record(z.string(), z.unknown()).parse(record.rebuild);
+  assert.equal(rebuild.lockPort, rebuildRuntimeIsolation.lockPort);
+  writeFileSync(configPath, JSON.stringify({ ...record, rebuild: { ...rebuild, lockPort: port } }));
+}
 
 async function installation(options: { pending?: "storage" } = {}) {
   const workspace = mkdtempSync(join(realpathSync(tmpdir()), "backup-bootstrap-"));
@@ -47,17 +65,26 @@ async function installation(options: { pending?: "storage" } = {}) {
   const stateRoot = profile.stateRoot, profileId = profile.admission.profileBinding.profileId;
   if (options.pending !== "storage") assert.equal(AuthorityDatabase.inspectExistingReadOnly(profile.admission, profile.path).schemaVersion,
     CURRENT_AUTHORITY_SCHEMA_VERSION);
-  const processLockRoot = join(profile.machine.stateRoot, "locks");
   profile.admission.release(); profile.machine.release();
-  return { workspace, lifetime: profile.lifetime, stateRoot, profileId, processLockRoot, backupDirectory: join(stateRoot, "backups", "authority"),
-    run: () => spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],
-      { cwd: workspace, encoding: "utf8", timeout: 20_000 }) };
+  let lifetime = profile.lifetime;
+  const port = lifetime.port;
+  calibrateFixtureLockPort(workspace, port);
+  return { workspace, get lifetime() { return lifetime; }, stateRoot, profileId, backupDirectory: join(stateRoot, "backups", "authority"),
+    async run(ownership: "stopped" | "held" = "stopped") {
+      if (ownership === "stopped") await lifetime.close();
+      const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],
+        { cwd: workspace, encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(process.env) });
+      assert.equal(result.error, undefined); assert.equal(result.signal, null); assert.notEqual(result.status, null);
+      if (ownership === "stopped") { lifetime = await RuntimeLifetimeLock.acquire(port); lifetimes.push(lifetime); }
+      else lifetime.assertHeld();
+      return result;
+    } };
 }
 
 it("backs up a current installation through real bootstrap admission and persists a verifiable manifest", async () => {
   const fixture = await installation();
   const source = readFileSync(join(fixture.stateRoot, "state.db"));
-  const result = fixture.run();
+  const result = await fixture.run();
   assert.equal(result.status, 0, `${result.error?.message ?? ""}\n${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /backup: verified — authority-g\d+-/u);
   const files = readdirSync(fixture.backupDirectory);
@@ -102,7 +129,7 @@ for (const change of ["no-selection", "unfinished", "foreign-binding"] as const)
     }
     const source = existsSync(path) ? readFileSync(path) : undefined;
     const registryPath = join(fixture.workspace, ".tracker", "control", "profile-registry.json"), registry = readFileSync(registryPath);
-    const result = fixture.run();
+    const result = await fixture.run();
     assert.equal(result.status, 1, `${result.error?.message ?? ""}\n${result.stdout}\n${result.stderr}`);
     assert.match(result.stderr, change === "foreign-binding" ? /profile-database-binding-mismatch/u : /profile-session-stale/u);
     assert.equal(existsSync(fixture.backupDirectory), false);
@@ -198,19 +225,18 @@ for (const uncertain of [false, true]) {
   });
 }
 
-it.each(["server", "workers", "geocode"] as const)("refuses a CLI backup while %s is active without writing a backup", async name => {
+it.each(["server", "workers", "geocode"] as const)("refuses a CLI backup while %s is active without writing a backup", async () => {
   const fixture = await installation();
   const authorityPath = join(fixture.stateRoot, "state.db");
   const before = readFileSync(authorityPath);
-  const lock = acquireRuntimeProcessLock({ processLockRoot: fixture.processLockRoot, name, pid: process.pid,
-    ...(name === "workers" ? { admission: { kind: "unbound-worker" as const, authorityPath } } : {}) });
+  fixture.lifetime.assertHeld();
   try {
-    const result = fixture.run();
+    const result = await fixture.run("held");
     assert.equal(result.status, 1, `${result.error?.message ?? ""}\n${result.stdout}\n${result.stderr}`);
-    assert.match(result.stderr, /runtime-active: stop server, workers and geocode/u);
+    assert.match(result.stderr, /RUNTIME_ALREADY_RUNNING/u);
     assert.equal(existsSync(fixture.backupDirectory), false);
     assert.deepEqual(readFileSync(authorityPath), before);
-  } finally { lock.release(); }
+  } finally { fixture.lifetime.assertHeld(); }
 });
 
 it("runs the unchanged explicit CLI backup on a stopped adopted flat source without login or profile publication", async () => {
@@ -222,10 +248,14 @@ it("runs the unchanged explicit CLI backup on a stopped adopted flat source with
     mkdirSync(join(f.workspace, "config"));
     for (const name of ["runtime-isolation.json", "test-data.json", "dashboard-workflow-sources.json"]) cpSync(join(repositoryRoot, "config", name), join(f.workspace, "config", name));
     symlinkSync(join(repositoryRoot, "node_modules"), join(f.workspace, "node_modules"));
+    calibrateFixtureLockPort(f.workspace, f.lifetime.port);
     const paths = [f.databasePath, f.protectedPath, f.artifact, f.reportPath], before = paths.map(path => readFileSync(path));
+    await f.lifetime.close();
     const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],
-      { cwd: f.workspace, encoding: "utf8", timeout: 20_000 });
+      { cwd: f.workspace, encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(process.env) });
+    assert.equal(result.error, undefined); assert.equal(result.signal, null);
     assert.equal(result.status, 0, `${result.error?.message ?? ""}\n${result.stdout}\n${result.stderr}`);
+    const successor = await RuntimeLifetimeLock.acquire(f.lifetime.port); await successor.close();
     assert.match(result.stdout, /backup: verified/u); assert.match(result.stdout, /private coupled companions/u);
     const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
     assert.equal(manifests.length, 1);
