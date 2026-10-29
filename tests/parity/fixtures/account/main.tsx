@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { PreflightReportContent } from "../../../../src/dashboard/surfaces/settings/preflight/settings-preflight.js";
 import { PreflightActionsProvider } from "../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
 import { PreflightOcrContext, type PreflightOcrSnapshot, type PreflightOcrPort } from "../../../../src/dashboard/surfaces/settings/preflight/preflight-ocr-model.js";
@@ -34,8 +35,8 @@ const ocrSnapshots: Readonly<Record<string, PreflightOcrSnapshot>> = {
   "ocr-loading": { state: "loading" },
   "ocr-completed": { state: "completed", model: "Synthetic OCR" },
   "ocr-failed": { state: "failed", code: "CHATGPT_OCR_FAILED" },
-  "ocr-refused": { state: "refused", code: "CHATGPT_PLAN_DISABLED", message: "OCR refused" },
-  "ocr-uncertain": { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: "OCR uncertain" },
+  "ocr-refused": { state: "refused", code: "CHATGPT_PLAN_DISABLED", message: ERROR_CATALOG.CHATGPT_PLAN_DISABLED.text },
+  "ocr-uncertain": { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text },
 };
 const preflight = state !== null && ocrSnapshots[state] !== undefined;
 if (state === null || (!preflight && snapshots[state] === undefined)) throw new Error("account-fixture-state-invalid");
@@ -57,7 +58,6 @@ const port: ChatGptAccountPort = {
   signIn: action,
   signOut: action,
   cancelSignIn: action,
-  testOcr: action,
 };
 let ocr = ocrSnapshots[state] ?? { state: "idle" as const };
 const ocrListeners = new Set<() => void>();
@@ -82,6 +82,6 @@ const preflightView = createElement(DashboardClientProvider, { client, children:
 const container = document.getElementById("account-fixture");
 if (container === null) throw new Error("account-fixture-container-missing");
 createRoot(container).render(createElement("main", {
-  "aria-label": "ChatGPT account component fixture",
+  "aria-label": preflight ? "Preflight OCR component fixture" : "ChatGPT account component fixture",
   style: { padding: "24px", minHeight: "100vh" },
 }, createElement(DsBodyScope, null, preflight ? preflightView : createElement(ChatGptAccountSettings, { port }))));

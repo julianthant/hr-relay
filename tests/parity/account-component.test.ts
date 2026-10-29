@@ -76,9 +76,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(account).toContainText(entry.state === "enabled" ? "jordan.lee@example.com" : "Use your ChatGPT plan");
         }
       }
+      await page.evaluate(() => document.fonts.ready);
       if (isOcr) await attachShellA11y(page, info, `preflight-${entry.state}-${action}-${theme.name}-${String(width)}.a11y.yml`);
       else await expect(account.getByRole("button", { name: "Test OCR", exact: true })).toHaveCount(0);
-      await page.evaluate(() => document.fonts.ready);
 
     }
     await attachShellA11y(page, info, evidenceName);

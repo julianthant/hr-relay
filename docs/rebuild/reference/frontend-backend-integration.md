@@ -139,9 +139,9 @@ field membership and discriminated states. The client checks identity as well as
 | Run detail, source, attempts | `queries/detail-queries.ts` | `run-detail.ts`: `GET /api/v1/runs/:runId`, `/operation-source`, `/attempt-history` |
 | Lazy run sections and rerun values | `queries/detail-queries.ts`, `queries/rerun-queries.ts` | `data.ts`, `trust.ts`: `GET /api/v1/runs/:runId/:section`; `data.ts`: `/rerun-values` |
 | Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId`, `/manifest`, `/attachments/:artifactId`; verified artifact URL `/artifacts/v1/:artifactId` |
-| ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel`, `/sign-out`, `/test-ocr` under the account path |
+| ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel`, `/sign-out` under the account path |
 | Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`, `/storage-relocation`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
-| Preflight | `queries/preflight-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun` |
+| Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
 | Storage doctor | `queries/storage-queries.ts` | `storage.ts`: `GET /api/v1/storage/doctor/latest`, `/api/v1/storage/doctor` |
 | Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/status`, `/:notificationId/target` |
 | Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
@@ -332,3 +332,11 @@ and startup, tab, portal and pump callbacks prove closure. A lost worker-stop ac
 window shutdown is superseded only by that complete proof and validated owned-profile deletion;
 otherwise its cause and the closure failure remain uncertain and replacement is refused. Show never
 starts enrollment or submits SSO. Explicit Open Duo retains the existing once-per-context login path.
+
+Settings Preflight owns the OCR diagnostic presentation and request lifecycle in
+`surfaces/settings/preflight/preflight-ocr-model.ts`. The profile-scoped shell composes it with the
+existing account port for freshness and plan eligibility and the existing `testChatGptOcr` typed
+client method for inference. The endpoint and canonical `ChatGptOcrTestResultSchema` remain under
+the account transport; there is no second API or preflight-admission result type. A diagnostic is
+never dispatched by readiness reads, reruns or scope refreshes. The shell disposes the diagnostic
+before the account owner when the active profile changes or the page closes.

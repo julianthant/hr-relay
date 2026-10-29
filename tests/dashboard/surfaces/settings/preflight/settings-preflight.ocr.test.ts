@@ -7,7 +7,7 @@ import type { DashboardClient } from "../../../../../src/dashboard/client/index.
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { PreflightActionsProvider } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
 import { PreflightReportContent } from "../../../../../src/dashboard/surfaces/settings/preflight/settings-preflight.js";
-import { PreflightOcrContext, type PreflightOcrPort, type PreflightOcrSnapshot } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-ocr-model.js";
+import { PreflightOcrContext, createServedPreflightOcrPort, type PreflightOcrPort, type PreflightOcrSnapshot } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-ocr-model.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -52,3 +52,21 @@ it("keeps OCR dispatch separate from Run preflight and scope refresh", async () 
   assert.equal(calls, 1); assert.equal(reruns, 1);
 });
 const idle: PreflightOcrSnapshot = { state: "idle" };
+
+it("locks duplicate OCR clicks until the preflight-owned operation settles", async () => {
+  const result = Promise.withResolvers<{ state: "completed"; model: string }>();
+  let calls = 0;
+  const port = createServedPreflightOcrPort({ testChatGptOcr: () => { calls++; return result.promise; } }, {
+    mode: "preview", getSnapshot: () => enabled, subscribe: () => () => {},
+    signIn: async () => {}, signOut: async () => {}, cancelSignIn: async () => {},
+  });
+  try {
+    await mount(port); assert.equal(calls, 0);
+    const button = [...host!.querySelectorAll("button")].find(node => node.textContent === "Test OCR"); assert.ok(button);
+    await act(async () => { button.click(); button.click(); });
+    assert.equal(calls, 1); assert.equal(button.disabled, true);
+    await act(async () => result.resolve({ state: "completed", model: "Synthetic model" }));
+    assert.equal(button.disabled, false); assert.match(host!.textContent ?? "", /Synthetic model/u);
+  } finally { port.dispose(); }
+});
+const enabled = { state: "connected" as const, name: "Operator", email: "operator@example.com", planUsage: "enabled" as const };

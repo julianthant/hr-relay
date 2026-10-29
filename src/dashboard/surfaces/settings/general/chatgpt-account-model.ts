@@ -5,20 +5,14 @@ import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../../models/failure
 import { systemClock } from "../../../../rules/time/clock.js";
 import { createContext, useSyncExternalStore } from "react";
 
-export type ChatGptOcrTestSnapshot =
-  | { readonly state: "loading" }
-  | { readonly state: "completed"; readonly model: string }
-  | { readonly state: "failed" | "refused" | "uncertain"; readonly code: ErrorCatalogCode };
-
-export type ChatGptAccountSnapshot = (
+export type ChatGptAccountSnapshot =
   | { readonly state: "loading" }
   | { readonly state: "signed-out" }
   | { readonly state: "expired" | "sign-in-expired" }
   | { readonly state: "signing-in"; readonly attemptId: string; readonly expiresAt: string; readonly authorizationUrl?: string }
   | { readonly state: "unavailable"; readonly message: string; readonly account?: ChatGptAccountView }
   | { readonly state: "connected"; readonly name: string; readonly email: string;
-      readonly expiresAt?: string; readonly planUsage: "enabled" | "disabled" | "limit-reached" }
-) & { readonly ocrTest?: ChatGptOcrTestSnapshot };
+      readonly expiresAt?: string; readonly planUsage: "enabled" | "disabled" | "limit-reached" };
 
 export interface ChatGptAccountPort {
   readonly getResource?: () => ChatGptAccountResource;
@@ -29,7 +23,6 @@ export interface ChatGptAccountPort {
   readonly signIn: (input: { readonly usePlan: boolean }) => Promise<void>;
   readonly signOut: () => Promise<void>;
   readonly cancelSignIn: () => Promise<void>;
-  readonly testOcr: () => Promise<void>;
 }
 
 export const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
@@ -50,7 +43,6 @@ export function createPreviewChatGptAccountPort(): ChatGptAccountPort {
       publish({ state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", planUsage: usePlan ? "enabled" : "disabled" });
       return Promise.resolve();
     },
-    testOcr: () => { publish({ ...snapshot, ocrTest: { state: "completed", model: "Preview OCR" } }); return Promise.resolve(); },
     signOut: () => { publish({ state: "signed-out" }); return Promise.resolve(); },
     cancelSignIn: () => { publish({ state: "signed-out" }); return Promise.resolve(); },
   };
@@ -86,7 +78,6 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   let cancelling: number | undefined;
   let ownedPopup: ChatGptAuthorizationWindow | undefined;
   let refreshing: Promise<void> | undefined;
-  let ocrController: AbortController | undefined;
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
   const listeners = new Set<() => void>();
   const nowMs = options.nowMs ?? (() => systemClock.nowMs());
@@ -156,8 +147,8 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     else problem("refused", result.code);
   };
   async function readAccount(): Promise<void> {
-    ocrController?.abort(); ocrController = undefined;
     const request = ++epoch;
+    busy = true; notify();
     try {
       const account = await readWithDeadline(() => client.chatGptAccount(), "CHATGPT_AUTH_UNAVAILABLE");
       if (!current(request)) return;
@@ -168,40 +159,23 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         await complete(account.attemptId, account.expiresAt, request);
       } else accept(account);
     } catch { if (current(request)) problem("failed", "CHATGPT_AUTH_UNAVAILABLE"); }
-    finally { if (current(request)) busy = false; }
+    finally { if (current(request)) { busy = false; notify(); } }
   }
   function refresh(): Promise<void> {
     if (refreshing !== undefined) return refreshing;
-    const reading = readAccount().finally(() => { if (refreshing === reading) refreshing = undefined; });
+    const reading = readAccount().finally(() => { if (refreshing === reading) { refreshing = undefined; notify(); } });
     refreshing = reading;
     return reading;
   }
   return {
-    testOcr: async () => {
-      if (disposed || busy || refreshing !== undefined || resource.state !== "loaded" || snapshot.state !== "connected"
-        || snapshot.planUsage !== "enabled" || snapshot.ocrTest?.state === "uncertain") return;
-      busy = true;
-      const request = ++epoch;
-      const controller = new AbortController(); ocrController = controller;
-      snapshot = { ...snapshot, ocrTest: { state: "loading" } }; notify();
-      try {
-        const result = await readWithDeadline(signal => client.testChatGptOcr(signal), "CHATGPT_OCR_FAILED", 120_000, controller.signal);
-        if (current(request)) { snapshot = { ...snapshot, ocrTest: result }; notify(); }
-      } catch {
-        if (current(request)) { snapshot = { ...snapshot, ocrTest: { state: "uncertain", code: "CHATGPT_OCR_FAILED" } }; notify(); }
-      } finally {
-        if (ocrController === controller) ocrController = undefined;
-        if (current(request)) busy = false;
-      }
-    },
-    mode: "live", getSnapshot: () => snapshot, getResource: () => resource,
+    mode: "live", getSnapshot: () => snapshot, getResource: (): ChatGptAccountResource => resource.state !== "loading" && (busy || refreshing !== undefined) ? { state: "loading" } : resource,
     subscribe: listener => {
       listeners.add(listener);
       if (!loaded && !busy && listeners.size === 1) { loaded = true; void refresh(); }
       return () => { listeners.delete(listener); };
     },
     refresh,
-    dispose: () => { disposed = true; ++epoch; ocrController?.abort(); ocrController = undefined; closePopup(); clearTimeout(expiryTimer); listeners.clear(); },
+    dispose: () => { disposed = true; ++epoch; closePopup(); clearTimeout(expiryTimer); listeners.clear(); },
     signIn: async input => {
       if (disposed || busy || resource.state === "loading") return;
       let popup: ChatGptAuthorizationWindow | undefined;
@@ -210,7 +184,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       if (popup === undefined) { problem("refused", "CHATGPT_AUTH_UNAVAILABLE"); return; }
       ownedPopup = popup;
       clearTimeout(expiryTimer);
-      busy = true;
+      busy = true; notify();
       const request = ++epoch;
       try {
         const result = await client.startChatGptSignIn(input);
@@ -229,7 +203,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         signingIn({ attemptId: result.attemptId, expiresAt: result.expiresAt, authorizationUrl: result.authorizationUrl }, request);
         await complete(result.attemptId, result.expiresAt, request);
       } catch { await reconcileProblem(request); }
-      finally { if (ownedPopup === popup) closePopup(); if (current(request)) busy = false; }
+      finally { if (ownedPopup === popup) closePopup(); if (current(request)) { busy = false; notify(); } }
     },
     cancelSignIn: async () => {
       const pending = snapshot.state === "unavailable" ? snapshot.account : snapshot;
@@ -239,7 +213,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       cancelling = request;
       refreshing = undefined;
       scheduleSignInExpiry(pending.expiresAt, request);
-      busy = true;
+      busy = true; notify();
       try {
         const result = await readWithDeadline(signal => client.cancelChatGptSignIn(attemptId, signal), "CHATGPT_AUTH_UNAVAILABLE");
         if (!current(request)) return;
@@ -252,12 +226,12 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         } else if (result.state === "uncertain") await reconcileProblem(request, result.code);
         else await reconcileProblem(request, result.code, "refused");
       } catch { await reconcileProblem(request); }
-      finally { if (cancelling === request) cancelling = undefined; if (current(request)) busy = false; }
+      finally { if (cancelling === request) cancelling = undefined; if (current(request)) { busy = false; notify(); } }
     },
     signOut: async () => {
       if (disposed || busy) return;
       clearTimeout(expiryTimer);
-      busy = true;
+      busy = true; notify();
       const request = ++epoch;
       try {
         const result = await client.signOutChatGpt();
@@ -273,7 +247,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         } else if (result.state === "uncertain") await reconcileProblem(request, result.code);
         else problem("refused", result.code);
       } catch { await reconcileProblem(request); }
-      finally { busy = false; }
+      finally { busy = false; notify(); }
     },
   };
 }

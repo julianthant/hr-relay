@@ -17,9 +17,9 @@ let host: HTMLElement | undefined;
 beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
 
-function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut" | "testOcr">> = {}): ChatGptAccountPort {
+function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut">> = {}): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), testOcr: () => Promise.resolve(), ...operations };
+    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
 }
 
 describe("General ChatGPT account", () => {
