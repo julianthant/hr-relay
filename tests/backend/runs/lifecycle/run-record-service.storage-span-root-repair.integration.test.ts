@@ -21,6 +21,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { StartPlanRecordSchema,derivePlannedInputFingerprint } from "../../../../src/models/run/start-plan.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { appliedRunIds } from "../../../support/fixtures/operator-command-fixtures.js";
@@ -82,7 +83,8 @@ async function fixture(ambiguous=false) {
   const slot=database.withAuthorityTransaction(repositories=>admitDirectWorker(repositories,{ commandId: ids.uuid(), workflow: descriptor.id,
     poolIndex: 1, expectedPoolVersion: 0, processId: process.pid, now: NOW },ids.uuid()));
   assert.equal(database.authority.workerLeases.start({workerId:slot.workerId,workflow:descriptor.id,browserSystems:[],processId:process.pid,requestedBy:"local-operator",now:NOW}).state,"started");
-  const run=requireLifecycleApplied(lifecycle.claimNext({commandId:ids.uuid(),workflow:descriptor.id,workerId:slot.workerId,runtimeConfig:{
+  const run=requireLifecycleApplied(lifecycle.claimNext({commandId:ids.uuid(),workflow:descriptor.id,workerId:slot.workerId,
+    workerLifetime:testWorkerLifetime(database,descriptor.id,slot.poolIndex).workerLifetime,runtimeConfig:{
     generation:active.generation,settingsRevision:active.settingsRevision,settingsFingerprint:active.settingsFingerprint,configFingerprint:active.configFingerprint}}));
   database.close();
   const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);

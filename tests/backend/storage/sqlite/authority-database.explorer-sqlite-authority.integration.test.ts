@@ -49,8 +49,8 @@ describe("Explorer SQLite command authority", () => {
       let rebuilds = 0;
       const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path,
         suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000,
-      }, async staged => {
-        const stageAdmission = admission.stoppedStagedAuthority(staged);
+      }, async (staged, restoreAdmission) => {
+        const stageAdmission = admission.stoppedRestoreProjection(staged, restoreAdmission);
         try {
           const reopened = AuthorityDatabase.openStoppedRestoreProjection(stageAdmission, { path: staged, busyTimeoutMs: 250, migrationOwner: "restore-proof" }, f.clock);
           try { assert.deepEqual(reopened.authority.explorerOverrides.readAll(), saved); rebuilds += 1; }
