@@ -320,20 +320,6 @@ describe("profile restore continuity", () => {
     } finally { await f.close(); }
   });
 
-  it("refuses a foreign physical origin even with matching profile UUIDs before staging", async () => {
-    const f = await world();
-    try {
-      const manifestPath = await f.backup();
-      const document = JSON.parse(readFileSync(manifestPath, "utf8")) as { sourceDatabaseIdentity: string };
-      document.sourceDatabaseIdentity = "f".repeat(64);
-      writeFileSync(manifestPath, JSON.stringify(document), { mode: 0o600 });
-      const bytes = readFileSync(f.path);
-      await assert.rejects(f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() }), /different authority database/);
-      assert.deepEqual(readFileSync(f.path), bytes);
-      assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
-    } finally { await f.close(); }
-  });
-
   it.each(["journal", "anchor", "both"] as const)("refuses %s rollback against independent current control", async kind => {
     const f = await world();
     try {

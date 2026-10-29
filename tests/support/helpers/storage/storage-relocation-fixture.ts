@@ -1,11 +1,7 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runtimeLifetimeLock } from "../backend/runtime-lifetime.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
 import { z } from "zod";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import type { Clock } from "../../../../src/rules/time/clock.js";
-import { backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -193,38 +189,4 @@ export function durableSnapshot(authorityPath: string, credentialFile: string, a
       credentialDigest: createHash("sha256").update(readFileSync(credentialFile)).digest("hex"),
       artifactDigest: createHash("sha256").update(readFileSync(artifactFile)).digest("hex") };
   } finally { database.close(); }
-}
-
-export function createStorageBackupLocationFixtures(workspaces: string[], clock: Clock) {
-async function movedFixture(artifactOnly = false) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "backup-location-")); workspaces.push(root);
-  const workspace = join(root, "workspace"); mkdirSync(workspace, {mode: 0o700});
-  const lifetime = await runtimeLifetimeLock();
-  const initial = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
-  let source = { stateRoot: initial.stateRoot, artifactRoot: initial.artifactRoot };
-  try {
-    const database = AuthorityDatabase.open(initial, { path: join(initial.stateRoot, "state.db"),
-      busyTimeoutMs: 250, migrationOwner: "backup-location-fixture" }, clock);
-    try {
-      const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, initial);
-      database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
-        fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(), capturedBy: "local-operator",
-        config: resolved.config, provenance: resolved.provenance });
-    } finally { database.close(); }
-    await backupStoppedAuthority(profileBrowserClosure, initial, initial.stateRoot, clock, join(initial.stateRoot, "locks"));
-  } finally { initial.release(); }
-  if (artifactOnly) {
-    const exterior = { stateRoot: join(root, "exterior-state"), artifactRoot: join(root, "exterior-artifacts") };
-    const first = plan(workspace, lifetime, exterior); await relocate(workspace, lifetime, first.commandId);
-    source = exterior;
-  }
-  const destination = artifactOnly ? { stateRoot: source.stateRoot, artifactRoot: join(root,"moved-artifacts") }
-    : { stateRoot: join(root,"moved-state"), artifactRoot: join(root,"moved-artifacts") };
-  const request = plan(workspace, lifetime, destination); await relocate(workspace, lifetime, request.commandId);
-  const admission = acquireExclusiveRuntimeAdmission(workspace, lifetime);
-  const options = { stateRootTrustAnchor: root, stateRoot: destination.stateRoot,
-    authorityPath: join(destination.stateRoot,"state.db"), backupDirectory: join(destination.stateRoot,"backups","authority"), busyTimeoutMs:250 };
-  return { workspace, lifetime, source, destination, admission, options };
-}
-return { movedFixture };
 }
