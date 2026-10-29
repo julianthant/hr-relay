@@ -168,7 +168,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     return reading;
   }
   return {
-    mode: "live", getSnapshot: () => snapshot, getResource: (): ChatGptAccountResource => resource.state !== "loading" && (busy || refreshing !== undefined) ? { state: "loading" } : resource,
+    mode: "live", getSnapshot: () => snapshot, getResource: (): ChatGptAccountResource => resource.state === "loaded" && (busy || refreshing !== undefined) ? { state: "loading" } : resource,
     subscribe: listener => {
       listeners.add(listener);
       if (!loaded && !busy && listeners.size === 1) { loaded = true; void refresh(); }

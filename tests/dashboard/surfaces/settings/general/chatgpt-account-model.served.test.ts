@@ -297,3 +297,21 @@ it("lets expired sign-out retain closure refusal and calls the existing sign-out
     assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text, account: { state: "expired" } });
   } finally { f.port.dispose(); }
 });
+
+
+it("publishes the actual unverified resource whenever its unavailable snapshot is observed", async () => {
+  const unavailable = ChatGptAccountStateSchema.parse({ state: "unavailable", code: "CHATGPT_USAGE_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text });
+  const f = setup({ chatGptAccount: async () => unavailable });
+  const observed: ReturnType<typeof f.port.getResource>[] = [];
+  const unsubscribe = f.port.subscribe(() => {
+    if (f.port.getSnapshot().state === "unavailable") observed.push(f.port.getResource());
+  });
+  try {
+    await f.port.refresh();
+    assert.ok(observed.length > 0);
+    for (const resource of observed) {
+      assert.equal(resource.state, "failed"); assert.ok("code" in resource);
+      assert.equal(resource.code, "CHATGPT_USAGE_UNAVAILABLE");
+    }
+  } finally { unsubscribe(); f.port.dispose(); }
+});
