@@ -379,7 +379,7 @@ for (const finishingGeneration of [2, 3]) {
       assert.equal(f.database.authority.runs.get(running.envelope.runId)?.completion, undefined);
     }
     const current = failureTerminalRequest(running, id());
-    current.terminal.authorization.claim = { workerId: finishingGeneration === 2 ? "person-lookup-worker-2" : WORKER_ID, claimGeneration: finishingGeneration };
+    assert.deepEqual(current.terminal.authorization.claim, { workerId: finishingGeneration === 2 ? "person-lookup-worker-2" : WORKER_ID, claimGeneration: finishingGeneration });
     const terminal = requireLifecycleApplied(f.service.terminalize(current, personLookupDescriptor));
     assert.equal(terminal.completion?.claim.claimGeneration, finishingGeneration);
     const retry = requireLifecycleApplied(f.service.retry({ commandId: id(), runId: terminal.envelope.runId,
