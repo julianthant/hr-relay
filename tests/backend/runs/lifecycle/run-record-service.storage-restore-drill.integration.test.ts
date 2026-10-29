@@ -162,7 +162,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
       assert.equal(queued.run.lifecycle.state, "queued"); assert.equal(queued.run.version, current.version + 1);
       assert.equal(queued.run.claimGeneration, current.claimGeneration);
       const replayGeneration = healthy.getMeta().authorityGeneration;
-      assert.deepEqual(service.requeue(request), queued); assert.equal(healthy.getMeta().authorityGeneration, replayGeneration);
+      assert.deepEqual(service.requeue(request), { state: "applied-already", run: queued.run }); assert.equal(healthy.getMeta().authorityGeneration, replayGeneration);
       healthy.settleInterruptedWorker(p.lifetime, member.workerId, oldLease.leaseGeneration, CLOCK.now().toISOString());
       const stopped = healthy.authority.workerLeases.get(member.workerId); assert.ok(stopped);
       assert.equal(stopped.lifecycle.state, "stopped"); assert.equal(stopped.processId, oldLease.processId);
