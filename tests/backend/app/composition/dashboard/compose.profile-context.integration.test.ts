@@ -10,7 +10,7 @@ import * as streams from "../../../../../src/backend/transports/http/subscriptio
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { readRuntimeProcessLock } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import * as accounts from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
@@ -175,7 +175,8 @@ for (const failure of ["account", "database"] as const) it(`retains exact dashbo
     assert.throws(() => f.runtime.selectedContext(f.active.token), ProfileSessionRefusedError);
     assert.throws(() => context?.protectedSecrets.read(), ProfileSessionRefusedError);
     assert.equal(f.signIn().state, "refused");
-    assert.ok(readRuntimeProcessLock(join(f.workspace, rebuildRuntimeIsolation.processLockRoot), "server"));
+    f.lifetime.assertHeld();
+    await assert.rejects(RuntimeLifetimeLock.acquire(f.lifetime.port), RuntimeAlreadyRunningError);
   } finally {
     vi.restoreAllMocks();
     if (context !== undefined) { await context.account.close(); context.database.close(); context.admission.release(); }
@@ -209,13 +210,12 @@ for (const failure of ["http", "http-and-feed"] as const) it(`unwinds actual sta
     });
     assert.ok(closeFeed);
     assert.throws(() => f.runtime.selectedContext(f.active.token), ProfileSessionRefusedError);
-    const process = readRuntimeProcessLock(join(f.workspace, rebuildRuntimeIsolation.processLockRoot), "server"); assert.ok(process);
+    f.lifetime.assertHeld();
+    await assert.rejects(RuntimeLifetimeLock.acquire(f.lifetime.port), RuntimeAlreadyRunningError);
     if (failure === "http-and-feed") {
-      assert.equal(process.releasedAt, null);
       context.admission.assertLive(); f.machine.assertLive();
       assert.equal(context.database.getMeta().profileId, f.active.profileId);
     } else {
-      assert.equal(typeof process.releasedAt, "string");
       assert.throws(() => context.admission.assertLive());
       assert.throws(() => context.database.getMeta(), /closed/u);
     }
