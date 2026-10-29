@@ -278,7 +278,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         }
       }
       const surface = descriptor.surfaces.inputRun;
-      if (surface !== undefined && surface.typedInput === undefined) {
+      if (sourceInput.state === "unavailable" && surface !== undefined && surface.typedInput === undefined) {
         const accepted: Record<string, JsonValue> = {};
         const safeInput = valueFreeProtectedData(run.input.parsed.value, bindings);
         for (const field of new Set(surface.parser.rules.map(rule => rule.emit))) {
@@ -289,7 +289,6 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
             && rerunInputFieldAccepts(descriptor.canonicalInput, field, value)) accepted[field] = value;
         }
         if (Object.keys(accepted).length > 0) sourceInput = { state: "partial", value: accepted, identityCopied: true };
-        else if (sourceInput.state !== "unavailable") sourceInput = { state: "partial", value: {}, identityCopied: false };
       }
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
         sourceInput,

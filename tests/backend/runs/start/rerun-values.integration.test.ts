@@ -48,6 +48,17 @@ function checkpointsDeps(h: Harness, rows: readonly RunCheckpointRecord[]) {
 function firstCheckpoint(h: Harness, run: RunRecord) { const cp = h.database.authority.runCheckpoints.listByItem(h.descriptor.id, run.envelope.itemId)[0]; assert.ok(cp); return cp; }
 
 describe("source-bound Rerun value read", () => {
+  it("preserves available source input for an unprotected plain-input workflow", async () => {
+    const h = await launchHarness(); disposers.push(h.dispose);
+    assert.ok(h.descriptor.surfaces.inputRun);
+    assert.equal(h.descriptor.surfaces.inputRun.typedInput, undefined);
+    const source = await h.completeSource();
+    assert.deepEqual(source.input.parsed.protectedBindings, []);
+    const result = readRerunValues({ reader: h.lifecycle, database: h.database,
+      descriptors: { resolve: () => h.descriptor } }, request(source));
+    assert.ok(result.state === "available");
+    assert.deepEqual(result.snapshot.sourceInput, { state: "available", value: source.input.parsed.value });
+  });
   it.each(["safe-identity", "embedded-protected-value"] as const)("withholds protected input in the %s HTTP response", async kind => {
     const descriptor = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "separations"); assert.ok(descriptor);
     const name = kind === "safe-identity" ? "Fixture Hidden Operator" : "1234567";
