@@ -13,6 +13,7 @@ import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sql
 import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
+import { AuthorityCopyInspectionSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
@@ -83,25 +84,56 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
     const oldMember = current.members[0], oldLease = current.leases[0]; assert.ok(oldMember); assert.ok(oldLease);
     const member = workerPoolMember(oldMember);
     assert.equal(oldLease.processId, originalChild.pid); assert.equal(originalChild.signal, "SIGKILL");
-    const captureIndependentCustody = () => {
-      for (const suffix of ["-wal", "-shm", "-journal"]) assert.equal(existsSync(p.authorityPath + suffix), false);
-      const files = storageTree(p.repoRoot), authority = relative(p.repoRoot, p.authorityPath);
-      assert.ok(files[authority] !== undefined); delete files[authority];
+    const authority = relative(p.repoRoot, p.authorityPath);
+    const sqliteParticipants = new Set([authority, authority + "-wal", authority + "-shm"]);
+    const captureIndependentFiles = () => {
+      assert.equal(existsSync(p.authorityPath + "-journal"), false);
+      const files = storageTree(p.repoRoot);
+      assert.ok(files[authority] !== undefined);
+      const live = lstatSync(p.authorityPath);
+      for (const path of sqliteParticipants) {
+        if (files[path] === undefined) continue;
+        const stat = lstatSync(join(p.repoRoot, path));
+        assert.equal(stat.isFile(), true); assert.equal(stat.isSymbolicLink(), false);
+        assert.equal(stat.uid, live.uid); assert.equal(stat.nlink, 1); assert.equal(stat.mode & 0o022, 0);
+        delete files[path];
+      }
       const identities = Object.fromEntries(Object.keys(files).map(path => {
         const stat = lstatSync(join(p.repoRoot, path));
         return [path, { device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid, links: stat.nlink,
           size: stat.size, modifiedAt: stat.mtimeMs, changedAt: stat.ctimeMs }];
       }));
-      const entries = readdirSync(p.repoRoot, { recursive: true, encoding: "utf8" }).sort();
+      const entries = readdirSync(p.repoRoot, { recursive: true, encoding: "utf8" })
+        .filter(path => path === authority || !sqliteParticipants.has(path)).sort();
       const directories = Object.fromEntries(["", ...entries].filter(path => lstatSync(join(p.repoRoot, path)).isDirectory()).map(path => {
         const stat = lstatSync(join(p.repoRoot, path));
         return [path, { device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid }];
       }));
-      const live = lstatSync(p.authorityPath);
       return { files, identities, directories, entries,
         authorityIdentity: { device: live.dev, inode: live.ino, mode: live.mode, owner: live.uid, links: live.nlink } };
     };
-    const independentBefore = captureIndependentCustody();
+    const captureIndependentCustody = () => {
+      for (const suffix of ["-wal", "-shm", "-journal"]) assert.equal(existsSync(p.authorityPath + suffix), false);
+      return captureIndependentFiles();
+    };
+    const captureClosedIndependentCustody = () => {
+      const before = captureIndependentFiles();
+      const fingerprint = AuthorityCopyInspectionSchema.parse(
+        AuthorityDatabase.inspectExistingReadOnly(p.admission, p.authorityPath)).authorityContentFingerprint;
+      const boundary = AuthorityDatabase.open(p.admission, { path: p.authorityPath, busyTimeoutMs: 500,
+        migrationOwner: "restore-accounting-snapshot" }, CLOCK, undefined, undefined, undefined, p.credentials);
+      useDatabase(boundary, () => {
+        const opened = AuthorityCopyInspectionSchema.parse(
+          AuthorityDatabase.inspectExistingReadOnly(p.admission, p.authorityPath));
+        assert.equal(opened.authorityContentFingerprint, fingerprint);
+        assert.equal(boundary.getMeta().authorityGeneration, opened.authorityGeneration);
+        assert.deepEqual(captureIndependentFiles(), before);
+      });
+      const closed = captureIndependentCustody();
+      assert.deepEqual(closed, before);
+      return closed;
+    };
+    const independentBefore = captureClosedIndependentCustody();
     assert.equal(oldLease.workerId, member.workerId); assert.ok(current.workerLifetime);
     assert.deepEqual(current.workerLifetime, { membershipRevision: member.membershipRevision, leaseGeneration: oldLease.leaseGeneration });
     assert.equal(current.intent.status, "committed"); assert.ok(current.publication); assert.equal(current.checkpoints.length, 1);
@@ -145,7 +177,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
     });
     const renewed = await world.renewConfirmedInSuccessor(p, successorInput);
     assert.equal(world.successorPermitsIssued, permitsBefore + 1);
-    assert.deepEqual(captureIndependentCustody(), independentBefore);
+    assert.deepEqual(captureClosedIndependentCustody(), independentBefore);
     assert.equal(renewed.ownedExit.code, 0); assert.equal(renewed.ownedExit.signal, null);
     assert.equal(renewed.lease.processId, renewed.ownedExit.pid);
     assert.deepEqual(renewed.previousLifetime, { workerId: oldLease.workerId, processId: originalChild.pid,
