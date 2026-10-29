@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFileSync, renameSync, readdirSync, lstatSync, readFileSync, existsSync } from "node:fs";
+import { copyFileSync, renameSync, readdirSync, lstatSync, readFileSync, existsSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -15,6 +15,8 @@ import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/r
 import { observeRuntimeLockSnapshot, acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission, RestoreAdmissionFileSchema, type RestoreAdmissionHandle } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import { probeRestoreProfileBrowsersClosed, ProfileRestoreBrowserCustodyUnprovedError } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 
 function fileIdentity(path: string) {
   const stat = lstatSync(path);
@@ -135,5 +137,70 @@ for (const malformed of ["browser", "config", "control"] as const) it(`refuses m
   native.mockRestore(); inventory.mockRestore();
   try { await fixture.close(); }
   catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "restore-browser-custody-close-failed", { cause: error }); }
+  if (primary !== undefined) throw primary.error;
+});
+
+for (const changed of [false, true]) it(`probes every physical browser directory without readable SQLite and ${changed ? "refuses a changed census" : "proves an unchanged census"}`, async () => {
+  const fixture = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
+  const profileRoot = join(fixture.stateRoot, "browsers"), paths = [join(profileRoot, "w17", "ucpath"), join(profileRoot, "w23", "onbase")];
+  const nativeProbe = profileBrowserClosure.probeClosed;
+  const native = vi.spyOn(profileBrowserClosure, "probeClosed").mockImplementation(async (...args) => {
+    await nativeProbe(...args);
+    if (changed) mkdirSync(join(profileRoot, "w31", "ucpath"), { recursive: true, mode: 0o700 });
+  });
+  let restore: RestoreAdmissionHandle | undefined;
+  let primary: { error: unknown } | undefined;
+  try {
+    restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
+    for (const path of paths) mkdirSync(path, { recursive: true, mode: 0o700 });
+    const corrupted = readFileSync(fixture.path);
+    corrupted.fill(0x5a, 4096, Math.min(corrupted.length, 40_960)); writeFileSync(fixture.path, corrupted);
+    const before = fileIdentity(fixture.path), source = readFileSync(fixture.path);
+    const proof = probeRestoreProfileBrowsersClosed(fixture.admission, processLockRoot, restore, clock, profileBrowserClosure);
+    if (changed) await assert.rejects(proof, ProfileRestoreBrowserCustodyUnprovedError);
+    else await proof;
+    assert.equal(native.mock.calls.length, 1);
+    assert.deepEqual(native.mock.calls[0]?.[0], paths.map(profileDirectory => ({ profileRoot, profileDirectory, cleanupCompleted: false })));
+    assert.deepEqual(readFileSync(fixture.path), source); assert.deepEqual(fileIdentity(fixture.path), before);
+    assert.equal(existsSync(join(fixture.stateRoot, "backups", "suspects")), false);
+    fixture.lifetime.assertHeld();
+    const successor = fixture.machine.beginOfflineMaintenance(); successor.release();
+  } catch (error) { primary = { error }; }
+  native.mockRestore();
+  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;
+  try { restore?.release(); await fixture.close(); }
+  catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "physical-browser-census-close-failed", { cause: error }); }
+  if (primary !== undefined) throw primary.error;
+});
+
+for (const unsafe of ["unknown-directory", "noncanonical-root", "symlink", "unsupported-platform"] as const) it(`refuses ${unsafe} physical browser custody without native or source effects`, async () => {
+  const fixture = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot), profileRoot = join(fixture.stateRoot, "browsers");
+  const platform = Object.getOwnPropertyDescriptor(process, "platform"); assert.ok(platform);
+  const native = vi.spyOn(profileBrowserClosure, "probeClosed");
+  let restore: RestoreAdmissionHandle | undefined;
+  let primary: { error: unknown } | undefined;
+  try {
+    restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
+    mkdirSync(profileRoot, { recursive: true, mode: 0o700 });
+    if (unsafe === "unknown-directory") mkdirSync(join(profileRoot, "foreign"), { mode: 0o700 });
+    if (unsafe === "symlink") symlinkSync(fixture.stateRoot, join(profileRoot, "w17"));
+    if (unsafe === "noncanonical-root") mkdirSync(join(fixture.stateRoot, "custom-browser-root", "w17", "ucpath"), { recursive: true, mode: 0o700 });
+    const corrupted = readFileSync(fixture.path);
+    corrupted.fill(0x5a, 4096, Math.min(corrupted.length, 40_960)); writeFileSync(fixture.path, corrupted);
+    const before = storageTree(fixture.workspace), source = fileIdentity(fixture.path);
+    if (unsafe === "unsupported-platform") Object.defineProperty(process, "platform", { value: "linux" });
+    await assert.rejects(probeRestoreProfileBrowsersClosed(fixture.admission, processLockRoot, restore, clock, profileBrowserClosure),
+      error => unsafe === "symlink" && process.platform === "darwin"
+        ? error instanceof Error && error.message === "profile-process-closure-unproved"
+        : error instanceof ProfileRestoreBrowserCustodyUnprovedError && error.code === "PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED");
+    assert.equal(native.mock.calls.length, 0);
+    assert.deepEqual(storageTree(fixture.workspace), before); assert.deepEqual(fileIdentity(fixture.path), source);
+  } catch (error) { primary = { error }; }
+  Object.defineProperty(process, "platform", platform); native.mockRestore();
+  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;
+  try { restore?.release(); await fixture.close(); }
+  catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "unsafe-browser-census-close-failed", { cause: error }); }
   if (primary !== undefined) throw primary.error;
 });

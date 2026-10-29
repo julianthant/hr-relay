@@ -481,6 +481,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Sign in waits until the other profile is logged out.",
     EmptyParametersSchema,
   ),
+  PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED: catalogEntry(
+    "Browser closure for damaged profile storage could not be proved. This restore requires macOS and a complete unchanged browser-directory census. Existing storage is preserved.",
+    EmptyParametersSchema,
+  ),
   PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(
     "Log out cannot finish until restore admission accepts the machine erasure journal.",
     EmptyParametersSchema,

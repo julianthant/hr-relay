@@ -1,14 +1,17 @@
-import type { BrowserSystemId } from "../../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { CredentialLockRecordSchema, readPrivateFile } from "../configuration/credential-safe-file.js";
-import { lstatSync, readdirSync } from "node:fs";
+import { lstatSync, opendirSync, readdirSync, type Dirent } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { type RestoreAdmissionHandle, observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
+import { type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { ProfileBrowserRootRefusalError } from "../admission/admission-identity.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { Clock } from "../../../rules/time/clock.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { proveProfileRootsUnused } from "./process-closure.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
@@ -103,12 +106,108 @@ export async function probeStoppedProfileBrowsersClosed(admission: RuntimeAdmiss
 
 export async function probeRestoreProfileBrowsersClosed(admission: RuntimeAdmission, processLockRoot: string,
   restore: RestoreAdmissionHandle, clock: Clock, browserClosure: ProfileBrowserClosure): Promise<void> {
-  const custody = AuthorityDatabase.readProfileRestoreBrowserInventory(admission, processLockRoot, restore);
+  let custody: ReturnType<typeof AuthorityDatabase.readProfileRestoreBrowserInventory>;
+  try { custody = AuthorityDatabase.readProfileRestoreBrowserInventory(admission, processLockRoot, restore); }
+  catch (error) {
+    if (!unreadableRestoreSqlite(error)) throw error;
+    await probeUnreadableRestoreBrowsersClosed(admission, processLockRoot, restore, clock, browserClosure);
+    return;
+  }
   const settings = custody.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
     : custody.settingsAuthority.record.saved?.settings ?? custody.settingsAuthority.record.initialization.settings.settings;
   const config = resolveConfigWithProvenance(settings, { primaryDisplay: null }, clock,
     { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
   await probeRetainedBrowsersClosed({ admission, custody, config, browserClosure, clock, signal: new AbortController().signal });
+}
+
+export class ProfileRestoreBrowserCustodyUnprovedError extends Error {
+  readonly code = "PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED";
+  constructor() { super(ERROR_CATALOG.PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED.text); this.name = "ProfileRestoreBrowserCustodyUnprovedError"; }
+}
+
+function unreadableRestoreSqlite(error: unknown): boolean {
+  if (error instanceof AuthoritySourceClosureUnprovedError) return false;
+  if (error instanceof AggregateError) return error.errors.length > 0 && error.errors.every((failure: unknown) => unreadableRestoreSqlite(failure));
+  return error instanceof Error && "code" in error && error.code === "ERR_SQLITE_ERROR"
+    && "errcode" in error && typeof error.errcode === "number" && [11, 26].includes(error.errcode & 0xff);
+}
+
+function restoreBrowserCensus(admission: RuntimeAdmission) {
+  const profileRoot = join(admission.stateRoot, "browsers");
+  assertRetainedProfileBrowserRoot(admission, profileRoot);
+  const identities: Array<{ path: string; device: number; inode: number; mode: number; owner: number }> = [];
+  const profiles: RetainedBrowserProfile[] = [];
+  const inspect = (path: string) => {
+    const stat = lstatSync(path);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o022) !== 0
+      || process.getuid !== undefined && stat.uid !== process.getuid()) throw new ProfileRestoreBrowserCustodyUnprovedError();
+    identities.push({ path, device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid });
+  };
+  const children = (path: string) => {
+    inspect(path);
+    const directory = opendirSync(path), entries: Dirent[] = [];
+    let primary: { error: unknown } | undefined;
+    try {
+      for (let entry = directory.readSync(); entry !== null; entry = directory.readSync()) {
+        if (entry.isSymbolicLink() || entries.length >= 64) throw new ProfileRestoreBrowserCustodyUnprovedError();
+        entries.push(entry);
+      }
+    } catch (error) { primary = { error }; }
+    try { directory.closeSync(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { directory, admission }); }
+    if (primary !== undefined) throw primary.error;
+    return entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  };
+  const addProfile = (path: string) => {
+    if (profiles.length >= 64) throw new ProfileRestoreBrowserCustodyUnprovedError();
+    inspect(path);
+    profiles.push({ profileRoot, profileDirectory: path, cleanupCompleted: false });
+  };
+  for (const entry of children(admission.stateRoot)) {
+    if (entry.isFile() && ["state.db", "state.db-wal", "state.db-shm", "state.db-journal"].includes(entry.name)) continue;
+    if (!entry.isDirectory() || !["browsers", "credentials", "backups", "artifacts", "logs"].includes(entry.name)) throw new ProfileRestoreBrowserCustodyUnprovedError();
+  }
+  if (lstatSync(profileRoot, { throwIfNoEntry: false }) !== undefined) for (const entry of children(profileRoot)) {
+    if (!entry.isDirectory()) throw new ProfileRestoreBrowserCustodyUnprovedError();
+    const name = entry.name, path = join(profileRoot, name);
+    if (/^w[1-9]\d*$/u.test(name)) {
+      for (const system of children(path)) {
+        if (!system.isDirectory() || !BrowserSystemIdSchema.safeParse(system.name).success) throw new ProfileRestoreBrowserCustodyUnprovedError();
+        addProfile(join(path, system.name));
+      }
+    } else if (/^onboarding-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-){3}g[1-9]\d*$/u.test(name)) addProfile(path);
+    else throw new ProfileRestoreBrowserCustodyUnprovedError();
+  }
+  return { identities, profiles };
+}
+
+async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission, processLockRoot: string,
+  restore: RestoreAdmissionHandle, clock: Clock, browserClosure: ProfileBrowserClosure): Promise<void> {
+  if (process.platform !== "darwin") throw new ProfileRestoreBrowserCustodyUnprovedError();
+  const operation = admission.beginOfflineMaintenance();
+  let primary: { error: unknown } | undefined;
+  const assertHeld = () => {
+    admission.assertExclusive(); admission.assertProfileRuntime(); admission.assertOfflineMaintenance(operation);
+    const context = admission.readInstallationContext();
+    if (context === undefined) throw new ProfileRestoreBrowserCustodyUnprovedError();
+    admission.assertFixedProcessLockRoot(context.workspace, processLockRoot);
+    assertRuntimeRestoreAdmission(restore, processLockRoot);
+  };
+  try {
+    assertHeld();
+    proveProfileRootsUnused([admission.stateRoot]);
+    const census = restoreBrowserCensus(admission);
+    await browserClosure.probeClosed(census.profiles, { launchTimeoutMs: 5_000, closeProofMs: 3_000 }, clock, new AbortController().signal);
+    assertHeld();
+    proveProfileRootsUnused([admission.stateRoot]);
+    if (JSON.stringify(restoreBrowserCensus(admission)) !== JSON.stringify(census)) throw new ProfileRestoreBrowserCustodyUnprovedError();
+  } catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: { admission, operation }, restore });
+    primary = { error };
+  }
+  try { operation.release(); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { admission: { admission, operation }, restore }); }
+  if (primary !== undefined) throw primary.error;
 }
 
 export function assertRetainedProfileBrowserRoot(admissionInput: RuntimeAdmission, path: string): void {
