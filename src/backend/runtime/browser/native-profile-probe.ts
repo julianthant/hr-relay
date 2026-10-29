@@ -1,3 +1,4 @@
+import type { ProfileBrowserClosure, RetainedBrowserProfile } from "../../storage/maintenance/profile-inventory.js";
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { lstatSync } from "node:fs";
@@ -270,3 +271,27 @@ export function assertNativeBrowserProfilesClosed(
   if (reply.state === "busy") throw new BrowserProfileStillClosingError(new Error("native-profile-child-busy"));
   if (reply.state !== "closed" || reply.closedDirectories.length !== directories.length) throw unproved();
 }
+
+function nativeProbeProfiles(profiles: readonly RetainedBrowserProfile[]) {
+  return profiles.filter(profile => {
+    assertPrivateProfilePath(profile.profileRoot, profile.profileDirectory);
+    if (lstatSync(profile.profileDirectory, { throwIfNoEntry: false }) !== undefined) return true;
+    if (!profile.cleanupCompleted) throw new NativeBrowserClosureUnprovedError([new Error("retained-browser-profile-missing-without-owned-cleanup")]);
+    return false;
+  }).map(({ profileRoot, profileDirectory }) => ({ profileRoot, profileDirectory }));
+}
+
+export const profileBrowserClosure: ProfileBrowserClosure = {
+  workerDirectory: workerProfileDirectory,
+  assertClosed(profiles, timing) {
+    assertNativeBrowserProfilesClosed(nativeProbeProfiles(profiles), timing);
+  },
+  async probeClosed(profiles, timing, clock, signal) {
+    for (const profile of nativeProbeProfiles(profiles)) {
+      await probeClosedBrowserProfile({ profileRoot: profile.profileRoot,
+        launch: { profileDirectory: profile.profileDirectory, extensionDirectory: "", downloadsPath: profile.profileDirectory,
+          viewport: { width: 800, height: 600 }, timeoutMs: timing.launchTimeoutMs },
+        clock, scheduler: createTimeoutDeadlineScheduler(clock), closeProofMs: timing.closeProofMs, signal });
+    }
+  },
+};

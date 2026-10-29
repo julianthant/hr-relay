@@ -1,4 +1,4 @@
-import { assertStoppedProfileBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
+import { assertStoppedProfileBrowsersClosed, type ProfileBrowserClosure } from "../../storage/maintenance/profile-inventory.js";
 
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -66,6 +66,7 @@ function withoutProcessRepairFields(event: z.infer<typeof SpanEventWireSchema>):
 }
 
 export class OfflineSpanRootRepairService {
+  readonly #browserClosure: ProfileBrowserClosure;
   readonly #runtimeAdmission: RuntimeAdmission;
   readonly #authorityPath: string;
   readonly #processLockRoot: string;
@@ -76,12 +77,14 @@ export class OfflineSpanRootRepairService {
   readonly #pid: number;
 
   constructor(
+    browserClosure: ProfileBrowserClosure,
     runtimeAdmission: RuntimeAdmission,
     input: unknown,
     clock: Clock = systemClock,
     admissionFactory: AdmissionFactory = acquireRuntimeRestoreAdmission,
     pid: number = process.pid,
   ) {
+    this.#browserClosure = browserClosure;
     this.#runtimeAdmission = requireRuntimeAdmission(runtimeAdmission);
     this.#runtimeAdmission.assertExclusive();
     const options = OfflineSpanRootRepairOptionsSchema.parse(input);
@@ -110,7 +113,7 @@ export class OfflineSpanRootRepairService {
         sourceDatabaseIdentity,
       }, this.#clock);
       this.#proofs.consumeAgainstLiveSnapshot(request.stoppedSystemProof, liveSnapshot);
-      assertStoppedProfileBrowsersClosed(this.#runtimeAdmission,this.#clock);
+      assertStoppedProfileBrowsersClosed(this.#runtimeAdmission,this.#clock,this.#browserClosure);
 
       const before = AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(
         this.#runtimeAdmission,

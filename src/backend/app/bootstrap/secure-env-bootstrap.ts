@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { fileURLToPath } from "node:url";
@@ -85,7 +86,7 @@ async function runAdmittedEnvironmentBootstrap(
   };
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "cancel-queued-runs") {
     const { runOfflineQueuedRunCancellation } = await import("../../storage/maintenance/cancel-queued-runs.js");
-    const { report, json } = await runOfflineQueuedRunCancellation(workspace, entrypointArgs.slice(2), rootLifetime());
+    const { report, json } = await runOfflineQueuedRunCancellation(profileBrowserClosure, workspace, entrypointArgs.slice(2), rootLifetime());
     process.stdout.write(json ? `${JSON.stringify(report)}\n` : `storage queued runs: ${report.state}; ${String(report.runIds.length)} runs\n`);
     return;
   }
@@ -166,7 +167,7 @@ async function runAdmittedEnvironmentBootstrap(
     ? "exclusive" : "shared";
   const admission = await (dependencies.acquireAdmission ?? ((requested) => entrypoint === "cli" && entrypointArgs[0] === "worker"
     ? RuntimeAdmission.acquireWorker(workspace, workerLifetime()) : bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace, rootLifetime())
-    : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(workspace, requested, rootLifetime())
+    : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(profileBrowserClosure, workspace, requested, rootLifetime())
     : storageCommand === "backup" ? acquireStorageBackupEntrypointAdmission(workspace, rootLifetime())
     : acquireEntrypointAdmission(workspace, requested, rootLifetime())))(mode, lifetime.lock);
   let shutdown: "release" | "retain" = "release";

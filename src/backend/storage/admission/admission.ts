@@ -1,3 +1,4 @@
+import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { captureIncompleteProfileDraft, CredentialErasureHeadSchema, erasureRequestIdentity } from "../configuration/credential-store.js";
@@ -262,9 +263,9 @@ export class RuntimeAdmission {
     } });
   }
   forStoppedProfileUpgrade(): RuntimeAdmission;
-  forStoppedProfileUpgrade(claim: RegisteredProfileStorageClaim, restore: RestoreAdmissionHandle, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission>;
-  forStoppedProfileUpgrade(claim?: RegisteredProfileStorageClaim, restore?: RestoreAdmissionHandle, clock?: Clock, hostFacts?: HostConfigFacts): RuntimeAdmission | Promise<RuntimeAdmission> {
-    if (claim !== undefined || restore !== undefined) return this.#readyStoppedProfileUpgrade(claim, restore, clock, hostFacts);
+  forStoppedProfileUpgrade(browserClosure: ProfileBrowserClosure, claim: RegisteredProfileStorageClaim, restore: RestoreAdmissionHandle, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission>;
+  forStoppedProfileUpgrade(...args: [] | [ProfileBrowserClosure, RegisteredProfileStorageClaim, RestoreAdmissionHandle, Clock, HostConfigFacts]): RuntimeAdmission | Promise<RuntimeAdmission> {
+    if (args.length !== 0) return this.#readyStoppedProfileUpgrade(...args);
     this.assertExclusive();
     this.assertProfileInitialization();
     const database = join(this.#stateRoot, "state.db");
@@ -272,7 +273,7 @@ export class RuntimeAdmission {
     return new RuntimeAdmission(issuanceToken, { assertHeld: () => this.assertLive(), release() {} }, this.#stateRoot, this.#artifactRoot,
       [database], "profile-upgrade", this.#mode, this.#locator, this.profileBinding);
   }
-  async #readyStoppedProfileUpgrade(claim: RegisteredProfileStorageClaim | undefined, restore: RestoreAdmissionHandle | undefined,
+  async #readyStoppedProfileUpgrade(browserClosure: ProfileBrowserClosure, claim: RegisteredProfileStorageClaim | undefined, restore: RestoreAdmissionHandle | undefined,
     clock: Clock | undefined, hostFacts: HostConfigFacts | undefined): Promise<RuntimeAdmission> {
     const lease = this.#exclusiveInstallationLease();
     if (claim === undefined || restore === undefined || clock === undefined || hostFacts === undefined || claim.phase !== "runtime") throw new Error("profile-stopped-upgrade-runtime-claim-required");
@@ -322,7 +323,7 @@ export class RuntimeAdmission {
       const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
       const { readStoppedProfileUpgradeInventory } = await import("../maintenance/profile-inventory.js");
       assertUnpublishedSource();
-      readStoppedProfileUpgradeInventory({ machine: this, admission, clock, hostFacts });
+      readStoppedProfileUpgradeInventory({ machine: this, admission, clock, hostFacts, browserClosure });
       const after = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
       if (before.schemaVersion !== observed.schemaVersion || before.authorityGeneration !== after.authorityGeneration
         || before.authorityContentFingerprint !== after.authorityContentFingerprint) throw new Error("profile-stopped-upgrade-source-changed");
@@ -1425,14 +1426,14 @@ export class RuntimeAdmission {
     return new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => this.readInstallationContext() },
       root, join(root, "artifacts"), [join(root, "state.db")], "stopped-incomplete-profile-inventory", "exclusive", this.#locator, binding, this);
   }
-  async startCleanFlatStore(): Promise<void> {
+  async startCleanFlatStore(browserClosure: ProfileBrowserClosure): Promise<void> {
     const { lease, restore } = this.#stoppedDuoRecovery();
     try {
       if (!lease.flatStoreMigrationPending()) {
         lease.eraseFlatStoreCredentials(restore);
         const backup = await this.forStoppedFlatBackup();
         const { backupFlatStorage } = await import("../maintenance/existing-data-backup.js");
-        await backupFlatStorage(backup, systemClock);
+        await backupFlatStorage(browserClosure, backup, systemClock);
       }
       lease.startCleanFlatStore(restore);
     } catch (error) {

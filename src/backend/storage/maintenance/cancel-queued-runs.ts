@@ -1,3 +1,4 @@
+import type { ProfileBrowserClosure } from "./profile-inventory.js";
 import { RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import { authoritySourceDatabaseIdentity } from "../sqlite/database-identity.js";
 import { createHash } from "node:crypto";
@@ -63,7 +64,7 @@ async function capture(workspace: string, clock: Clock) {
   return { installation, inventory, captureDigest: processCustodyDigest(body) };
 }
 
-export async function runOfflineQueuedRunCancellation(workspacePath: string, args: readonly string[], lifetime: RuntimeLifetimeLock, clock: Clock = systemClock) {
+export async function runOfflineQueuedRunCancellation(browserClosure: ProfileBrowserClosure, workspacePath: string, args: readonly string[], lifetime: RuntimeLifetimeLock, clock: Clock = systemClock) {
   if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
   lifetime.assertHeld();
   const command = parseQueuedRunCancellation(args), workspace = realpathSync(workspacePath);
@@ -85,7 +86,7 @@ export async function runOfflineQueuedRunCancellation(workspacePath: string, arg
     lease = acquireInstallation(workspace, "exclusive", lifetime);
     proveProfileRootsUnused([...planned.installation.roots.slice(0, 2).map(root => root.path), join(workspace, "data")]);
     if ((await capture(workspace, clock)).captureDigest !== planned.captureDigest) throw new Error("queued-run-cancellation-capture-changed");
-    await AuthorityDatabase.cancelQueuedRunsNative6(lease, restore, planned.inventory.digest, clock);
+    await AuthorityDatabase.cancelQueuedRunsNative6(browserClosure, lease, restore, planned.inventory.digest, clock);
   } catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: lease, restore });
     try { release(); } catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: lease, restore }); }

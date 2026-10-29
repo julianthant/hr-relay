@@ -1,3 +1,4 @@
+import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { authoritySourceDatabaseIdentity } from "./database-identity.js";
 import { RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import { CanonicalCrashRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema } from "./run-store-contracts.js";
@@ -1941,7 +1942,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   // This finite native6 command cannot grant ordinary profile runtime authority.
-  static async cancelQueuedRunsNative6(lease: InstallationLease, restore: RestoreAdmissionHandle, expectedDigest: string, clock: Clock) {
+  static async cancelQueuedRunsNative6(browserClosure: ProfileBrowserClosure, lease: InstallationLease, restore: RestoreAdmissionHandle, expectedDigest: string, clock: Clock) {
     const { assertInstallationLease: assertLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
     const assertInstallationLease: typeof import("../admission/installation.js").assertInstallationLease = assertLease;
     const { assertCredentialCopyResourcesClosed, probeFlatBrowserInventoryClosed } = await import("../maintenance/profile-inventory.js");
@@ -1965,7 +1966,7 @@ export class AuthorityDatabase implements Disposable {
     try {
       const initial=flatQueuedRunCancellationInventory(database,assertCredentialCopyResourcesClosed);
       if(initial.digest!==expectedDigest)throw new Error("queued-run-cancellation-capture-changed");
-      await probeFlatBrowserInventoryClosed(stateRoot,maintenanceInventory(database,inspectNativeAuthority(database,6)),clock);
+      await probeFlatBrowserInventoryClosed(stateRoot,maintenanceInventory(database,inspectNativeAuthority(database,6)),clock,browserClosure);
       assertHeld();
       database.exec("BEGIN IMMEDIATE");
       try {

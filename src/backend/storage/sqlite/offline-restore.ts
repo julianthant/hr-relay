@@ -1,4 +1,4 @@
-import { probeStoppedProfileBrowsersClosed } from "../maintenance/profile-inventory.js";
+import { probeStoppedProfileBrowsersClosed, type ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { assertProfileRestoreDatabaseBinding } from "./profile-local-databases.js";
 import { captureCredentialErasureHead } from "../configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
@@ -215,6 +215,7 @@ function cleanupStagedPaths(
 }
 
 export class OfflineAuthorityRestoreService {
+  readonly #browserClosure: ProfileBrowserClosure;
   readonly #runtimeAdmission: RuntimeAdmission;
   #authorityPath: string;
   #suspectDirectory: string;
@@ -228,6 +229,7 @@ export class OfflineAuthorityRestoreService {
   readonly #credentialStore: CredentialStore;
 
   constructor(
+    browserClosure: ProfileBrowserClosure,
     runtimeAdmissionInput: RuntimeAdmission,
     input: unknown,
     projectionRebuild: (stagedAuthorityPath: string, restoreAdmission: RestoreAdmissionHandle) => Promise<void>,
@@ -236,6 +238,7 @@ export class OfflineAuthorityRestoreService {
     admissionFactory: OfflineRestoreAdmissionFactory = acquireRuntimeRestoreAdmission,
     credentialStore?: CredentialStore,
   ) {
+    this.#browserClosure = browserClosure;
     const options = OfflineRestoreOptionsSchema.parse(input);
     this.#runtimeAdmission = requireRuntimeAdmission(runtimeAdmissionInput);
     this.#runtimeAdmission.assertExclusive();
@@ -291,7 +294,7 @@ export class OfflineAuthorityRestoreService {
           liveSnapshot,
         );
 
-        await probeStoppedProfileBrowsersClosed(this.#runtimeAdmission,this.#clock);
+        await probeStoppedProfileBrowsersClosed(this.#runtimeAdmission,this.#clock,this.#browserClosure);
         mkdirSync(this.#suspectDirectory, { recursive: true, mode: 0o700 });
         const token = randomUUID();
         const compactTime = this.#clock.now().toISOString().replaceAll(/[^0-9]/g, "");

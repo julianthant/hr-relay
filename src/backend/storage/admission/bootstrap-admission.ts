@@ -1,3 +1,4 @@
+import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { RuntimeLifetimeLock } from "./lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { existsSync, realpathSync } from "node:fs";
@@ -11,7 +12,7 @@ export function acquireEntrypointAdmission(workspace: string, mode: "shared" | "
   return RuntimeAdmission.acquireMachine(workspace, mode, lifetime);
 }
 
-export async function acquireDashboardEntrypointAdmission(workspace: string, mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock): Promise<RuntimeAdmission> {
+export async function acquireDashboardEntrypointAdmission(browserClosure: ProfileBrowserClosure, workspace: string, mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock): Promise<RuntimeAdmission> {
   const admission = acquireDashboard(workspace, mode, lifetime);
   try {
     if (!admission.requiresFlatStoreMigration()) return admission;
@@ -23,7 +24,7 @@ export async function acquireDashboardEntrypointAdmission(workspace: string, mod
   }
   admission.release();
   const stopped = RuntimeAdmission.acquireStoppedMachineControlMaintenance(workspace, lifetime);
-  try { await stopped.startCleanFlatStore(); }
+  try { await stopped.startCleanFlatStore(browserClosure); }
   catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: stopped });
     try { stopped.release(); }

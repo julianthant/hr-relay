@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { probeStoppedProfileBrowsersClosed } from "../../../storage/maintenance/profile-inventory.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -303,7 +304,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
       }
       finally { source.close(); }
       if (view.pending?.commandId !== input.command.id) throw new Error("storage-relocation: requested plan is not current pending intent");
-      await probeStoppedProfileBrowsersClosed(activeAdmission,clock);
+      await probeStoppedProfileBrowsersClosed(activeAdmission,clock,profileBrowserClosure);
       operation = activeAdmission.beginRelocation(view.pending.desiredPair, bindingFromPlan(view), restore);
     }
     operationId = operation.operationId;
@@ -319,7 +320,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
       if (inventory.phase === "preparing") {
         const inspected = inspectAuthorityBackupReadOnly(admission, sourcePath);
         if (inspected.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("storage-relocation: unsupported source schema");
-        const report = await backupStoppedAuthority(admission, inventory.source.stateRoot, clock,processLockRoot,restore);
+        const report = await backupStoppedAuthority(profileBrowserClosure, admission, inventory.source.stateRoot, clock,processLockRoot,restore);
         const manifest = report.manifests.at(-1);
         if (manifest === undefined) throw new Error("storage-relocation: preparation backup missing manifest");
         inspectRelocationFiles({ admission, source: inventory.source, destination: inventory.destination,
@@ -350,7 +351,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
       await verifyPreparation(admission, prepared);
       operation.prepareDestinationRoots();
       const nativeSource = inspectAuthorityBackupReadOnly(admission, sourcePath, CURRENT_AUTHORITY_SCHEMA_VERSION);
-      const stageBackup = await backupStoppedAuthority(admission, inventory.source.stateRoot, clock,processLockRoot,restore);
+      const stageBackup = await backupStoppedAuthority(profileBrowserClosure, admission, inventory.source.stateRoot, clock,processLockRoot,restore);
       const stageManifest = stageBackup.manifests.at(-1);
       if (stageManifest === undefined || stageManifest.authorityGeneration !== nativeSource.authorityGeneration
         || stageManifest.authorityContentFingerprint !== nativeSource.authorityContentFingerprint) {
@@ -414,7 +415,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         applyActivationIntent(destination, intent, intent.stageAuthority.backupPath,
           input.faults?.beforeActivationTransaction);
         input.faults?.afterActivationWrite?.();
-        const finalBackup = await backupStoppedAuthority(destination, pending.destination.stateRoot, clock,processLockRoot,restore);
+        const finalBackup = await backupStoppedAuthority(profileBrowserClosure, destination, pending.destination.stateRoot, clock,processLockRoot,restore);
         const finalManifest = finalBackup.manifests.at(-1);
         if (finalManifest === undefined) throw new Error("storage-relocation: final backup missing");
         const finalManifestPath = join(pending.destination.stateRoot, "backups", "authority",

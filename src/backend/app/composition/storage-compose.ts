@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { assertProfileBrowserRoot, composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeProfilePendingLogoutInventory, composeProfileCredentialInventory } from "./profile-credential-inventory.js";
@@ -791,6 +792,7 @@ async function restoreCommand(
       sourceDatabaseIdentity,
     });
     const service = new OfflineAuthorityRestoreService(
+      profileBrowserClosure,
       admission,
       {
         authorityPath,
@@ -865,7 +867,7 @@ async function repairSpanRootCommand(
       observedBy: LOCAL_OPERATOR_ACTOR_ID,
       sourceDatabaseIdentity,
     });
-    const service = new OfflineSpanRootRepairService(admission, {
+    const service = new OfflineSpanRootRepairService(profileBrowserClosure, admission, {
       stateRoot,
       authorityPath,
       processLockRoot,
@@ -934,8 +936,8 @@ async function backupCommand(
     } else {
       const { backupStoppedAuthority } = await import("../../storage/maintenance/upgrade.js");
       const report = storage.isFlatBackup()
-        ? await (await import("../../storage/maintenance/existing-data-backup.js")).backupFlatStorage(storage, clock)
-        : await backupStoppedAuthority(storage, stateRoot, clock, join(repoRoot, isolation.processLockRoot));
+        ? await (await import("../../storage/maintenance/existing-data-backup.js")).backupFlatStorage(profileBrowserClosure, storage, clock)
+        : await backupStoppedAuthority(profileBrowserClosure, storage, stateRoot, clock, join(repoRoot, isolation.processLockRoot));
       selected?.assertCurrent();
       const manifest = report.manifests.at(-1);
       if (manifest === undefined) throw new Error("verified backup run reported no manifest");
@@ -1007,7 +1009,7 @@ export async function composeStorageCommand(
         return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: machine-control ${report.state} (${String(report.profileCount)} profiles)\nruntime access: ${report.runtimeAccess}`, exitCode: 0 };
       }
       const { upgradeStorage } = await import("../../storage/maintenance/upgrade.js");
-      const report = await upgradeStorage(admission,{ stateRoot: admission.stateRoot,
+      const report = await upgradeStorage(profileBrowserClosure, admission,{ stateRoot: admission.stateRoot,
         processLockRoot: join(repoRoot, isolation.processLockRoot), plan: rest.includes("--plan") }, clock);
       return { output: rest.includes("--json") ? JSON.stringify(report, null, 2) : [
         `storage upgrade: ${report.state} (v${String(report.fromSchemaVersion)} → v${String(report.toSchemaVersion)})`,

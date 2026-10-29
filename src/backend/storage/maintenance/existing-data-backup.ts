@@ -1,3 +1,4 @@
+import type { ProfileBrowserClosure } from "./profile-inventory.js";
 import { SourceRecordSchema, StorageBackupSchema, hash, file, inventory, verifyCopies, retainedStorageBackup, existingDataFileLabel } from "./existing-data-backup-files.js";
 import { decodeStoredArtifact } from "../artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
@@ -11,7 +12,7 @@ import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 
-async function inspectCoupledBackupSource(admission: RuntimeAdmission, flat: boolean, clock: Clock) {
+async function inspectCoupledBackupSource(browserClosure: ProfileBrowserClosure, admission: RuntimeAdmission, flat: boolean, clock: Clock) {
   const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
   const { assertCredentialCopyResourcesClosed, enumerateProfileCredentialMembership } = await import("./profile-inventory.js");
   const { verifyStoppedBackupManifestAtPath } = await import("../sqlite/backup-service.js");
@@ -24,7 +25,7 @@ async function inspectCoupledBackupSource(admission: RuntimeAdmission, flat: boo
   {
     const settings = sourceFacts.settingsAuthority.state === "initialized"
       ? sourceFacts.settingsAuthority.record.saved?.settings ?? sourceFacts.settingsAuthority.record.initialization.settings.settings : undefined;
-    const membership = enumerateProfileCredentialMembership(admission, sourceFacts, settings?.paths?.browserProfileRoot ?? join(admission.stateRoot, "browsers"));
+    const membership = enumerateProfileCredentialMembership(admission, sourceFacts, settings?.paths?.browserProfileRoot ?? join(admission.stateRoot, "browsers"), browserClosure);
     const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path, AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db"))));
     if (backups.length !== membership.backupPaths.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("existing-data-backup-source-membership-unproved");
     assertCoupledArtifacts(admission.artifactRoot, sourceFacts.artifactReferences);
@@ -37,7 +38,7 @@ async function inspectCoupledBackupSource(admission: RuntimeAdmission, flat: boo
   return { current, processLockRoot };
 }
 
-async function writeCoupledBackup(machine: RuntimeAdmission, admission: RuntimeAdmission, root: string, flat: boolean, clock: Clock) {
+async function writeCoupledBackup(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission, admission: RuntimeAdmission, root: string, flat: boolean, clock: Clock) {
   const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
   const { backupStoppedAuthority } = await import("./upgrade.js");
   const { verifyStoppedBackupManifestAtPath } = await import("../sqlite/backup-service.js");
@@ -45,7 +46,7 @@ async function writeCoupledBackup(machine: RuntimeAdmission, admission: RuntimeA
   const { assertCredentialCopyResourcesClosed } = await import("./profile-inventory.js");
   const context = admission.readInstallationContext();
   if (context === undefined) throw new Error("existing-data-backup-installation-required");
-  const { current, processLockRoot } = await inspectCoupledBackupSource(admission, flat, clock);
+  const { current, processLockRoot } = await inspectCoupledBackupSource(browserClosure, admission, flat, clock);
   const authorityDirectory = join(admission.stateRoot, "backups", "authority"), controlRoot = join(context.workspace, ".tracker", "control");
   const sourcePath = join(root, "source.json");
   if (lstatSync(sourcePath, { throwIfNoEntry: false }) !== undefined) {
@@ -77,7 +78,7 @@ async function writeCoupledBackup(machine: RuntimeAdmission, admission: RuntimeA
     }
   }
   if (authorityManifest === undefined) {
-    const backed = await backupStoppedAuthority(admission, admission.stateRoot, clock, processLockRoot, admission.maintenanceRestore() ?? machine.maintenanceRestore());
+    const backed = await backupStoppedAuthority(browserClosure, admission, admission.stateRoot, clock, processLockRoot, admission.maintenanceRestore() ?? machine.maintenanceRestore());
     if (backed.manifests.length !== 1 || backed.manifests[0] === undefined) throw new Error("existing-data-backup-single-authority-required");
     authorityManifest = join(authorityDirectory, `${backed.manifests[0].backupFileName}.manifest.json`);
   }
@@ -117,9 +118,9 @@ async function writeCoupledBackup(machine: RuntimeAdmission, admission: RuntimeA
     sourceDigest: hash(sourceRecord), source, census, databases, storageBackup, verifySource };
 }
 
-export async function backupFlatStorage(admission: RuntimeAdmission, clock: Clock) {
+export async function backupFlatStorage(browserClosure: ProfileBrowserClosure, admission: RuntimeAdmission, clock: Clock) {
   if (!admission.isFlatBackup()) throw new Error("flat-backup-authority-required");
-  await inspectCoupledBackupSource(admission, true, clock);
+  await inspectCoupledBackupSource(browserClosure, admission, true, clock);
   const context = admission.readInstallationContext();
   if (context === undefined) throw new Error("existing-data-backup-installation-required");
   const root = join(context.workspace, ".tracker", "control", "storage-backups", admission.locator.installationId);
@@ -128,7 +129,7 @@ export async function backupFlatStorage(admission: RuntimeAdmission, clock: Cloc
   if (readdirSync(dirname(root)).some(name => name !== admission.locator.installationId)
     || readdirSync(root).some(name => !["source.json", "files", "backup.json"].includes(name))) throw new Error("storage-backup-membership-refused");
   if (lstatSync(join(root, "backup.json"), { throwIfNoEntry: false }) !== undefined) retainedStorageBackup(context.workspace, admission.locator.installationId);
-  const coupled = await writeCoupledBackup(admission, admission, root, true, clock);
+  const coupled = await writeCoupledBackup(browserClosure, admission, admission, root, true, clock);
   const record = StorageBackupSchema.parse({ schemaVersion: 1, installationId: admission.locator.installationId,
     sourceStateRoot: admission.stateRoot, authorityManifest: coupled.authorityManifest, authorityDigest: coupled.authorityDigest,
     sourceDigest: coupled.sourceDigest, files: coupled.files });

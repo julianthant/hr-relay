@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, credentialCopyProcessCustody, assertCredentialCopyResourcesClosed, assertRetainedBrowsersClosed, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
@@ -239,7 +240,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
         : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
       const savedBrowserRoot = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
         { stateRoot: profileRoot, artifactRoot: admission.artifactRoot }).config.paths.browserProfileRoot;
-      const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, writer);
+      const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, profileBrowserClosure, writer);
       const backups = membership.manifests.map(manifest => verifyStoppedBackupManifestAtPath(admission, manifest,
         AuthorityDatabase.sourceDatabaseIdentity(join(profileRoot, "state.db"))));
       if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("credential-maintenance-backup-membership-unproved");
@@ -258,7 +259,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       : probeFacts.settingsAuthority.record.saved?.settings ?? probeFacts.settingsAuthority.record.initialization.settings.settings;
     const probeConfig = resolveConfigWithProvenance(probeSettings,input.hostFacts,input.clock,
       {stateRoot:admission.stateRoot,artifactRoot:admission.artifactRoot}).config;
-    assertRetainedBrowsersClosed(admission,probeFacts,probeConfig);
+    assertRetainedBrowsersClosed(admission,probeFacts,probeConfig,profileBrowserClosure);
     const before = enumerate();
     const root = admission.stateRoot, profileId = admission.profileBinding.profileId;
     const duoRoot = owner.kind === "ordinary" ? input.machine.stateRoot : requireStoppedControlProfileInventory(owner.claim).machineRoot;
@@ -295,7 +296,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
         : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
       const savedBrowserRoot = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
         { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.paths.browserProfileRoot;
-      const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, writer);
+      const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, profileBrowserClosure, writer);
       const assessment = assessCredentialInventory({ profileRoot: root, entriesAbsent, inspectEncrypted: path => copies.inspectEncrypted(path),
         backupPaths: [], loginDataPaths: membership.loginDataPaths, capturedSecrets: copies.capturedSecrets, capturedSecretsComplete: copies.capturedSecretsComplete });
       if (enumerate() !== before) throw new Error("credential-maintenance-inventory-changed");
@@ -379,7 +380,7 @@ export function composeProfileCredentialInventory(input: Readonly<{ machine: Run
     const saved = readSettings(input.database.authority);
     const savedBrowserRoot = resolveConfigWithProvenance(saved.settings, input.hostFacts, input.clock,
       { stateRoot: root, artifactRoot: input.admission.artifactRoot }).config.paths.browserProfileRoot;
-    return enumerateProfileCredentialMembership(input.admission, custody, savedBrowserRoot);
+    return enumerateProfileCredentialMembership(input.admission, custody, savedBrowserRoot, profileBrowserClosure);
   });
   let prepared: { membership: ReturnType<typeof enumerate>; backups: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[];
     stopped?: ReturnType<typeof credentialCopyProcessCustody> } | undefined;
@@ -394,7 +395,7 @@ export function composeProfileCredentialInventory(input: Readonly<{ machine: Run
           {stateRoot:root,artifactRoot:input.admission.artifactRoot}).config;
         return {custody,config};
       });
-      await probeRetainedBrowsersClosed({admission:input.admission,...probe,clock:input.clock,signal:new AbortController().signal});
+      await probeRetainedBrowsersClosed({browserClosure:profileBrowserClosure,admission:input.admission,...probe,clock:input.clock,signal:new AbortController().signal});
       const before = enumerate();
       const backups: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[] = [];
       for (const path of before.manifests) {

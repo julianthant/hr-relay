@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { reconcileStartupCrash, reconcileExitedWorker } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
@@ -1056,7 +1057,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       exclusiveOwner = exclusive;
       try {
         const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
-        const report = await upgradeReadyProfileStorage(exclusive, claim, { plan: false, hostFacts: facts }, clock);
+        const report = await upgradeReadyProfileStorage(profileBrowserClosure, exclusive, claim, { plan: false, hostFacts: facts }, clock);
         if (report.state !== "upgraded" || report.fromSchemaVersion !== 8 || report.toSchemaVersion !== 9) throw new Error("profile-upgrade-readback-unproved");
       } catch (error) {
         if (!(error instanceof AuthoritySourceClosureUnprovedError)) {
