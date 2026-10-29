@@ -41,7 +41,9 @@ it("recertifies only two explicitly authorized device witnesses, preserving the 
     try {
       assert.equal(held.capture.historicalVolumeBinding, "unproved");
       held.recertify({ captureDigest: held.capture.digest, acknowledgement });
-      held.recertify({ captureDigest: held.capture.digest, acknowledgement });
+      const settled = readFileSync(f.controlPath);
+      assert.throws(() => held.recertify({ captureDigest: held.capture.digest, acknowledgement }), /offline-maintenance-already-consumed/u);
+      assert.deepEqual(readFileSync(f.controlPath), settled);
     } finally { held.release(); }
     assert.deepEqual(Continuity.parse(JSON.parse(readFileSync(f.controlPath, "utf8"))), current);
     assert.deepEqual(preserved(f), before);
@@ -243,7 +245,8 @@ for (const descendant of [
       mkdirSync(directory, { recursive: true, mode: 0o700 });
       if (descendant.kind === "directory") mkdirSync(path, { mode: 0o700 });
       else writeFileSync(path, "unowned fixture custody", { mode: 0o600 });
-      if (held === undefined) await assert.rejects(prepare(f.workspace, f.lifetime), /device-recertification-membership-refused/);
+      if (held === undefined) await assert.rejects(prepare(f.workspace, f.lifetime),
+        descendant.directory === "credential-keys" ? { code: "CREDENTIAL_KEYCHAIN_MISMATCH" } : /device-recertification-membership-refused/);
       else assert.throws(() => held?.recertify({ captureDigest: held.capture.digest, acknowledgement }), /device-recertification-membership-refused/);
       assert.equal(readFileSync(f.controlPath).equals(before), true); assert.equal(existsSync(paths(f).intent), false);
     } finally { held?.release(); await f.close(); }

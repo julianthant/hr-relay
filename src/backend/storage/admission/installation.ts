@@ -5,7 +5,7 @@ import { ProfileStorageRelocationUnsupportedError } from "./admission-identity.j
 import { credentialKeyCustody, CredentialKeyCustodyError, type CredentialKeyMigrationAdmission } from "../configuration/credential-key-custody.js";
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { retainedStorageBackup, SourceRecordSchema, StorageBackupSchema, inventory as backupFileInventory, file as backupFile } from "../maintenance/existing-data-backup-files.js";
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 import { capturePriorPrivateFileLock, withPrivateFileLock, type PrivateFileLock, readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStageTransition, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
 import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
@@ -3571,17 +3571,23 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         atomicJson(intentPath, receipt); finish(receipt, afterPublication);
         return { state: "upgraded" as const, runtimeAccess, profileCount: registry.profiles.length, receiptId: operationId };
       });
-    },     release() {
-      for (const snapshot of inventorySnapshots) {
-        try { snapshot.dispose(); }
-        catch (error) {
-          throw error instanceof AuthoritySourceClosureUnprovedError ? error : retainAuthoritySourceClosure([error], { snapshot });
+    },
+    release() {
+      try {
+        for (const snapshot of inventorySnapshots) {
+          snapshot.dispose();
+          inventorySnapshots.delete(snapshot);
         }
-        inventorySnapshots.delete(snapshot);
+        for (const entry of inventoryProofs.values()) releaseStoppedControlCredentialAttestation(entry.proof);
+        inventoryProofs.clear(); issuedInventoryClaims.clear();
+        if (ownsLease) { restore.release(); lease.release(); }
+      } catch (error) {
+        if (hasUnprovedSourceClosure(error)) {
+          retainUnprovedSourceOwners(error, { admission: { lease, inventorySnapshots, inventoryProofs }, restore });
+          throw error;
+        }
+        throw retainAuthoritySourceClosure([error], { admission: { lease, inventorySnapshots, inventoryProofs }, restore });
       }
-      for (const entry of inventoryProofs.values()) releaseStoppedControlCredentialAttestation(entry.proof);
-      inventoryProofs.clear(); issuedInventoryClaims.clear();
-      if (ownsLease) lease.release();
     },
   });
 }

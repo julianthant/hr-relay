@@ -1,3 +1,5 @@
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { seedSyntheticRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
 import { withOfflineMaintenanceSync, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
@@ -44,7 +46,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
 import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
-import { ATOMIC_WRITE_COMMIT, CONFIG_SNAPSHOT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { ATOMIC_WRITE_COMMIT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 import { z } from "zod";
@@ -181,7 +183,7 @@ function createAuthority(p: Paths): number {
     CLOCK,
   );
   try {
-    database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    seedSyntheticRuntimeConfig(database, { stateRoot: p.stateRoot, artifactRoot: join_m0(p.stateRoot, "artifacts") });
     return database.getMeta().authorityGeneration;
   } finally {
     database.close();
@@ -428,12 +430,14 @@ afterEach(_afterEachFixture0);
   });
 
   it("ignores invalid retired migration values without reading or echoing them", async () => {
-    const p = await paths(); const source = "HRAUTO_DEFAULT_WORKERS=synthetic-invalid-private-input\n";
+    const p = await paths("pending"); const source = "HRAUTO_DEFAULT_WORKERS=synthetic-invalid-private-input\n";
+    const before = storageTree(p.stateRoot);
     writeFileSync(join_m0(p.repoRoot, ".env"), source, { mode: 0o600 });
     const result = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--plan", "--json"], CLOCK, p.repoRoot);
     assert.equal(result.exitCode, 0);
     assert.deepEqual(z.object({state:z.literal("planned"),credentials:z.literal("unchanged")}).parse(JSON.parse(result.output)),{state:"planned",credentials:"unchanged"});
-    assert.equal(result.output.includes("synthetic-invalid-private-input"), false); assert.equal(existsSync(p.stateRoot), false);
+    assert.equal(result.output.includes("synthetic-invalid-private-input"), false);
+    assert.equal(existsSync(p.authorityPath), false); assert.deepEqual(storageTree(p.stateRoot), before);
     assert.equal(readFileSync(join_m0(p.repoRoot, ".env"), "utf8"), source);
   });
   it.each(["--force", "--skip-backup", "--allow-mixed"])("refuses unsupported upgrade flag %s before touching the root", async (flag) => {
@@ -466,12 +470,14 @@ afterEach(_afterEachFixture0);
   });
 
   it("refuses when no authority database exists and creates nothing", async () => {
-    const p = await paths();
+    const p = await paths("pending");
+    const before = storageTree(p.stateRoot);
     const outcome = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(outcome.exitCode, 1);
     assert.match(outcome.output, /storage backup REFUSED — no authority database exists/u);
     assert.equal(existsSync(p.authorityPath), false, "a refused backup must not mint an authority");
     assert.equal(existsSync(p.backupDirectory), false);
+    assert.deepEqual(storageTree(p.stateRoot), before);
   });
 
   it("lets the doctor exit 0 on a healthy reconciled authority with no backup, reporting it missing", async () => {

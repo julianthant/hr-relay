@@ -78,7 +78,7 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     const detached = RuntimeAdmission.syntheticRoots(detachedRoot, detachedArtifacts);
     try {
       await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", manifest], clock,
-        process.cwd(), detached, boundProfileCredentials(previous)), { message: "profile-restore-context-required" });
+        process.cwd(), detached, boundProfileCredentials(previous)), { message: "runtime-admission: exclusive installation authority required" });
     } finally { detached.release(); rmSync(detachedRoot, { recursive: true, force: true }); }
     assert.equal(readFileSync(profile.path).equals(damagedBytes), true);
     assert.equal(readFileSync(credentialPath).equals(currentBytes), true);

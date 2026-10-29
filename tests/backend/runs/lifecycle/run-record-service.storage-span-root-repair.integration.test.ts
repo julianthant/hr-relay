@@ -148,7 +148,7 @@ describe("offline missing run.queued recovery", () => {
       if(fault==="input-mismatch")raw.prepare("UPDATE runs SET lifecycle_json=json_set(lifecycle_json,'$.input.raw.eid',?,'$.input.parsed.value.eid',?) WHERE id=?").run("10812346","10812346",f.run.envelope.runId);
       else raw.prepare("UPDATE commands SET request_digest=? WHERE id=?").run("a".repeat(64),UUID_1);
     }finally{raw.close();}
-    assert.throws(()=>f.service.repair({ runId:f.run.envelope.runId }, f.issueOperation()),/0 matching planned entries|identity-mismatch/u);
+    assert.throws(()=>f.service.repair({ runId:f.run.envelope.runId }, f.operation),/0 matching planned entries|identity-mismatch/u);
     const reopened=new DatabaseSync(f.authorityPath,{readOnly:true});
     try{assert.deepEqual(reopened.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),before);}finally{reopened.close();}
   });

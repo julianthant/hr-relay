@@ -95,7 +95,8 @@ try {
   await profile.closeController();
   const url = (path: string) => pathToFileURL(join(process.cwd(), path)).href;
   const code = `
-
+    const { join } = await import("node:path");
+    const { copyFileSync, renameSync, readFileSync } = await import("node:fs");
 
     const { acquireEntrypointAdmission } = await import(${JSON.stringify(url("src/backend/storage/admission/bootstrap-admission.ts"))});
     const { AuthorityDatabase } = await import(${JSON.stringify(url("src/backend/storage/sqlite/authority-database.ts"))});

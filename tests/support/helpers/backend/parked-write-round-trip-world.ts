@@ -1,3 +1,6 @@
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
@@ -54,7 +57,10 @@ export function createParkedWriteRoundTripTestWorld() {
     }
     profiles.set(database, profile);
     openDatabases.push(database);
-    const active = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), clock,
+      { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot });
+    const active = database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, config: resolved.config,
+      fingerprint: resolved.fingerprint, provenance: resolved.provenance });
 
     const world = createWriteFixtureWorld();
     const stores = buildWriteFixtureRegistry(world);

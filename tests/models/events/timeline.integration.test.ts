@@ -149,7 +149,7 @@ afterEach(_afterEachFixture0);
       const generation = f.db.getMeta().authorityGeneration;
       detachBoundFixtureWorkers(f.db); f.db.close();
       const before = rows(f.path); const bytes = readFileSync(f.path);
-      const input = { stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan: true };
+      const input = { stateRoot: f.root, processLockRoot: join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: true };
       assert.equal((await upgradeStorage(profileBrowserClosure, input, clock)).state, "planned");
       assert.deepEqual(readFileSync(f.path), bytes);
       assert.equal((await upgradeStorage(profileBrowserClosure, { ...input, plan: false }, clock)).state, "already-upgraded");
@@ -186,7 +186,7 @@ afterEach(_afterEachFixture0);
       const before = storageTree(f.root);
       assert.throws(() => AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "missing-snapshot-boot" }, clock));
       for (const plan of [true, false]) await assert.rejects(upgradeStorage(profileBrowserClosure, {
-        stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan }, clock));
+        stateRoot: f.root, processLockRoot: join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan }, clock));
       assert.deepEqual(storageTree(f.root), before);
     } finally { await f.dispose(); }
   });
@@ -202,7 +202,7 @@ afterEach(_afterEachFixture0);
       assert.equal(retained.length, 4); assert.equal(new Set(retained.map(event => event.eventId)).size, 4);
       assert.deepEqual(retained.map(event => event.retentionDate), ["2026-07-31", "2026-07-31", "2026-07-31", "2026-08-01"]);
       detachBoundFixtureWorkers(f.db); f.db.close(); const before = rows(f.path);
-      assert.equal((await upgradeStorage(profileBrowserClosure, { stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan: false }, clock)).state, "already-upgraded");
+      assert.equal((await upgradeStorage(profileBrowserClosure, { stateRoot: f.root, processLockRoot: join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false }, clock)).state, "already-upgraded");
       assert.deepEqual(rows(f.path), before);
       const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "native-timeline-replay" }, clock);
       try {

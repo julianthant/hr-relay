@@ -236,19 +236,24 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
     const operationId = lease.beginRelocation(destination, plan, currentHeld);
     const recoveryBinding = { installationId: lease.locator.installationId,
       fromGeneration: lease.locator.generation, operationId };
-    lease.release();
+    currentHeld.release(); lease.release();
+    const recoveryHeld = restore(profile.workspace, profile.lifetime);
+    cleanup = async () => { recoveryHeld.release(); held.release(); await foreign.close(); await profile.close(); };
     const recoveryBefore = currentProfileRelocationSnapshot(profile.workspace);
     const pendingBefore = inspectPendingRelocationStatus(profile.workspace);
     expect(pendingBefore).toMatchObject({ operationId, fromGeneration: recoveryBinding.fromGeneration });
-    expect(() => acquireRecoveryRuntimeRelocation(profile.workspace, profile.lifetime, recoveryBinding, currentHeld))
+    expect(() => acquireRecoveryRuntimeRelocation(profile.workspace, profile.lifetime, recoveryBinding, recoveryHeld))
       .toThrow(ProfileStorageRelocationUnsupportedError);
     expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(recoveryBefore);
     expect(inspectPendingRelocationStatus(profile.workspace)).toEqual(pendingBefore);
     expect(existsSync(destination.stateRoot)).toBe(false);
     expect(existsSync(destination.artifactRoot)).toBe(false);
-    const reacquired = acquireInstallation(profile.workspace, "exclusive", profile.lifetime,{ offlineOperation: currentHeld,  recoverRelocation: { ...recoveryBinding, restoreAdmission: currentHeld } });
-    cleanup = async () => { currentHeld.release(); reacquired.release(); held.release(); await foreign.close(); await profile.close(); };
-    reacquired.release();
+    recoveryHeld.release();
+    const verificationHeld = restore(profile.workspace, profile.lifetime);
+    cleanup = async () => { verificationHeld.release(); held.release(); await foreign.close(); await profile.close(); };
+    const reacquired = acquireInstallation(profile.workspace, "exclusive", profile.lifetime, { offlineOperation: verificationHeld, recoverRelocation: { ...recoveryBinding, restoreAdmission: verificationHeld } });
+    cleanup = async () => { verificationHeld.release(); reacquired.release(); held.release(); await foreign.close(); await profile.close(); };
+    verificationHeld.release(); reacquired.release();
     expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(recoveryBefore);
   } catch (error) { primary = { error }; }
   let cleanupFailure: { error: unknown } | undefined = undefined;

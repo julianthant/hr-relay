@@ -96,7 +96,9 @@ afterEach(_afterEachFixture0);
       runtimeStoragePair: pair, active: activeSettingsRuntimeIdentity });
     assert.deepEqual(reader.read().runtimeStatus, { state: "current", identity: settingsRuntimeIdentity(f.initial, resolved.fingerprint) });
     assert.equal(readSettings(f.database.authority).revision, f.initial.revision);
-    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair, browserProfileRoot: join_m0(pair.stateRoot, "browsers"), duoCredential: join_m0(pair.stateRoot, "credentials", "duo-webauthn.json") });
+    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair, browserProfileRoot: join_m0(pair.stateRoot, "browsers"), duoCredential: join_m0(pair.stateRoot, "credentials", "duo-webauthn.json"),
+      downloadsDir: join_m0(pair.stateRoot, "files", "downloads"), reportsDir: join_m0(pair.stateRoot, "files", "reports"),
+      onboardingDocsDir: join_m0(pair.stateRoot, "files", "onboarding"), i9CheckTrackerPath: join_m0(pair.stateRoot, "files", "reports", "i9-check-tracker.xlsx") });
     assert.notDeepEqual(prior.paths, pair);
   });
   it("builds a current editor with exactly one authoritative read and no file authority", async () => {
@@ -423,7 +425,7 @@ async function fixture(body: string) {
   const profile = await storageRecoveryFixture(0); profiles.push(profile);
   const root = profile.root;
   const environmentFile = join_m0(root, ".env"); writeFileSync(environmentFile, body, { mode: 0o600 });
-  return { root, environmentFile, profile, input: { stateRoot: root, processLockRoot: join_m0(root, "locks"), environmentFile, plan: false } };
+  return { root, environmentFile, profile, input: { stateRoot: root, processLockRoot: profile.input.processLockRoot, environmentFile, plan: false } };
 }
 describe("expired environment import refuses before access", () => {
 afterEach(_afterEachFixture0);

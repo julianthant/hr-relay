@@ -1,9 +1,8 @@
-import { withOfflineMaintenanceSync } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
-import nativeFs, { cpSync, chmodSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import nativeFs, { cpSync, lstatSync, chmodSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
@@ -18,6 +17,18 @@ import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapsh
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
+
+function oldArtifactSnapshot(root: string) {
+  const paths = [root], entries = [];
+  for (const path of paths) {
+    const info = lstatSync(path);
+    if (info.isDirectory()) paths.push(...readdirSync(path).sort().map(name => join(path, name)));
+    entries.push({ path, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid, links: info.nlink,
+      size: info.size, modified: info.mtimeMs, changed: info.ctimeMs,
+      digest: info.isFile() ? createHash("sha256").update(readFileSync(path)).digest("hex") : undefined });
+  }
+  return entries;
+}
 
 type Fixture = Awaited<ReturnType<typeof createHistoricalFlatProfileFixture>>;
 async function backup(f: Fixture) {
@@ -40,7 +51,7 @@ it("backs up an adopted native6 flat source without login, preserves source iden
   const paths = [f.databasePath, f.protectedPath, f.artifact, f.reportPath, join(f.stateRoot, "browsers", "w1", "ucpath", "Default", "Preferences")];
   for (const path of paths.filter(path => path !== f.protectedPath)) chmodSync(path, 0o644);
   const before = paths.map(path => ({ bytes: readFileSync(path), stat: statSync(path) }));
-  const admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
+  let admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
   try {
     assert.equal(admission.isFlatBackup(), true);
     assert.throws(() => admission.profileBinding, /profile-bound-authority-required/u);
@@ -50,11 +61,13 @@ it("backs up an adopted native6 flat source without login, preserves source iden
     assert.throws(() => admission.assertReadyStoppedProfileUpgradeOwner(admission), /profile-stopped-upgrade-owner-required/u);
     assert.throws(() => admission.assertArtifactRoot(f.artifact), /flat-backup-artifact-refused/u);
     assert.throws(() => admission.assertProfileMigration(f.databasePath, 6), /profile-initialization-authority-required/u);
-    assert.throws(() => withOfflineMaintenanceSync(admission, () => AuthorityDatabase.upgradeStopped(admission, f.databasePath, f.processLockRoot, systemClock)), /flat-backup-upgrade-refused/u);
+    assert.throws(() => AuthorityDatabase.upgradeStopped(admission, f.databasePath, f.processLockRoot, systemClock), /flat-backup-upgrade-refused/u);
     const outcome = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], systemClock, f.workspace, admission);
     assert.equal(outcome.exitCode, 0);
     const report = JSON.parse(outcome.output) as { manifests: { backupFileName: string }[]; coupledBackup: { backupPath: string } };
     const manifest = report.manifests[0]; assert.ok(manifest);
+    admission.release();
+    admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
     const verified = verifyStoppedBackupManifestAtPath(admission, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.databasePath));
     assert.equal(verified.manifest.schemaVersion, 6); assert.equal(verified.manifest.installationId, undefined); assert.equal(verified.manifest.profileId, undefined);
     const record = JSON.parse(readFileSync(report.coupledBackup.backupPath, "utf8")) as { claimId?: string; profileId?: string; files: { path: string }[] };
@@ -87,7 +100,13 @@ it.each(["server", "workers", "geocode"] as const)("refuses active %s process cu
   const lock = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name, pid: process.pid,
     ...(name === "workers" ? { admission: { kind: "unbound-worker" as const, authorityPath: f.databasePath } } : {}) });
   try {
-    await assert.rejects(acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime), /runtime-active|process-lock/u);
+    const before = oldArtifactSnapshot(f.processLockRoot);
+    await assert.rejects(acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+    assert.deepEqual(oldArtifactSnapshot(f.processLockRoot), before);
+    lock.release();
+    const released = oldArtifactSnapshot(f.processLockRoot);
+    await assert.rejects(acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+    assert.deepEqual(oldArtifactSnapshot(f.processLockRoot), released);
     assert.equal(existsSync(join(f.stateRoot, "backups")), false); untouched(f);
   } finally { lock.release(); await f.close(); }
 });

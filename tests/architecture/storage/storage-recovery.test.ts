@@ -2350,7 +2350,8 @@ describe("offline exact-backup restore", () => {
       await assert.rejects(restore.restore({ manifestPath }, operation), replacedFailure(/release failed/u));
       assert.equal(isOfflineMaintenanceOperationActive(operation), true);
       await assert.rejects(RuntimeLifetimeLock.acquire(lifetime.port), RuntimeAlreadyRunningError);
-      assert.throws(() => owner.beginOfflineMaintenance(), /offline-maintenance-busy/u);
+      assert.throws(() => lifetime.beginOfflineMaintenance(context.workspace), /offline-maintenance-busy/u);
+      assert.throws(() => owner.beginOfflineMaintenance(), /profile-restore-context-expired/u);
       assert.throws(() => owner.assertProfileRuntime());
     } finally { failedRelease.mockRestore(); operation.release(); }
   });

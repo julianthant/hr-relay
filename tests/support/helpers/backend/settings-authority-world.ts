@@ -41,16 +41,17 @@ export function createSettingsAuthorityTestWorld() {
     const store = admission === undefined ? createCredentialStore(credentialOptions) : nativeCredentialStore({ ...credentialOptions, admission,
       erasureJournalAdmission: profile.machine, erasureJournalPath: join(profile.machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
     const database = admission === undefined ? AuthorityDatabase.open(options, clock) : NativeAuthorityDatabase.open(admission, options, clock, undefined, undefined, undefined, store); databases.push(database);
-    seedSyntheticRuntimeConfig(database);
+    const pair = { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot };
+    seedSyntheticRuntimeConfig(database, pair);
     const registered = profile.machine.readProfileRegistry().profiles.find(row => row.profileId === profile.admission.profileBinding.profileId);
     assert.ok(registered?.lifecycle === "ready" && registered.credentialState === "saved");
     assert.equal(store.ownsCommandId(registered.registration.commandId), true);
     assert.equal(store.read().revision, registered.registration.credentialRevision);
-    const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), store);
+    const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock, pair), store);
     const execute = (request: unknown, authority: CommandAuthority = database) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request);
     const renewAfterRestore = () => {
       const renewed = profile.renewAfterRestore();
-      const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), renewed.credentials);
+      const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock, pair), renewed.credentials);
       return { admission: renewed.admission, store: renewed.credentials,
         execute: (request: unknown, authority: CommandAuthority) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request) };
     };

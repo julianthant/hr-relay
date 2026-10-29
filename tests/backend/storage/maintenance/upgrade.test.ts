@@ -23,8 +23,8 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(
 describe("native authority backup", () => {
   it("plans a fresh native root without creating authority and initializes only behind stopped admission",async()=>{
     const fixture=await createBoundProfileFixture({pending:"storage"}),root=fixture.stateRoot,path=fixture.path;
-    cleanups.push(async ()=>await fixture.close());const admission=fixture.admission,processLockRoot=join(root,"locks"),clock=capturedInstantClock(NOW);
-    mkdirSync(processLockRoot,{mode:0o700});
+    cleanups.push(async ()=>await fixture.close());const admission=fixture.admission,processLockRoot=join(fixture.workspace,rebuildRuntimeIsolation.processLockRoot),clock=capturedInstantClock(NOW);
+    mkdirSync(processLockRoot,{recursive:true,mode:0o700});
     await expect(withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission, {stateRoot:root,processLockRoot,plan:true}, clock, operation))).resolves.toMatchObject({state:"planned",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION});
     expect(()=>readFileSync(path)).toThrow();
     await expect(withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission, {stateRoot:root,processLockRoot,plan:false}, clock, operation))).resolves.toMatchObject({state:"initialized"});
@@ -64,7 +64,14 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
     assert.ok(inspected instanceof AuthoritySourceClosureUnprovedError);
     assert.equal(inspected.errors.length, 1); assert.equal(inspected.errors[0], inspected.cause);
     assert.ok(inspected.cause instanceof AuthoritySourceClosureUnprovedError);
-    assert.deepEqual(inspected.cause.errors, [injected]); assert.equal(inspected.cause.cause, injected);
+    let sourceFailure: unknown = inspected.cause;
+    for (let depth = 0; depth < (entry === "command" ? 2 : 0); depth++) {
+      assert.ok(sourceFailure instanceof AuthoritySourceClosureUnprovedError);
+      assert.deepEqual(sourceFailure.errors, [sourceFailure.cause]);
+      sourceFailure = sourceFailure.cause;
+    }
+    assert.ok(sourceFailure instanceof AuthoritySourceClosureUnprovedError);
+    assert.deepEqual(sourceFailure.errors, [injected]); assert.equal(sourceFailure.cause, injected);
     if (entry === 'service') {
       assert.equal(failure.errors.length, 1); assert.equal(failure.errors[0], inspected);
       assert.ok(restore); f.admission.assertOfflineMaintenance(restore);
