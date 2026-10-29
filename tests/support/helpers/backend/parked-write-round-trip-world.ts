@@ -98,7 +98,9 @@ export function createParkedWriteRoundTripTestWorld() {
     });
 
     const park = async (failCommit = true) => {
-      const run = RunRecordSchema.parse(writeFixtureQueuedRun());
+      const queued = writeFixtureQueuedRun();
+      const run = RunRecordSchema.parse({ ...queued, envelope: { ...queued.envelope,
+        configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
       assert.equal(database.authority.runs.enqueue(run).state, "inserted");
       createTimelineEmitter({ repository: database.authority.timelineEvents, clock }).emit(
         runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic write-resolution rehearsal" }));

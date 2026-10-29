@@ -1,5 +1,7 @@
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { seedInitialSettingsRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { withOfflineMaintenanceSync, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
@@ -29,8 +31,8 @@ import { type RuntimeAdmission } from "../../../../src/backend/storage/admission
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { requireSecret } from "../../../../src/models/config/secrets.js";
-import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
-import { capturedInstantClock, manualClock } from "../../../../src/rules/time/clock.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthorityDatabase as AuthorityDatabase_m0, composeStorageCommand as syntheticComposeStorageCommand_m1 } from "../../../support/helpers/synthetic-storage-admission.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -46,7 +48,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
 import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
-import { ATOMIC_WRITE_COMMIT, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { ATOMIC_WRITE_COMMIT, CONFIG_SNAPSHOT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 import { z } from "zod";
@@ -176,6 +178,19 @@ async function paths(mode: "ready" | "pending" | "uninitialized" = "uninitialize
   };
 }
 
+function authoritySnapshot(p: Paths) {
+  const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), CLOCK,
+    { stateRoot: p.stateRoot, artifactRoot: join_m0(p.stateRoot, "artifacts") });
+  return ConfigSnapshotRecordSchema.parse({ ...CONFIG_SNAPSHOT, config: resolved.config,
+    fingerprint: resolved.fingerprint, provenance: resolved.provenance });
+}
+
+function queuedRun(p: Paths) {
+  const snapshot = authoritySnapshot(p);
+  return RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
+    configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint } });
+}
+
 function createAuthority(p: Paths): number {
   assert.ok(admissions.has(p.repoRoot), "authority fixture requires an issued profile");
   const database = openAuthority(
@@ -183,7 +198,7 @@ function createAuthority(p: Paths): number {
     CLOCK,
   );
   try {
-    seedInitialSettingsRuntimeConfig(database, capturedInstantClock(NOW), { stateRoot: p.stateRoot, artifactRoot: join_m0(p.stateRoot, "artifacts") });
+    database.authority.runtimeConfig.initialize(authoritySnapshot(p));
     return database.getMeta().authorityGeneration;
   } finally {
     database.close();
@@ -199,8 +214,8 @@ afterEach(_afterEachFixture0);
     assert.equal(backup.exitCode, 0, backup.output);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
     const database = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "fenced-restore-proof" }, CLOCK);
-    const e = QUEUED_RUN.envelope;
-    database.authority.runs.enqueue(QUEUED_RUN);
+    const queued = queuedRun(p), e = queued.envelope;
+    database.authority.runs.enqueue(queued);
     const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock: CLOCK, pid: 4242 });
     emitter.emit({ t: "run.queued", kind: "run", ts: CLOCK.now().toISOString(), workflow: e.workflow, runId: e.runId, attempt: e.attempt,
       traceId: e.traceId, spanPath: e.traceId, itemId: e.itemId, shape: e.shape, priority: e.priority, dryRun: false,
@@ -233,15 +248,17 @@ afterEach(_afterEachFixture0);
     }
     const next = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "new-identity-after-restore" }, CLOCK);
     try {
-      const nextId = randomUUID(); next.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...e, runId: nextId } });
+      const nextId = randomUUID(); next.authority.runs.enqueue({ ...queued, envelope: { ...e, runId: nextId } });
       assert.equal(next.authority.runs.get(e.runId), undefined); assert.ok(next.authority.runs.get(nextId));
     } finally { next.close(); }
   });
   it("reports a lost write attempt even when the restored run still exists at the same version", async () => {
     const p = await paths("ready"); createAuthority(p);
+    const snapshot = authoritySnapshot(p);
+    const commit = { ...ATOMIC_WRITE_COMMIT, transaction: { ...ATOMIC_WRITE_COMMIT.transaction, configFingerprint: snapshot.fingerprint } };
     const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "retained-restore-owner" }, CLOCK);
     try {
-      seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT, p.authorityPath);
+      seedAtomicWriteOwner(initial, commit, p.authorityPath, undefined, snapshot);
       const run = initial.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
       if (run === undefined) throw new Error("missing owner");
       createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
@@ -353,12 +370,13 @@ afterEach(_afterEachFixture0);
 
   it("accounts a preserved run after explicit deletion without reviving it", async () => {
     const p = await paths("ready"); createAuthority(p);
+    const queued = queuedRun(p);
     const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "deleted-preserved-owner" }, CLOCK);
     try {
-      initial.authority.runs.enqueue(QUEUED_RUN);
+      initial.authority.runs.enqueue(queued);
       createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
-        runQueuedSpanEvent({ run: RunRecordSchema.parse(QUEUED_RUN), actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Deleted restore owner" }));
-      new RunRecordService({ database: initial, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("fixture must not enqueue"); } }).transition({ commandId: randomUUID(), runId: QUEUED_RUN.envelope.runId, expectedVersion: QUEUED_RUN.version,
+        runQueuedSpanEvent({ run: queued, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Deleted restore owner" }));
+      new RunRecordService({ database: initial, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("fixture must not enqueue"); } }).transition({ commandId: randomUUID(), runId: queued.envelope.runId, expectedVersion: queued.version,
         lifecycle: { state: "terminal", outcome: "cancelled", endedAt: CLOCK.now().toISOString() } });
     } finally { initial.close(); }
     const directory = join_m0(p.stateRoot, "backups", "suspects"); mkdirSync(directory, { recursive: true });
@@ -366,7 +384,7 @@ afterEach(_afterEachFixture0);
     const current = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "delete-preserved-owner" }, CLOCK);
     try {
       const service = new RunRecordService({ database: current, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("fixture must not enqueue"); } });
-      const run = current.authority.runs.get(QUEUED_RUN.envelope.runId); assert.ok(run);
+      const run = current.authority.runs.get(queued.envelope.runId); assert.ok(run);
       assert.equal(service.delete({ runId: run.envelope.runId, expectedVersion: run.version, commandId: randomUUID() }).state, "deleted");
     }
     finally { current.close(); }
