@@ -254,7 +254,7 @@ it("runs the unchanged explicit CLI backup on a stopped adopted flat source with
     const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],
       { cwd: f.workspace, encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(process.env) });
     assert.equal(result.error, undefined); assert.equal(result.signal, null);
-    assert.equal(result.status, 0, `${result.error?.message ?? ""}\n${result.stdout}\n${result.stderr}`);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const successor = await RuntimeLifetimeLock.acquire(f.lifetime.port); await successor.close();
     assert.match(result.stdout, /backup: verified/u); assert.match(result.stdout, /private coupled companions/u);
     const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
