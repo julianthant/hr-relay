@@ -66,7 +66,7 @@ it("refuses other unfinished write states and rolls back all cleanup", async () 
   const intent = await attemptingOwnedWrite({ database: f.database, fence: async input => f.database.authority.writeIntents.fenceAttempt(input) }, f.run);
   f.database.authority.writeIntents.settleRetryable({ writeIntentId: intent.writeIntentId, generation: intent.generation,
     expectedVersion: intent.version, now, settlement: { state: "operator-confirmed-absent", writeIntentId: intent.writeIntentId,
-      generation: intent.generation, operator: "local-operator", confirmedAt: now, evidenceNote: "Synthetic absence" } });
+      generation: intent.generation, operator: "local-operator", confirmedAt: now } });
   const before = f.database.readProfileResourceCustody();
   assert.throws(() => reconcileStartupCrash({ ...f, lifecycle: f.service }), StartupCrashRecoveryRefusedError);
   assert.deepEqual(f.database.readProfileResourceCustody(), before);
