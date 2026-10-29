@@ -1942,7 +1942,8 @@ export class AuthorityDatabase implements Disposable {
 
   // This finite native6 command cannot grant ordinary profile runtime authority.
   static async cancelQueuedRunsNative6(lease: InstallationLease, restore: RestoreAdmissionHandle, expectedDigest: string, clock: Clock) {
-    const { assertInstallationLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
+    const { assertInstallationLease: assertLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
+    const assertInstallationLease: typeof import("../admission/installation.js").assertInstallationLease = assertLease;
     const { assertCredentialCopyResourcesClosed, probeFlatBrowserInventoryClosed } = await import("../maintenance/profile-inventory.js");
     assertInstallationLease(lease);
     if (lease.mode !== "exclusive") throw new Error("queued-run-cancellation-exclusive-required");
