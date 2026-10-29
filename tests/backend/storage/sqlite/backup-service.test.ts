@@ -6,7 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,expect,it } from "vitest";
+import { afterEach,beforeEach,describe,expect,it } from "vitest";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { acquireRecoveryRuntimeRestore } from "../../../../src/backend/storage/admission/admission.js";
@@ -174,42 +174,6 @@ describe("native authority backup", () => {
       for(const row of before){expect(readFileSync(`${f.path}${row.suffix}`)).toEqual(row.bytes);expect(statSync(`${f.path}${row.suffix}`).ino).toBe(row.inode);}
     }
   });
-  it.each(["replaced","unchanged"] as const)("keeps %s settlement and stopped recovery fenced when exact preserved suspect custody changes", async outcome => {
-    for(const fault of ["missing","replaced-inode","changed-bytes","companion-missing","companion-inode","companion-bytes"]){
-      const f=await fixture();f.database.authority.runtimeConfig.initialize(f.configSnapshot);
-      const report=await f.service.request({trigger:"operator",requiredGeneration:f.database.getMeta().authorityGeneration});
-      const manifest=report.manifests[0],manifestPath=join(f.directory,`${manifest.backupFileName}.manifest.json`);
-      const companions=["-wal","-shm"].map(suffix=>({suffix,bytes:readFileSync(`${f.path}${suffix}`)}));f.database.close();
-      for(const row of companions)writeFileSync(`${f.path}${row.suffix}`,row.bytes,{mode:0o600});
-      const processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot),suspects=join(f.root,"backups","suspects"),journalPath=join(f.workspace,".tracker","control","journal.json");
-      const proofs=new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60_000},f.clock);
-      const fresh=()=>{const observed=observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock);
-        proofs.recordRuntimeState(observed);return proofs.issue({observedBy:LOCAL_OPERATOR_ACTOR_ID,sourceDatabaseIdentity:observed.sourceDatabaseIdentity});};
-      const restore=new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission,{authorityPath:f.path,suspectDirectory:suspects,
-        busyTimeoutMs:250,processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>undefined,f.clock,{
-        copyFile:copyFileSync,atomicReplace(source,destination){
-          if(outcome === "replaced")renameSync(source,destination);
-          const suspect=join(suspects,readdirSync(suspects).find(name=>name.endsWith(".sqlite"))!);
-          const target=fault.startsWith("companion")?`${suspect}-wal`:suspect;
-          if(fault.endsWith("missing"))rmSync(target);
-          else if(fault === "replaced-inode" || fault === "companion-inode"){
-            renameSync(target,`${target}.preserved`);copyFileSync(`${target}.preserved`,target);
-          }else{const bytes=readFileSync(target);bytes[bytes.length-1]^=1;writeFileSync(target,bytes);}
-          if(outcome === "unchanged")throw new Error("fault-before-authority-replacement");
-        }}, undefined, f.credentials);
-      await expect(restore.restore({manifestPath,stoppedSystemProof:fresh()}),fault).rejects.toMatchObject({authorityState:outcome});
-      const journalBytes=readFileSync(journalPath),journal=JSON.parse(journalBytes.toString()) as {restore:{operationId:string}};
-      f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);
-      const held=acquireRuntimeRestoreAdmission({processLockRoot,pid:process.pid},f.clock);
-      const recovery=acquireRecoveryRuntimeRestore(f.workspace, f.lifetime,journal.restore.operationId,held);
-      try{
-        await expect(settleInterruptedAuthorityRestore({admission:recovery.admission,operationId:journal.restore.operationId,
-          manifestPath,outcome,processLockRoot,stoppedSystemProof:fresh(),restoreAdmission:held,clock:f.clock}),fault).rejects.toThrow();
-        expect(readFileSync(journalPath),fault).toEqual(journalBytes);
-      }finally{recovery.admission.release();held.release();}
-      expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);
-    }
-  },30_000);
   it("retains a durable restore barrier after ambiguous replacement and staged disappearance, then settles only the exact verified replacement", async () => {
     const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
@@ -357,4 +321,52 @@ describe("native authority backup", () => {
     expect(readFileSync(f.path)).toEqual(before);
   });
 
+});
+
+describe("native authority backup", () => {
+  const faults = ["missing","replaced-inode","changed-bytes","companion-missing","companion-inode","companion-bytes"] as const;
+  const prepared = new Map<typeof faults[number], Awaited<ReturnType<typeof fixture>>>();
+  beforeEach(() => { prepared.clear(); });
+  for (const fault of faults) {
+    beforeEach(async () => { prepared.set(fault, await fixture()); });
+  }
+  it.each(["replaced","unchanged"] as const)("keeps %s settlement and stopped recovery fenced when exact preserved suspect custody changes", async outcome => {
+    expect([...prepared.keys()]).toEqual(faults);
+    for(const fault of faults){
+      const f = prepared.get(fault);
+      if (f === undefined) throw new Error("backup-suspect-fixture-owner-missing");
+      f.database.authority.runtimeConfig.initialize(f.configSnapshot);
+      const report=await f.service.request({trigger:"operator",requiredGeneration:f.database.getMeta().authorityGeneration});
+      const manifest=report.manifests[0],manifestPath=join(f.directory,`${manifest.backupFileName}.manifest.json`);
+      const companions=["-wal","-shm"].map(suffix=>({suffix,bytes:readFileSync(`${f.path}${suffix}`)}));f.database.close();
+      for(const row of companions)writeFileSync(`${f.path}${row.suffix}`,row.bytes,{mode:0o600});
+      const processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot),suspects=join(f.root,"backups","suspects"),journalPath=join(f.workspace,".tracker","control","journal.json");
+      const proofs=new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60_000},f.clock);
+      const fresh=()=>{const observed=observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock);
+        proofs.recordRuntimeState(observed);return proofs.issue({observedBy:LOCAL_OPERATOR_ACTOR_ID,sourceDatabaseIdentity:observed.sourceDatabaseIdentity});};
+      const restore=new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission,{authorityPath:f.path,suspectDirectory:suspects,
+        busyTimeoutMs:250,processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>undefined,f.clock,{
+        copyFile:copyFileSync,atomicReplace(source,destination){
+          if(outcome === "replaced")renameSync(source,destination);
+          const suspect=join(suspects,readdirSync(suspects).find(name=>name.endsWith(".sqlite"))!);
+          const target=fault.startsWith("companion")?`${suspect}-wal`:suspect;
+          if(fault.endsWith("missing"))rmSync(target);
+          else if(fault === "replaced-inode" || fault === "companion-inode"){
+            renameSync(target,`${target}.preserved`);copyFileSync(`${target}.preserved`,target);
+          }else{const bytes=readFileSync(target);bytes[bytes.length-1]^=1;writeFileSync(target,bytes);}
+          if(outcome === "unchanged")throw new Error("fault-before-authority-replacement");
+        }}, undefined, f.credentials);
+      await expect(restore.restore({manifestPath,stoppedSystemProof:fresh()}),fault).rejects.toMatchObject({authorityState:outcome});
+      const journalBytes=readFileSync(journalPath),journal=JSON.parse(journalBytes.toString()) as {restore:{operationId:string}};
+      f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);
+      const held=acquireRuntimeRestoreAdmission({processLockRoot,pid:process.pid},f.clock);
+      const recovery=acquireRecoveryRuntimeRestore(f.workspace, f.lifetime,journal.restore.operationId,held);
+      try{
+        await expect(settleInterruptedAuthorityRestore({admission:recovery.admission,operationId:journal.restore.operationId,
+          manifestPath,outcome,processLockRoot,stoppedSystemProof:fresh(),restoreAdmission:held,clock:f.clock}),fault).rejects.toThrow();
+        expect(readFileSync(journalPath),fault).toEqual(journalBytes);
+      }finally{recovery.admission.release();held.release();}
+      expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);
+    }
+  },30_000);
 });
