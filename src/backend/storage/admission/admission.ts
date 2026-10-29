@@ -1022,7 +1022,7 @@ export class RuntimeAdmission {
       return [];
     }
     const { profileId } = this.profileBinding;
-    let machine: RuntimeAdmission = this;
+    let machine: RuntimeAdmission = this.#profileParent ?? this;
     while (machine.#profileParent !== undefined) machine = machine.#profileParent;
     if (machine.#scope !== "installation") throw new Error("completed-restore-installation-required");
     const authority = machine.#authority;

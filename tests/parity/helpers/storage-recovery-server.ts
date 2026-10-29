@@ -1,4 +1,3 @@
-import { profileBrowserClosure } from "../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
 import { RuntimeAdmission as CanonicalRuntimeAdmission } from '../../../src/backend/storage/admission/admission.js';

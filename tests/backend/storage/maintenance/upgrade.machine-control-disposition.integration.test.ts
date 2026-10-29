@@ -78,11 +78,9 @@ it("converts stopped schema2 only with authenticated empty suspect membership an
     assert.deepEqual(JSON.parse(readFileSync(f.markerPath, "utf8")), { schemaVersion: 4 });
     for (const source of original) assert.deepEqual(readFileSync(source.path), source.bytes);
   } catch (error) { primary = { error }; }
-  finally {
-    try { maintenance.release(); await f.close(); }
-    catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "schema2-conversion-fixture-close-failed", { cause: error }); }
-    if (primary !== undefined) throw primary.error;
-  }
+  try { maintenance.release(); await f.close(); }
+  catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "schema2-conversion-fixture-close-failed", { cause: error }); }
+  if (primary !== undefined) throw primary.error;
 });
 
 it("retains unbound schema2 suspect files and refuses conversion before control or key effects", async () => {
@@ -98,11 +96,9 @@ it("retains unbound schema2 suspect files and refuses conversion before control 
       /profile-control-upgrade-suspect-custody-unproved/u);
     assert.deepEqual(storageTree(f.workspace), before);
   } catch (error) { primary = { error }; }
-  finally {
-    try { maintenance.release(); await f.close(); }
-    catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "schema2-suspect-fixture-close-failed", { cause: error }); }
-    if (primary !== undefined) throw primary.error;
-  }
+  try { maintenance.release(); await f.close(); }
+  catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "schema2-suspect-fixture-close-failed", { cause: error }); }
+  if (primary !== undefined) throw primary.error;
 });
 
 it("retains the runtime hold through a cold machine-control format publication recovery", async () => {
