@@ -95,7 +95,7 @@ for (const changed of [false, true]) it(`probes every physical browser directory
   const fixture = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
   const profileRoot = join(fixture.stateRoot, "browsers"), paths = [join(profileRoot, "w17", "ucpath"), join(profileRoot, "w23", "onbase")];
-  const nativeProbe = profileBrowserClosure.probeClosed;
+  const nativeProbe = profileBrowserClosure.probeClosed.bind(profileBrowserClosure);
   const native = vi.spyOn(profileBrowserClosure, "probeClosed").mockImplementation(async (...args) => {
     await nativeProbe(...args);
     if (changed) mkdirSync(join(profileRoot, "w31", "ucpath"), { recursive: true, mode: 0o700 });

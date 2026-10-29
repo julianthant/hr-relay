@@ -83,7 +83,7 @@ export class OfflineSpanRootRepairService {
   repair(input: unknown, admission: OfflineMaintenanceOperation): SpanRootRepairReport {
     this.#runtimeAdmission.assertOfflineMaintenance(admission);
     admission.consume();
-    let primary: unknown;
+    let outcome: { report: SpanRootRepairReport } | { error: unknown };
     try {
       assertOfflineMaintenanceForProcessRoot(admission, this.#processLockRoot);
       const request = SpanRootRepairRequestSchema.parse(input);
@@ -100,7 +100,7 @@ export class OfflineSpanRootRepairService {
         migrationOwner: "span-root-repair",
       }, this.#clock);
       try {
-        return database.withAuthorityTransaction(() => {
+        outcome = { report: database.withAuthorityTransaction(() => {
         const run = database.authority.runs.get(request.runId);
         if (run === undefined) throw new Error(`span root repair run ${request.runId} does not exist`);
         if (run.sessionId === undefined) {
@@ -199,17 +199,18 @@ export class OfflineSpanRootRepairService {
         const { kind: _kind, ...evidence } = repair;
         return SpanRootRepairReportSchema.parse({ state: "repaired", runId: request.runId,
           workflow: queued.workflow, eventId, ...evidence });
-        });
+        }) };
       } finally { database.close(); }
-    } catch (error) {
-      primary = error;
-      if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: this.#runtimeAdmission, restore: admission });
-      throw error;
-    } finally {
-      if (!hasUnprovedSourceClosure(primary)) {
-        try { admission.release(); }
-        catch (cleanup) { throw retainAuthoritySourceClosure(primary === undefined ? [cleanup] : [primary, cleanup], { admission: this.#runtimeAdmission, restore: admission }); }
-      }
+    } catch (error) { outcome = { error }; }
+    if ("error" in outcome && hasUnprovedSourceClosure(outcome.error)) {
+      throw retainAuthoritySourceClosure([outcome.error], { admission: this.#runtimeAdmission, restore: admission });
     }
+    try { admission.release(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure("error" in outcome ? [outcome.error, cleanup] : [cleanup], { admission: this.#runtimeAdmission, restore: admission }); }
+    if ("error" in outcome) {
+      if (outcome.error instanceof Error) throw outcome.error;
+      throw new Error("span-root-repair-failed", { cause: outcome.error });
+    }
+    return outcome.report;
   }
 }

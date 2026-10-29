@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { existsSync, readFileSync, rmSync, renameSync, copyFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { Hono } from "hono";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -38,7 +38,9 @@ export async function storageRecoveryTarget() {
   await fixture.closeController();
   const clock = systemClock;
   const sourceUrl = (path: string) => pathToFileURL(join(process.cwd(), path)).href;
-  const code = `const { rebuildRuntimeIsolation } = await import(${JSON.stringify(sourceUrl('src/backend/app/config/runtime-isolation.ts'))});
+  const code = `const { join } = await import("node:path");
+    const { readFileSync, renameSync, copyFileSync } = await import("node:fs");
+    const { rebuildRuntimeIsolation } = await import(${JSON.stringify(sourceUrl('src/backend/app/config/runtime-isolation.ts'))});
 
 
 

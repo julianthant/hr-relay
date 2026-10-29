@@ -248,10 +248,13 @@ export class OfflineAuthorityRestoreService {
   async restore(input: unknown, operation: OfflineMaintenanceOperation): Promise<OfflineRestoreReport> {
     this.#runtimeAdmission.assertOfflineMaintenance(operation);
     operation.consume();
-    let report: OfflineRestoreReport | undefined, primary: unknown;
+    let report: OfflineRestoreReport | undefined, primary: Error | undefined;
     try { report = await this.#restoreHeld(input, operation); }
-    catch (error) { primary = error; }
-    if (hasUnprovedSourceClosure(primary)) {
+    catch (error) {
+      primary = error instanceof Error ? error : new OfflineRestoreFailure(report === undefined ? "unchanged" : "replaced",
+        "offline authority restore failed", error);
+    }
+    if (primary !== undefined && hasUnprovedSourceClosure(primary)) {
       retainUnprovedSourceOwners(primary, { admission: this.#runtimeAdmission, restore: operation });
       throw primary;
     }

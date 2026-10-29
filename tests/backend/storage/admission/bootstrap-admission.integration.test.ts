@@ -12,7 +12,7 @@ import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js"
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { default as assert } from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, writeFileSync, renameSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";

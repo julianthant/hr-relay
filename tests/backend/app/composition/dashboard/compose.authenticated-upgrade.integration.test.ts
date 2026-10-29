@@ -782,9 +782,10 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
   const acquire = vi.spyOn(admissionOwner, "acquireExclusiveRuntimeAdmission").mockImplementation((workspace, lifetime) => {
     const owner = actualAdmission.acquireExclusiveRuntimeAdmission(workspace, lifetime); exclusive = owner; acquisitions++; return owner;
   });
-  const begin = RuntimeLifetimeLock.prototype.beginOfflineMaintenance;
+  const begin = RuntimeLifetimeLock.prototype.beginOfflineMaintenance.bind(f.profile.lifetime);
   const restore = vi.spyOn(RuntimeLifetimeLock.prototype, "beginOfflineMaintenance").mockImplementation(function(this: RuntimeLifetimeLock, workspace) {
-    const owner = begin.call(this, workspace); heldRestore = owner; return owner;
+    assert.equal(this, f.profile.lifetime);
+    const owner = begin(workspace); heldRestore = owner; return owner;
   });
   const snapshot = vi.spyOn(readonlySource, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
     const source = createSnapshot(path);
@@ -856,9 +857,10 @@ for (const fault of ["unproved-close", "closed-publication-refusal"] as const) i
   const acquire = vi.spyOn(admissionOwner, "acquireExclusiveRuntimeAdmission").mockImplementation((workspace, lifetime) => {
     const owner = actualAdmission.acquireExclusiveRuntimeAdmission(workspace, lifetime); exclusive = owner; acquisitions++; return owner;
   });
-  const begin = RuntimeLifetimeLock.prototype.beginOfflineMaintenance;
+  const begin = RuntimeLifetimeLock.prototype.beginOfflineMaintenance.bind(f.profile.lifetime);
   const issued = vi.spyOn(RuntimeLifetimeLock.prototype, "beginOfflineMaintenance").mockImplementation(function(this: RuntimeLifetimeLock, workspace) {
-    const owner = begin.call(this, workspace); operation = owner; return owner;
+    assert.equal(this, f.profile.lifetime);
+    const owner = begin(workspace); operation = owner; return owner;
   });
   const snapshot = vi.spyOn(readonlySource, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
     const actual = createSnapshot(path);
@@ -889,7 +891,7 @@ for (const fault of ["unproved-close", "closed-publication-refusal"] as const) i
     const failures: unknown[] = [], pending: unknown[] = [failure.cause], seen = new Set<unknown>();
     while (pending.length !== 0) {
       const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
-      if (value instanceof AggregateError) pending.push(...value.errors);
+      if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
       else failures.push(value);
     }
     assert.deepEqual(failures, fault === "unproved-close" ? [cleanup] : [cleanup, primary]);

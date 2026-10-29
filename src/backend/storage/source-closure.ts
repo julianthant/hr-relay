@@ -31,7 +31,7 @@ export function hasUnprovedSourceClosure(error: unknown): boolean {
     if (seen.has(value)) continue;
     seen.add(value);
     if (value instanceof AuthoritySourceClosureUnprovedError) return true;
-    if (value instanceof AggregateError) pending.push(...value.errors);
+    if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
     if (value instanceof Error && value.cause !== undefined) pending.push(value.cause);
   }
   return false;
@@ -44,7 +44,7 @@ export function retainUnprovedSourceOwners(error: unknown, owners: RetainedSourc
     if (seen.has(value)) continue;
     seen.add(value);
     if (value instanceof AuthoritySourceClosureUnprovedError) retainedSourceClosures.set(value, { ...retainedSourceClosures.get(value), ...owners });
-    if (value instanceof AggregateError) pending.push(...value.errors);
+    if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
     if (value instanceof Error && value.cause !== undefined) pending.push(value.cause);
   }
 }

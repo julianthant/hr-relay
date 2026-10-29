@@ -282,7 +282,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
   const restore = input.command.kind === "resume" ? input.lifetime.beginOfflineMaintenance(workspace)
     : requireRuntimeAdmission(admission).beginOfflineMaintenance();
   restore.consume();
-  let primary: unknown;
+  let outcome: { result: Readonly<{ operationId: string; generation: number }> } | { error: unknown };
   try {
     let operation: RuntimeRelocationOperation;
     if (input.command.kind === "resume") {
@@ -495,15 +495,16 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         operation.settleRelocation(() => evidence);
       } finally { source.release(); destination.release(); }
     }
-    return { operationId: operation.operationId, generation: inventory.fromGeneration + 1 };
-  } catch (error) {
-    primary = error;
-    if (operationId !== undefined) throw new StorageRelocationIncompleteError(operationId, error);
-    throw error;
-  } finally {
-    if (!hasUnprovedSourceClosure(primary)) {
-      try { restore.release(); if (ownedAdmission) admission?.release(); }
-      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary, error], { restore, admission }); }
-    }
+    outcome = { result: { operationId: operation.operationId, generation: inventory.fromGeneration + 1 } };
+  } catch (error) { outcome = { error }; }
+  if (!("error" in outcome) || !hasUnprovedSourceClosure(outcome.error)) {
+    try { restore.release(); if (ownedAdmission) admission?.release(); }
+    catch (error) { throw retainAuthoritySourceClosure("error" in outcome ? [outcome.error, error] : [error], { restore, admission }); }
   }
+  if ("error" in outcome) {
+    if (operationId !== undefined) throw new StorageRelocationIncompleteError(operationId, outcome.error);
+    if (outcome.error instanceof Error) throw outcome.error;
+    throw new Error("storage-relocation: command failed", { cause: outcome.error });
+  }
+  return outcome.result;
 }
