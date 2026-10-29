@@ -9,8 +9,8 @@ import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.j
 import { CONFIG_SNAPSHOT, NOW, UUID_4 } from "./phase1c-contract-fixtures.js";
 
 /** Seed the synthetic authority that admits start-plan fan-out through RunRecordService. */
-export function seedSyntheticRuntimeConfig(database: AuthorityDatabase, pair?: Parameters<typeof resolveConfigWithProvenance>[3]): void {
-  seedInitialSettingsRuntimeConfig(database,capturedInstantClock(NOW), pair);
+export function seedSyntheticRuntimeConfig(database: AuthorityDatabase): void {
+  seedInitialSettingsRuntimeConfig(database,capturedInstantClock(NOW));
 }
 
 /** Initial settings and runtime activation share the same resolved document. */

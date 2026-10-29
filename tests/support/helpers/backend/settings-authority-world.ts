@@ -1,3 +1,4 @@
+import { NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
@@ -10,9 +11,9 @@ import { createBoundProfileFixture } from "../admission-fixture.js";
 import { createCredentialStore as nativeCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
+import { capturedInstantClock, manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthorityDatabase, createCredentialStore, type CredentialStoreHooks } from "../synthetic-storage-admission.js";
-import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
+import { seedInitialSettingsRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 
 
 
@@ -42,7 +43,7 @@ export function createSettingsAuthorityTestWorld() {
       erasureJournalAdmission: profile.machine, erasureJournalPath: join(profile.machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
     const database = admission === undefined ? AuthorityDatabase.open(options, clock) : NativeAuthorityDatabase.open(admission, options, clock, undefined, undefined, undefined, store); databases.push(database);
     const pair = { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot };
-    seedSyntheticRuntimeConfig(database, pair);
+    seedInitialSettingsRuntimeConfig(database, capturedInstantClock(NOW), pair);
     const registered = profile.machine.readProfileRegistry().profiles.find(row => row.profileId === profile.admission.profileBinding.profileId);
     assert.ok(registered?.lifecycle === "ready" && registered.credentialState === "saved");
     assert.equal(store.ownsCommandId(registered.registration.commandId), true);

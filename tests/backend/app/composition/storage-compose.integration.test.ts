@@ -1,5 +1,5 @@
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { seedSyntheticRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
+import { seedInitialSettingsRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
 import { withOfflineMaintenanceSync, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
@@ -30,7 +30,7 @@ import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admi
 import { AuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { requireSecret } from "../../../../src/models/config/secrets.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
+import { capturedInstantClock, manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthorityDatabase as AuthorityDatabase_m0, composeStorageCommand as syntheticComposeStorageCommand_m1 } from "../../../support/helpers/synthetic-storage-admission.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -46,7 +46,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
 import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
-import { ATOMIC_WRITE_COMMIT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { ATOMIC_WRITE_COMMIT, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 import { z } from "zod";
@@ -183,7 +183,7 @@ function createAuthority(p: Paths): number {
     CLOCK,
   );
   try {
-    seedSyntheticRuntimeConfig(database, { stateRoot: p.stateRoot, artifactRoot: join_m0(p.stateRoot, "artifacts") });
+    seedInitialSettingsRuntimeConfig(database, capturedInstantClock(NOW), { stateRoot: p.stateRoot, artifactRoot: join_m0(p.stateRoot, "artifacts") });
     return database.getMeta().authorityGeneration;
   } finally {
     database.close();
