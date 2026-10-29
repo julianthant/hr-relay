@@ -277,6 +277,20 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           sourceInput = { state: "partial", value: accepted, identityCopied };
         }
       }
+      const surface = descriptor.surfaces.inputRun;
+      if (surface !== undefined && surface.typedInput === undefined) {
+        const accepted: Record<string, JsonValue> = {};
+        const safeInput = valueFreeProtectedData(run.input.parsed.value, bindings);
+        for (const field of new Set(surface.parser.rules.map(rule => rule.emit))) {
+          const value = atPath(run.input.parsed.value, field);
+          const safe = atPath(safeInput, field);
+          if (typeof value !== "string" || value.length === 0 || safe !== value || containsProtected(value, privateValues)) continue;
+          if (rerunInputFieldAccepts(descriptor.input, field, value)
+            && rerunInputFieldAccepts(descriptor.canonicalInput, field, value)) accepted[field] = value;
+        }
+        if (Object.keys(accepted).length > 0) sourceInput = { state: "partial", value: accepted, identityCopied: true };
+        else if (sourceInput.state !== "unavailable") sourceInput = { state: "partial", value: {}, identityCopied: false };
+      }
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
         sourceInput,
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,

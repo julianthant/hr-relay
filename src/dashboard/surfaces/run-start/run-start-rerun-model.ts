@@ -1,5 +1,5 @@
-import type { TypedInputSurface } from "../../../models/workflow/ingress.js";
-import { typedInputDefaults, typedInputText, typedControlAvailable } from "./run-start-model.js";
+import type { InputRunSurface, TypedInputSurface } from "../../../models/workflow/ingress.js";
+import { previewRunInput, typedInputDefaults, typedInputText, typedControlAvailable } from "./run-start-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
@@ -50,6 +50,20 @@ export function initialRerunValueDrafts(snapshot: RerunValuesSnapshot, workflow:
 }
 export function candidateText(value: JsonValue): string {
   return typeof value === "string" ? value : canonicalJsonStringify(value);
+}
+export function plainRerunInputText(surface: InputRunSurface, source: RerunValuesSnapshot["sourceInput"]): string {
+  if (source.state === "unavailable" || source.state === "partial" && !source.identityCopied) return "";
+  const input = source.value;
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return "";
+  for (const rule of surface.parser.rules) {
+    const value = input[rule.emit];
+    if (typeof value !== "string") continue;
+    const preview = previewRunInput(surface, value);
+    if (preview.entries.length === 1 && preview.entries[0]?.sourceText === value
+      && preview.entries[0].fields.some(field => field.field === rule.emit
+        && field.value.kind === "text" && field.value.text === value)) return value;
+  }
+  return "";
 }
 export function readCandidateDraft(candidate: RerunValuesSnapshot["values"][number], text: string): JsonValue {
   if (candidate.state !== "available") throw new Error("RERUN_VALUE_UNAVAILABLE");
