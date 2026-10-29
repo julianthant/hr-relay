@@ -50,7 +50,7 @@ describe("canonical run-record service", () => {
   });
 
   it("table-class coverage drives every public service method and generation class", async () => {
-    const { service, request, runtimeConfig, database } = await fixture();
+    const { service, request, runtimeConfig, database, lifetime } = await fixture();
     const covered = new Set<string>();
     let commandSequence = 100;
     const commandId = () => `99000000-0000-4000-8000-${String(commandSequence++).padStart(12, "0")}`;
@@ -191,6 +191,14 @@ describe("canonical run-record service", () => {
 
     const slot = database.authority.workerSlots.get(WORKER_ID), lease = database.authority.workerLeases.get(WORKER_ID);
     assert.ok(slot !== undefined && lease !== undefined);
+    const recoveryCommandId = commandId();
+    assert.deepEqual(service.read(UUID_6), { state: "absent" });
+    assert.deepEqual(measure("recoverCrash", 0, () => service.recoverCrash({
+      commandId: recoveryCommandId, runId: UUID_6, expectedVersion: 1,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      workerLifetime: { membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration }, now: NOW,
+    }, lifetime)), { state: "refused", refusal: { reason: "lost" } });
+    assert.equal(database.authority.lifecycleJournal.getCommand(recoveryCommandId), undefined);
     const reset = database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
       commandId: commandId(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: NOW,
       target: { workerId: WORKER_ID, membershipRevision: slot.membershipRevision, controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
