@@ -59,7 +59,7 @@ it("pins the exact exclusive lease and root across deferred owned IO, then permi
   const failures: unknown[] = [];
   for (const close of [async () => { finish(); await io; }, () => file.close(), () => operation.release(), () => lease.release(),
     async () => { if (child.connected) child.send("close"); assert.deepEqual(await closed, [0, null]); }, () => f.lifetime.close()]) {
-    try { await close(); } catch (error) { failures.push(error); }
+    try { await Promise.resolve(close()); } catch (error) { failures.push(error); }
   }
   if (primary !== undefined && failures.length > 0) throw new AggregateError([primary.error, ...failures], "offline IO and owned cleanup failed", { cause: primary.error });
   if (primary !== undefined) throw primary.error;
@@ -89,7 +89,7 @@ it("retains the lease and root after an unproved owned close until that actual r
   close.mockRestore();
   const failures: unknown[] = [];
   for (const cleanup of [() => file.close(), () => operation.release(), () => lease.release(), () => f.lifetime.close()]) {
-    try { await cleanup(); } catch (error) { failures.push(error); }
+    try { await Promise.resolve(cleanup()); } catch (error) { failures.push(error); }
   }
   if (primary !== undefined && failures.length > 0) throw new AggregateError([primary.error, ...failures], "unproved close and owned cleanup failed", { cause: primary.error });
   if (primary !== undefined) throw primary.error;
