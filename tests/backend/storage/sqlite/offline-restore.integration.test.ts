@@ -1,16 +1,17 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { profileBrowserClosure, BrowserProfileStillClosingError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { restoreFailureDisposition } from "../../../../src/backend/app/composition/storage-compose.js";
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
-import { type RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService, OfflineRestoreFailure } from "../../../../src/backend/storage/sqlite/offline-restore.js";
@@ -18,20 +19,13 @@ import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/r
 import { observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { RecoveryStopProofStore as RecoveryStopProofStore_m1 } from "../../../support/helpers/synthetic-storage-admission.js";
+import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+
+const retainedNativeRestoreFixtures = new Set<object>();
 
 {
 
-const roots: string[] = [];
-const admissions = new Map<string,RuntimeAdmission>();
-
-const _afterEachFixture0 = () => {
-  for(const admission of admissions.values())admission.release();admissions.clear();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-};
-
 describe("corruption → degraded → restore → rebuild, through the CLI", () => {
-afterEach(_afterEachFixture0);
 
   it("reports post-swap failures without claiming the live authority was untouched", () => {
     const failure = new OfflineRestoreFailure(
@@ -71,14 +65,13 @@ afterEach(_afterEachFixture0);
 
 describe("native notification recovery", () => {
   it("restores exact inbox, source and health metadata through the real backup/restore boundary", async () => {
-    const workspace = mkdtempSync(join(realpathSync(tmpdir()), "notification-native-restore-"));
-    const lifetime = await runtimeLifetimeLock();
-    const admission = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
-    const root = admission.stateRoot, path = join(root, "state.db");
+    const profile = await createBoundProfileFixture(), admission = profile.admission;
+    const root = profile.stateRoot, path = profile.path;
     const clock = manualClock(new Date("2026-09-10T20:00:00Z"));
-    const f = { root, path, clock, input: { processLockRoot: join(root, "locks") } };
+    const f = { root, path, clock, input: { processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot) } };
     try {
-      const open = () => AuthorityDatabase.open(admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "notification-restore" }, f.clock);
+      const open = () => AuthorityDatabase.open(profile.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "notification-restore" }, f.clock,
+        undefined, undefined, undefined, boundProfileCredentials(profile.admission));
       let db = open();
       const inbox = createNotificationInbox({ authority: db, clock: f.clock, ids: sequentialIdFactory("a"), actorId: "local-operator" });
       const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
@@ -92,18 +85,20 @@ describe("native notification recovery", () => {
       backupDb.close();
       db = open(); db.authority.notifications.updateState({ notificationId: report.notification.notificationId, expectedVersion: 2, status: "unread", snooze: { state: "not-snoozed" }, updatedAt: f.clock.now().toISOString() }); db.close();
       const identity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
-      const proofStore = new RecoveryStopProofStore_m1({ processLockRoot: f.input.processLockRoot, maxProofAgeMs: 60_000 }, f.clock);
+      const proofStore = new RecoveryStopProofStore({ processLockRoot: f.input.processLockRoot, maxProofAgeMs: 60_000 }, f.clock);
       proofStore.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot: f.input.processLockRoot, sourceDatabaseIdentity: identity }, f.clock));
       const stoppedSystemProof = proofStore.issue({ observedBy: "local-operator", sourceDatabaseIdentity: identity });
       const manifest = backup.manifests[0]; expect(manifest).toBeDefined();
-      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async stagedPath => { const stagedAdmission = admission.stoppedStagedAuthority(stagedPath); try { const staged = AuthorityDatabase.open(stagedAdmission, { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "notification-projection-proof" }, f.clock); staged.close(); } finally { stagedAdmission.release(); } }, f.clock);
+      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async stagedPath => { const stagedAdmission = admission.stoppedStagedAuthority(stagedPath); try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "notification-projection-proof" }, f.clock); staged.close(); } finally { stagedAdmission.release(); } }, f.clock, undefined, undefined, boundProfileCredentials(admission));
       await restore.restore({ manifestPath: join(f.root, "backups", "authority", `${manifest.backupFileName}.manifest.json`), stoppedSystemProof });
+      assert.throws(() => admission.assertProfileRuntime(), /profile-restore-context-expired/u);
+      profile.renewAfterRestore();
       db = open();
       try {
         expect({ row: db.authority.notifications.get(report.notification.notificationId), sources: db.authority.notificationPublications.list(), health: db.authority.notificationHealth.get("disk-space") }).toEqual(expected);
         expect((await createNotificationInbox({ authority: db, clock: f.clock, ids: sequentialIdFactory("a"), actorId: "local-operator" }).publish(event)).durable).toBe("existing");
       } finally { db.close(); }
-    } finally { admission.release(); rmSync(workspace, { recursive: true, force: true }); }
+    } finally { await profile.close(); }
   });
 });
 }
@@ -118,24 +113,29 @@ function controlRecord(now: string) {
 }
 describe("native worker control recovery", () => {
   it("preserves pending control identity and browser observations through real backup and restore", async () => {
-    const workspace = mkdtempSync(join(realpathSync(tmpdir()), "worker-control-native-"));
-    const lifetime = await runtimeLifetimeLock();
-    const admission = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
-    const root = admission.stateRoot;
-    const f = {root,path:join(root,"state.db"),clock:manualClock(new Date("2026-09-10T20:00:00Z")),input:{processLockRoot:join(root,"locks")}};
+    const profile = await createBoundProfileFixture(), admission = profile.admission;
+    const root = profile.stateRoot;
+    const f = {root,path:profile.path,clock:manualClock(new Date("2026-09-10T20:00:00Z")),input:{processLockRoot:join(profile.workspace,rebuildRuntimeIsolation.processLockRoot)}};
+    let closureUnproved = false;
     try {
-      const open = () => AuthorityDatabase.open(admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "worker-control-restore" }, f.clock);
+      const open = () => AuthorityDatabase.open(profile.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "worker-control-restore" }, f.clock,
+        undefined, undefined, undefined, boundProfileCredentials(profile.admission));
       let db = open(); const now = f.clock.now().toISOString(); const record = controlRecord(now);
+      const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, f.clock, admission);
+      db.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint,
+        provenance: resolved.provenance, capturedAt: now });
       db.authority.workerPools.plan({workflow:"person-lookup",expectedVersion:0,desiredWorkers:1,requestedBy:"local-operator",now});
       const slot = db.authority.workerSlots.allocate({workflow:"person-lookup",poolIndex:1,commandId:null,now});
       expect(slot.workerId).toBe(WORKER);
-      db.authority.workerLeases.start({ workerId: WORKER, workflow: "person-lookup", browserSystems: ["crm"], processId: 42, requestedBy: "local-operator", now });
+      db.authority.workerLeases.start({ workerId: WORKER, workflow: "person-lookup", browserSystems: ["crm"], processId: process.pid, requestedBy: "local-operator", now });
       db.authority.workerLeases.reserveControl(WORKER, record.request.target.controlBasis, record.commandId, now);
       db.authority.commands.insert(record.request);
       db.authority.workerControls.admit(record);
       db.authority.workerControls.transition(record.commandId,"admitted",{ state: "executing", startedAt: now });
       db.authority.workerControls.transition(record.commandId,"executing",{ state: "uncertain", startedAt: now, observedAt: now, message: "owner crashed" });
-      db.authority.workerControls.observe({ workerId: WORKER, leaseGeneration: 1, sessionId: randomUUID(), system: "crm", configFingerprint: "a".repeat(64), signInFingerprint: "a".repeat(64), openedAt: now, profileRevision: 1, browserMode: "headless", acceptDownloads: false, exclusive: false, health: "unknown", observedAt: now });
+      const profileDirectory = profileBrowserClosure.workerDirectory({profileRoot:resolved.config.paths.browserProfileRoot,slotOrdinal:slot.ordinal,system:"crm"});
+      mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
+      db.authority.workerControls.observe({ workerId: WORKER, leaseGeneration: 1, sessionId: randomUUID(), system: "crm", configFingerprint: resolved.fingerprint, signInFingerprint: "a".repeat(64), profileDirectory, openedAt: now, profileRevision: 1, browserMode: "headless", acceptDownloads: false, exclusive: false, health: "unknown", observedAt: now });
       const expected = { controls: db.authority.workerControls.list(), browsers: db.authority.workerControls.browsers(WORKER) }; db.close();
       const backupDb = open();
       const backup = await new AuthorityBackupService(admission,backupDb,{directory:join(root,"backups","authority")},f.clock).request({trigger:"operator",requiredGeneration:backupDb.getMeta().authorityGeneration});
@@ -148,11 +148,23 @@ describe("native worker control recovery", () => {
       if (manifest === undefined) throw new Error("backup-manifest-missing");
       const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async stagedPath => {
         const stagedAdmission = admission.stoppedStagedAuthority(stagedPath);
-        try { const staged = AuthorityDatabase.open(stagedAdmission,{ path: stagedPath, busyTimeoutMs: 250, migrationOwner: "worker-control-restore-check" }, f.clock); staged.close(); } finally { stagedAdmission.release(); }
-      }, f.clock);
+        try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission,{ path: stagedPath, busyTimeoutMs: 250, migrationOwner: "worker-control-restore-check" }, f.clock); staged.close(); } finally { stagedAdmission.release(); }
+      }, f.clock, undefined, undefined, boundProfileCredentials(admission));
+      closureUnproved = true;
       await restore.restore({ manifestPath: join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`), stoppedSystemProof });
+      closureUnproved = false;
+      assert.throws(() => admission.assertProfileRuntime(), /profile-restore-context-expired/u);
+      profile.renewAfterRestore();
       db = open(); try { expect({ controls: db.authority.workerControls.list(), browsers: db.authority.workerControls.browsers(WORKER) }).toEqual(expected); } finally { db.close(); }
-    } finally { admission.release(); rmSync(workspace,{recursive:true,force:true}); }
+    } catch (error) {
+      if (closureUnproved || error instanceof AuthoritySourceClosureUnprovedError || error instanceof BrowserProfileStillClosingError) {
+        closureUnproved = true;
+        const failure = retainAuthoritySourceClosure([error], { admission: profile });
+        retainedNativeRestoreFixtures.add({ profile, failure });
+        throw failure;
+      }
+      throw error;
+    } finally { if (!closureUnproved) await profile.close(); }
   });
 
 });

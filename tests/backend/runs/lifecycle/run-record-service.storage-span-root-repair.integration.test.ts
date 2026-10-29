@@ -1,10 +1,14 @@
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
-import { mkdirSync,mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { RunRecordService,requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -19,39 +23,39 @@ import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
-import { appliedRunIds,seedInitialSettingsRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
+import { appliedRunIds } from "../../../support/fixtures/operator-command-fixtures.js";
 import {
 NOW,
 UUID_1,
+CONFIG_SNAPSHOT,
 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import {
 QUEUED_RUN,
 sequentialIdFactory,
 } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { writeFixtureParallelDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { AuthorityDatabase,doctorAuthorityStorage,syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
+const cleanups: Array<() => void | Promise<void>> = [];
 
-const roots: string[] = [];
-
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+afterEach(async () => {
+  for (const close of cleanups.splice(0).reverse()) await close();
 });
 
-function fixture(ambiguous=false) {
+async function fixture(ambiguous=false) {
   const descriptor=ambiguous?writeFixtureParallelDescriptor:fixtureDescriptor;
-  const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-span-root-repair-")));
-  roots.push(repoRoot);
-  const stateRoot = join(repoRoot, ".tracker");
-  mkdirSync(stateRoot);
-  const authorityPath = join(stateRoot, "state.db");
-  const processLockRoot = join(stateRoot, "locks");
+  const profile = await createBoundProfileFixture();
+  cleanups.push(async () => { await profile.close(); });
+  const repoRoot = profile.workspace, stateRoot = profile.stateRoot, authorityPath = profile.path;
+  const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
   const clock = manualClock(new Date(NOW));
-  const database = AuthorityDatabase.open({
+  const database = AuthorityDatabase.open(profile.admission, {
     path: authorityPath,
     busyTimeoutMs: 500,
     migrationOwner: "span-root-repair-test",
-  }, clock);
-  seedInitialSettingsRuntimeConfig(database,clock);
+  }, clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+  cleanups.push(() => { database.close(); });
+  const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, clock, profile.admission);
+  database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint,
+    provenance: resolved.provenance, capturedAt: clock.now().toISOString() });
   const ids=sequentialIdFactory("c"),active=database.authority.runtimeConfig.get();assert.ok(active);
   const descriptors={resolve:(workflow:string)=>workflow===descriptor.id?descriptor:undefined};
   const lifecycle=new RunRecordService({database,clock,ids:sequentialIdFactory("a"),publishQueued:()=>undefined});
@@ -91,21 +95,21 @@ function fixture(ambiguous=false) {
     return proofs.issue({observedBy:"local-operator",sourceDatabaseIdentity:source});
   };
   const stoppedSystemProof = issueProof();
-  const service = new OfflineSpanRootRepairService(profileBrowserClosure, syntheticStateRoot(stateRoot),{
+  const service = new OfflineSpanRootRepairService(profileBrowserClosure, profile.admission,{
     stateRoot,
     authorityPath,
     processLockRoot,
     stoppedProofMaxAgeMs: 300_000,
     busyTimeoutMs: 500,
   }, clock);
-  return { repoRoot, stateRoot, authorityPath, processLockRoot, clock, run, plan, service, stoppedSystemProof,issueProof };
+  return { repoRoot, stateRoot, authorityPath, processLockRoot, clock, run, plan, service, stoppedSystemProof,issueProof,admission:profile.admission };
 }
 
 describe("offline missing run.queued recovery", () => {
   it("appends one authority-derived marked SQLite root without changing prior records", async () => {
-    const f = fixture();
+    const f = await fixture();
     const read = () => {
-      const db = AuthorityDatabase.open({ path: f.authorityPath, busyTimeoutMs: 500, migrationOwner: "repair-verifier" }, f.clock);
+      const db = AuthorityDatabase.open(f.admission, { path: f.authorityPath, busyTimeoutMs: 500, migrationOwner: "repair-verifier" }, f.clock);
       try { return db.authority.timelineEvents.page({}); } finally { db.close(); }
     };
     const before = read();
@@ -126,7 +130,7 @@ describe("offline missing run.queued recovery", () => {
     const replay=f.service.repair({runId:f.run.envelope.runId,stoppedSystemProof:f.issueProof()});
     assert.equal(replay.state,"already-repaired");assert.deepEqual(read(),after);
 
-    const doctor = await doctorAuthorityStorage({
+    const doctor = await doctorAuthorityStorage(f.admission, {
       stateRootTrustAnchor: f.repoRoot,
       stateRoot: f.stateRoot,
       authorityPath: f.authorityPath,
@@ -137,17 +141,17 @@ describe("offline missing run.queued recovery", () => {
     assert.equal(doctor.spanAuthority.state, "reconciled");
   });
 
-  it("refuses multiple exact admitted candidates without publishing a root",()=>{
-    const f=fixture(true);
-    const database=AuthorityDatabase.open({path:f.authorityPath,busyTimeoutMs:500,migrationOwner:"repair-ambiguity-verifier"},f.clock);
+  it("refuses multiple exact admitted candidates without publishing a root",async()=>{
+    const f=await fixture(true);
+    const database=AuthorityDatabase.open(f.admission,{path:f.authorityPath,busyTimeoutMs:500,migrationOwner:"repair-ambiguity-verifier"},f.clock);
     let before;try{before=database.authority.timelineEvents.page({});}finally{database.close();}
     assert.throws(()=>f.service.repair({runId:f.run.envelope.runId,stoppedSystemProof:f.stoppedSystemProof}),/2 matching planned entries/u);
-    const reopened=AuthorityDatabase.open({path:f.authorityPath,busyTimeoutMs:500,migrationOwner:"repair-ambiguity-verifier"},f.clock);
+    const reopened=AuthorityDatabase.open(f.admission,{path:f.authorityPath,busyTimeoutMs:500,migrationOwner:"repair-ambiguity-verifier"},f.clock);
     try{assert.deepEqual(reopened.authority.timelineEvents.page({}),before);}finally{reopened.close();}
   });
 
-  it.each(["input-mismatch","audit-mismatch"])("refuses altered current %s without publishing a root",fault=>{
-    const f=fixture(),raw=new DatabaseSync(f.authorityPath);
+  it.each(["input-mismatch","audit-mismatch"])("refuses altered current %s without publishing a root",async fault=>{
+    const f=await fixture(),raw=new DatabaseSync(f.authorityPath);
     const before=raw.prepare("SELECT * FROM timeline_events ORDER BY cursor").all();
     try {
       if(fault==="input-mismatch")raw.prepare("UPDATE runs SET lifecycle_json=json_set(lifecycle_json,'$.input.raw.eid',?,'$.input.parsed.value.eid',?) WHERE id=?").run("10812346","10812346",f.run.envelope.runId);
@@ -158,9 +162,9 @@ describe("offline missing run.queued recovery", () => {
     try{assert.deepEqual(reopened.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),before);}finally{reopened.close();}
   });
 
-  it("refuses when a required start-plan authority binding is absent", () => {
-    const f = fixture();
-    const database = AuthorityDatabase.open({
+  it("refuses when a required start-plan authority binding is absent", async () => {
+    const f = await fixture();
+    const database = AuthorityDatabase.open(f.admission, {
       path: f.authorityPath,
       busyTimeoutMs: 500,
       migrationOwner: "span-root-repair-test-mutate",
