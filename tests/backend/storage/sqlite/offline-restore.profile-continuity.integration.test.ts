@@ -19,6 +19,7 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { initialSettingsFileRecord, SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { manualClock, systemClock, type Clock } from "../../../../src/rules/time/clock.js";
 import type { OfflineRestoreAdmissionFactory } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
@@ -283,7 +284,7 @@ describe("profile restore continuity", () => {
       try {
         const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, systemClock,
           { stateRoot: f.stateRoot, artifactRoot: f.admission.artifactRoot });
-        const snapshot = { ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint, provenance: resolved.provenance };
+        const snapshot = ConfigSnapshotRecordSchema.parse({ ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint, provenance: resolved.provenance });
         seedAtomicWriteOwner(database, { ...ATOMIC_WRITE_COMMIT,
           transaction: { ...ATOMIC_WRITE_COMMIT.transaction, configFingerprint: snapshot.fingerprint } }, f.path, 2, snapshot);
         fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, f.path);

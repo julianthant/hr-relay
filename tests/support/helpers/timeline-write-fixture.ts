@@ -12,7 +12,7 @@ import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-va
 import { AtomicWriteCommitInputSchema } from "../../../src/backend/storage/sqlite/write-commit-contracts.js";
 import type { AuthorityDatabase } from "./synthetic-storage-admission.js";
 import { HASH_A, HASH_B, CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
-import type { ConfigSnapshotRecord } from "../../../src/models/config/snapshot.js";
+import { ConfigSnapshotRecordSchema, type ConfigSnapshotRecord } from "../../../src/models/config/snapshot.js";
 
 /** Populate the immutable output that real sequencer settlement always supplies. */
 export function atomicWriteCheckpoint(input: unknown) {
@@ -27,7 +27,7 @@ export function atomicWriteCheckpoint(input: unknown) {
 
 /** Unit fixtures retain an actual owner; timeline history may never manufacture it. */
 export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown, path: string, preferredPoolIndex?: number,
-  snapshot: ConfigSnapshotRecord = CONFIG_SNAPSHOT): void {
+  snapshot: ConfigSnapshotRecord = ConfigSnapshotRecordSchema.parse(CONFIG_SNAPSHOT)): void {
   const commit = currentAtomicWriteFixture(input);
   const ledger = commit.transaction;
   const existing = database.authority.runs.get(ledger.runId);
