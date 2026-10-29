@@ -18,6 +18,7 @@ import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgr
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 describe("native authority backup", () => {
@@ -28,7 +29,8 @@ describe("native authority backup", () => {
     await expect(upgradeStorage(profileBrowserClosure, admission,{stateRoot:root,processLockRoot,plan:true},clock)).resolves.toMatchObject({state:"planned",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION});
     expect(()=>readFileSync(path)).toThrow();
     await expect(upgradeStorage(profileBrowserClosure, admission,{stateRoot:root,processLockRoot,plan:false},clock)).resolves.toMatchObject({state:"initialized"});
-    expect(inspectAuthorityBackupReadOnly(admission,path).tables).toHaveLength(39);
+    expect(inspectAuthorityBackupReadOnly(admission,path).tables).toEqual(AUTHORITY_TABLE_REGISTRY
+      .map(({name,classification})=>({name,classification})).sort((left,right)=>left.name.localeCompare(right.name)));
   });
 
 });
