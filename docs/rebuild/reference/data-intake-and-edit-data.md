@@ -224,6 +224,8 @@ The workflow factory still validates `capabilities.editData.fields`: fields belo
 
 The descriptor's `rerunValues` mappings name exact source node/field and target input or omission field. Available values need completed source facts, recorded provenance, compatible target schemas, and no retained protected data. Unavailable reasons include `not-completed`, `not-recorded`, `protected`, `target-invalid`, and `provenance-unavailable`. Malformed source evidence refuses.
 
+When plain-parser source input is withheld as protected, Rerun offers only declared ingress identity fields accepted unchanged by the current input and canonical schemas. Each field is checked separately against protected bindings and embedded protected values. Safe identity fields use the partial source-input response; protected identity remains unavailable. Unprotected source-input responses keep their existing shape. Server-owned values such as `timekeeperName` stay off this wire; new Rerun plans reuse their retained source bindings through protected-input admission.
+
 Omitted-step assertions are unfinished facts, not observed completion. The response contains source coordinates, steps, values, and transaction warning facts. It creates no plan, repeat consent, run, checkpoint, or settings change.
 
 ## 7. Intake boundary protections

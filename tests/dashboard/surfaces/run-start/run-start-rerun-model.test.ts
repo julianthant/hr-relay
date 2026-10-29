@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { defaultRerunSteps, initialRerunValueDrafts } from "../../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
+import { defaultRerunSteps, initialRerunValueDrafts, plainRerunInputText } from "../../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
 import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
@@ -25,6 +25,17 @@ const snapshot = RerunValuesSnapshotSchema.parse({
 });
 
 describe("Rerun current-step defaults", () => {
+  it("restores only the exact declared plain-parser identity from a safe partial input", () => {
+    assert.ok(workflow.inputRun.state === "present");
+    const surface = workflow.inputRun.surface;
+    assert.equal(plainRerunInputText(surface, { state: "partial", value: { eid: "10812345" }, identityCopied: true }), "10812345");
+    assert.equal(plainRerunInputText(surface, { state: "partial", value: { other: "10812345" }, identityCopied: true }), "");
+    for (const value of [{ eid: " 10812345 " }, { eid: "10812345\n10812346" }, { eid: "not-an-id" }]) {
+      assert.equal(plainRerunInputText(surface, { state: "partial", value, identityCopied: true }), "");
+    }
+    assert.equal(plainRerunInputText(surface, { state: "partial", value: { eid: "10812345" }, identityCopied: false }), "");
+    assert.equal(plainRerunInputText(surface, { state: "unavailable", reason: "protected" }), "");
+  });
   it("refuses a different workflow instead of selecting its steps", () => {
     assert.throws(() => defaultRerunSteps(snapshot, { ...workflow, workflowId: "other-workflow" }),
       /response|validation|invalid|understand|expected/iu);

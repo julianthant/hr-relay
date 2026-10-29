@@ -3,10 +3,13 @@ import { createMountedRerunWorld } from "../../../support/helpers/dashboard/moun
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";
-import { afterEach,describe,it } from "vitest";
+import { afterEach,describe,it,vi } from "vitest";
+import { z } from "zod";
 import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { absentProbeEvidence } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { createPlSeparationsReadinessWorld } from "../../../support/helpers/dashboard/pl-separations-readiness-world.js";
+import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 
 const { setup, text, button, press, checkbox, field, fill, mount, cleanup } = createMountedRerunWorld();
 afterEach(cleanup);
@@ -116,4 +119,136 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(h.database.authority.writeIntents.listByRun(run.envelope.runId).length, 0); assert.equal(sourceBytes(h, source), bytes);
   });
 
+});
+
+describe("registered Person Lookup and Separations served launch", () => {
+  const readiness = createPlSeparationsReadinessWorld();
+  afterEach(readiness.cleanup);
+  const cases = [
+    { workflowId: "person-lookup", text: "10000001", submission: { mode: "search", emplId: "10000001",
+      crmCheck: true, keepNonHdh: false, includeCrmDates: false }, dryRun: false },
+    { workflowId: "separations", text: "4510", submission: { documentNumber: "4510" }, dryRun: true },
+  ] as const;
+
+  async function preview(h: Awaited<ReturnType<typeof readiness.setup>>, entry: typeof cases[number]) {
+    const input = document.querySelector("textarea"); assert.ok(input);
+    await readiness.fill(input, entry.text);
+    await readiness.press("Continue");
+    if (entry.dryRun) {
+      assert.equal(readiness.checkbox("Dry run").getAttribute("aria-checked"), "false");
+      await act(async () => readiness.checkbox("Dry run").click());
+    }
+    await readiness.press("Continue");
+    await vi.waitFor(() => assert.ok(document.querySelector("#run-start-confirm")));
+    const request = StartPlanRequestSchema.parse(h.submissions.at(-1));
+    assert.equal(request.workflowId, entry.workflowId);
+    assert.deepEqual(request.submissions, [entry.submission]);
+    assert.equal(request.dryRun, entry.dryRun);
+  }
+
+  function assertQueued(h: Awaited<ReturnType<typeof readiness.setup>>, entry: typeof cases[number], count = 1) {
+    const runs = h.database.authority.runs.listByWorkflow(entry.workflowId);
+    assert.equal(runs.length, count);
+    const run = runs.find(run => run.lifecycle.state === "queued"); assert.ok(run);
+    assert.equal(run.envelope.workflow, entry.workflowId);
+    assert.equal(run.envelope.descriptorVersion, h.descriptor.version);
+    assert.equal(run.envelope.contractFingerprint, h.descriptor.contractFingerprint);
+    assert.equal(run.envelope.dryRun, entry.dryRun);
+    const input = z.record(z.string(), JsonValueSchema).parse(run.input.parsed.value);
+    if (entry.workflowId === "person-lookup") assert.deepEqual(input, entry.submission);
+    else {
+      assert.equal(input.documentNumber, "4510");
+      assert.ok(run.input.parsed.protectedBindings?.some(binding => binding.name === "timekeeperName"));
+      assert.equal(JSON.stringify(h.finalCommands).includes("Fixture Operator"), false);
+    }
+    assert.deepEqual(h.database.authority.runCheckpoints.listByItem(entry.workflowId, run.envelope.itemId)
+      .filter(checkpoint => checkpoint.runId === run.envelope.runId), []);
+    assert.deepEqual(h.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    assert.deepEqual(h.database.authority.gateResults.listByRun(run.envelope.runId), []);
+    assert.deepEqual(h.world.events, []);
+    return run;
+  }
+
+  for (const entry of cases) {
+    it(`enqueues ${entry.workflowId} only after final confirmation with the real definition and exact input`, async () => {
+      const h = await readiness.setup(entry.workflowId), view = await readiness.mount(h);
+      await preview(h, entry);
+      assert.deepEqual(h.database.authority.runs.listByWorkflow(entry.workflowId), []);
+      assert.deepEqual(h.finalCommands, []);
+      assert.deepEqual(view.applied, []);
+      await readiness.press(entry.dryRun ? "Start dry run" : "Start 1 run");
+      await vi.waitFor(() => assert.deepEqual(view.applied, [entry.workflowId]));
+      assert.deepEqual(view.closed, [false]);
+      const run = assertQueued(h, entry);
+      const command = h.finalRequest();
+      const stored = h.database.authority.startPlans.get(command.target.startPlanId); assert.ok(stored);
+      assert.equal(stored.consumedBy?.commandId, command.commandId);
+      assert.equal(stored.configSnapshotId, run.envelope.configSnapshotId);
+      assert.equal(h.finalCommands.length, 1);
+    });
+
+    it(`retains a lost ${entry.workflowId} submission and replays exact bytes without a second run`, async () => {
+      const h = await readiness.setup(entry.workflowId), view = await readiness.mount(h);
+      await preview(h, entry);
+      h.loseResponse();
+      await readiness.press(entry.dryRun ? "Start dry run" : "Start 1 run");
+      await vi.waitFor(() => assert.ok([...document.querySelectorAll("button")]
+        .some(button => button.textContent?.trim() === "Replay exact submission")));
+      assert.deepEqual(view.applied, []);
+      const original = h.finalRequest(), queued = assertQueued(h, entry);
+      const retained = h.retained(queued);
+      await readiness.press("Replay exact submission");
+      await vi.waitFor(() => assert.deepEqual(view.applied, [entry.workflowId]));
+      assert.equal(h.finalCommands.length, 2);
+      assert.deepEqual(h.finalRequest(), original);
+      assertQueued(h, entry);
+      assert.deepEqual(h.retained(queued), retained);
+    });
+
+    it(`reruns a genuinely settled pre-write ${entry.workflowId} failure as fresh work and preserves its source`, async () => {
+      const h = await readiness.setup(entry.workflowId);
+      const source = await h.failedSource(entry.submission, entry.dryRun), before = h.retained(source);
+      const view = await readiness.mount(h, source);
+      await vi.waitFor(() => assert.ok([...document.querySelectorAll("button")]
+        .some(button => button.textContent?.trim() === "Continue" && !button.disabled)));
+      await readiness.press("Continue");
+      await vi.waitFor(() => assert.ok(document.querySelector("textarea")));
+      assert.equal(document.querySelector("textarea")?.value, entry.text);
+      assert.equal(h.submissions.length, 1);
+      assert.deepEqual(h.finalCommands, []);
+      await readiness.press("Continue");
+      if (entry.dryRun) await act(async () => readiness.checkbox("Dry run").click());
+      await readiness.press("Continue");
+      await vi.waitFor(() => assert.ok(document.querySelector("#run-start-confirm")));
+      const planned = StartPlanRequestSchema.parse(h.submissions.at(-1));
+      assert.deepEqual(planned.submissions, [entry.submission]);
+      assert.equal(planned.rerunSource?.runId, source.envelope.runId);
+      assert.equal(planned.rerunSource?.expectedVersion, source.version);
+      assert.deepEqual(planned.rerunSource?.copiedFrom, []);
+      assert.deepEqual(h.retained(source), before);
+      await readiness.press(entry.dryRun ? "Start dry run" : "Create rerun");
+      await vi.waitFor(() => assert.deepEqual(view.applied, [entry.workflowId]));
+      const run = assertQueued(h, entry, 2);
+      assert.notEqual(run.envelope.runId, source.envelope.runId);
+      assert.deepEqual(h.retained(source), before);
+    });
+  }
+
+  it("plans the registered Person Lookup Match input without exposing identifiers in confirmation", async () => {
+    const h = await readiness.setup("person-lookup"), view = await readiness.mount(h);
+    const match = document.querySelector<HTMLInputElement>('input[type="radio"][value="match"]'); assert.ok(match);
+    await act(async () => match.click());
+    const input = document.querySelector("textarea"); assert.ok(input);
+    await readiness.fill(input, "Example, Person, x, 123456789");
+    await readiness.press("Continue"); await readiness.press("Continue");
+    await vi.waitFor(() => assert.ok(document.querySelector("#run-start-confirm")));
+    const plan = StartPlanRequestSchema.parse(h.submissions.at(-1));
+    assert.deepEqual(plan.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789",
+      crmCheck: false, includeCrmDates: false }]);
+    assert.deepEqual(plan.selectedStepKeys, ["searching", "active-status"]);
+    assert.equal(readiness.text().includes("123456789"), false);
+    assert.deepEqual(view.applied, []);
+    assert.deepEqual(h.finalCommands, []);
+    assert.deepEqual(h.database.authority.runs.listByWorkflow("person-lookup"), []);
+  });
 });
