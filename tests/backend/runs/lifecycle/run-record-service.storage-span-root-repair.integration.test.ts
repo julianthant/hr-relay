@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import { mkdirSync,mkdtempSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -90,7 +91,7 @@ function fixture(ambiguous=false) {
     return proofs.issue({observedBy:"local-operator",sourceDatabaseIdentity:source});
   };
   const stoppedSystemProof = issueProof();
-  const service = new OfflineSpanRootRepairService(syntheticStateRoot(stateRoot),{
+  const service = new OfflineSpanRootRepairService(profileBrowserClosure, syntheticStateRoot(stateRoot),{
     stateRoot,
     authorityPath,
     processLockRoot,

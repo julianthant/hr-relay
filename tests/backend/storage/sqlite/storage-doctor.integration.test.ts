@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { createStorageBackupLocationFixtures } from "../../../support/helpers/storage/storage-relocation-fixture.js";
 import { createCredentialDoctorFixtures } from "../../../support/helpers/credential-doctor-fixtures.js";
 import { default as assert } from "node:assert/strict";
@@ -51,7 +52,7 @@ try {
     assert.ok(before.previousLocationBackups?.every((backup) => backup.restoreEligibility === "not-admitted"));
     assert.equal(summarizeBackupHealth({ backupDirectory: f.options.backupDirectory }, 0, clock), "current");
 
-    await backupStoppedAuthority(f.admission, f.destination.stateRoot, clock, join(f.destination.stateRoot, "locks"));
+    await backupStoppedAuthority(profileBrowserClosure, f.admission, f.destination.stateRoot, clock, join(f.destination.stateRoot, "locks"));
     const oldManifest = before.previousLocationBackups?.find((entry) => entry.selection === "single-database");
     assert.ok(oldManifest);
     const nextMtime = new Date(clock.nowMs() + 30_000);

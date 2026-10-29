@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
@@ -86,7 +87,7 @@ async function upgradedFixture(version: 6 | 7 | 8) {
     try { raw.close(); }
     catch (error) { throw retainAuthoritySourceClosure(sourceFailure === undefined ? [error] : [sourceFailure.error, error], { database: raw, admission: f.admission }); }
     if (sourceFailure !== undefined) throw sourceFailure.error;
-    assert.equal((await upgradeStorage(f.admission, { stateRoot: f.stateRoot,
+    assert.equal((await upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.stateRoot,
       processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false }, clock)).state, "upgraded");
     const inspected = new DatabaseSync(f.path, { readOnly: true });
     databases.push(inspected);
@@ -488,8 +489,8 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
       const profileId=f.admission.profileBinding.profileId;f.context.database.close();f.admission.release();
       const processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot);
       restore=acquireRuntimeRestoreAdmission({processLockRoot,pid:process.pid},f.clock);
-      const stoppedAdmission=await f.machine.forStoppedProfileUpgrade(createProfileRegistry(f.machine).storageClaim(profileId),restore,f.clock,{primaryDisplay:null});stopped=stoppedAdmission;
-      const report=await backupStoppedAuthority(stoppedAdmission,f.stateRoot,f.clock,processLockRoot,restore);
+      const stoppedAdmission=await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, createProfileRegistry(f.machine).storageClaim(profileId),restore,f.clock,{primaryDisplay:null});stopped=stoppedAdmission;
+      const report=await backupStoppedAuthority(profileBrowserClosure, stoppedAdmission,f.stateRoot,f.clock,processLockRoot,restore);
       assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);
     }
   }catch(error){primary={error};}

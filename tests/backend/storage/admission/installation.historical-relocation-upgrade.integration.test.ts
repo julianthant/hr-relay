@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -76,7 +77,7 @@ it("admits a completed schema-3 relocation and upgrades with an exact verified b
   try {
     assert.deepEqual(admission.readInstallationContext()?.receipts, [historical]);
     const source = AuthorityDatabase.sourceDatabaseIdentity(path);
-    const report = await upgradeStorage(admission, { stateRoot: destination.stateRoot, processLockRoot: join(pair.stateRoot, "locks"), plan: false }, clock);
+    const report = await upgradeStorage(profileBrowserClosure, admission, { stateRoot: destination.stateRoot, processLockRoot: join(pair.stateRoot, "locks"), plan: false }, clock);
     assert.equal(report.state, "upgraded");
     const directory = join(destination.stateRoot, "backups/authority");
     const names = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));

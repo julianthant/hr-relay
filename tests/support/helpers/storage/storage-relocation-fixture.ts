@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runtimeLifetimeLock } from "../backend/runtime-lifetime.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
@@ -210,7 +211,7 @@ async function movedFixture(artifactOnly = false) {
         fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(), capturedBy: "local-operator",
         config: resolved.config, provenance: resolved.provenance });
     } finally { database.close(); }
-    await backupStoppedAuthority(initial, initial.stateRoot, clock, join(initial.stateRoot, "locks"));
+    await backupStoppedAuthority(profileBrowserClosure, initial, initial.stateRoot, clock, join(initial.stateRoot, "locks"));
   } finally { initial.release(); }
   if (artifactOnly) {
     const exterior = { stateRoot: join(root, "exterior-state"), artifactRoot: join(root, "exterior-artifacts") };

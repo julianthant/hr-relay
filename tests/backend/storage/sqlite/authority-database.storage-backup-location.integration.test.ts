@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { createStorageBackupLocationFixtures } from "../../../support/helpers/storage/storage-relocation-fixture.js";
 import assert from "node:assert/strict";
 
@@ -43,7 +44,7 @@ it("refuses a same-origin pre-relocation native backup before any restore effect
       processLockRoot: join(f.destination.stateRoot, "locks"), stoppedProofMaxAgeMs: 300_000 };
     const request = { manifestPath: join(f.options.backupDirectory, manifestFileName), stoppedSystemProof };
     const before = readFileSync(authorityPath);
-    const restore = new OfflineAuthorityRestoreService(f.admission, options, async () => undefined, clock).restore(request);
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, options, async () => undefined, clock).restore(request);
     await assert.rejects(restore, /pre-relocation|relocation|restore.*admi|activation/u);
     assert.deepEqual(readFileSync(authorityPath), before);
     assert.equal(existsSync(options.suspectDirectory), false);

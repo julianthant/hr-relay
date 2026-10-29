@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { mkdtempSync,realpathSync,rmSync } from "node:fs";
@@ -49,7 +50,7 @@ describe("Explorer SQLite command authority", () => {
       proofs.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, f.clock));
       const stoppedSystemProof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
       let rebuilds = 0;
-      const restore = new OfflineAuthorityRestoreService(admission, { authorityPath: f.path,
+      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path,
         suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000,
       }, async staged => {
         const stageAdmission = admission.stoppedStagedAuthority(staged);

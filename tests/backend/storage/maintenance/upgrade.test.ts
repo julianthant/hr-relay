@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { tmpdir } from 'node:os';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -24,9 +25,9 @@ describe("native authority backup", () => {
     const fixture=await createBoundProfileFixture({pending:"storage"}),root=fixture.stateRoot,path=fixture.path;
     cleanups.push(async ()=>await fixture.close());const admission=fixture.admission,processLockRoot=join(root,"locks"),clock=capturedInstantClock(NOW);
     mkdirSync(processLockRoot,{mode:0o700});
-    await expect(upgradeStorage(admission,{stateRoot:root,processLockRoot,plan:true},clock)).resolves.toMatchObject({state:"planned",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION});
+    await expect(upgradeStorage(profileBrowserClosure, admission,{stateRoot:root,processLockRoot,plan:true},clock)).resolves.toMatchObject({state:"planned",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION});
     expect(()=>readFileSync(path)).toThrow();
-    await expect(upgradeStorage(admission,{stateRoot:root,processLockRoot,plan:false},clock)).resolves.toMatchObject({state:"initialized"});
+    await expect(upgradeStorage(profileBrowserClosure, admission,{stateRoot:root,processLockRoot,plan:false},clock)).resolves.toMatchObject({state:"initialized"});
     expect(inspectAuthorityBackupReadOnly(admission,path).tables).toHaveLength(39);
   });
 
@@ -55,7 +56,7 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
     let failure: unknown;
     try {
       if (entry === 'command') await composeStorageCommand(rebuildRuntimeIsolation, ['upgrade', '--json'], systemClock, f.workspace, f.admission);
-      else await upgradeStorage(f.admission, { stateRoot: f.stateRoot, processLockRoot: root, plan: false }, systemClock, (input, clock) => {
+      else await upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.stateRoot, processLockRoot: root, plan: false }, systemClock, (input, clock) => {
         const owner = acquireRuntimeRestoreAdmission(input, clock); restore = owner; armed = true; return owner;
       });
     } catch (error) { failure = error; }
@@ -95,7 +96,7 @@ for (const entry of ['service', 'command'] as const) it(`releases proved upgrade
   let proved = false;
   try {
     if (entry === 'service') {
-      await assert.rejects(upgradeStorage(f.admission, { stateRoot: f.stateRoot, processLockRoot: root, plan: false }, systemClock, (input, clock) => {
+      await assert.rejects(upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.stateRoot, processLockRoot: root, plan: false }, systemClock, (input, clock) => {
         const owner = acquireRuntimeRestoreAdmission(input, clock); restore = owner; armed = true; return owner;
       }), error => error === injected);
       const releasedRestore = restore; assert.ok(releasedRestore);

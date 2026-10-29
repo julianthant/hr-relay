@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { createProductionAssistantTools } from "../../../src/backend/assistant/tools.js";
@@ -177,7 +178,7 @@ it("does not resurrect an approval copied back by the real stopped restore", asy
   const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock);
   proofs.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, f.clock));
   const proof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
-  const restore = new OfflineAuthorityRestoreService(f.context.admission, { authorityPath: path, suspectDirectory: join(f.context.admission.stateRoot, "backups", "suspects"), busyTimeoutMs: 250,
+  const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.context.admission, { authorityPath: path, suspectDirectory: join(f.context.admission.stateRoot, "backups", "suspects"), busyTimeoutMs: 250,
     processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock, undefined, undefined, f.context.credentials);
   assert.equal((await restore.restore({ manifestPath: join(directory, `${manifest.backupFileName}.manifest.json`), stoppedSystemProof: proof })).state, "restored");
   assert.throws(() => f.authorization.consume(chat, proposal.id));

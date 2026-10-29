@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/native-profile-probe.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -119,7 +120,7 @@ async function fresh() {
   const profile = await createBoundProfileFixture({ pending: "storage" });
   pendingProfiles.push(profile);
   const input = { stateRoot: profile.stateRoot, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false };
-  return { root: profile.stateRoot, path: profile.path, input, run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
+  return { root: profile.stateRoot, path: profile.path, input, run: (plan = false) => upgradeStorage(profileBrowserClosure, { ...input, plan }, clock) };
 }
 function rows(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
@@ -138,7 +139,7 @@ afterEach(_afterEachFixture0);
 
   it("leaves a fresh root untouched when exclusive restore admission fails and permits exact rerun", async () => {
     const f = await fresh(); const before = storageTree(f.root);
-    await assert.rejects(upgradeStorage(f.input, clock, () => { throw new Error("injected-admission-failure"); }),
+    await assert.rejects(upgradeStorage(profileBrowserClosure, f.input, clock, () => { throw new Error("injected-admission-failure"); }),
       /injected-admission-failure/u);
     assert.equal(existsSync(f.path), false);
     assert.deepEqual(storageTree(f.root), before);
@@ -153,9 +154,9 @@ afterEach(_afterEachFixture0);
       detachBoundFixtureWorkers(f.db); f.db.close();
       const before = rows(f.path); const bytes = readFileSync(f.path);
       const input = { stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan: true };
-      assert.equal((await upgradeStorage(input, clock)).state, "planned");
+      assert.equal((await upgradeStorage(profileBrowserClosure, input, clock)).state, "planned");
       assert.deepEqual(readFileSync(f.path), bytes);
-      assert.equal((await upgradeStorage({ ...input, plan: false }, clock)).state, "already-upgraded");
+      assert.equal((await upgradeStorage(profileBrowserClosure, { ...input, plan: false }, clock)).state, "already-upgraded");
       assert.deepEqual(rows(f.path), before); assert.deepEqual(readFileSync(f.path), bytes);
       const reopened = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "stale-current-readback" }, clock);
       try { assert.deepEqual(reopened.authority.runs.get(run.envelope.runId), run);
@@ -188,7 +189,7 @@ afterEach(_afterEachFixture0);
       } finally { raw.close(); }
       const before = storageTree(f.root);
       assert.throws(() => AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "missing-snapshot-boot" }, clock));
-      for (const plan of [true, false]) await assert.rejects(upgradeStorage({
+      for (const plan of [true, false]) await assert.rejects(upgradeStorage(profileBrowserClosure, {
         stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan }, clock));
       assert.deepEqual(storageTree(f.root), before);
     } finally { await f.dispose(); }
@@ -205,7 +206,7 @@ afterEach(_afterEachFixture0);
       assert.equal(retained.length, 4); assert.equal(new Set(retained.map(event => event.eventId)).size, 4);
       assert.deepEqual(retained.map(event => event.retentionDate), ["2026-07-31", "2026-07-31", "2026-07-31", "2026-08-01"]);
       detachBoundFixtureWorkers(f.db); f.db.close(); const before = rows(f.path);
-      assert.equal((await upgradeStorage({ stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan: false }, clock)).state, "already-upgraded");
+      assert.equal((await upgradeStorage(profileBrowserClosure, { stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan: false }, clock)).state, "already-upgraded");
       assert.deepEqual(rows(f.path), before);
       const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "native-timeline-replay" }, clock);
       try {

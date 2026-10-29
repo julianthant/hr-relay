@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -47,8 +48,8 @@ it("keeps a current authority unchanged through stopped plan and no-op apply", a
 try {
 
   const f = await fixture(), before = inspectAuthorityBackupReadOnly(f.admission, f.path), bytes = readFileSync(f.path);
-  assert.equal((await upgradeStorage(f.admission, { ...f, plan: true }, clock)).state, "planned");
-  assert.equal((await upgradeStorage(f.admission, { ...f, plan: false }, clock)).state, "already-upgraded");
+  assert.equal((await upgradeStorage(profileBrowserClosure, f.admission, { ...f, plan: true }, clock)).state, "planned");
+  assert.equal((await upgradeStorage(profileBrowserClosure, f.admission, { ...f, plan: false }, clock)).state, "already-upgraded");
   assert.deepEqual(inspectAuthorityBackupReadOnly(f.admission, f.path), before);
   assert.deepEqual(readFileSync(f.path), bytes);
 
@@ -64,7 +65,7 @@ try {
   const held = acquireRuntimeRestoreAdmission({ processLockRoot: f.processLockRoot, pid: process.pid }, clock);
   try {
     const lock = join(f.processLockRoot, "restore-admission.lock.json"), heldBytes = readFileSync(lock);
-    const report = await backupStoppedAuthority(f.admission, f.stateRoot, clock, f.processLockRoot, held);
+    const report = await backupStoppedAuthority(profileBrowserClosure, f.admission, f.stateRoot, clock, f.processLockRoot, held);
     assert.equal(report.state, "verified");
     assert.equal(report.manifests.length, 1);
     const manifest = report.manifests[0]; assert.ok(manifest);
@@ -90,7 +91,7 @@ try {
   const f = await fixture(), bytes = readFileSync(f.path), before = inspectAuthorityBackupReadOnly(f.admission, f.path);
   const held = acquireRuntimeRestoreAdmission({ processLockRoot: f.processLockRoot, pid: process.pid }, clock);
   held.release();
-  await assert.rejects(backupStoppedAuthority(f.admission, f.stateRoot, clock, f.processLockRoot, held), /ENOENT|restore-admission/u);
+  await assert.rejects(backupStoppedAuthority(profileBrowserClosure, f.admission, f.stateRoot, clock, f.processLockRoot, held), /ENOENT|restore-admission/u);
   assert.deepEqual(readFileSync(f.path), bytes);
   assert.deepEqual(inspectAuthorityBackupReadOnly(f.admission, f.path), before);
   assert.equal(existsSync(join(f.stateRoot, "backups", "authority")), false);

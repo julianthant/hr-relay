@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import * as browserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
@@ -286,7 +287,8 @@ for(const failure of ["busy","unproved"] as const)it(`retains logout credentials
   const f=await createBoundProfileFixture(),clock=manualClock(new Date("2026-10-21T12:00:00Z"));
   const runtime=composeProfileRuntime({admission:f.machine,clock,hostFacts:{primaryDisplay:null}});
   const error=failure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy")):new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
-  const probe=vi.spyOn(browserInventory,"probeRetainedBrowsersClosed").mockRejectedValue(error);
+  const inventoryProbe=vi.spyOn(browserInventory,"probeRetainedBrowsersClosed");
+  const probe=vi.spyOn(profileBrowserClosure,"probeClosed").mockRejectedValue(error);
   let context:ReturnType<typeof runtime.selectedContext>|undefined;
   let primary:{error:unknown}|undefined;
   try{
@@ -306,11 +308,11 @@ for(const failure of ["busy","unproved"] as const)it(`retains logout credentials
     assert.equal(retained.commandId,undefined);assert.equal(retained.writeId,undefined);assert.equal(retained.expectedRevision,undefined);
     assert.deepEqual(readFileSync(protectedPath),protectedBefore);assert.deepEqual(readFileSync(keyPath),keyBefore);assert.equal(existsSync(journalPath),false);
     assert.equal(probe.mock.calls.length,1);
-    assert.equal(probe.mock.calls[0]?.[0].admission,context.admission);
+    assert.equal(inventoryProbe.mock.calls[0]?.[0].admission,context.admission);
     await assert.rejects(runtime.close());
   }catch(error){primary={error};}
   const cleanupErrors:unknown[]=[];
-  probe.mockRestore();
+  probe.mockRestore(); inventoryProbe.mockRestore();
   try{
     assert.throws(()=>runtime.session.close(),error=>error instanceof RuntimeCustodyUncertainError
       && error.errors.some((cause:unknown)=>cause instanceof Error&&cause.message==="profile-account-closure-unproved"));

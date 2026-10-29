@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -66,7 +67,7 @@ describe("native authority backup", () => {
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock); proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
-    const restore = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"),
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"),
       busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock, undefined, undefined, f.credentials);
     await expect(restore.restore({ manifestPath, stoppedSystemProof })).resolves.toMatchObject({ state: "restored" });
     expect(() => AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "stale-restore-owner" })).toThrow();
@@ -95,7 +96,7 @@ describe("native authority backup", () => {
     proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
     let rebuilds = 0;
-    const restore = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path,
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, { authorityPath: f.path,
       suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 },
       async staged => { rebuilds += 1; const stagedAdmission = f.admission.stoppedStagedAuthority(staged);
         try { expect(inspectAuthorityBackupReadOnly(stagedAdmission, staged).tables).toHaveLength(39); } finally { stagedAdmission.release(); } }, f.clock, undefined, undefined, f.credentials);
@@ -117,7 +118,7 @@ describe("native authority backup", () => {
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock); proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
-    const restore = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path, suspectDirectory: suspects,
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, { authorityPath: f.path, suspectDirectory: suspects,
       busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock,
       { copyFile: copyFileSync, atomicReplace: (source, destination) => {
         if (phase === "after-swap") renameSync(source, destination);
@@ -146,7 +147,7 @@ describe("native authority backup", () => {
     const snapshot = observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock);
     const proofs = new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60_000},f.clock);proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({observedBy:LOCAL_OPERATOR_ACTOR_ID,sourceDatabaseIdentity:snapshot.sourceDatabaseIdentity});
-    const restore = new OfflineAuthorityRestoreService(f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
       busyTimeoutMs:250,processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>undefined,f.clock,{
       copyFile:copyFileSync,atomicReplace(){throw new Error("before-authority-replacement");},renamePath(source,destination){
         if(rollbackFault && source.endsWith(".live-companion"))throw new Error("companion-rollback-fault");
@@ -176,7 +177,7 @@ describe("native authority backup", () => {
       const proofs=new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60_000},f.clock);
       const fresh=()=>{const observed=observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock);
         proofs.recordRuntimeState(observed);return proofs.issue({observedBy:LOCAL_OPERATOR_ACTOR_ID,sourceDatabaseIdentity:observed.sourceDatabaseIdentity});};
-      const restore=new OfflineAuthorityRestoreService(f.admission,{authorityPath:f.path,suspectDirectory:suspects,
+      const restore=new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission,{authorityPath:f.path,suspectDirectory:suspects,
         busyTimeoutMs:250,processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>undefined,f.clock,{
         copyFile:copyFileSync,atomicReplace(source,destination){
           if(outcome === "replaced")renameSync(source,destination);
@@ -209,7 +210,7 @@ describe("native authority backup", () => {
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
     proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
-    const service = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"),
+    const service = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"),
       busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock,
       { copyFile: copyFileSync, atomicReplace(source, destination) {
         renameSync(source, destination); copyFileSync(destination, source); throw new Error("both-paths-after-replacement");
@@ -313,8 +314,8 @@ describe("native authority backup", () => {
         const proofs=new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60_000},f.clock);
         proofs.recordRuntimeState(snapshot);
         expect(()=>proofs.issue({observedBy:LOCAL_OPERATOR_ACTOR_ID,sourceDatabaseIdentity:snapshot.sourceDatabaseIdentity})).toThrow();
-        await expect(backupStoppedAuthority(f.admission,f.root,f.clock,processLockRoot)).rejects.toThrow(/runtime-active/u);
-        await expect(upgradeStorage(f.admission,{stateRoot:f.root,processLockRoot,plan:false},f.clock)).rejects.toThrow(/runtime-active/u);
+        await expect(backupStoppedAuthority(profileBrowserClosure, f.admission,f.root,f.clock,processLockRoot)).rejects.toThrow(/runtime-active/u);
+        await expect(upgradeStorage(profileBrowserClosure, f.admission,{stateRoot:f.root,processLockRoot,plan:false},f.clock)).rejects.toThrow(/runtime-active/u);
       }finally{lock.release();}
     }
     const stopped=observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock);
@@ -329,9 +330,9 @@ describe("native authority backup", () => {
       expect(()=>proofs.consumeAgainstLiveSnapshot(proof,{...stopped,processLocks:{...stopped.processLocks,
         [role]:{state:"stopped",generation:stopped.processLocks[role].generation+1}}})).toThrow(/generations/u);
     }
-    await expect(upgradeStorage(f.admission,{stateRoot:f.root,processLockRoot,plan:false},f.clock)).resolves.toMatchObject({state:"already-upgraded"});
+    await expect(upgradeStorage(profileBrowserClosure, f.admission,{stateRoot:f.root,processLockRoot,plan:false},f.clock)).resolves.toMatchObject({state:"already-upgraded"});
     const restore=acquireRuntimeRestoreAdmission({processLockRoot,pid:process.pid},f.clock);
-    try{await expect(backupStoppedAuthority(f.admission,f.root,f.clock,processLockRoot,restore)).resolves.toMatchObject({state:"verified"});
+    try{await expect(backupStoppedAuthority(profileBrowserClosure, f.admission,f.root,f.clock,processLockRoot,restore)).resolves.toMatchObject({state:"verified"});
       expect(()=>acquireRuntimeProcessLock({processLockRoot,name:"server",pid:process.pid},f.clock)).toThrow(/restore admission/u);
     }finally{restore.release();}
   });
@@ -343,8 +344,8 @@ describe("native authority backup", () => {
     if(claim===undefined)throw new Error("missing genuine geocode claim");
     writeFileSync(join(claims,claim),"{}");const before=readFileSync(f.path);
     expect(()=>observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock)).toThrow();
-    await expect(backupStoppedAuthority(f.admission,f.root,f.clock,processLockRoot)).rejects.toThrow();
-    await expect(upgradeStorage(f.admission,{stateRoot:f.root,processLockRoot,plan:false},f.clock)).rejects.toThrow();
+    await expect(backupStoppedAuthority(profileBrowserClosure, f.admission,f.root,f.clock,processLockRoot)).rejects.toThrow();
+    await expect(upgradeStorage(profileBrowserClosure, f.admission,{stateRoot:f.root,processLockRoot,plan:false},f.clock)).rejects.toThrow();
     expect(readFileSync(f.path)).toEqual(before);
   });
 

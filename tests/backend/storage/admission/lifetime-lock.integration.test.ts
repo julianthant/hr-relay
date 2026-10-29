@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { createAdmissionChildFixtures } from "../../../support/helpers/storage/admission-child-fixtures.js";
 import assert from "node:assert/strict";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
@@ -433,7 +434,7 @@ for (const capability of ["foreign-workspace", "retained-child"] as const) it(`r
       () => RuntimeAdmission.acquireStoppedMachineControlMaintenance(directory, lock),
       () => runOfflineAuthorityRestoreRecovery(directory, ["--operation", operationId, "--from", join(directory, "backup.json"), "--outcome", "unchanged"], lock),
       () => runOfflineStorageRelocation({ workspace: directory, lifetime: lock, command: { kind: "resume", id: operationId, json: true } }),
-      () => runOfflineQueuedRunCancellation(directory, ["--apply", "--capture", "a".repeat(64)], lock),
+      () => runOfflineQueuedRunCancellation(profileBrowserClosure, directory, ["--apply", "--capture", "a".repeat(64)], lock),
     ];
     for (const writer of writers) {
       await assert.rejects(async () => { await writer(); }, capability === "foreign-workspace"

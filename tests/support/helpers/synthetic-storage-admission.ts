@@ -1,3 +1,4 @@
+import type { ProfileBrowserClosure } from "../../../src/backend/storage/maintenance/profile-inventory.js";
 import { createBoundProfileCredentialStore, findProfileFixtureAdmission } from "./admission-fixture.js";
 import { findProfileFixtureInWorkspace } from "./synthetic-database-admission.js";
 import { withAuthorityDatabaseReadOnly as realWithAuthorityDatabaseReadOnly } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
@@ -63,12 +64,12 @@ export class AuthorityBackupService extends RealAuthorityBackupService {
 }
 
 export class OfflineAuthorityRestoreService extends RealOfflineAuthorityRestoreService {
-  constructor(input: ConstructorParameters<typeof RealOfflineAuthorityRestoreService>[1],
-    rebuild: ConstructorParameters<typeof RealOfflineAuthorityRestoreService>[2],
-    clock?: ConstructorParameters<typeof RealOfflineAuthorityRestoreService>[3],
-    files?: ConstructorParameters<typeof RealOfflineAuthorityRestoreService>[4],
-    factory?: ConstructorParameters<typeof RealOfflineAuthorityRestoreService>[5]) {
-    super(RuntimeAdmission.syntheticFixture((input as { authorityPath: string }).authorityPath), input, rebuild, clock, files, factory);
+  constructor(browserClosure: ProfileBrowserClosure, input: ConstructorParameters<typeof RealOfflineAuthorityRestoreService>[2],
+    rebuild: ConstructorParameters<typeof RealOfflineAuthorityRestoreService>[3],
+    clock?: ConstructorParameters<typeof RealOfflineAuthorityRestoreService>[4],
+    files?: ConstructorParameters<typeof RealOfflineAuthorityRestoreService>[5],
+    factory?: ConstructorParameters<typeof RealOfflineAuthorityRestoreService>[6]) {
+    super(browserClosure, RuntimeAdmission.syntheticFixture((input as { authorityPath: string }).authorityPath), input, rebuild, clock, files, factory);
   }
 }
 
@@ -76,14 +77,14 @@ export async function verifyBackupManifestAtPath(path: string, sourceIdentity?: 
   return realVerifyBackupManifestAtPath(syntheticStateRoot(backupRoot(path)), path, sourceIdentity);
 }
 
-export async function backupStoppedAuthority(stateRoot: string, clock: Parameters<typeof realBackupStoppedAuthority>[2],
-  processLockRoot: string, heldRestore?: Parameters<typeof realBackupStoppedAuthority>[4]) {
-  return realBackupStoppedAuthority(syntheticStateRoot(stateRoot), stateRoot, clock,processLockRoot,heldRestore);
+export async function backupStoppedAuthority(browserClosure: ProfileBrowserClosure, stateRoot: string, clock: Parameters<typeof realBackupStoppedAuthority>[3],
+  processLockRoot: string, heldRestore?: Parameters<typeof realBackupStoppedAuthority>[5]) {
+  return realBackupStoppedAuthority(browserClosure, syntheticStateRoot(stateRoot), stateRoot, clock,processLockRoot,heldRestore);
 }
 
-export async function upgradeStorage(input: Parameters<typeof realUpgradeStorage>[1], clock: Parameters<typeof realUpgradeStorage>[2],
-  acquire?: Parameters<typeof realUpgradeStorage>[3]) {
-  return realUpgradeStorage(syntheticStateRoot(input.stateRoot), input, clock, acquire);
+export async function upgradeStorage(browserClosure: ProfileBrowserClosure, input: Parameters<typeof realUpgradeStorage>[2], clock: Parameters<typeof realUpgradeStorage>[3],
+  acquire?: Parameters<typeof realUpgradeStorage>[4]) {
+  return realUpgradeStorage(browserClosure, syntheticStateRoot(input.stateRoot), input, clock, acquire);
 }
 
 export async function doctorAuthorityStorage(options: Parameters<typeof realDoctorAuthorityStorage>[1], clock?: Parameters<typeof realDoctorAuthorityStorage>[2]) {

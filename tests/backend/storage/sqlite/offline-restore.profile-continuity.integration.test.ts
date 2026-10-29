@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import * as nativeBrowserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
@@ -83,7 +84,7 @@ async function world(clock: Clock = systemClock) {
     proofs.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, clock));
     return proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
   };
-  const restore = (projection: (path: string) => Promise<void> = async () => {}, replace = renameSync, factory?: OfflineRestoreAdmissionFactory) => new OfflineAuthorityRestoreService(admission,
+  const restore = (projection: (path: string) => Promise<void> = async () => {}, replace = renameSync, factory?: OfflineRestoreAdmissionFactory) => new OfflineAuthorityRestoreService(profileBrowserClosure, admission,
     { authorityPath: fixture.path, suspectDirectory: join(fixture.stateRoot, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 },
     projection, clock, { copyFile: copyFileSync, atomicReplace: replace }, factory, store());
   let controllerClosure: Promise<void> | undefined;
@@ -122,7 +123,8 @@ describe("profile restore continuity", () => {
     const refusal=closure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy"))
       :new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
     let primary:{error:unknown}|undefined;
-    const native=vi.spyOn(nativeBrowserInventory,"probeStoppedProfileBrowsersClosed").mockRejectedValue(refusal);
+    const inventoryProbe=vi.spyOn(nativeBrowserInventory,"probeStoppedProfileBrowsersClosed");
+    const native=vi.spyOn(profileBrowserClosure,"probeClosed").mockRejectedValue(refusal);
     try{
       const manifestPath=await f.backup(),request={manifestPath,stoppedSystemProof:f.proof()};
       const suspectDirectory=join(f.stateRoot,"backups","suspects"),control=join(f.workspace,".tracker","control");
@@ -130,12 +132,12 @@ describe("profile restore continuity", () => {
       const machineTree=storageTree(join(f.machine.stateRoot,"machine")),controlTree=storageTree(control);
       const suspectsExisted=existsSync(suspectDirectory);
       let copies=0,replacements=0,projections=0;
-      const restore=new OfflineAuthorityRestoreService(f.current(),{authorityPath:f.path,suspectDirectory,busyTimeoutMs:250,
+      const restore=new OfflineAuthorityRestoreService(profileBrowserClosure, f.current(),{authorityPath:f.path,suspectDirectory,busyTimeoutMs:250,
         processLockRoot:f.processLockRoot,stoppedProofMaxAgeMs:60000},async()=>{projections++;},clock,
         {copyFile:(from,to)=>{copies++;copyFileSync(from,to);},atomicReplace:(from,to)=>{replacements++;renameSync(from,to);}},undefined,f.store());
       await assert.rejects(restore.restore(request),error=>error instanceof OfflineRestoreFailure
         &&error.authorityState==="unchanged"&&error.cause===refusal);
-      assert.equal(native.mock.calls.length,1);assert.equal(native.mock.calls[0]?.[0],f.current());
+      assert.equal(native.mock.calls.length,1);assert.equal(inventoryProbe.mock.calls[0]?.[0],f.current());
       assert.deepEqual([copies,replacements,projections],[0,0,0]);
       const after=fs.lstatSync(f.path);
       assert.deepEqual([after.dev,after.ino,after.size,after.mtimeMs,after.ctimeMs],
@@ -144,7 +146,7 @@ describe("profile restore continuity", () => {
       assert.deepEqual(storageTree(join(f.machine.stateRoot,"machine")),machineTree);assert.deepEqual(storageTree(control),controlTree);
       assert.equal(existsSync(suspectDirectory),suspectsExisted);
     }catch(error){primary={error};}
-    native.mockRestore();
+    native.mockRestore(); inventoryProbe.mockRestore();
     try{await f.close();}catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"offline-native-fixture-cleanup-failed",{cause:error});}
     if(primary!==undefined)throw primary.error;
   });
@@ -425,7 +427,7 @@ describe("profile restore continuity", () => {
     const f = await world();
     try {
       const manifestPath = await f.backup(), before = readFileSync(f.path);
-      assert.throws(() => new OfflineAuthorityRestoreService(f.machine,
+      assert.throws(() => new OfflineAuthorityRestoreService(profileBrowserClosure, f.machine,
         { authorityPath: f.path, suspectDirectory: join(f.stateRoot, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => {}), /profile-bound-authority-required/);
       assert.throws(() => f.machine.assertStorageRelocationSupported(), ProfileStorageRelocationUnsupportedError);
       assert.deepEqual(readFileSync(f.path), before);
@@ -700,6 +702,7 @@ describe("profile restore continuity", () => {
         import { createProfileRegistry } from './src/backend/profiles/registry.ts';
         import { createCredentialStore } from './src/backend/storage/configuration/credential-store.ts';
         import { OfflineAuthorityRestoreService } from './src/backend/storage/sqlite/offline-restore.ts';
+        import { profileBrowserClosure } from './src/backend/runtime/browser/native-profile-probe.ts';
         import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
         import { RecoveryStopProofStore } from './src/backend/storage/sqlite/recovery-stop-proof.ts';
         import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from './src/backend/storage/sqlite/runtime-process-locks.ts';
@@ -718,7 +721,7 @@ describe("profile restore continuity", () => {
         const store=createCredentialStore({admission:child,stateRoot:root,erasureJournalAdmission:machine,erasureJournalPath:join(machine.stateRoot,'machine','erasures',profileId+'.json')});
         const identity=AuthorityDatabase.sourceDatabaseIdentity(path),proofs=new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60000});
         proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:identity}));const proof=proofs.issue({observedBy:'local-operator',sourceDatabaseIdentity:identity});
-        const service=new OfflineAuthorityRestoreService(child,{authorityPath:path,suspectDirectory:join(root,'backups','suspects'),busyTimeoutMs:250,processLockRoot,stoppedProofMaxAgeMs:60000},async()=>{${barrier}},undefined,undefined,undefined,store);
+        const service=new OfflineAuthorityRestoreService(profileBrowserClosure, child,{authorityPath:path,suspectDirectory:join(root,'backups','suspects'),busyTimeoutMs:250,processLockRoot,stoppedProofMaxAgeMs:60000},async()=>{${barrier}},undefined,undefined,undefined,store);
         await service.restore({manifestPath,stoppedSystemProof:proof});
       }finally{machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
       owner = childJob(imports + (held === "erase" ? erase : restore));

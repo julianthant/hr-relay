@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
 import { RuntimeAdmission as CanonicalRuntimeAdmission } from '../../../src/backend/storage/admission/admission.js';
@@ -72,7 +73,7 @@ export async function storageRecoveryTarget() {
     const proofs = new RecoveryStopProofStore({processLockRoot, maxProofAgeMs: 60000});
     proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot, sourceDatabaseIdentity}));
     const stoppedSystemProof = proofs.issue({observedBy: "local-operator", sourceDatabaseIdentity});
-    const restore = new OfflineAuthorityRestoreService(admission, {authorityPath: path, suspectDirectory: join(root, "backups", "suspects"),
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, {authorityPath: path, suspectDirectory: join(root, "backups", "suspects"),
       processLockRoot, busyTimeoutMs: 500, stoppedProofMaxAgeMs: 60000}, async () => {}, undefined,
       {copyFile: copyFileSync, atomicReplace(source, destination) {
         renameSync(source, destination); copyFileSync(destination, source);

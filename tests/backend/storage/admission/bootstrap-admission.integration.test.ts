@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
 import { z } from "zod";
@@ -124,7 +125,7 @@ try {
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) });
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60000 }); proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
-    const service = new OfflineAuthorityRestoreService(admission, { authorityPath: path, suspectDirectory: join(state, "backups", "suspects"),
+    const service = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: path, suspectDirectory: join(state, "backups", "suspects"),
       processLockRoot, busyTimeoutMs: 250, stoppedProofMaxAgeMs: 60000 }, async () => {}, undefined,
       { copyFile: copyFileSync, atomicReplace(source, destination) {
         renameSync(source, destination); copyFileSync(destination, source);
@@ -200,7 +201,7 @@ it("supported single-authority restore re-checks healthy without inventing repai
   try {
     copyFileSync(join(process.cwd(),"package.json"),join(workspace,"package.json"));
     AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"preflight-restore"},clock,undefined,undefined,undefined,boundProfileCredentials(admission)).close();
-    const backup=await backupStoppedAuthority(admission,stateRoot,clock,join(workspace,rebuildRuntimeIsolation.processLockRoot));
+    const backup=await backupStoppedAuthority(profileBrowserClosure, admission,stateRoot,clock,join(workspace,rebuildRuntimeIsolation.processLockRoot));
     const manifest=backup.manifests.at(-1);assert.ok(manifest);
     const path=join(stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`);
     const restored=await composeStorageCommand(rebuildRuntimeIsolation,["restore","--from",path,"--json"],clock,workspace,admission,boundProfileCredentials(admission));

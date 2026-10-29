@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import nativeFs, { existsSync, readFileSync, readdirSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -12,7 +13,7 @@ import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/st
 it("backs up a flat store without credentials, starts empty, and accepts an ordinary fresh sign-up", async () => {
   const f = await createHistoricalFlatProfileFixture();
   try {
-    const machine = await acquireDashboardEntrypointAdmission(f.workspace, "shared", f.lifetime);
+    const machine = await acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime);
     try {
       assert.equal(machine.requiresFlatStoreMigration(), false);
       assert.deepEqual(machine.readProfileRegistry().profiles, []);
@@ -33,7 +34,7 @@ it("backs up a flat store without credentials, starts empty, and accepts an ordi
         assert.equal(existsSync(join(machine.stateRoot, "profiles", draft.profileId)), false);
       } finally { await profile.close(); }
     } finally { machine.release(); }
-    const restarted = await acquireDashboardEntrypointAdmission(f.workspace, "shared", f.lifetime);
+    const restarted = await acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime);
     assert.deepEqual(restarted.readProfileRegistry().profiles, []); restarted.release();
   } finally { await f.close(); }
 });
@@ -54,7 +55,7 @@ for (const fault of ["write", "verification"] as const) {
     });
     syncBuiltinESMExports();
     try {
-      await assert.rejects(acquireDashboardEntrypointAdmission(f.workspace, "shared", f.lifetime), error => error instanceof Error && "code" in error && error.code === "PROFILE_FLAT_STORE_MIGRATION_FAILED");
+      await assert.rejects(acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime), error => error instanceof Error && "code" in error && error.code === "PROFILE_FLAT_STORE_MIGRATION_FAILED");
       assert.deepEqual(readFileSync(f.databasePath), before);
       assert.deepEqual(readFileSync(f.artifact), artifact);
       assert.equal(existsSync(join(f.stateRoot, "credentials")), false);
@@ -78,11 +79,11 @@ for (const boundary of ["database", "registry"] as const) {
       if (!interrupted && boundary === "registry" && String(destination) === join(f.stateRoot, "machine", "profiles.json")) { interrupted = true; throw new Error("fixture migration interrupted"); }
     });
     syncBuiltinESMExports();
-    try { await assert.rejects(acquireDashboardEntrypointAdmission(f.workspace, "shared", f.lifetime)); }
+    try { await assert.rejects(acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime)); }
     finally { unlinkSpy.mockRestore(); renameSpy.mockRestore(); syncBuiltinESMExports(); }
     try {
       assert.equal(interrupted, true);
-      const machine = await acquireDashboardEntrypointAdmission(f.workspace, "shared", f.lifetime);
+      const machine = await acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime);
       try {
         assert.deepEqual(machine.readProfileRegistry().profiles, []);
         assert.ok(retainedStorageBackup(f.workspace, machine.locator.installationId));

@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import { existsSync,readFileSync,symlinkSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -46,7 +47,7 @@ describe("current stopped authority initialization", () => {
     const f = await storageRecoveryFixture();
     try {
       const before = storageTree(f.root);
-      await assert.rejects(upgradeStorage(f.input, f.clock, () => { throw new Error("injected-admission-failure"); }), /injected-admission-failure/u);
+      await assert.rejects(upgradeStorage(profileBrowserClosure, f.input, f.clock, () => { throw new Error("injected-admission-failure"); }), /injected-admission-failure/u);
       assert.deepEqual(storageTree(f.root), before);
       assert.equal(existsSync(f.path), false);
       assert.equal((await f.run()).state, "initialized");
