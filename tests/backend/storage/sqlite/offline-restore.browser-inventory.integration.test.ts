@@ -53,7 +53,7 @@ for (const malformed of ["browser", "config", "control"] as const) it(`refuses m
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, clock);
     proofs.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: identity }, clock));
     const stoppedSystemProof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity: identity });
-    const before = storageTree(fixture.workspace), entries = readdirSync(fixture.workspace, { recursive: true }).sort();
+    const before = storageTree(fixture.workspace), entries = readdirSync(fixture.workspace, { recursive: true, encoding: "utf8" }).sort();
     const stat = lstatSync(fixture.path);
     const pendingPath = join(processLockRoot, "restore-proofs-pending", stoppedSystemProof.proofId + ".json");
     const consumedPath = join(processLockRoot, "restore-proofs-consumed", stoppedSystemProof.proofId + ".json");
@@ -128,7 +128,7 @@ for (const malformed of ["browser", "config", "control"] as const) it(`refuses m
     const expectedEntries = new Set(entries);
     expectedEntries.delete(pendingRelative); expectedEntries.add(consumedRelative); expectedEntries.add(historyRelative);
     expectedEntries.add(relative(fixture.workspace, historyDirectory));
-    assert.deepEqual(readdirSync(fixture.workspace, { recursive: true }).sort(), [...expectedEntries].sort());
+    assert.deepEqual(readdirSync(fixture.workspace, { recursive: true, encoding: "utf8" }).sort(), [...expectedEntries].sort());
     const after = lstatSync(fixture.path);
     assert.deepEqual([after.dev, after.ino, after.size, after.mtimeMs, after.ctimeMs], [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs]);
   } catch (error) { primary = { error }; }
