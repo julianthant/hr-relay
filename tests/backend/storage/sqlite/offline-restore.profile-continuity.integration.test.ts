@@ -11,13 +11,13 @@ import { acquireRecoveryRuntimeRestore, RuntimeAdmission } from "../../../../src
 import { ProfileStorageRelocationUnsupportedError } from "../../../../src/backend/storage/admission/admission-identity.js";
 import { seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
-import { ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { ATOMIC_WRITE_COMMIT, CONFIG_SNAPSHOT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { initialSettingsFileRecord, SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { manualClock, systemClock, type Clock } from "../../../../src/rules/time/clock.js";
 import type { OfflineRestoreAdmissionFactory } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
@@ -279,7 +279,11 @@ describe("profile restore continuity", () => {
       let expected: unknown;
       const settingsCommandId = randomUUID();
       try {
-        seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, f.path, 2);
+        const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, systemClock,
+          { stateRoot: f.stateRoot, artifactRoot: f.admission.artifactRoot });
+        const snapshot = { ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint, provenance: resolved.provenance };
+        seedAtomicWriteOwner(database, { ...ATOMIC_WRITE_COMMIT,
+          transaction: { ...ATOMIC_WRITE_COMMIT.transaction, configFingerprint: snapshot.fingerprint } }, f.path, 2, snapshot);
         fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, f.path);
         const run = database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
         assert.ok(run); const claim = runClaim(run); assert.ok(claim);
