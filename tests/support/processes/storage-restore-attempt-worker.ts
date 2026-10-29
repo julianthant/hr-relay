@@ -63,10 +63,11 @@ if (process.argv[2] === "successor-renew-confirmed") {
     const checkpoint = database.authority.runCheckpoints.get(prior.envelope.workflow, prior.envelope.itemId,
       `write-${WRITE_INTENT_ATTEMPTING.writeIntentId}`, prior.envelope.attempt, request.oldClaimGeneration);
     assert.ok(intent); assert.ok(attempt); assert.ok(checkpoint);
+    assert.ok(intent.status === "committed");
     assert.equal(intent.runId, request.runId); assert.equal(intent.runAttempt, request.oldAttempt);
     assert.equal(attempt.runId, request.runId); assert.equal(checkpoint.runId, request.runId);
     assert.equal(checkpoint.claimGeneration, request.oldClaimGeneration);
-    assert.equal(intent.status, "committed"); assert.equal(attempt.outcome.state, "committed");
+    assert.equal(attempt.outcome.state, "committed");
     assert.equal(database.authority.writeIntents.listByRun(request.runId).every(value => value.status === "committed" || value.status === "observed-present"), true);
     const member = database.withAuthorityTransaction(repositories => {
       const currentMember = repositories.workerSlots.get(request.member.workerId), currentLease = repositories.workerLeases.get(request.member.workerId);
