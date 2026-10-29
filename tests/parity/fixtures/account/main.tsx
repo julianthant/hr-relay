@@ -3,13 +3,15 @@ import { createRoot } from "react-dom/client";
 import { ChatGptAccountSettings } from "../../../../src/dashboard/surfaces/settings/general/chatgpt-account.js";
 import type { ChatGptAccountPort, ChatGptAccountSnapshot } from "../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
 import { DsBodyScope } from "../../../../src/dashboard/ds/ui.js";
-import "../../../../src/dashboard/app/index.css";
+import "./account.css";
 
 const query = new URLSearchParams(location.search);
 const theme = query.get("theme");
 if (theme !== "dark" && theme !== "light") throw new Error("account-fixture-theme-invalid");
 document.documentElement.setAttribute("data-demo-theme", theme);
 document.body.setAttribute("data-demo-theme", theme);
+document.documentElement.classList.toggle("dark", theme === "dark");
+document.body.classList.toggle("dark", theme === "dark");
 const state = query.get("state");
 const identity = { name: "Jordan Lee", email: "jordan.lee@example.com" };
 const snapshots: Readonly<Record<string, ChatGptAccountSnapshot>> = {
