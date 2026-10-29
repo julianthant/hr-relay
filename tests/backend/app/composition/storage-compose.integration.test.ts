@@ -1,3 +1,4 @@
+import { withOfflineMaintenanceSync, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
@@ -8,34 +9,27 @@ import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/f
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import { testAdmittedWorker, testRunContinuation } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync, copyFileSync, existsSync, symlinkSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as join_m0 } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { composeStorageCommand as composeStorageCommand_m0 } from "../../../../src/backend/app/composition/storage-compose.js";
 import { createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-
-
 import { createCredentialSecretSource } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { type RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-
+import { AuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { requireSecret } from "../../../../src/models/config/secrets.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { AuthorityDatabase as AuthorityDatabase_m0 } from "../../../support/helpers/synthetic-storage-admission.js";
-
+import { AuthorityDatabase as AuthorityDatabase_m0, composeStorageCommand as syntheticComposeStorageCommand_m1 } from "../../../support/helpers/synthetic-storage-admission.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { buildCommittedSettlement, executeSequencedWriteCommit } from "../../../../src/backend/runtime/writes/write-sequencer.js";
@@ -50,19 +44,15 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
 import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
-
 import { ATOMIC_WRITE_COMMIT, CONFIG_SNAPSHOT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
-
-import { copyFileSync, existsSync, symlinkSync, truncateSync } from "node:fs";
-
 import { z } from "zod";
 
 
-import { composeStorageCommand as syntheticComposeStorageCommand_m1 } from "../../../support/helpers/synthetic-storage-admission.js";
 
-import { AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
+
+
 
 {
 
@@ -401,7 +391,7 @@ afterEach(_afterEachFixture0);
     assert.equal(applied.exitCode, 0, applied.output);
     assert.deepEqual(JSON.parse(applied.output), { ...JSON.parse(plan.output), state: "initialized" });
     const admission = admissions.get(p.repoRoot); assert.ok(admission);
-    AuthorityDatabase.inspectStoppedUpgrade(admission, p.authorityPath, join_m0(p.repoRoot, rebuildRuntimeIsolation.processLockRoot), CLOCK);
+    withOfflineMaintenanceSync(admission, () => AuthorityDatabase.inspectStoppedUpgrade(admission, p.authorityPath, join_m0(p.repoRoot, rebuildRuntimeIsolation.processLockRoot), CLOCK));
     const database = new DatabaseSync(p.authorityPath, { readOnly: true });
     try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); }
     finally { database.close(); }

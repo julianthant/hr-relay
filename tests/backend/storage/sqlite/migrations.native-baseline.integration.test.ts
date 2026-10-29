@@ -1,3 +1,4 @@
+import { withOfflineMaintenanceSync } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import { existsSync,lstatSync,readFileSync,readdirSync,symlinkSync,writeFileSync } from "node:fs";
@@ -30,7 +31,7 @@ describe("current stopped authority initialization", () => {
       const trapPath = join(f.root, "credentials", "protected.json"), trap = lstatSync(trapPath);
       const before = storageTree(f.root), locksBefore = storageTree(f.input.processLockRoot);
       const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
-      const source = AuthorityDatabase.inspectStoppedUpgrade(f.admission, f.path, f.input.processLockRoot, f.clock);
+      const source = withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission, f.path, f.input.processLockRoot, f.clock));
       assert.deepEqual(await f.run(true), { state: "planned", fromSchemaVersion: 7,
         toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
       assert.deepEqual(storageTree(f.root), before);
@@ -75,8 +76,7 @@ describe("current stopped authority initialization", () => {
       const repeatedLocks = storageTree(f.input.processLockRoot);
       for (const [path, bytes] of Object.entries(initializedLocks)) assert.equal(repeatedLocks[path], bytes);
       const added = Object.keys(repeatedLocks).filter(path => !(path in initializedLocks));
-      assert.equal(added.length, 1);
-      assert.match(added[0] ?? "", /^restore-admission-history\/[^/]+\.lock\.json$/u);
+      assert.equal(added.length, 0);
       assert.equal(existsSync(join(f.input.processLockRoot, "restore-admission.lock.json")), false);
       assert.equal(readFileSync(f.input.environmentFile, "utf8"), "HRAUTO_DEFAULT_WORKERS=17\nUCPATH_PASSWORD=synthetic-retired-input\n");
       assert.equal(readFileSync(join(f.root, "settings.json"), "utf8"), "corrupt obsolete input");
@@ -86,7 +86,8 @@ describe("current stopped authority initialization", () => {
     const f = await storageRecoveryFixture();
     try {
       const before = storageTree(f.root);
-      await assert.rejects(upgradeStorage(profileBrowserClosure, f.input, f.clock, () => { throw new Error("injected-admission-failure"); }), /injected-admission-failure/u);
+      const expired = f.admission.acquireOfflineMaintenance(); expired.release();
+      await assert.rejects(upgradeStorage(profileBrowserClosure, f.input, f.clock, expired), /offline-maintenance-unissued/u);
       assert.deepEqual(storageTree(f.root), before);
       assert.equal(existsSync(f.path), false);
       assert.equal((await f.run()).state, "initialized");

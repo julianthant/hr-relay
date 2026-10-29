@@ -1,3 +1,4 @@
+import { withOfflineMaintenanceSync } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -20,7 +21,7 @@ it("admits a completed schema-3 relocation without rewriting its authenticated r
   const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "synthetic installation-lease copy source", { mode: 0o600 });
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "retained artifact");
-  const lease = acquireInstallation(workspace, "exclusive", lifetime), held = restore(workspace);
+  const lease = acquireInstallation(workspace, "exclusive", lifetime), held = restore(workspace, lifetime);
   const destination = { stateRoot: join(dirname(workspace), "relocated-state"), artifactRoot: join(dirname(workspace), "relocated-artifacts") };
   let completed!: RelocationCompletionReceipt;
   try {
@@ -30,7 +31,7 @@ it("admits a completed schema-3 relocation without rewriting its authenticated r
     const verify = staged(lease, destination, operationId, plan);
     lease.recordVerifiedStage(verify); lease.fenceRelocationSource(); lease.retainRelocationSources();
     lease.switchRelocationLocator(verify); lease.settleRelocation(verify);
-  } finally { lease.release(); held.release(); }
+  } finally { held.release(); lease.release(); }
   const reader = acquireInstallation(workspace, 'shared', lifetime);
   try { completed = reader.readRelocationReceipts()[0]; } finally { reader.release(); }
   const receiptDirectory = join(workspace, ".tracker/control/relocation-receipts");
@@ -89,7 +90,7 @@ it("upgrades admitted setup schema 3 with an exact verified backup and preserves
     const context = f.admission.readInstallationContext(); assert.ok(context);
     const workspaceBefore = storageTree(context.workspace);
     const identity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
-    const source = AuthorityDatabase.inspectStoppedUpgrade(f.admission, f.path, f.input.processLockRoot, f.clock);
+    const source = withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission, f.path, f.input.processLockRoot, f.clock));
     assert.equal((await f.run(true)).state, "planned");
     assert.deepEqual(storageTree(f.root), before);
     assert.equal((await f.run()).state, "upgraded");
@@ -119,7 +120,7 @@ it("upgrades admitted setup schema 3 with an exact verified backup and preserves
     }
     const backups = relative(context.workspace, directory) + "/";
     for (const path of Object.keys(after).filter(path => !(path in workspaceBefore))) {
-      assert.ok(path.startsWith(backups) || path.startsWith(lockRoot + "/restore-admission-history/"), path);
+      assert.ok(path.startsWith(backups), path);
     }
   } finally { await f.dispose(); }
 });
@@ -128,7 +129,7 @@ it("refuses schema-3 preparation and stage evidence for a new relocation", async
   const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "synthetic installation-lease copy source", { mode: 0o600 });
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact");
-  const lease = acquireInstallation(workspace, "exclusive", lifetime), held = restore(workspace);
+  const lease = acquireInstallation(workspace, "exclusive", lifetime), held = restore(workspace, lifetime);
   try {
     const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
     const plan = relocationPlan(lease, destination), operationId = lease.beginRelocation(destination, plan, held);
@@ -153,5 +154,5 @@ it("refuses schema-3 preparation and stage evidence for a new relocation", async
     writeFileSync(journalPath, canonicalJsonStringify(journal));
     try { assert.throws(() => lease.relocationInventory(), new RegExp(`expected ${CURRENT_AUTHORITY_SCHEMA_VERSION}`, "u")); }
     finally { writeFileSync(journalPath, journalBytes); }
-  } finally { lease.release(); held.release(); }
+  } finally { held.release(); lease.release(); }
 });

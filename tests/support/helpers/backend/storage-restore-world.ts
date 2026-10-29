@@ -1,8 +1,7 @@
-import { observeRuntimeLockSnapshot, WorkerProcessLockFileSchema, type WorkerProcessLockFile } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { randomUUID } from "node:crypto";
 import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
 import { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../../src/models/run/worker-slot.js";
-import { WorkerLeaseRecordSchema } from "../../../../src/models/run/worker.js";
+import { WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/models/run/worker.js";
 import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { spawn, spawnSync } from 'node:child_process';
@@ -13,18 +12,16 @@ import { z } from 'zod';
 import { FakeKeyringEntry, credentialKeychainTestEnvironment } from "../credential-keychain-fake.js";
 import { acquireEntrypointAdmission } from '../../../../src/backend/storage/admission/bootstrap-admission.js';
 import { createProfileRegistry } from '../../../../src/backend/profiles/registry.js';
-
-import { registerBoundProfile, unregisterBoundProfile } from '../admission-fixture.js';
+import { registerBoundProfile, unregisterBoundProfile, createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT, COMMAND_FIXTURES, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
 import { seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from 'node:path';
 import { composeStorageCommand as composeNativeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { type RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
 import { AuthorityDatabase } from "../synthetic-database-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -84,7 +81,7 @@ export function createStorageRestoreTestWorld() {
   }>, accounting?: Readonly<{ backupAfterCommit: boolean }>, options: Readonly<{ crashedHolder?: true }> = {}): Promise<{
     paths: DrillPaths; database: AuthorityDatabase; closeDatabase: () => void; manifestPath: string; beforeManifestPath: string;
     originalChild: { pid: number; signal: "SIGKILL" };
-    workerLock: WorkerProcessLockFile | undefined;
+    workerLease: WorkerLeaseRecord;
   }> {
     if (options.crashedHolder === true) assert.equal(heldRoot, undefined);
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'relay-restore-attempt-')));
@@ -126,7 +123,7 @@ export function createStorageRestoreTestWorld() {
         keychain: z.array(z.tuple([z.string().min(1), z.string().min(1)])).length(1), manifestPath: z.string().min(1), beforeManifestPath: z.string().min(1),
         pid: z.number().int().positive(),
         claimGeneration: z.number().int().positive(), runId: z.string().min(1),
-        databaseClosed: z.literal(true), retained: z.literal(true), workerLock: WorkerProcessLockFileSchema.optional() }).parse(message);
+        databaseClosed: z.literal(true), retained: z.literal(true), workerLease: WorkerLeaseRecordSchema }).parse(message);
       assert.equal(receipt.pid, child.pid);
       assert.equal(realpathSync(receipt.workspace), receipt.workspace);
       assert.equal(dirname(receipt.workspace), scratch);
@@ -157,29 +154,9 @@ export function createStorageRestoreTestWorld() {
           assert.deepEqual((await closed)[0], { state: "inherited-closed" });
         }
       }
-      assert.equal(receipt.workerLock !== undefined, options.crashedHolder === true);
-      const workerLock = receipt.workerLock;
-      const captureWorkerLock = () => {
-        assert.ok(workerLock);
-        const path = join(receipt.processLockRoot, "workers", `${workerLock.acquisitionId}.lock.json`);
-        const stat = lstatSync(path);
-        assert.equal(stat.isFile(), true); assert.equal(stat.isSymbolicLink(), false); assert.equal(stat.nlink, 1);
-        assert.equal(stat.mode & 0o022, 0);
-        const bytes = readFileSync(path);
-        assert.deepEqual(WorkerProcessLockFileSchema.parse(JSON.parse(bytes.toString("utf8"))), workerLock);
-        return { bytes, device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid, links: stat.nlink,
-          size: stat.size, modifiedAt: stat.mtimeMs, changedAt: stat.ctimeMs };
-      };
-      let lockBefore: ReturnType<typeof captureWorkerLock> | undefined;
-      if (workerLock !== undefined) {
-        assert.ok("workerId" in workerLock); assert.equal(workerLock.workerId, receipt.workerId);
-        assert.equal(workerLock.pid, receipt.pid); assert.equal(workerLock.releasedAt, null);
-        lockBefore = captureWorkerLock();
-        assert.deepEqual(observeRuntimeLockSnapshot({ processLockRoot: receipt.processLockRoot,
-          sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(receipt.authorityPath) }, CLOCK).processLocks.workers,
-        { state: "active", generation: 2, pid: receipt.pid });
-        assert.deepEqual(captureWorkerLock(), lockBefore);
-      }
+      assert.equal(receipt.workerLease.workerId, receipt.workerId);
+      assert.equal(receipt.workerLease.processId, receipt.pid);
+      assert.notEqual(receipt.workerLease.lifecycle.state, "stopped");
       assert.equal(child.exitCode, null); assert.equal(child.signalCode, null);
       process.kill(-receipt.pid, 0);
       assert.equal(child.kill('SIGKILL'), true);
@@ -198,12 +175,6 @@ export function createStorageRestoreTestWorld() {
       assert.equal(descriptors.status, 1);
       assert.equal(descriptors.stdout, '');
       assert.equal(descriptors.stderr, '');
-      if (workerLock !== undefined) {
-        assert.deepEqual(observeRuntimeLockSnapshot({ processLockRoot: receipt.processLockRoot,
-          sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(receipt.authorityPath) }, CLOCK).processLocks.workers,
-        { state: "stopped", generation: 2 });
-        assert.deepEqual(captureWorkerLock(), lockBefore);
-      }
       attemptChildren.delete(child);
       workspace = receipt.workspace;
       lifetimeLock = await RuntimeLifetimeLock.acquire(port);
@@ -246,13 +217,13 @@ export function createStorageRestoreTestWorld() {
         }
       } });
       assert.equal(child.signalCode, 'SIGKILL');
-      assert.equal(database.authority.workerLeases.get(receipt.workerId)?.processId, receipt.pid);
+      assert.deepEqual(database.authority.workerLeases.get(receipt.workerId), receipt.workerLease);
       const run = database.authority.runs.get(receipt.runId);
       assert.ok(run);
       assert.equal(run.claimGeneration, receipt.claimGeneration);
       assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, accounting === undefined ? 'attempting' : 'committed');
       return { paths, database, closeDatabase, manifestPath: receipt.manifestPath, beforeManifestPath: receipt.beforeManifestPath,
-        originalChild: { pid: receipt.pid, signal: "SIGKILL" }, workerLock };
+        originalChild: { pid: receipt.pid, signal: "SIGKILL" }, workerLease: receipt.workerLease };
     } catch (error) {
       writeFileSync(join(scratch, 'child.stdout'), Buffer.concat(stdout), { mode: 0o600 });
       writeFileSync(join(scratch, 'child.stderr'), Buffer.concat(stderr), { mode: 0o600 });

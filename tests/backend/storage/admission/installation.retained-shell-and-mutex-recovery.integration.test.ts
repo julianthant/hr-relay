@@ -13,7 +13,7 @@ it("refuses a duplicate managed entry in a partially retained lock shell", async
   writeFileSync(join(pair.stateRoot, "state.db"), "source");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact");
   const lease = acquireInstallation(workspace, "exclusive", lifetime);
-  const held = restore(workspace);
+  const held = restore(workspace, lifetime);
   const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
   const plan = relocationPlan(lease, destination);
   const operationId = lease.beginRelocation(destination, plan, held);
@@ -30,7 +30,7 @@ it("refuses a duplicate managed entry in a partially retained lock shell", async
   copyFileSync(join(pair.stateRoot, "state.db"), join(retained, "state.db"));
   expect(() => lease.retainRelocationSources()).toThrow(/duplicate retained managed entry|tombstone/u);
   expect(readFileSync(join(pair.stateRoot, "state.db"), "utf8")).toBe("source");
-  lease.release(); held.release();
+  held.release(); lease.release();
 });
 
 it("recovers empty and first-witness retained shells, but refuses foreign entries", async () => {
@@ -40,7 +40,7 @@ it("recovers empty and first-witness retained shells, but refuses foreign entrie
     writeFileSync(join(pair.stateRoot, "state.db"), "source");
     writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact");
     const lease = acquireInstallation(workspace, "exclusive", lifetime);
-    const held = restore(workspace);
+    const held = restore(workspace, lifetime);
     const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
     const plan = relocationPlan(lease, destination);
     const operationId = lease.beginRelocation(destination, plan, held);
@@ -55,9 +55,9 @@ it("recovers empty and first-witness retained shells, but refuses foreign entrie
     mkdirSync(retained, { mode: 0o700 });
     if (partial === "marker") copyFileSync(join(pair.stateRoot, ".runtime-owner.json"), join(retained, ".runtime-owner.json"));
     if (partial === "foreign") writeFileSync(join(retained, "foreign"), "unknown");
-    lease.release(); held.release();
-    const recoveredHeld = restore(workspace);
-    const recovered = acquireInstallation(workspace, "exclusive", lifetime, { recoverRelocation: {
+    held.release(); lease.release();
+    const recoveredHeld = restore(workspace, lifetime);
+    const recovered = acquireInstallation(workspace, "exclusive", lifetime,{ offlineOperation: recoveredHeld,  recoverRelocation: {
       installationId: initial.locator.installationId, fromGeneration: 0, operationId, restoreAdmission: recoveredHeld,
     } });
     if (partial === "foreign") {
@@ -69,7 +69,7 @@ it("recovers empty and first-witness retained shells, but refuses foreign entrie
       recovered.settleRelocation(verify);
       expect(existsSync(join(workspace, ".tracker/control", "journal.json"))).toBe(false);
     }
-    recovered.release(); recoveredHeld.release();
+    recoveredHeld.release(); recovered.release();
   }
 });
 
@@ -79,7 +79,7 @@ it("refuses unknown managed state entries before source fencing", async () => {
   writeFileSync(join(pair.stateRoot, "state.db"), "source");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "artifact");
   const lease = acquireInstallation(workspace, "exclusive", lifetime);
-  const held = restore(workspace);
+  const held = restore(workspace, lifetime);
   const destination = { stateRoot: join(dirname(workspace), "new-state"), artifactRoot: join(dirname(workspace), "new-artifacts") };
   const plan = relocationPlan(lease, destination);
   const operationId = lease.beginRelocation(destination, plan, held);
@@ -88,5 +88,5 @@ it("refuses unknown managed state entries before source fencing", async () => {
   writeFileSync(join(pair.stateRoot, "unlisted.log"), "unknown");
   expect(() => lease.recordVerifiedStage(verify)).toThrow(/managed state entry membership mismatch/u);
   expect(existsSync(join(pair.stateRoot, ".runtime-source-fence.json"))).toBe(false);
-  lease.release(); held.release();
+  held.release(); lease.release();
 });

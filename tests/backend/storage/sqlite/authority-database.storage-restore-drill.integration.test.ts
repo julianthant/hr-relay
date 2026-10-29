@@ -1,11 +1,11 @@
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import assert from "node:assert/strict";
-import { lstatSync, readFileSync, readdirSync } from "node:fs";
+import { WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 const {CLOCK, composeStorageCommand, attemptingDrillPaths, corrupt, cleanup } = createStorageRestoreTestWorld();
 
@@ -14,28 +14,15 @@ afterEach(cleanup);
 
 describe("corruption → degraded → restore → rebuild, through the CLI", () => {
 
-  it("observes a crashed holder as stopped rather than bricking recovery", async () => {
-    const { paths, closeDatabase, manifestPath, originalChild, workerLock } = await attemptingDrillPaths(
+  it("recovers after actual crashed-holder death without treating durable worker identity as process authority", async () => {
+    const { paths, closeDatabase, manifestPath, originalChild, workerLease } = await attemptingDrillPaths(
       undefined, undefined, { crashedHolder: true });
     closeDatabase();
-    assert.equal(originalChild.signal, "SIGKILL"); assert.ok(workerLock);
-    assert.equal(workerLock.pid, originalChild.pid); assert.equal(workerLock.releasedAt, null);
+    assert.equal(originalChild.signal, "SIGKILL");
+    assert.equal(workerLease.processId, originalChild.pid);
+    assert.notEqual(workerLease.lifecycle.state, "stopped");
     corrupt(paths);
-
-    const lockPath = join(paths.processLockRoot, "workers", `${workerLock.acquisitionId}.lock.json`);
-    const captureLock = () => {
-      const stat = lstatSync(lockPath);
-      return { bytes: readFileSync(lockPath), device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid,
-        links: stat.nlink, size: stat.size, modifiedAt: stat.mtimeMs, changedAt: stat.ctimeMs };
-    };
-    const lockBefore = captureLock();
-    const snapshot = observeRuntimeLockSnapshot(
-      { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(paths.authorityPath) },
-      CLOCK,
-    );
-    assert.equal(snapshot.processLocks.workers.state, "stopped");
-    assert.equal(readdirSync(join(paths.processLockRoot, "workers")).length, 1);
-    assert.deepEqual(captureLock(), lockBefore);
+    assert.equal(existsSync(join(paths.processLockRoot, "workers")), false);
 
     const restored = await composeStorageCommand(
       rebuildRuntimeIsolation,
@@ -44,5 +31,11 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
       paths.repoRoot,
     );
     assert.equal(restored.exitCode, 0, restored.output);
+    paths.renewAfterRestore();
+    const readback = AuthorityDatabase.open(paths.admission, { path: paths.authorityPath, busyTimeoutMs: 250, migrationOwner: "crashed-holder-restored-readback" });
+    try {
+      assert.deepEqual(readback.authority.workerLeases.get(workerLease.workerId), workerLease);
+      assert.equal(readback.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status === "attempting", true);
+    } finally { readback.close(); }
   });
 });

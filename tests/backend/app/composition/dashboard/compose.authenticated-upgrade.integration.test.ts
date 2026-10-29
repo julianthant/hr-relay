@@ -1,20 +1,20 @@
+import { RuntimeLifetimeLock, type OfflineMaintenanceOperation } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { assertRuntimeLifetimeHeld, runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import sourceFiles from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import { AuthoritySourceClosureUnprovedError } from "../../../../../src/backend/storage/source-closure.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../../src/backend/storage/source-closure.js";
 import * as credentialOwner from '../../../../../src/backend/storage/configuration/credential-store.js';
 import * as profileSessionOwner from "../../../../../src/backend/profiles/profile-session.js";
 import * as notificationOwner from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import * as notificationHealthOwner from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
 import * as credentialInventoryOwner from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
-import * as runtimeLocks from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import * as readonlySource from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import * as admissionOwner from "../../../../../src/backend/storage/admission/admission.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { join, dirname, basename } from "node:path";
+import { join, dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { composeDashboardApplication, composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
@@ -44,10 +44,6 @@ vi.mock("../../../../../src/backend/transports/http/http-server.js", { spy: true
 vi.mock("../../../../../src/backend/storage/admission/admission.js", async importOriginal => {
   const actual = await importOriginal<typeof admissionOwner>();
   return { ...actual, acquireExclusiveRuntimeAdmission: vi.fn(actual.acquireExclusiveRuntimeAdmission) };
-});
-vi.mock("../../../../../src/backend/storage/sqlite/runtime-process-locks.js", async importOriginal => {
-  const actual = await importOriginal<typeof runtimeLocks>();
-  return { ...actual, acquireRuntimeRestoreAdmission: vi.fn(actual.acquireRuntimeRestoreAdmission) };
 });
 vi.mock("../../../../../src/backend/profiles/profile-session.js", async importOriginal => {
   const actual = await importOriginal<typeof profileSessionOwner>();
@@ -769,7 +765,6 @@ for (const control of ["verifier", "key", "source"] as const) it(`releases the a
 for (const stage of ["service-inspection", "binding-consume"] as const) it(`retains exact exclusive custody after genuine ${stage} snapshot disposal uncertainty`, async () => {
   const f = await priorEight(), before = digest(f.profile.path);
   const actualAdmission = await vi.importActual<typeof admissionOwner>("../../../../../src/backend/storage/admission/admission.js");
-  const actualLocks = await vi.importActual<typeof runtimeLocks>("../../../../../src/backend/storage/sqlite/runtime-process-locks.js");
   const actualHttp = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
   const actualProfileSession = await vi.importActual<typeof profileSessionOwner>("../../../../../src/backend/profiles/profile-session.js");
   let phase: typeof stage | undefined;
@@ -782,13 +777,14 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
     try { return actualProfileSession.consumeAuthenticatedProfileUpgrade(authorization, owner); } finally { phase = prior; }
   });
   const injected = new Error("held-upgrade-source-disposal");
-  let exclusive: RuntimeAdmission | undefined, heldRestore: ReturnType<typeof runtimeLocks.acquireRuntimeRestoreAdmission> | undefined;
+  let exclusive: RuntimeAdmission | undefined, heldRestore: OfflineMaintenanceOperation | undefined;
   let dispose: (() => void) | undefined, snapshotPath: string | undefined, disposalAttempts = 0, acquisitions = 0, starts = 0;
   const acquire = vi.spyOn(admissionOwner, "acquireExclusiveRuntimeAdmission").mockImplementation((workspace, lifetime) => {
     const owner = actualAdmission.acquireExclusiveRuntimeAdmission(workspace, lifetime); exclusive = owner; acquisitions++; return owner;
   });
-  const restore = vi.spyOn(runtimeLocks, "acquireRuntimeRestoreAdmission").mockImplementation((input, clock) => {
-    const owner = actualLocks.acquireRuntimeRestoreAdmission(input, clock); heldRestore = owner; return owner;
+  const begin = RuntimeLifetimeLock.prototype.beginOfflineMaintenance;
+  const restore = vi.spyOn(RuntimeLifetimeLock.prototype, "beginOfflineMaintenance").mockImplementation(function(this: RuntimeLifetimeLock, workspace) {
+    const owner = begin.call(this, workspace); heldRestore = owner; return owner;
   });
   const snapshot = vi.spyOn(readonlySource, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
     const source = createSnapshot(path);
@@ -815,7 +811,7 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
       assert.equal(closure.errors.length, 1); assert.ok(closure.cause instanceof AuthoritySourceClosureUnprovedError);
       assert.equal(closure.errors[0], closure.cause);
       assert.deepEqual(closure.cause.errors, [injected]); assert.equal(closure.cause.cause, injected);
-      assert.ok(heldRestore); runtimeLocks.assertRuntimeRestoreAdmission(heldRestore, join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot));
+      assert.ok(heldRestore); heldRestore.assertHeld();
     } else {
       assert.deepEqual(closure.errors, [injected]); assert.equal(closure.cause, injected);
       assert.equal(heldRestore, undefined);
@@ -828,7 +824,7 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
     assert.equal(application.stop(), stopped); await assert.rejects(stopped, error => error === failure);
     exclusive.assertExclusive();
     if (stage === "service-inspection") {
-      assert.ok(heldRestore); runtimeLocks.assertRuntimeRestoreAdmission(heldRestore, join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot));
+      assert.ok(heldRestore); heldRestore.assertHeld();
     } else assert.equal(heldRestore, undefined);
     assert.equal(disposalAttempts, 1); assert.equal(acquisitions, 1); assert.equal(starts, 1);
     assert.ok(snapshotPath); assert.equal(existsSync(snapshotPath), true);
@@ -843,51 +839,41 @@ for (const stage of ["service-inspection", "binding-consume"] as const) it(`reta
   }
 });
 
-for (const fault of ["unproved-close", "closed-link-refusal"] as const) it(`retains actual restore creation evidence for ${fault}`, async () => {
+for (const fault of ["unproved-close", "closed-publication-refusal"] as const) it(`retains actual stopped source creation evidence for ${fault}`, async () => {
   const f = await priorEight(), before = digest(f.profile.path);
   const actualAdmission = await vi.importActual<typeof admissionOwner>("../../../../../src/backend/storage/admission/admission.js");
-  const actualLocks = await vi.importActual<typeof runtimeLocks>("../../../../../src/backend/storage/sqlite/runtime-process-locks.js");
   const actualHttp = await vi.importActual<typeof http>("../../../../../src/backend/transports/http/http-server.js");
-  const actualWrite = sourceFiles.writeFileSync, actualClose = sourceFiles.closeSync;
-  const actualUnlink = sourceFiles.unlinkSync, actualLink = sourceFiles.linkSync;
-  const primary = new Error("restore-link-refused"), closeFailure = new Error("restore-sync-close-refused"), unlinkFailure = new Error("restore-temp-unlink-refused");
-  const root = join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot);
-  let exclusive: RuntimeAdmission | undefined, phase = false, temporary: { path: string; identity: ReturnType<typeof lstatSync>; digest: string } | undefined;
-  let processBaseline: string[] | undefined, descriptor: number | undefined, closes = 0, unlinks = 0, links = 0, acquisitions = 0, restores = 0, starts = 0;
+  const close = sourceFiles.closeSync;
+  const primary = new Error("source-publication-refused"), cleanup = new Error("source-owned-close-refused");
+  let exclusive: RuntimeAdmission | undefined, operation: OfflineMaintenanceOperation | undefined;
+  let source: ReturnType<typeof createSnapshot> | undefined, descriptor: number | undefined;
+  let evidence: ReturnType<typeof lstatSync> | undefined, evidenceDigest: string | undefined;
+  let phase = false, disposals = 0, acquisitions = 0, starts = 0, closed = false;
+  const inspect = vi.spyOn(AuthorityDatabase, "inspectStoppedUpgrade").mockImplementation((...args) => {
+    phase = true;
+    try { return inspectStopped(...args); } finally { phase = false; }
+  });
   const acquire = vi.spyOn(admissionOwner, "acquireExclusiveRuntimeAdmission").mockImplementation((workspace, lifetime) => {
     const owner = actualAdmission.acquireExclusiveRuntimeAdmission(workspace, lifetime); exclusive = owner; acquisitions++; return owner;
   });
-  const restore = vi.spyOn(runtimeLocks, "acquireRuntimeRestoreAdmission").mockImplementation((input, clock) => {
-    restores++; processBaseline = readdirSync(root).sort(); phase = true;
-    try { return actualLocks.acquireRuntimeRestoreAdmission(input, clock); } finally { phase = false; }
+  const begin = RuntimeLifetimeLock.prototype.beginOfflineMaintenance;
+  const issued = vi.spyOn(RuntimeLifetimeLock.prototype, "beginOfflineMaintenance").mockImplementation(function(this: RuntimeLifetimeLock, workspace) {
+    const owner = begin.call(this, workspace); operation = owner; return owner;
   });
-  const write = vi.spyOn(sourceFiles, "writeFileSync").mockImplementation((path, data, options) => {
-    actualWrite(path, data, options);
-    if (phase && typeof path === "string" && dirname(path) === root && path.endsWith(".tmp")) temporary = { path, identity: lstatSync(path), digest: digest(path) };
+  const snapshot = vi.spyOn(readonlySource, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
+    const actual = createSnapshot(path);
+    if (!phase || path !== f.profile.path || source !== undefined) return actual;
+    source = actual;
+    descriptor = sourceFiles.openSync(actual.path, sourceFiles.constants.O_RDONLY | sourceFiles.constants.O_NOFOLLOW);
+    evidence = lstatSync(actual.path); evidenceDigest = digest(actual.path);
+    return { ...actual, dispose() {
+      disposals++;
+      assert.ok(descriptor !== undefined);
+      if (fault === "unproved-close") throw retainAuthoritySourceClosure([cleanup], { snapshot: actual, descriptor: { descriptor } });
+      close(descriptor); closed = true;
+      throw retainAuthoritySourceClosure([primary, cleanup], { snapshot: actual });
+    } };
   });
-  syncBuiltinESMExports();
-  const close = vi.spyOn(sourceFiles, "closeSync").mockImplementation(fd => {
-    if (phase && temporary !== undefined) {
-      const identity = sourceFiles.fstatSync(fd);
-      assert.ok(temporary.identity);
-      if (identity.dev === temporary.identity.dev && identity.ino === temporary.identity.ino) {
-        descriptor = fd; closes++;
-        if (fault === "unproved-close") throw closeFailure;
-      }
-    }
-    actualClose(fd);
-  });
-  syncBuiltinESMExports();
-  const unlink = vi.spyOn(sourceFiles, "unlinkSync").mockImplementation(path => {
-    if (temporary !== undefined && path === temporary.path) { unlinks++; throw unlinkFailure; }
-    actualUnlink(path);
-  });
-  syncBuiltinESMExports();
-  const link = vi.spyOn(sourceFiles, "linkSync").mockImplementation((source, destination) => {
-    if (phase && temporary !== undefined && source === temporary.path) { links++; if (fault === "closed-link-refusal") throw primary; }
-    actualLink(source, destination);
-  });
-  syncBuiltinESMExports();
   const start = vi.spyOn(http, "startDashboardHttpServer").mockImplementation(input => { starts++; return actualHttp.startDashboardHttpServer(input); });
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, proved = false;
   try {
@@ -897,49 +883,41 @@ for (const fault of ["unproved-close", "closed-link-refusal"] as const) it(`reta
     assert.equal(response.headers.has("set-cookie"), false);
     let failure: unknown;
     try { await application.failure; } catch (error) { failure = error; }
-    assert.ok(failure instanceof RuntimeCustodyUncertainError); assert.equal(failure.errors.length, 1); assert.equal(failure.errors[0], failure.cause);
-    const owner = exclusive, evidence = temporary, baseline = processBaseline, heldFD = descriptor;
-    assert.ok(owner); assert.ok(evidence); assert.ok(baseline); assert.ok(heldFD !== undefined);
-    assert.ok(evidence.identity);
-    if (fault === "unproved-close") {
-      assert.ok(failure.cause instanceof AuthoritySourceClosureUnprovedError);
-      assert.equal(failure.cause.errors.length, 1); assert.ok(failure.cause.cause instanceof AuthoritySourceClosureUnprovedError);
-      assert.equal(failure.cause.errors[0], failure.cause.cause);
-      assert.deepEqual(failure.cause.cause.errors, [closeFailure]); assert.equal(failure.cause.cause.cause, closeFailure);
-      owner.assertExclusive(); assert.equal(unlinks, 0); assert.equal(links, 0);
-      assert.equal(sourceFiles.fstatSync(heldFD).dev, evidence.identity.dev); assert.equal(sourceFiles.fstatSync(heldFD).ino, evidence.identity.ino);
-    } else {
-      assert.ok(failure.cause instanceof AggregateError); assert.equal(failure.cause instanceof AuthoritySourceClosureUnprovedError, false);
-      assert.deepEqual(failure.cause.errors, [primary, unlinkFailure]); assert.equal(failure.cause.cause, primary);
-      assert.throws(() => owner.assertLive(), { message: "runtime-admission: missing or released admission" });
-      assert.equal(unlinks, 1); assert.equal(links, 1);
-      const closed = heldFD;
-      assert.throws(() => sourceFiles.fstatSync(closed), error => error instanceof Error && Reflect.get(error, "code") === "EBADF");
+    assert.ok(failure instanceof RuntimeCustodyUncertainError);
+    assert.equal(failure.errors.length, 1); assert.equal(failure.errors[0], failure.cause);
+    assert.ok(failure.cause instanceof AuthoritySourceClosureUnprovedError);
+    const failures: unknown[] = [], pending: unknown[] = [failure.cause], seen = new Set<unknown>();
+    while (pending.length !== 0) {
+      const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+      if (value instanceof AggregateError) pending.push(...value.errors);
+      else failures.push(value);
     }
-    assert.equal(closes, 1); assert.equal(acquisitions, 1); assert.equal(restores, 1); assert.equal(starts, 1);
+    assert.deepEqual(failures, fault === "unproved-close" ? [cleanup] : [cleanup, primary]);
+    assert.ok(exclusive && operation && source && evidence && descriptor !== undefined);
+    exclusive.assertExclusive(); operation.assertHeld();
+    await assertRuntimeLifetimeHeld(f.profile.lifetime);
+    assert.throws(() => f.profile.lifetime.beginOfflineMaintenance(f.profile.workspace), /offline-maintenance-busy/u);
+    assert.throws(() => actualAdmission.acquireSharedRuntimeAdmission(f.profile.workspace, f.profile.lifetime), /offline-maintenance-unissued/u);
+    if (closed) assert.throws(() => sourceFiles.fstatSync(descriptor!), error => error instanceof Error && Reflect.get(error, "code") === "EBADF");
+    else {
+      assert.equal(sourceFiles.fstatSync(descriptor).dev, evidence.dev);
+      assert.equal(sourceFiles.fstatSync(descriptor).ino, evidence.ino);
+    }
+    assert.equal(disposals, 1); assert.equal(acquisitions, 1); assert.equal(starts, 1);
     const stopped = application.stop(); assert.equal(application.stop(), stopped); await assert.rejects(stopped, error => error === failure);
-    assert.equal(closes, 1); assert.equal(restores, 1); assert.equal(starts, 1); assert.equal(unlinks, fault === "unproved-close" ? 0 : 1);
-    assert.deepEqual(readdirSync(root).sort(), [...baseline, basename(evidence.path)].sort());
-    const retained = lstatSync(evidence.path), retainedDigest = digest(evidence.path);
-    assert.equal(retained.dev, evidence.identity.dev); assert.equal(retained.ino, evidence.identity.ino); assert.equal(retained.mode, evidence.identity.mode);
-    assert.equal(retained.uid, evidence.identity.uid); assert.equal(retained.nlink, evidence.identity.nlink);
-    assert.equal(retained.size, evidence.identity.size); assert.equal(retained.mtimeMs, evidence.identity.mtimeMs); assert.equal(retained.ctimeMs, evidence.identity.ctimeMs);
-    assert.equal(retainedDigest, evidence.digest);
+    assert.equal(disposals, 1); assert.equal(acquisitions, 1); assert.equal(starts, 1);
+    const retained = lstatSync(source.path);
+    assert.deepEqual([retained.dev, retained.ino, retained.mode, retained.uid, retained.nlink, retained.size, retained.mtimeMs, retained.ctimeMs],
+      [evidence.dev, evidence.ino, evidence.mode, evidence.uid, evidence.nlink, evidence.size, evidence.mtimeMs, evidence.ctimeMs]);
+    assert.equal(digest(source.path), evidenceDigest);
     assert.equal(digest(f.profile.path), before); assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
-    acquire.mockRestore(); restore.mockRestore(); write.mockRestore(); syncBuiltinESMExports(); close.mockRestore(); syncBuiltinESMExports(); unlink.mockRestore(); syncBuiltinESMExports(); link.mockRestore(); syncBuiltinESMExports(); start.mockRestore();
-    const heldDescriptor = heldFD;
-    if (fault === "unproved-close") {
-      owner.assertExclusive(); actualClose(heldDescriptor);
-      assert.throws(() => sourceFiles.fstatSync(heldDescriptor), error => error instanceof Error && Reflect.get(error, "code") === "EBADF");
-    }
-    const current = lstatSync(evidence.path);
-    assert.equal(current.dev, retained.dev); assert.equal(current.ino, retained.ino); assert.equal(current.mode, retained.mode);
-    assert.equal(digest(evidence.path), retainedDigest); actualUnlink(evidence.path);
-    assert.deepEqual(readdirSync(root).sort(), baseline);
-    if (fault === "unproved-close") owner.release();
-    assert.equal(digest(f.profile.path), before); proved = true;
+    inspect.mockRestore(); acquire.mockRestore(); issued.mockRestore(); snapshot.mockRestore(); start.mockRestore();
+    if (!closed) { close(descriptor); closed = true; }
+    assert.throws(() => sourceFiles.fstatSync(descriptor!), error => error instanceof Error && Reflect.get(error, "code") === "EBADF");
+    source.dispose(); assert.equal(existsSync(dirname(source.path)), false);
+    operation.release(); exclusive.release(); proved = true;
   } finally {
-    acquire.mockRestore(); restore.mockRestore(); write.mockRestore(); syncBuiltinESMExports(); close.mockRestore(); syncBuiltinESMExports(); unlink.mockRestore(); syncBuiltinESMExports(); link.mockRestore(); syncBuiltinESMExports(); start.mockRestore();
+    inspect.mockRestore(); acquire.mockRestore(); issued.mockRestore(); snapshot.mockRestore(); start.mockRestore();
     if (proved) { f.machine.release(); await f.profile.close(); }
   }
 });

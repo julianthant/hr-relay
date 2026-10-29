@@ -1,9 +1,8 @@
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
-import { RuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, type OfflineMaintenanceOperation, isOfflineMaintenanceOperationActive } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import * as nativeBrowserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { z } from "zod";
 import { acquireInstallation, CompletedRestoreCustodySchema, type ExclusiveInstallationLease } from "../../../../src/backend/storage/admission/installation.js";
@@ -24,15 +23,14 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { initialSettingsFileRecord, SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { manualClock, systemClock, type Clock } from "../../../../src/rules/time/clock.js";
-import type { OfflineRestoreAdmissionFactory } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 import { spawn } from "node:child_process";
 import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync, readdirSync, lstatSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync, readdirSync, lstatSync } from "node:fs";
+import { join } from 'node:path';
 import { describe, it, vi } from "vitest";
 import { createBoundProfileFixture, readAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCredentialStore, captureCredentialErasureHead, verifyCredentialErasureHead } from "../../../../src/backend/storage/configuration/credential-store.js";
@@ -41,8 +39,7 @@ import { createProfileSession } from "../../../../src/backend/profiles/profile-s
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService, OfflineRestoreFailure, settleInterruptedAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
-import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 
@@ -82,20 +79,15 @@ async function world(clock: Clock = systemClock) {
       return join(fixture.stateRoot, "backups", "authority", manifest.backupFileName + ".manifest.json");
     } finally { database.close(); }
   };
-  const proof = () => {
-    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(fixture.path);
-    const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, clock);
-    proofs.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, clock));
-    return proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
-  };
-  const restore = (projection: (path: string) => Promise<void> = async () => {}, replace = renameSync, factory?: OfflineRestoreAdmissionFactory) => new OfflineAuthorityRestoreService(profileBrowserClosure, admission,
-    { authorityPath: fixture.path, suspectDirectory: join(fixture.stateRoot, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 },
-    projection, clock, { copyFile: copyFileSync, atomicReplace: replace }, factory, store());
+  const operation = () => admission.acquireOfflineMaintenance();
+  const restore = (projection: (path: string) => Promise<void> = async () => {}, replace = renameSync) => new OfflineAuthorityRestoreService(profileBrowserClosure, admission,
+    { authorityPath: fixture.path, suspectDirectory: join(fixture.stateRoot, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot},
+    projection, clock, { copyFile: copyFileSync, atomicReplace: replace }, store());
   let controllerClosure: Promise<void> | undefined;
   const closeController = (): Promise<void> => controllerClosure ??= (async () => {
     await currentSession.closeOnboarding(); currentSession.close(); await fixture.closeController();
   })();
-  return { ...fixture, profileId, journalPath, processLockRoot, credentialInventories, renew, store, session, signIn, backup, proof, restore, closeController, current: () => admission };
+  return { ...fixture, profileId, journalPath, processLockRoot, credentialInventories, renew, store, session, signIn, backup, operation, restore, closeController, current: () => admission };
 }
 
 function childJob(script: string) {
@@ -187,19 +179,20 @@ describe("profile restore continuity", () => {
     const refusal=closure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy"))
       :new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
     let primary:{error:unknown}|undefined;
+    let operation: OfflineMaintenanceOperation | undefined;
     const inventoryProbe=vi.spyOn(nativeBrowserInventory,"probeRestoreProfileBrowsersClosed");
     const native=vi.spyOn(profileBrowserClosure,"probeClosed").mockRejectedValue(refusal);
     try{
-      const manifestPath=await f.backup(),request={manifestPath,stoppedSystemProof:f.proof()};
+      const manifestPath=await f.backup(); operation=f.operation(); const request={manifestPath};
       const suspectDirectory=join(f.stateRoot,"backups","suspects"),control=join(f.workspace,".tracker","control");
       const sourceIdentity=fs.lstatSync(f.path),source=readFileSync(f.path),profileTree=storageTree(f.stateRoot);
       const machineTree=storageTree(join(f.machine.stateRoot,"machine")),controlTree=storageTree(control);
       const suspectsExisted=existsSync(suspectDirectory);
       let copies=0,replacements=0,projections=0;
       const restore=new OfflineAuthorityRestoreService(profileBrowserClosure, f.current(),{authorityPath:f.path,suspectDirectory,busyTimeoutMs:250,
-        processLockRoot:f.processLockRoot,stoppedProofMaxAgeMs:60000},async()=>{projections++;},clock,
-        {copyFile:(from,to)=>{copies++;copyFileSync(from,to);},atomicReplace:(from,to)=>{replacements++;renameSync(from,to);}},undefined,f.store());
-      await assert.rejects(restore.restore(request),error=>error instanceof OfflineRestoreFailure
+        processLockRoot:f.processLockRoot},async()=>{projections++;},clock,
+        {copyFile:(from,to)=>{copies++;copyFileSync(from,to);},atomicReplace:(from,to)=>{replacements++;renameSync(from,to);}},f.store());
+      await assert.rejects(restore.restore(request,operation),error=>error instanceof OfflineRestoreFailure
         &&error.authorityState==="unchanged"&&error.cause===refusal);
       assert.equal(native.mock.calls.length,1);assert.equal(inventoryProbe.mock.calls[0]?.[0],f.current());
       assert.deepEqual([copies,replacements,projections],[0,0,0]);
@@ -211,7 +204,13 @@ describe("profile restore continuity", () => {
       assert.equal(existsSync(suspectDirectory),suspectsExisted);
     }catch(error){primary={error};}
     native.mockRestore(); inventoryProbe.mockRestore();
-    try{await f.close();}catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"offline-native-fixture-cleanup-failed",{cause:error});}
+    try{
+      if(operation!==undefined&&isOfflineMaintenanceOperationActive(operation)) {
+        await nativeBrowserInventory.probeRestoreProfileBrowsersClosed(f.current(),f.processLockRoot,operation,clock,profileBrowserClosure);
+        operation.release();
+      }
+      await f.close();
+    }catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"offline-native-fixture-cleanup-failed",{cause:error});}
     if(primary!==undefined)throw primary.error;
   });
 
@@ -227,7 +226,7 @@ describe("profile restore continuity", () => {
       assert.equal("key" in JSON.parse(metadata.toString("utf8")), false);
       const before = f.machine.readProfileRegistry().sessionGeneration;
       const old = f.current();
-      const result = await f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() });
+      const result = await f.restore().restore({ manifestPath }, f.operation());
       assert.equal(result.state, "restored");
       assert.deepEqual(readFileSync(keyPath), metadata);
       assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), protectedBefore);
@@ -246,7 +245,7 @@ describe("profile restore continuity", () => {
     let primary: { error: unknown } | undefined;
     try {
       const manifestPath = await f.backup();
-      await f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() });
+      await f.restore().restore({ manifestPath }, f.operation());
       const fresh = f.renew(), rows = fresh.readCompletedRestores();
       assert.equal(rows.length, 1);
       assert.deepEqual(rows[0]?.profile, fresh.profileBinding);
@@ -266,21 +265,21 @@ describe("profile restore continuity", () => {
   it("refuses raw lease relocation of completed custody before destination or journal effects", async () => {
     const f = await world();
     let lease: ExclusiveInstallationLease | undefined;
-    let held: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
+    let held: OfflineMaintenanceOperation | undefined;
     let primary: { error: unknown } | undefined;
     try {
       const manifestPath = await f.backup();
-      await f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() });
+      await f.restore().restore({ manifestPath }, f.operation());
       f.machine.release();
       const activeLease = acquireInstallation(f.workspace, "exclusive", f.lifetime); lease = activeLease;
-      const activeHeld = acquireRuntimeRestoreAdmission({ processLockRoot: f.processLockRoot, pid: process.pid }); held = activeHeld;
+      const activeHeld = activeLease.beginOfflineMaintenance(); held = activeHeld;
       const before = storageTree(f.workspace), destination = { stateRoot: join(f.workspace, "destination-state"), artifactRoot: join(f.workspace, "destination-artifacts") };
       assert.throws(() => activeLease.beginRelocation(destination, { commandId: randomUUID(), revision: 1, expectedRevision: 0,
         requestFingerprint: "a".repeat(64), desiredDigest: "b".repeat(64) }, activeHeld), ProfileStorageRelocationUnsupportedError);
       assert.deepEqual(storageTree(f.workspace), before);
       assert.equal(existsSync(destination.stateRoot), false); assert.equal(existsSync(destination.artifactRoot), false);
     } catch (error) { primary = { error }; }
-    finally { await closeCustodyFixture(async () => { lease?.release(); held?.release(); await f.close(); }, primary); }
+    finally { await closeCustodyFixture(async () => { held?.release(); lease?.release(); await f.close(); }, primary); }
   });
 
   for (const mutation of ["missing", "substituted", "extra companion", "divergent row", "duplicate operation", "missing history"] as const) {
@@ -290,7 +289,7 @@ describe("profile restore continuity", () => {
       let primary: { error: unknown } | undefined;
       try {
         const manifestPath = await f.backup();
-        await f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() });
+        await f.restore().restore({ manifestPath }, f.operation());
         const fresh = f.renew(), original = fresh.readCompletedRestores();
         const first = original[0]; assert.ok(first);
         const row = CompletedRestoreCustodySchema.parse(first);
@@ -330,7 +329,7 @@ describe("profile restore continuity", () => {
     try {
       const manifestPath = await f.backup(), authority = readFileSync(f.path), protectedBefore = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
       credentialKeyCustody.delete(binding);
-      await assert.rejects(async () => f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() }), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
+      await assert.rejects(async () => f.restore().restore({ manifestPath }, f.operation()), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
       assert.deepEqual(readFileSync(f.path), authority);
       assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), protectedBefore);
       assert.equal(entry.getPassword(), null);
@@ -371,7 +370,7 @@ describe("profile restore continuity", () => {
           attempt: database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), run: database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId) };
       } finally { database.close(); }
       const manifestPath = await f.backup();
-      await f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() });
+      await f.restore().restore({ manifestPath }, f.operation());
       database = AuthorityDatabase.open(f.renew(), options, undefined, undefined, undefined, undefined, f.store());
       try {
         assert.deepEqual({ settings: database.authority.settingsCurrent.get(), command: database.authority.commands.get(settingsCommandId),
@@ -466,7 +465,7 @@ describe("profile restore continuity", () => {
       }
       if (kind === "missing-binding") { rmSync(f.path); writeFileSync(f.path, "invalid-synthetic-sqlite", { mode: 0o600 }); }
       const before = readFileSync(f.path);
-      await assert.rejects(async () => f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() }));
+      await assert.rejects(async () => f.restore().restore({ manifestPath }, f.operation()));
       assert.deepEqual(readFileSync(f.path), before);
       if (kind !== "missing-binding") assert.deepEqual(before, expectedBefore);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
@@ -478,7 +477,7 @@ describe("profile restore continuity", () => {
     try {
       const manifestPath = await f.backup(), before = readFileSync(f.path);
       assert.throws(() => new OfflineAuthorityRestoreService(profileBrowserClosure, f.machine,
-        { authorityPath: f.path, suspectDirectory: join(f.stateRoot, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => {}), /profile-bound-authority-required/);
+        { authorityPath: f.path, suspectDirectory: join(f.stateRoot, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.processLockRoot}, async () => {}), /profile-bound-authority-required/);
       assert.throws(() => f.machine.assertStorageRelocationSupported(), ProfileStorageRelocationUnsupportedError);
       assert.deepEqual(readFileSync(f.path), before);
       assert.ok(existsSync(manifestPath));
@@ -496,7 +495,7 @@ describe("profile restore continuity", () => {
       f.signIn();
       const journal = readFileSync(f.journalPath), anchor = readFileSync(f.journalPath + ".authority");
       const current = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
-      await f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() });
+      await f.restore().restore({ manifestPath }, f.operation());
       assert.deepEqual(readFileSync(f.journalPath), journal);
       assert.deepEqual(readFileSync(f.journalPath + ".authority"), anchor);
       assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), current);
@@ -517,7 +516,7 @@ describe("profile restore continuity", () => {
         writeFileSync(f.journalPath, "{}", { mode: 0o600 });
         writeFileSync(f.journalPath + ".authority", "{}", { mode: 0o600 });
       });
-      await assert.rejects(service.restore({ manifestPath, stoppedSystemProof: f.proof() }));
+      await assert.rejects(service.restore({ manifestPath }, f.operation()));
       assert.deepEqual(readFileSync(f.path), bytes);
     } finally { await f.close(); }
   });
@@ -542,28 +541,28 @@ describe("profile restore continuity", () => {
       await assert.rejects(f.restore(async () => {}, (source, target) => {
         renameSync(source, target);
         throw new Error("synthetic-replace-after-effect");
-      }).restore({ manifestPath, stoppedSystemProof: f.proof() }), error => error instanceof OfflineRestoreFailure && error.authorityState === "replaced");
+      }).restore({ manifestPath }, f.operation()), error => error instanceof OfflineRestoreFailure && error.authorityState === "replaced");
       assert.throws(() => f.current().assertProfileRuntime());
     } finally { await f.close(); }
   });
-  it("refuses a genuinely stale stopped proof before staging", async () => {
+  it("refuses a genuinely expired operation before staging", async () => {
     const clock = manualClock(new Date("2026-10-21T12:00:00.000Z")), f = await world(clock);
     try {
-      const manifestPath = await f.backup(), stoppedSystemProof = f.proof(), bytes = readFileSync(f.path);
-      clock.advanceWall(60_001);
-      await assert.rejects(f.restore().restore({ manifestPath, stoppedSystemProof }), /stale/);
+      const manifestPath = await f.backup(), operation = f.operation(), bytes = readFileSync(f.path);
+      operation.release();
+      await assert.rejects(f.restore().restore({ manifestPath }, operation), /offline-maintenance-unissued/u);
       assert.deepEqual(readFileSync(f.path), bytes);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
     } finally { await f.close(); }
   });
 
-  it("refuses a live real worker after a stopped proof was issued", async () => {
+  it("refuses old-build worker evidence during a held operation", async () => {
     const f = await world();
     let worker: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
     try {
-      const manifestPath = await f.backup(), stoppedSystemProof = f.proof(), bytes = readFileSync(f.path);
+      const manifestPath = await f.backup(), operation = f.operation(), bytes = readFileSync(f.path);
       worker = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "workers", workerId: "synthetic-restore-worker", pid: process.pid });
-      await assert.rejects(f.restore().restore({ manifestPath, stoppedSystemProof }));
+      await assert.rejects(f.restore().restore({ manifestPath }, operation));
       assert.deepEqual(readFileSync(f.path), bytes);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
     } finally { worker?.release(); await f.close(); }
@@ -575,7 +574,7 @@ describe("profile restore continuity", () => {
       const manifestPath = await f.backup();
       await assert.rejects(f.restore(async () => {}, (source, target) => {
         renameSync(source, target); rmSync(target); throw new Error("synthetic-replacement-outcome-unobservable");
-      }).restore({ manifestPath, stoppedSystemProof: f.proof() }), error => error instanceof OfflineRestoreFailure && error.authorityState === "authority-state-uncertain");
+      }).restore({ manifestPath }, f.operation()), error => error instanceof OfflineRestoreFailure && error.authorityState === "authority-state-uncertain");
       const intent = JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", "journal.json"), "utf8")) as { restore: { suspectPath: string; operationId: string } };
       assert.ok(existsSync(intent.restore.suspectPath));
       assert.ok(intent.restore.operationId);
@@ -590,7 +589,7 @@ describe("profile restore continuity", () => {
       const manifestPath = await f.backup();
       await assert.rejects(f.restore(async () => {}, (source, target) => {
         renameSync(source, target); writeFileSync(String(target) + "-wal", "synthetic-unproved-companion", { mode: 0o600 });
-      }).restore({ manifestPath, stoppedSystemProof: f.proof() }), error => error instanceof OfflineRestoreFailure && error.authorityState === "replaced");
+      }).restore({ manifestPath }, f.operation()), error => error instanceof OfflineRestoreFailure && error.authorityState === "replaced");
       const intent = JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", "journal.json"), "utf8")) as { restore: { suspectPath: string } };
       assert.ok(existsSync(intent.restore.suspectPath));
       assert.equal(readFileSync(f.path + "-wal", "utf8"), "synthetic-unproved-companion");
@@ -600,7 +599,7 @@ describe("profile restore continuity", () => {
 
   it("recovers interrupted registry invalidation exactly once without rerunning replacement", async () => {
     const f = await world();
-    let restoreHandle: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
+    let restoreHandle: OfflineMaintenanceOperation | undefined;
     let recovery: ReturnType<typeof acquireRecoveryRuntimeRestore> | undefined;
     let freshMachine: RuntimeAdmission | undefined;
     const registryPath = join(f.machine.stateRoot, "machine", "profiles.json"), journalPath = join(f.workspace, ".tracker", "control", "journal.json");
@@ -618,14 +617,14 @@ describe("profile restore continuity", () => {
       syncBuiltinESMExports();
       try {
         await assert.rejects(f.restore(async () => {}, (source, target) => { replacements += 1; originalRename(source, target); })
-          .restore({ manifestPath, stoppedSystemProof: f.proof() }), error => error instanceof OfflineRestoreFailure && error.authorityState === "replaced");
+          .restore({ manifestPath }, f.operation()), error => error instanceof OfflineRestoreFailure && error.authorityState === "replaced");
       } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
       assert.equal(interrupted, true); assert.equal(replacements, 1);
       const pending = JSON.parse(readFileSync(journalPath, "utf8")) as { restore: { operationId: string }; invalidation: { document: { sessionGeneration: number } } };
       assert.equal(pending.invalidation.document.sessionGeneration, beforeGeneration + 1);
       assert.equal((JSON.parse(readFileSync(registryPath, "utf8")) as { sessionGeneration: number }).sessionGeneration, beforeGeneration + 1);
       f.machine.release();
-      restoreHandle = acquireRuntimeRestoreAdmission({ processLockRoot: f.processLockRoot, pid: process.pid });
+      restoreHandle = f.lifetime.beginOfflineMaintenance(f.workspace);
       recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, restoreHandle);
       const recoveredAdmission = recovery.admission;
       assert.throws(() => recoveredAdmission.assertWritable());
@@ -635,11 +634,14 @@ describe("profile restore continuity", () => {
       const companionBytes = () => ["-wal", "-shm"].map(suffix => existsSync(f.path + suffix) ? readFileSync(f.path + suffix) : undefined);
       const beforeCompanions = companionBytes();
       await assert.rejects(settleInterruptedAuthorityRestore({ admission: recovery.admission, operationId: pending.restore.operationId,
-        manifestPath, outcome: "unchanged", processLockRoot: f.processLockRoot, stoppedSystemProof: f.proof(), restoreAdmission: restoreHandle }));
+        manifestPath, outcome: "unchanged", processLockRoot: f.processLockRoot, restoreAdmission: restoreHandle }));
       assert.deepEqual(readFileSync(journalPath), beforeWrong); assert.deepEqual(readFileSync(f.path), databaseBytes);
       assert.deepEqual(companionBytes(), beforeCompanions);
+      restoreHandle.release(); recovery.admission.release();
+      restoreHandle = f.lifetime.beginOfflineMaintenance(f.workspace);
+      recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, restoreHandle);
       assert.equal((await settleInterruptedAuthorityRestore({ admission: recovery.admission, operationId: pending.restore.operationId,
-        manifestPath, outcome: "replaced", processLockRoot: f.processLockRoot, stoppedSystemProof: f.proof(), restoreAdmission: restoreHandle })).state, "settled");
+        manifestPath, outcome: "replaced", processLockRoot: f.processLockRoot, restoreAdmission: restoreHandle })).state, "settled");
       assert.equal(replacements, 1); assert.equal(existsSync(journalPath), false);
       restoreHandle.release(); restoreHandle = undefined; recovery.admission.release(); recovery = undefined;
       freshMachine = RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime);
@@ -654,7 +656,7 @@ describe("profile restore continuity", () => {
 
   for (const outcome of ["unchanged", "replaced"] as const) it(`recovers ${outcome} history publication before journal unlink once and refuses divergent custody`, async () => {
     const f = await world();
-    let restoreHandle: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
+    let restoreHandle: OfflineMaintenanceOperation | undefined;
     let recovery: ReturnType<typeof acquireRecoveryRuntimeRestore> | undefined;
     let freshMachine: RuntimeAdmission | undefined;
     let primary: { error: unknown } | undefined;
@@ -676,7 +678,7 @@ describe("profile restore continuity", () => {
           replacements++;
           if (outcome === "unchanged") throw new Error("synthetic-replacement-before-effect");
           renameSync(source, target);
-        }).restore({ manifestPath, stoppedSystemProof: f.proof() }), error => error instanceof OfflineRestoreFailure && error.authorityState === outcome);
+        }).restore({ manifestPath }, f.operation()), error => error instanceof OfflineRestoreFailure && error.authorityState === outcome);
       } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
       assert.equal(interrupted, true); assert.equal(replacements, 1);
       const pending = z.object({ restore: z.object({ operationId: z.uuid() }) }).parse(JSON.parse(readFileSync(journalPath, "utf8")));
@@ -684,18 +686,21 @@ describe("profile restore continuity", () => {
       assert.equal(control.completedRestores.length, 1);
       assert.equal(control.completedRestores[0]?.operationId, pending.restore.operationId);
       f.machine.release();
-      restoreHandle = acquireRuntimeRestoreAdmission({ processLockRoot: f.processLockRoot, pid: process.pid });
+      restoreHandle = f.lifetime.beginOfflineMaintenance(f.workspace);
       recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, restoreHandle);
       const completed = control.completedRestores[0]; assert.ok(completed);
       writeFileSync(controlPath, JSON.stringify({ ...control, completedRestores: [{ ...completed, outcome: outcome === "replaced" ? "unchanged" : "replaced" }] }));
       const beforeJournal = readFileSync(journalPath), beforeDatabase = readFileSync(f.path), divergent = readFileSync(controlPath);
       await assert.rejects(settleInterruptedAuthorityRestore({ admission: recovery.admission, operationId: pending.restore.operationId,
-        manifestPath, outcome, processLockRoot: f.processLockRoot, stoppedSystemProof: f.proof(), restoreAdmission: restoreHandle }));
+        manifestPath, outcome, processLockRoot: f.processLockRoot, restoreAdmission: restoreHandle }));
       assert.deepEqual(readFileSync(journalPath), beforeJournal); assert.deepEqual(readFileSync(f.path), beforeDatabase);
       assert.deepEqual(readFileSync(controlPath), divergent);
       writeFileSync(controlPath, published);
+      restoreHandle.release(); recovery.admission.release();
+      restoreHandle = f.lifetime.beginOfflineMaintenance(f.workspace);
+      recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, restoreHandle);
       assert.equal((await settleInterruptedAuthorityRestore({ admission: recovery.admission, operationId: pending.restore.operationId,
-        manifestPath, outcome, processLockRoot: f.processLockRoot, stoppedSystemProof: f.proof(), restoreAdmission: restoreHandle })).state, "settled");
+        manifestPath, outcome, processLockRoot: f.processLockRoot, restoreAdmission: restoreHandle })).state, "settled");
       assert.equal(replacements, 1); assert.equal(existsSync(journalPath), false);
       restoreHandle.release(); restoreHandle = undefined; recovery.admission.release(); recovery = undefined;
       freshMachine = RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime);
@@ -710,26 +715,26 @@ describe("profile restore continuity", () => {
     }
   });
 
-  it("reports replaced and retains real process admission when exclusive release is unproved", async () => {
+  it("reports replaced and retains the genuine root when exclusive operation release fails", async () => {
     const f = await world();
-    let held: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
-    let archiveCollision: string | undefined;
+    const operation = f.operation(), journal = join(f.workspace, ".tracker", "control", "journal.json");
+    const releaseFailure = new Error("synthetic-exact-operation-release-failure");
+    const assertHeld = f.lifetime.assertOfflineMaintenance.bind(f.lifetime);
+    let replaced = false;
+    const failedRelease = vi.spyOn(f.lifetime, "assertOfflineMaintenance").mockImplementation((owned, workspace) => {
+      assertHeld(owned, workspace);
+      if (replaced && !existsSync(journal)) throw releaseFailure;
+    });
     try {
       const manifestPath = await f.backup();
-      const factory: OfflineRestoreAdmissionFactory = (input, clock) => {
-        held = acquireRuntimeRestoreAdmission(input, clock);
-        const history = join(f.processLockRoot, "restore-admission-history");
-        mkdirSync(history, { recursive: true, mode: 0o700 });
-        archiveCollision = join(history, `${held.admissionId}.lock.json`);
-        mkdirSync(archiveCollision, { mode: 0o700 });
-        return held;
-      };
-      await assert.rejects(f.restore(async () => {}, renameSync, factory).restore({ manifestPath, stoppedSystemProof: f.proof() }),
-        error => error instanceof OfflineRestoreFailure && error.authorityState === "replaced" && error.message.includes("release failed"));
-      assert.ok(existsSync(join(f.processLockRoot, "restore-admission.lock.json")));
-      assert.throws(() => acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "workers", workerId: "synthetic-after-restore", pid: process.pid }));
+      await assert.rejects(f.restore(async () => {}, (source, target) => { renameSync(source, target); replaced = true; })
+        .restore({ manifestPath }, operation), error => error instanceof OfflineRestoreFailure
+          && error.authorityState === "replaced" && error.message.includes("release failed"));
+      assert.equal(isOfflineMaintenanceOperationActive(operation), true);
+      await assert.rejects(RuntimeLifetimeLock.acquire(f.lifetime.port), RuntimeAlreadyRunningError);
+      assert.throws(() => f.machine.beginOfflineMaintenance(), /offline-maintenance-busy/u);
       assert.throws(() => f.current().assertProfileRuntime());
-    } finally { if (archiveCollision !== undefined) rmSync(archiveCollision, { recursive: true }); held?.release(); await f.close(); }
+    } finally { failedRelease.mockRestore(); operation.release(); await f.close(); }
   });
 
   it.each(["erase", "restore"] as const)("excludes a real concurrent controller during %s through the held kernel listener", async held => {
@@ -742,8 +747,8 @@ describe("profile restore continuity", () => {
       const port = f.lifetime.port;
       await f.closeController();
       const imports = `
-        import { existsSync,writeFileSync } from 'node:fs';
-        import { join } from 'node:path';
+
+
         import { acquireEntrypointAdmission } from './src/backend/storage/admission/bootstrap-admission.ts';
         import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from './src/backend/storage/admission/lifetime-lock.ts';
         import { composeProfileCredentialRepairInventory } from './src/backend/app/composition/profile-credential-inventory.ts';
@@ -754,8 +759,7 @@ describe("profile restore continuity", () => {
         import { OfflineAuthorityRestoreService } from './src/backend/storage/sqlite/offline-restore.ts';
         import { profileBrowserClosure } from './src/backend/runtime/browser/native-profile-probe.ts';
         import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
-        import { RecoveryStopProofStore } from './src/backend/storage/sqlite/recovery-stop-proof.ts';
-        import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from './src/backend/storage/sqlite/runtime-process-locks.ts';
+                import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot } from "./src/backend/storage/sqlite/runtime-process-locks.ts";
         const port=${String(port)},workspace=${JSON.stringify(f.workspace)},profileId=${JSON.stringify(f.profileId)},manifestPath=${JSON.stringify(manifestPath)};
         const ready=${JSON.stringify(ready)},release=${JSON.stringify(release)},processLockRoot=${JSON.stringify(f.processLockRoot)};
       `;
@@ -769,10 +773,10 @@ describe("profile restore continuity", () => {
       const restore = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'exclusive',lifetime);try {
         const child=machine.admitProfile(createProfileRegistry(machine).storageClaim(profileId));const root=child.stateRoot,path=join(root,'state.db');
         const store=createCredentialStore({admission:child,stateRoot:root,erasureJournalAdmission:machine,erasureJournalPath:join(machine.stateRoot,'machine','erasures',profileId+'.json')});
-        const identity=AuthorityDatabase.sourceDatabaseIdentity(path),proofs=new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60000});
-        proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:identity}));const proof=proofs.issue({observedBy:'local-operator',sourceDatabaseIdentity:identity});
-        const service=new OfflineAuthorityRestoreService(profileBrowserClosure, child,{authorityPath:path,suspectDirectory:join(root,'backups','suspects'),busyTimeoutMs:250,processLockRoot,stoppedProofMaxAgeMs:60000},async()=>{${barrier}},undefined,undefined,undefined,store);
-        await service.restore({manifestPath,stoppedSystemProof:proof});
+
+        const proof=child.acquireOfflineMaintenance();
+        const service=new OfflineAuthorityRestoreService(profileBrowserClosure, child,{authorityPath:path,suspectDirectory:join(root,'backups','suspects'),busyTimeoutMs:250,processLockRoot},async()=>{${barrier}},undefined,undefined,store);
+        await service.restore({ manifestPath }, proof);
       }finally{machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
       owner = childJob(imports + (held === "erase" ? erase : restore));
       await waitForFile(ready);

@@ -150,7 +150,7 @@ for (const boundary of ["intent", "control", "receipt", "settlement"] as const) 
 }
 
 for (const custody of ["preboot-gone", "sameboot-gone", "live", "reused-pid", "uncertain-child", "unreleased-worker"] as const) {
-  it(`handles ${custody} server custody without fabricating a release`, async () => {
+  it(`refuses ${custody} old-build server evidence without interpreting or fabricating a release`, async () => {
     const f = await createHistoricalIncompleteProfileFixture();
     try {
       drift(f);
@@ -170,13 +170,8 @@ for (const custody of ["preboot-gone", "sameboot-gone", "live", "reused-pid", "u
           acquiredAt: "2000-01-01T00:00:00.000Z", releasedAt: null }), { mode: 0o600 });
       }
       const before = readFileSync(path);
-      if (custody === "preboot-gone") {
-        const held = await prepare(f.workspace, f.lifetime);
-        try { held.recertify({ captureDigest: held.capture.digest, acknowledgement }); }
-        finally { held.release(); }
-        assert.equal(readFileSync(path).equals(before), true);
-        assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime), /process-custody-unproved/);
-      } else await assert.rejects(prepare(f.workspace, f.lifetime), /custody-unproved/);
+      await assert.rejects(prepare(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+      assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
       assert.equal(readFileSync(path).equals(before), true);
     } finally { await f.close(); }
   });

@@ -27,11 +27,6 @@ export {
   OfflineRestoreOptionsSchema,
 } from "./offline-restore.js";
 export {
-  RecoveryStopProofStore,
-  RecoveryStopProofStoreOptionsSchema,
-  StoppedSystemProofIssueRequestSchema,
-} from "./recovery-stop-proof.js";
-export {
   AuthorityBackupManifestSchema,
   AuthorityBackupRequestSchema,
   AuthorityBackupRunReportSchema,
@@ -46,7 +41,6 @@ export {
   RestoreCandidateSchema,
   RecoveryProcessLockStateSchema,
   RecoveryRuntimeLockSnapshotSchema,
-  StoppedSystemProofSchema,
   SpanAuthorityRunRootSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,

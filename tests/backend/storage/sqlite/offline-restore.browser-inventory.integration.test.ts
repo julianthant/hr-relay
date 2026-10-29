@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { copyFileSync, renameSync, readdirSync, lstatSync, readFileSync, existsSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
-import { createHash } from "node:crypto";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { z } from "zod";
@@ -11,8 +10,7 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/n
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService, OfflineRestoreFailure } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot, acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission, RestoreAdmissionFileSchema, type RestoreAdmissionHandle } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { assertOfflineMaintenanceOperation, type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
@@ -51,17 +49,11 @@ for (const malformed of ["browser", "config", "control"] as const) it(`refuses m
         (command_id,scope,worker_id,phase,audited_at,payload_json,created_at)
         VALUES(?,'worker',NULL,'admitted',NULL,'{}',?)`).run("malformed-control", now);
     } finally { raw.close(); }
-    const identity = AuthorityDatabase.sourceDatabaseIdentity(fixture.path);
-    const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, clock);
-    proofs.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: identity }, clock));
-    const stoppedSystemProof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity: identity });
+
+
+    const operation = fixture.admission.acquireOfflineMaintenance();
     const before = storageTree(fixture.workspace), entries = readdirSync(fixture.workspace, { recursive: true, encoding: "utf8" }).sort();
     const stat = lstatSync(fixture.path);
-    const pendingPath = join(processLockRoot, "restore-proofs-pending", stoppedSystemProof.proofId + ".json");
-    const consumedPath = join(processLockRoot, "restore-proofs-consumed", stoppedSystemProof.proofId + ".json");
-    const pendingBytes = readFileSync(pendingPath), pendingIdentity = fileIdentity(pendingPath);
-    assert.deepEqual(JSON.parse(pendingBytes.toString("utf8")), stoppedSystemProof);
-    assert.equal(existsSync(consumedPath), false);
     const retainedFiles = Object.fromEntries(Object.keys(before).map(path => [path, {
       ...fileIdentity(join(fixture.workspace, path)), changedAt: lstatSync(join(fixture.workspace, path)).ctimeMs,
     }]));
@@ -69,68 +61,27 @@ for (const malformed of ["browser", "config", "control"] as const) it(`refuses m
       const metadata = lstatSync(join(fixture.workspace, path));
       return [path, { device: metadata.dev, inode: metadata.ino, mode: metadata.mode, owner: metadata.uid }];
     }));
-    const acquisition: { value?: { handle: RestoreAdmissionHandle; bytes: Buffer; identity: ReturnType<typeof fileIdentity> } } = {};
     let copies = 0, replacements = 0, projections = 0;
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, fixture.admission,
       { authorityPath: fixture.path, suspectDirectory: join(fixture.stateRoot, "backups", "suspects"), busyTimeoutMs: 250,
-        processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => { projections++; }, clock,
-      { copyFile: (from, to) => { copies++; copyFileSync(from, to); }, atomicReplace: (from, to) => { replacements++; renameSync(from, to); } },
-      (input, admissionClock) => {
-        const handle = acquireRuntimeRestoreAdmission(input, admissionClock);
-        try {
-          assertRuntimeRestoreAdmission(handle, processLockRoot);
-          const activePath = join(processLockRoot, "restore-admission.lock.json"), bytes = readFileSync(activePath);
-          const record = RestoreAdmissionFileSchema.parse(JSON.parse(bytes.toString("utf8")));
-          assert.equal(record.admissionId, handle.admissionId); assert.equal(record.pid, process.pid); assert.equal(record.acquiredAt, now);
-          assert.equal(acquisition.value, undefined);
-          acquisition.value = { handle, bytes, identity: fileIdentity(activePath) };
-          return handle;
-        } catch (error) {
-          try { handle.release(); }
-          catch (cleanup) { throw new AggregateError([error, cleanup], "restore-browser-custody-acquisition-close-failed", { cause: cleanup }); }
-          throw error;
-        }
-      }, boundProfileCredentials(fixture.admission));
-    await assert.rejects(restore.restore({ manifestPath, stoppedSystemProof }), error => error instanceof OfflineRestoreFailure
+        processLockRoot}, async () => { projections++; }, clock,
+      { copyFile: (from, to) => { copies++; copyFileSync(from, to); }, atomicReplace: (from, to) => { replacements++; renameSync(from, to); } }, boundProfileCredentials(fixture.admission));
+    await assert.rejects(restore.restore({ manifestPath }, operation), error => error instanceof OfflineRestoreFailure
       && error.authorityState === "unchanged" && (malformed === "config"
         ? error.cause instanceof Error && error.cause.message === "settings-current-missing-with-history"
         : error.cause instanceof z.ZodError));
     assert.equal(inventory.mock.calls.length, 1); assert.equal(native.mock.calls.length, 0);
     assert.deepEqual([copies, replacements, projections], [0, 0, 0]);
-    assert.ok(acquisition.value);
-    const acquired = acquisition.value;
-    const historyDirectory = join(processLockRoot, "restore-admission-history");
-    const historyPath = join(historyDirectory, acquired.handle.admissionId + ".lock.json");
-    const pendingRelative = relative(fixture.workspace, pendingPath), consumedRelative = relative(fixture.workspace, consumedPath);
-    const historyRelative = relative(fixture.workspace, historyPath);
-    assert.equal(existsSync(pendingPath), false);
-    assert.deepEqual(readFileSync(consumedPath), pendingBytes);
-    assert.deepEqual(fileIdentity(consumedPath), pendingIdentity); assert.equal(lstatSync(consumedPath).nlink, 1);
-    assert.deepEqual(readFileSync(historyPath), acquired.bytes);
-    assert.deepEqual(fileIdentity(historyPath), acquired.identity); assert.equal(lstatSync(historyPath).nlink, 1);
-    assert.deepEqual(RestoreAdmissionFileSchema.parse(JSON.parse(readFileSync(historyPath, "utf8"))),
-      RestoreAdmissionFileSchema.parse(JSON.parse(acquired.bytes.toString("utf8"))));
-    assert.equal(existsSync(join(processLockRoot, "restore-admission.lock.json")), false);
-    assert.throws(() => assertRuntimeRestoreAdmission(acquired.handle, processLockRoot), { message: "restore-admission-handle-released" });
-    const expected = { ...before };
-    assert.ok(expected[pendingRelative] !== undefined);
-    assert.equal(expected[consumedRelative], undefined); assert.equal(expected[historyRelative], undefined);
-    delete expected[pendingRelative];
-    expected[consumedRelative] = createHash("sha256").update(pendingBytes).digest("hex");
-    expected[historyRelative] = createHash("sha256").update(acquired.bytes).digest("hex");
-    assert.deepEqual(storageTree(fixture.workspace), expected);
+    assert.throws(() => assertOfflineMaintenanceOperation(operation, fixture.workspace), /offline-maintenance-unissued/u);
+    assert.deepEqual(storageTree(fixture.workspace), before);
     for (const [path, metadata] of Object.entries(retainedFiles)) {
-      if (path === pendingRelative) continue;
       assert.deepEqual({ ...fileIdentity(join(fixture.workspace, path)), changedAt: lstatSync(join(fixture.workspace, path)).ctimeMs }, metadata);
     }
     for (const [path, metadata] of Object.entries(retainedDirectories)) {
       const current = lstatSync(join(fixture.workspace, path));
       assert.deepEqual({ device: current.dev, inode: current.ino, mode: current.mode, owner: current.uid }, metadata);
     }
-    const expectedEntries = new Set(entries);
-    expectedEntries.delete(pendingRelative); expectedEntries.add(consumedRelative); expectedEntries.add(historyRelative);
-    expectedEntries.add(relative(fixture.workspace, historyDirectory));
-    assert.deepEqual(readdirSync(fixture.workspace, { recursive: true, encoding: "utf8" }).sort(), [...expectedEntries].sort());
+    assert.deepEqual(readdirSync(fixture.workspace, { recursive: true, encoding: "utf8" }).sort(), entries);
     const after = lstatSync(fixture.path);
     assert.deepEqual([after.dev, after.ino, after.size, after.mtimeMs, after.ctimeMs], [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs]);
   } catch (error) { primary = { error }; }
@@ -149,10 +100,10 @@ for (const changed of [false, true]) it(`probes every physical browser directory
     await nativeProbe(...args);
     if (changed) mkdirSync(join(profileRoot, "w31", "ucpath"), { recursive: true, mode: 0o700 });
   });
-  let restore: RestoreAdmissionHandle | undefined;
+  let restore: OfflineMaintenanceOperation | undefined;
   let primary: { error: unknown } | undefined;
   try {
-    restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
+    restore = fixture.admission.acquireOfflineMaintenance();
     for (const path of paths) mkdirSync(path, { recursive: true, mode: 0o700 });
     const corrupted = readFileSync(fixture.path);
     corrupted.fill(0x5a, 4096, Math.min(corrupted.length, 40_960)); writeFileSync(fixture.path, corrupted);
@@ -165,6 +116,8 @@ for (const changed of [false, true]) it(`probes every physical browser directory
     assert.deepEqual(readFileSync(fixture.path), source); assert.deepEqual(fileIdentity(fixture.path), before);
     assert.equal(existsSync(join(fixture.stateRoot, "backups", "suspects")), false);
     fixture.lifetime.assertHeld();
+    assert.throws(() => fixture.machine.beginOfflineMaintenance(), /offline-maintenance-busy/u);
+    restore.release();
     const successor = fixture.machine.beginOfflineMaintenance(); successor.release();
   } catch (error) { primary = { error }; }
   native.mockRestore();
@@ -179,10 +132,10 @@ for (const unsafe of ["unknown-directory", "noncanonical-root", "symlink", "unsu
   const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot), profileRoot = join(fixture.stateRoot, "browsers");
   const platform = Object.getOwnPropertyDescriptor(process, "platform"); assert.ok(platform);
   const native = vi.spyOn(profileBrowserClosure, "probeClosed");
-  let restore: RestoreAdmissionHandle | undefined;
+  let restore: OfflineMaintenanceOperation | undefined;
   let primary: { error: unknown } | undefined;
   try {
-    restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
+    restore = fixture.admission.acquireOfflineMaintenance();
     mkdirSync(profileRoot, { recursive: true, mode: 0o700 });
     if (unsafe === "unknown-directory") mkdirSync(join(profileRoot, "foreign"), { mode: 0o700 });
     if (unsafe === "symlink") symlinkSync(fixture.stateRoot, join(profileRoot, "w17"));

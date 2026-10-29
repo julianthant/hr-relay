@@ -481,6 +481,14 @@ export const ERROR_CATALOG = Object.freeze({
     "Sign in waits until the other profile is logged out.",
     EmptyParametersSchema,
   ),
+  RUNTIME_OFFLINE_OPERATION_UNAVAILABLE: catalogEntry(
+    "This offline operation is busy, expired, already used, or belongs to a different runtime. Existing storage is preserved; start a new explicit command after the current owner closes.",
+    EmptyParametersSchema,
+  ),
+  RUNTIME_OLD_BUILD_ARTIFACTS: catalogEntry(
+    "This installation contains runtime lock evidence from an older build. Offline maintenance is stopped and the evidence is preserved. Use the approved start-clean procedure.",
+    EmptyParametersSchema,
+  ),
   PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED: catalogEntry(
     "Browser closure for damaged profile storage could not be proved. This restore requires macOS and a complete unchanged browser-directory census. Existing storage is preserved.",
     EmptyParametersSchema,

@@ -1,11 +1,11 @@
+import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createHistoricalIncompleteProfileFixture } from '../../../support/fixtures/storage/historical-incomplete-profile-fixture.js';
-import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { finishProfileOnboarding, syntheticOnboardingDuo, createSyntheticProfileSession as createProfileSession, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import nativeFs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import { createSyntheticProfileSession as createProfileSession } from "../../../support/helpers/admission-fixture.js";
 import { composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
-import { verifyStoppedControlCredentialAttestation } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { verifyStoppedControlCredentialAttestation, issueDuoCredentialPurpose, openDuoCredentialDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { execFileSync, fork, spawnSync, type ChildProcess } from "node:child_process";
 import { on, once } from "node:events";
 import { fileURLToPath } from "node:url";
@@ -14,10 +14,9 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { acquireStoppedProfileControlUpgrade } from "../../../../src/backend/storage/admission/installation.js";
 import { releaseStoppedMachineControlUpgrade, upgradeStoppedMachineControl } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import assert from "node:assert/strict";
 import { randomBytes, createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, realpathSync, rmSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
@@ -25,10 +24,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { createDuoCredentialStore, createDraftDuoCredentialStore, DuoCredentialCommitUncertainError, DuoPublicationCaptureSchema, duoStagePath } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
-import { issueDuoCredentialPurpose, openDuoCredentialDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { DuoCredentialDocumentSchema } from "../../../../src/models/config/duo-credential-store.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { removeExactPath } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
@@ -197,7 +194,7 @@ it("fails closed at uint32 exhaustion without changing the last committed count"
 
 const retainedStoppedControlSetupOwners = new Set<object>();
 async function stoppedControlFixture(retainedCredential?: unknown) {
-  const held: { fixture?: Awaited<ReturnType<typeof createHistoricalIncompleteProfileFixture>>; restore?: ReturnType<typeof acquireRuntimeRestoreAdmission>;
+  const held: { fixture?: Awaited<ReturnType<typeof createHistoricalIncompleteProfileFixture>>; restore?: OfflineMaintenanceOperation;
     upgrade?: ReturnType<typeof acquireStoppedProfileControlUpgrade>; primary?: unknown } = {};
   retainedStoppedControlSetupOwners.add(held);
   try {
@@ -215,8 +212,7 @@ async function stoppedControlFixture(retainedCredential?: unknown) {
     const { duo: _duo, completedRestores: _completed, ...prior } = current;
     writeFileSync(controlPath, JSON.stringify({ ...prior, schemaVersion: 1 }));
     writeFileSync(markerPath, JSON.stringify({ schemaVersion: 2 }));
-    const processLockRoot = fixture.processLockRoot;
-    const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
+    const restore = fixture.lifetime.beginOfflineMaintenance(fixture.workspace);
     held.restore = restore;
     const upgrade = acquireStoppedProfileControlUpgrade(fixture.workspace, restore, fixture.lifetime);
     held.upgrade = upgrade;
@@ -944,7 +940,7 @@ it("recovers a machine-control publication stopped between the control and marke
 
 it("keeps the restore admission when stopped-control snapshot disposal is unproved", async () => {
   const fixture = await createHistoricalIncompleteProfileFixture();
-  const held: { fixture: typeof fixture; maintenance?: RuntimeAdmission; restore?: ReturnType<RuntimeAdmission['maintenanceRestore']>; control?: ReturnType<RuntimeAdmission['beginStoppedMachineControlUpgrade']>; processLockRoot?: string; snapshot?: { path: string; device: number; inode: number; uid: number; originalFlags: number; injected: boolean }; primary?: { error: unknown }; cleanup?: { error: unknown } } = { fixture };
+  const held: { fixture: typeof fixture; maintenance?: RuntimeAdmission; restore?: ReturnType<RuntimeAdmission['maintenanceOperation']>; control?: ReturnType<RuntimeAdmission['beginStoppedMachineControlUpgrade']>; processLockRoot?: string; snapshot?: { path: string; device: number; inode: number; uid: number; originalFlags: number; injected: boolean }; primary?: { error: unknown }; cleanup?: { error: unknown } } = { fixture };
   retainedPublicationRecoveryOwners.add(held);
   const readSnapshotFlags = (path: string) => z.number().int().nonnegative().parse(Number(z.string().regex(/^\d+$/).parse(execFileSync('/usr/bin/stat', ['-f', '%f', path], { encoding: 'utf8' }).trim())));
   let primary: { error: unknown } | undefined;
@@ -953,7 +949,7 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
     held.processLockRoot = paths.processLockRoot;
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace, fixture.lifetime);
     held.maintenance = maintenance;
-    const restore = maintenance.maintenanceRestore();
+    const restore = maintenance.maintenanceOperation();
     held.restore = restore;
     assert.ok(restore);
     const control = maintenance.beginStoppedMachineControlUpgrade(restore);
@@ -984,9 +980,10 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
     execFileSync("/usr/bin/chflags", ["uchg", snapshotFile]);
     held.snapshot.injected = true;
     assert.throws(() => releaseStoppedMachineControlUpgrade(control, restore, true), (error: unknown) => error instanceof AuthoritySourceClosureUnprovedError);
-    assert.equal(existsSync(join(paths.processLockRoot, "restore-admission.lock.json")), true);
-    assert.throws(() => acquireRuntimeRestoreAdmission({ processLockRoot: paths.processLockRoot, pid: process.pid }), /held by live pid/u);
-    assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "shared", fixture.lifetime), /installation lease busy/u);
+    restore.assertHeld();
+    assert.equal(existsSync(join(paths.processLockRoot, "restore-admission.lock.json")), false);
+    assert.throws(() => maintenance.beginOfflineMaintenance(), /offline-maintenance-busy/u);
+    assert.throws(() => RuntimeAdmission.acquireMachine(fixture.workspace, "shared", fixture.lifetime), /offline-maintenance-unissued/u);
     assert.throws(() => releaseStoppedMachineControlUpgrade(control, restore, true), (error: unknown) => error instanceof AuthoritySourceClosureUnprovedError);
     assert.equal(existsSync(snapshotFile), true);
     for (const directory of issued) if (directory !== created[0]) assert.equal(existsSync(directory), false);
@@ -1006,7 +1003,7 @@ it("keeps the restore admission when stopped-control snapshot disposal is unprov
       assert.deepEqual({ device: restored.dev, inode: restored.ino, uid: restored.uid, links: restored.nlink }, { device: target.device, inode: target.inode, uid: target.uid, links: 1 });
       assert.equal(readSnapshotFlags(target.path), target.originalFlags);
       assert.ok(held.restore && held.processLockRoot);
-      assertRuntimeRestoreAdmission(held.restore, held.processLockRoot);
+      held.restore.assertHeld();
     }
   } catch (error) { cleanup = { error }; held.cleanup = cleanup; }
   if (primary !== undefined && cleanup !== undefined) throw new AggregateError([primary.error, cleanup.error], 'Duo snapshot flag restoration failed after primary', { cause: primary.error });
@@ -1122,7 +1119,7 @@ for (const readOwner of ['scan', 'parse'] as const) it(`retains the actual stopp
     if (held.descriptor === undefined) throw new Error('inventory-descriptor-unobserved');
     assert.equal(realStat(held.descriptor).dev, identity.dev);
     assert.equal(realStat(held.descriptor).ino, identity.ino);
-    assertRuntimeRestoreAdmission(f.restore, join(f.workspace, rebuildRuntimeIsolation.processLockRoot));
+    f.restore.assertHeld();
     assert.equal(f.upgrade.registeredProfileIds().includes(f.profileId), true);
     assert.throws(() => { held.competing = RuntimeAdmission.acquireMachine(f.workspace, 'exclusive', f.lifetime); });
     assert.equal(held.competing, undefined);

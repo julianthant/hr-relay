@@ -1,13 +1,14 @@
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/installation.js";
+import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { BrowserSystemIdSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { CredentialLockRecordSchema, readPrivateFile } from "../configuration/credential-safe-file.js";
 import { lstatSync, opendirSync, readdirSync, type Dirent } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
+import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
-import { ProfileBrowserRootRefusalError } from "../admission/admission-identity.js";
-import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import { ProfileBrowserRootRefusalError, requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
@@ -17,7 +18,6 @@ import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { countProfileCredentialLoginRows } from "../sqlite/profile-local-databases.js";
-import { readRuntimeProcessLock } from "../sqlite/runtime-process-locks.js";
 
 type CredentialMembershipCustody = Pick<ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, "slots" | "reservations" | "verificationProfiles" | "browsers" | "configSnapshots" | "controls" | "artifactReferences" | "upgrades">;
 type BrowserProfileCustody = Pick<CredentialMembershipCustody, "slots" | "verificationProfiles" | "browsers" | "configSnapshots" | "controls">;
@@ -105,7 +105,7 @@ export async function probeStoppedProfileBrowsersClosed(admission: RuntimeAdmiss
 }
 
 export async function probeRestoreProfileBrowsersClosed(admission: RuntimeAdmission, processLockRoot: string,
-  restore: RestoreAdmissionHandle, clock: Clock, browserClosure: ProfileBrowserClosure): Promise<void> {
+  restore: OfflineMaintenanceOperation, clock: Clock, browserClosure: ProfileBrowserClosure): Promise<void> {
   let custody: ReturnType<typeof AuthorityDatabase.readProfileRestoreBrowserInventory>;
   try { custody = AuthorityDatabase.readProfileRestoreBrowserInventory(admission, processLockRoot, restore); }
   catch (error) {
@@ -182,16 +182,16 @@ function restoreBrowserCensus(admission: RuntimeAdmission) {
 }
 
 async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission, processLockRoot: string,
-  restore: RestoreAdmissionHandle, clock: Clock, browserClosure: ProfileBrowserClosure): Promise<void> {
+  restore: OfflineMaintenanceOperation, clock: Clock, browserClosure: ProfileBrowserClosure): Promise<void> {
   if (process.platform !== "darwin") throw new ProfileRestoreBrowserCustodyUnprovedError();
-  const operation = admission.beginOfflineMaintenance();
+  const operation = restore;
   let primary: { error: unknown } | undefined;
   const assertHeld = () => {
     admission.assertExclusive(); admission.assertProfileRuntime(); admission.assertOfflineMaintenance(operation);
     const context = admission.readInstallationContext();
     if (context === undefined) throw new ProfileRestoreBrowserCustodyUnprovedError();
     admission.assertFixedProcessLockRoot(context.workspace, processLockRoot);
-    assertRuntimeRestoreAdmission(restore, processLockRoot);
+    assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
   };
   try {
     assertHeld();
@@ -205,8 +205,6 @@ async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission,
     if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: { admission, operation }, restore });
     primary = { error };
   }
-  try { operation.release(); }
-  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { admission: { admission, operation }, restore }); }
   if (primary !== undefined) throw primary.error;
 }
 
@@ -375,14 +373,11 @@ export function readStoppedProfileUpgradeInventory(input: Readonly<{
 }>) {
   const { machine, admission } = input;
   admission.assertReadyStoppedProfileUpgradeOwner(machine);
-  const process = credentialCopyProcessCustody(input);
+  const operation = machine.maintenanceOperation();
+  machine.assertOfflineMaintenance(operation);
   const context = machine.readInstallationContext();
   if (context === undefined) throw new Error("profile-stopped-upgrade-installation-required");
-  const processLockRoot = resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot);
-  const geocode = readRuntimeProcessLock(processLockRoot, "geocode");
-  if (Object.values(process.processLocks).some(lock => lock.state !== "stopped")
-    || process.orphans.staleServerRecords !== 0 || process.orphans.staleWorkerRecords !== 0
-    || geocode?.releasedAt === null) throw new Error("profile-stopped-upgrade-process-custody-unproved");
+  assertOfflineMaintenanceForProcessRoot(operation, resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot));
   const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
   assertCredentialCopyResourcesClosed(facts);
   if (facts.settingsAuthority.state !== "initialized") throw new Error("profile-stopped-upgrade-settings-required");
@@ -401,5 +396,5 @@ export function readStoppedProfileUpgradeInventory(input: Readonly<{
   const login = countProfileCredentialLoginRows(membership.loginDataPaths);
   if (login === "unreadable" || typeof login === "number" && login > 0) throw new Error("profile-stopped-upgrade-login-copy-present");
   admission.assertReadyStoppedProfileUpgradeOwner(machine);
-  return Object.freeze({ ...process, facts, membership, backups });
+  return Object.freeze({ operationId: operation.operationId, facts, membership, backups });
 }

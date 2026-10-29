@@ -1,7 +1,6 @@
 import { profileBrowserClosure, BrowserProfileStillClosingError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -15,8 +14,6 @@ import { initialSettingsFileRecord } from "../../../../src/models/config/setting
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService, OfflineRestoreFailure } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -84,13 +81,12 @@ describe("native notification recovery", () => {
         .request({ trigger: "operator", requiredGeneration: backupDb.getMeta().authorityGeneration });
       backupDb.close();
       db = open(); db.authority.notifications.updateState({ notificationId: report.notification.notificationId, expectedVersion: 2, status: "unread", snooze: { state: "not-snoozed" }, updatedAt: f.clock.now().toISOString() }); db.close();
-      const identity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
-      const proofStore = new RecoveryStopProofStore({ processLockRoot: f.input.processLockRoot, maxProofAgeMs: 60_000 }, f.clock);
-      proofStore.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot: f.input.processLockRoot, sourceDatabaseIdentity: identity }, f.clock));
-      const stoppedSystemProof = proofStore.issue({ observedBy: "local-operator", sourceDatabaseIdentity: identity });
+
+
+      const operation = admission.acquireOfflineMaintenance();
       const manifest = backup.manifests[0]; expect(manifest).toBeDefined();
-      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async (stagedPath, restoreAdmission) => { const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission); try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "notification-projection-proof" }, f.clock); staged.close(); } finally { stagedAdmission.release(); } }, f.clock, undefined, undefined, boundProfileCredentials(admission));
-      await restore.restore({ manifestPath: join(f.root, "backups", "authority", `${manifest.backupFileName}.manifest.json`), stoppedSystemProof });
+      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot}, async (stagedPath, restoreAdmission) => { const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission); try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "notification-projection-proof" }, f.clock); staged.close(); } finally { stagedAdmission.release(); } }, f.clock, undefined, boundProfileCredentials(admission));
+      await restore.restore({ manifestPath: join(f.root, "backups", "authority", `${manifest.backupFileName}.manifest.json`) }, operation);
       assert.throws(() => admission.assertProfileRuntime(), /profile-restore-context-expired/u);
       profile.renewAfterRestore();
       db = open();
@@ -140,18 +136,17 @@ describe("native worker control recovery", () => {
       const backupDb = open();
       const backup = await new AuthorityBackupService(admission,backupDb,{directory:join(root,"backups","authority")},f.clock).request({trigger:"operator",requiredGeneration:backupDb.getMeta().authorityGeneration});
       backupDb.close();
-      const identity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
-      const proofStore = new RecoveryStopProofStore({ processLockRoot: f.input.processLockRoot, maxProofAgeMs: 60_000 }, f.clock);
-      proofStore.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot: f.input.processLockRoot, sourceDatabaseIdentity: identity }, f.clock));
-      const stoppedSystemProof = proofStore.issue({ observedBy: "local-operator", sourceDatabaseIdentity: identity });
+
+
+      const operation = admission.acquireOfflineMaintenance();
       const manifest = backup.manifests[0]; expect(manifest).toBeDefined();
       if (manifest === undefined) throw new Error("backup-manifest-missing");
-      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async (stagedPath, restoreAdmission) => {
+      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot}, async (stagedPath, restoreAdmission) => {
         const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission);
         try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission,{ path: stagedPath, busyTimeoutMs: 250, migrationOwner: "worker-control-restore-check" }, f.clock); staged.close(); } finally { stagedAdmission.release(); }
-      }, f.clock, undefined, undefined, boundProfileCredentials(admission));
+      }, f.clock, undefined, boundProfileCredentials(admission));
       closureUnproved = true;
-      await restore.restore({ manifestPath: join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`), stoppedSystemProof });
+      await restore.restore({ manifestPath: join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`) }, operation);
       closureUnproved = false;
       assert.throws(() => admission.assertProfileRuntime(), /profile-restore-context-expired/u);
       profile.renewAfterRestore();

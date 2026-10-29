@@ -1,3 +1,4 @@
+import { withOfflineMaintenanceSync } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -49,7 +50,7 @@ it("backs up an adopted native6 flat source without login, preserves source iden
     assert.throws(() => admission.assertReadyStoppedProfileUpgradeOwner(admission), /profile-stopped-upgrade-owner-required/u);
     assert.throws(() => admission.assertArtifactRoot(f.artifact), /flat-backup-artifact-refused/u);
     assert.throws(() => admission.assertProfileMigration(f.databasePath, 6), /profile-initialization-authority-required/u);
-    assert.throws(() => AuthorityDatabase.upgradeStopped(admission, f.databasePath, f.processLockRoot, systemClock), /flat-backup-upgrade-refused/u);
+    assert.throws(() => withOfflineMaintenanceSync(admission, () => AuthorityDatabase.upgradeStopped(admission, f.databasePath, f.processLockRoot, systemClock)), /flat-backup-upgrade-refused/u);
     const outcome = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], systemClock, f.workspace, admission);
     assert.equal(outcome.exitCode, 0);
     const report = JSON.parse(outcome.output) as { manifests: { backupFileName: string }[]; coupledBackup: { backupPath: string } };

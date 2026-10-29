@@ -1,3 +1,4 @@
+import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
@@ -8,14 +9,10 @@ import { syncBuiltinESMExports } from "node:module";
 import { retainAuthoritySourceClosure as retainFirstBootSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
-
-
 import { default as assert } from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, writeFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -29,10 +26,7 @@ import { backupStoppedAuthority } from "../../../../src/backend/storage/maintena
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
-
-
 import { manualClock } from "../../../../src/rules/time/clock.js";
-
 import { runtimeFixture } from "../../../support/fixtures/preflight/runtime-fixture.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 
@@ -101,16 +95,15 @@ try {
   await profile.closeController();
   const url = (path: string) => pathToFileURL(join(process.cwd(), path)).href;
   const code = `
-    import { readFileSync, renameSync, copyFileSync } from "node:fs";
-    import { join } from "node:path";
+
+
     const { acquireEntrypointAdmission } = await import(${JSON.stringify(url("src/backend/storage/admission/bootstrap-admission.ts"))});
     const { AuthorityDatabase } = await import(${JSON.stringify(url("src/backend/storage/sqlite/authority-database.ts"))});
     const { AuthorityBackupService } = await import(${JSON.stringify(url("src/backend/storage/sqlite/backup-service.ts"))});
     const { OfflineAuthorityRestoreService } = await import(${JSON.stringify(url("src/backend/storage/sqlite/offline-restore.ts"))});
     const { profileBrowserClosure } = await import(${JSON.stringify(url("src/backend/runtime/browser/native-profile-probe.ts"))});
     const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(url("src/backend/storage/sqlite/runtime-process-locks.ts"))});
-    const { RecoveryStopProofStore } = await import(${JSON.stringify(url("src/backend/storage/sqlite/recovery-stop-proof.ts"))});
-    const { createProfileRegistry } = await import(${JSON.stringify(url("src/backend/profiles/registry.ts"))});
+        const { createProfileRegistry } = await import(${JSON.stringify(url("src/backend/profiles/registry.ts"))});
     const { createCredentialStore } = await import(${JSON.stringify(url("src/backend/storage/configuration/credential-store.ts"))});
     const { RuntimeLifetimeLock } = await import(${JSON.stringify(url("src/backend/storage/admission/lifetime-lock.ts"))});
     const lifetime = await RuntimeLifetimeLock.acquire(Number(process.argv[2]));
@@ -123,18 +116,18 @@ try {
     const report = await new AuthorityBackupService(admission, db, { directory }).request({ trigger: "operator", requiredGeneration: db.getMeta().authorityGeneration });
     db.close();
     const manifestPath = join(directory, report.manifests[0].backupFileName + ".manifest.json");
-    const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) });
-    const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60000 }); proofs.recordRuntimeState(snapshot);
-    const stoppedSystemProof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
+
+
+    const operation = admission.acquireOfflineMaintenance();
     const service = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: path, suspectDirectory: join(state, "backups", "suspects"),
-      processLockRoot, busyTimeoutMs: 250, stoppedProofMaxAgeMs: 60000 }, async () => {}, undefined,
+      processLockRoot, busyTimeoutMs: 250}, async () => {}, undefined,
       { copyFile: copyFileSync, atomicReplace(source, destination) {
         renameSync(source, destination); copyFileSync(destination, source);
         const journal = JSON.parse(readFileSync(join(root, ".tracker", "control", "journal.json"), "utf8"));
         process.send({ state: "barrier-held", workspace: root, profileId: admission.profileBinding.profileId, operationId: journal.restore.operationId, stagedPath: source, manifestPath });
         const wait = new Int32Array(new SharedArrayBuffer(4)); for (;;) Atomics.wait(wait, 0, 0, 1000);
-      } }, undefined, credentials);
-    await service.restore({ manifestPath, stoppedSystemProof });
+      } }, credentials);
+    await service.restore({ manifestPath }, operation);
   `;
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, root, String(port)],
     { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"] }); children.push(child);
@@ -202,7 +195,7 @@ it("supported single-authority restore re-checks healthy without inventing repai
   try {
     copyFileSync(join(process.cwd(),"package.json"),join(workspace,"package.json"));
     AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"preflight-restore"},clock,undefined,undefined,undefined,boundProfileCredentials(admission)).close();
-    const backup=await backupStoppedAuthority(profileBrowserClosure, admission,stateRoot,clock,join(workspace,rebuildRuntimeIsolation.processLockRoot));
+    const backup=await withOfflineMaintenance(admission, operation => backupStoppedAuthority(profileBrowserClosure, admission, stateRoot, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot), operation));
     const manifest=backup.manifests.at(-1);assert.ok(manifest);
     const path=join(stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`);
     const restored=await composeStorageCommand(rebuildRuntimeIsolation,["restore","--from",path,"--json"],clock,workspace,admission,boundProfileCredentials(admission));

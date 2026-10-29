@@ -1,6 +1,6 @@
+import { withOfflineMaintenance, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
-import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { default as assert } from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -13,7 +13,6 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
 const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
@@ -48,8 +47,8 @@ it("keeps a current authority unchanged through stopped plan and no-op apply", a
 try {
 
   const f = await fixture(), before = inspectAuthorityBackupReadOnly(f.admission, f.path), bytes = readFileSync(f.path);
-  assert.equal((await upgradeStorage(profileBrowserClosure, f.admission, { ...f, plan: true }, clock)).state, "planned");
-  assert.equal((await upgradeStorage(profileBrowserClosure, f.admission, { ...f, plan: false }, clock)).state, "already-upgraded");
+  assert.equal((await withOfflineMaintenance(f.admission, operation => upgradeStorage(profileBrowserClosure, f.admission, { ...f, plan: true }, clock, operation))).state, "planned");
+  assert.equal((await withOfflineMaintenance(f.admission, operation => upgradeStorage(profileBrowserClosure, f.admission, { ...f, plan: false }, clock, operation))).state, "already-upgraded");
   assert.deepEqual(inspectAuthorityBackupReadOnly(f.admission, f.path), before);
   assert.deepEqual(readFileSync(f.path), bytes);
 
@@ -62,9 +61,10 @@ try {
 
   const f = await fixture();
   const source = inspectAuthorityBackupReadOnly(f.admission, f.path), bytes = readFileSync(f.path);
-  const held = acquireRuntimeRestoreAdmission({ processLockRoot: f.processLockRoot, pid: process.pid }, clock);
+  const held = f.admission.acquireOfflineMaintenance();
   try {
-    const lock = join(f.processLockRoot, "restore-admission.lock.json"), heldBytes = readFileSync(lock);
+    held.assertHeld();
+    assert.throws(() => f.admission.beginOfflineMaintenance(), /offline-maintenance-busy/u);
     const report = await backupStoppedAuthority(profileBrowserClosure, f.admission, f.stateRoot, clock, f.processLockRoot, held);
     assert.equal(report.state, "verified");
     assert.equal(report.manifests.length, 1);
@@ -76,8 +76,8 @@ try {
       join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`),
       AuthorityDatabase.sourceDatabaseIdentity(f.path));
     assert.deepEqual(verified.manifest, manifest);
-    assert.deepEqual(readFileSync(lock), heldBytes);
-    assert.ok(held.admissionId); assert.deepEqual(readFileSync(f.path), bytes);
+    held.assertHeld();
+    assert.ok(held.operationId); assert.deepEqual(readFileSync(f.path), bytes);
   } finally { held.release(); }
   assert.equal(existsSync(join(f.processLockRoot, "restore-admission.lock.json")), false);
 
@@ -89,9 +89,9 @@ it("refuses a lost caller-held restore lease without modifying authority or publ
 try {
 
   const f = await fixture(), bytes = readFileSync(f.path), before = inspectAuthorityBackupReadOnly(f.admission, f.path);
-  const held = acquireRuntimeRestoreAdmission({ processLockRoot: f.processLockRoot, pid: process.pid }, clock);
+  const held = f.admission.acquireOfflineMaintenance();
   held.release();
-  await assert.rejects(backupStoppedAuthority(profileBrowserClosure, f.admission, f.stateRoot, clock, f.processLockRoot, held), /ENOENT|restore-admission/u);
+  await assert.rejects(backupStoppedAuthority(profileBrowserClosure, f.admission, f.stateRoot, clock, f.processLockRoot, held), /offline-maintenance-unissued/u);
   assert.deepEqual(readFileSync(f.path), bytes);
   assert.deepEqual(inspectAuthorityBackupReadOnly(f.admission, f.path), before);
   assert.equal(existsSync(join(f.stateRoot, "backups", "authority")), false);

@@ -9,7 +9,7 @@ import { createBoundProfileFixture, boundProfileCredentials } from "../../../sup
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireRuntimeRestoreAdmission, acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { upgradeReadyProfileStorage, backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
@@ -102,7 +102,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle") {
   const claim = profile.machine.issueRegisteredProfileClaim(binding.profileId);
   const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
   return { ...profile, binding, claim, command, saved, processLockRoot,
-    acquireRestore: () => acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, systemClock) };
+    acquireRestore: () => profile.machine.acquireOfflineMaintenance() };
 }
 
 function rawEight(path: string) {
@@ -195,11 +195,11 @@ it("refuses cloned claims, copied or foreign restore handles, and released resto
   try {
     const before = storageTree(f.stateRoot);
     await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, { ...f.claim }, restore, systemClock, hostFacts), { message: "profile-storage-claim-unissued" });
-    await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, { ...restore }, systemClock, hostFacts), { message: "restore-admission-handle-mismatch" });
-    await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, other, systemClock, hostFacts), { message: "restore-admission-handle-mismatch" });
+    await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, { ...restore }, systemClock, hostFacts), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
+    await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, other, systemClock, hostFacts), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
     await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, foreign.claim, restore, systemClock, hostFacts), { message: "profile-storage-claim-unissued" });
     restore.release();
-    await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts), { message: "restore-admission-handle-released" });
+    await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
     assert.deepEqual(storageTree(f.stateRoot), before);
   } finally { restore.release(); other.release(); await foreign.close(); await f.close(); }
 });
@@ -210,7 +210,7 @@ it("refuses a genuine live server role and leaves every profile byte unchanged",
   try {
     const before = storageTree(f.stateRoot);
     await assert.rejects(upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock),
-      { message: "runtime-active: stop server, workers and geocode before storage upgrade" });
+      { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
     assert.deepEqual(storageTree(f.stateRoot), before);
   } finally { server.release(); await f.close(); }
 });

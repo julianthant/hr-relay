@@ -1,5 +1,5 @@
 import { runtimeLifetimeLock } from "./runtime-lifetime.js";
-import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { type RuntimeLifetimeLock, type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import assert from "node:assert/strict";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -9,7 +9,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { acquireInstallation, type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair, type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../../../src/backend/storage/admission/installation.js";
-import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ConfigSnapshotWriteSchema } from "../../../../src/models/config/snapshot.js";
 import { storageRelocationDesiredDigest } from "../../../../src/rules/commands/commands.js";
@@ -34,8 +33,8 @@ export function createInstallationControlTestWorld() {
     return { workspace, lifetime, pair: { stateRoot: join(workspace, ".tracker/data"), artifactRoot: join(workspace, ".tracker/data", "artifacts") } };
   }
 
-  function restore(workspace: string): RestoreAdmissionHandle {
-    return acquireRuntimeRestoreAdmission({ processLockRoot: join(workspace, ".tracker/data", "locks"), pid: process.pid });
+  function restore(workspace: string, lifetime: RuntimeLifetimeLock): OfflineMaintenanceOperation {
+    return lifetime.beginOfflineMaintenance(workspace);
   }
 
   function adoptSynthetic(workspace: string, pair: RuntimePair, lifetime: RuntimeLifetimeLock): ExclusiveInstallationLease {

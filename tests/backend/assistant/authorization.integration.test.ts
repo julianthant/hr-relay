@@ -4,18 +4,16 @@ import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../support/h
 import { createProductionAssistantTools } from "../../../src/backend/assistant/tools.js";
 import { assistantKnowledgeArtifact, createAssistantContext } from "../../../src/backend/assistant/context.js";
 import { AssistantRequestSchema, AssistantResultSchema } from "../../../src/models/dashboard/assistant.js";
-import { createAssistantService } from "../../../src/backend/assistant/service.js";
+import { createAssistantService, type AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
 import { createAssistantController } from "../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { registerAssistantRoutes } from "../../../src/backend/transports/http/routes/assistant.js";
 import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
 import { Hono } from "hono";
 import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.js";
-import type { AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
 import { z } from "zod";
-import { AuthorityDatabase, AuthorityBackupService, OfflineAuthorityRestoreService, RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/index.js";
-import { observeRuntimeLockSnapshot } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { AuthorityBackupService, OfflineAuthorityRestoreService } from "../../../src/backend/storage/sqlite/index.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -174,13 +172,12 @@ it("does not resurrect an approval copied back by the real stopped restore", asy
   f.authorization.cancel(chat, proposal.id, proposal.revision);
   await f.context.account.close(); f.database.close();
   const path = join(f.context.admission.stateRoot, "state.db"), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
-  const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(path);
-  const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock);
-  proofs.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, f.clock));
-  const proof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
+
+
+  const proof = f.context.admission.acquireOfflineMaintenance();
   const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.context.admission, { authorityPath: path, suspectDirectory: join(f.context.admission.stateRoot, "backups", "suspects"), busyTimeoutMs: 250,
-    processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock, undefined, undefined, f.context.credentials);
-  assert.equal((await restore.restore({ manifestPath: join(directory, `${manifest.backupFileName}.manifest.json`), stoppedSystemProof: proof })).state, "restored");
+    processLockRoot}, async () => undefined, f.clock, undefined, f.context.credentials);
+  assert.equal((await restore.restore({ manifestPath: join(directory, `${manifest.backupFileName}.manifest.json`) }, proof)).state, "restored");
   assert.throws(() => f.authorization.consume(chat, proposal.id));
   const restarted = composeProfileRuntime({ admission: f.machine, clock: f.clock, hostFacts: { primaryDisplay: null } });
   const active = restarted.session.signIn({ email: "operator@ucsd.edu", password: "synthetic-password", at: f.clock.now().toISOString() });

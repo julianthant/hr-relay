@@ -1,33 +1,32 @@
+import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
+import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { authoritySourceDatabaseIdentity } from "./database-identity.js";
-import { RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
-import { CanonicalCrashRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema } from "./run-store-contracts.js";
+import { CanonicalCrashRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalClaimNextRequestSchema, WorkerStandingRecoveryRequestSchema, RunClaimOutcomeSchema, RunClaimRequestSchema, RunClaimTokenSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
-import { notificationCollectionTarget, type NotificationCollectionOperation, type NotificationCollectionTarget } from "../../../models/notifications/notifications.js";
+import { notificationCollectionTarget, type NotificationCollectionOperation, type NotificationCollectionTarget, NotificationFoldRequestSchema, NotificationRecordOutcomeSchema, NotificationRecordSchema, NotificationStateRequestSchema, requireMutableNotification, type NotificationRecord, type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
 import { AssistantActionRecordSchema, AssistantChatRecordSchema, AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createWorkbookLibraryRepository, validateWorkbookLibrary } from "./workbook-library-repository.js";
 import { WorkerControlRefusal, WorkerControlRecordSchema, type WorkerResetBinding } from "../../../models/run/worker-control.js";
-import { terminalDelegationDependencyRecord } from "../../../models/run/result.js";
-import { delegationJoinDisposition } from "../../../rules/workflow/dependencies.js";
+import { terminalDelegationDependencyRecord, RunResultRecordSchema, createRunTerminalEvidenceResult, deriveTerminalFailureDigest, terminalEvidenceResult, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, type RunResultRecord } from "../../../models/run/result.js";
+import { delegationJoinDisposition, DelegationManifestSchema, DependencyRecordSchema, type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
-import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
-import { type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "./runtime-process-locks.js";
+import { createReadonlyAuthoritySnapshot, withReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
+import { DiagnosticAttachmentSchema, DiagnosticBundleSchema, type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
 import { authenticateParkedWriteRecheck, authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { prepareNativeRunDeletion, executeNativeRunDeletion, containsDeletionArtifactReference } from "./native-run-deletion.js";
 import { inspectArtifactDeletionFile, removeArtifactDeletionFile, pendingDiagnosticArtifacts, reclaimDiagnosticStages } from "../artifacts/content-addressed-artifact-writer.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
-import { importedArtifactFromRow } from "./imported-artifacts.js";
-import { generatedArtifactFromRow } from "./generated-artifacts.js";
+import { importedArtifactFromRow, createImportedArtifactRepositories } from "./imported-artifacts.js";
+import { generatedArtifactFromRow, createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
-import { workerSlotFromRow } from "./worker-slots.js";
-import { authenticateWorkerSupervisorEffect, consumeWorkerSupervisorEffect, type WorkerSupervisorEffect, authenticateWorkerControlClosure, consumeWorkerControlClosure, type WorkerControlClosure, assertWorkerResetParkedWrite, workerControlFromRow, workerBrowserFromRow } from "./worker-control.js";
+import { workerSlotFromRow, requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody, readWorkerVerificationProfiles, admitWorkerVerification, retireWorkerVerification } from "./worker-slots.js";
+import { authenticateWorkerSupervisorEffect, consumeWorkerSupervisorEffect, type WorkerSupervisorEffect, authenticateWorkerControlClosure, consumeWorkerControlClosure, type WorkerControlClosure, assertWorkerResetParkedWrite, workerControlFromRow, workerBrowserFromRow, createWorkerControlRepository, readWorkerControl, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
 import { readAppSettings } from "./settings-storage.js";
 import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
-import { requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody, readWorkerVerificationProfiles, admitWorkerVerification, retireWorkerVerification } from "./worker-slots.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
 import { runRecordColumns, runRecordFromRow, updateRunRecord, transitionRunRecord } from "./run-record-row.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
@@ -35,20 +34,16 @@ import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflo
 import { selectTransactions } from "./transaction-selection.js";
 import { createRunSearchIndex, runSearchIndexFromRow } from "./run-search-index.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
-import { createWorkerControlRepository, readWorkerControl, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
-import { WorkerControlBasisSchema } from "../../../models/run/worker.js";
+import { WorkerControlBasisSchema, LIVE_WORKER_STATES, WorkerLeaseRecordSchema, isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
 import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
 import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
-import type { InstallationLease, VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { createRunSummaries } from "./run-summaries.js";
-import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
-import { createImportedArtifactRepositories } from "./imported-artifacts.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
@@ -56,14 +51,11 @@ import { completionFromAuthorization } from "../../../models/run/completion.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { ConfirmationPublicationSchema, confirmationPublicationFromRow, type ConfirmationPublication, confirmedOperationTimeline, reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
-import { timelineAppendContent, timelineCheckpointReference } from "../../../models/events/timeline.js";
+import { timelineAppendContent, timelineCheckpointReference, TimelinePageRequestSchema, type TimelineRepository, type TimelineAppend } from "../../../models/events/timeline.js";
 import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
-import { withReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
-import { TimelinePageRequestSchema } from "../../../models/events/timeline.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
-import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";
-import { CommandIdentityConflictError } from "../../../rules/commands/commands.js";
+import { CommandIdentityConflictError, AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, StoredAuthorityCommandRecordSchema, BulkParentCommandRecordSchema, BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, CommandRequestSchema, StorageRelocationCommandRequestSchema, RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -78,50 +70,31 @@ import { z } from "zod";
 import { assertWorkflowRunResultAuthorization, descriptorRuntimeNodes, workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityUpgradeRecordSchema, AuthorityTableNameSchema, ProjectionTableNameSchema, type AuthorityTableName, type TableName, type RunRecordRefusal } from "../../../models/config/authority.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { systemClock, localDatePart } from "../../../rules/time/clock.js";
-import { AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, StoredAuthorityCommandRecordSchema, BulkParentCommandRecordSchema, BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, CommandRequestSchema, StorageRelocationCommandRequestSchema, RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
+import { type Clock, systemClock, localDatePart } from "../../../rules/time/clock.js";
 import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { type ActiveRuntimeConfigRecord, type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
-import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
-import type { DelegationReadiness } from "../../../rules/workflow/dependencies.js";
 import { DelegationSettlementRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { authenticateDescendantHome, authenticateDelegationGroup, authenticateDelegationDependency, assertDelegationReplacement, authenticateCancellationSource, delegationEdgeForChild, resetDependencySnapshot, readDelegationCancellation, prepareDelegationRetry, childTerminalSettlement, readDelegationReadiness, retainedDelegationManifests, lifecycleChildEdge, readDelegationEvidence } from "./delegation-authority.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
 import { ActorIdSchema, ArtifactIdSchema, BrowserSystemIdSchema, CommandAuditIdSchema, CommandIdSchema, DiagnosticBundleIdSchema, FailureFingerprintSchema, FingerprintSchema, IsoInstantSchema, ItemIdSchema, LOCAL_OPERATOR_ACTOR_ID, RunIdSchema, RunSessionIdSchema, TraceIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema } from "../../../rules/identity/ids.js";
-
-
-
-
 import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../../../models/run/record.js";
 import { DeletedRunRecordSchema, RunDeleteInputSchema, type DeletedRunRecord } from "../../../models/run/deleted-run.js";
-import { RunResultRecordSchema, createRunTerminalEvidenceResult, deriveTerminalFailureDigest, terminalEvidenceResult, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, type RunResultRecord } from "../../../models/run/result.js";
 import { FailureTerminalAuthorizationRecordSchema, TerminalAuthorizationRecordSchema, type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
 import { StartPlanRecordSchema, isStartPlanExpired, type StartPlanRecord } from "../../../models/run/start-plan.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
 import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
-import { LIVE_WORKER_STATES, WorkerLeaseRecordSchema, isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import { DuoCeremonyLeaseAcquireRequestSchema, DuoCeremonyLeaseRecordSchema, DuoCeremonyLeaseReleaseOutcomeSchema, DuoCeremonyLeaseTakeoverSchema, isDuoCeremonyLeaseLive, type DuoCeremonyLeaseAcquireRequest, type DuoCeremonyLeaseRecord, type DuoCeremonyLeaseReleaseOutcome } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { RunSessionRecordSchema, type RunSessionRecord } from "../../../models/run/session.js";
 import { WorkerPoolRecordSchema, workerPoolVersion, type WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { isDuoCeremonyLeaseToken, mintDuoCeremonyLeaseToken, retireDuoCeremonyLeaseToken, type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
-import { CanonicalClaimNextRequestSchema, WorkerStandingRecoveryRequestSchema, RunClaimOutcomeSchema, RunClaimRequestSchema, RunClaimTokenSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, type FailureTerminalizationReport, type FailureTerminalizationStorageStep, type SuccessTerminalizationReport, type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { RunCheckpointRecordSchema, checkpointLookupKey, checkpointRecordKey, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
-import { NotificationFoldRequestSchema, NotificationRecordOutcomeSchema, NotificationRecordSchema, NotificationStateRequestSchema, requireMutableNotification, type NotificationRecord, type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
-
-
-import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import { DryRunScenarioResultSchema, type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
-
-
-
-
 import { IdempotencyKeySchema, WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteAttemptRecord, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, isSupportedStoppedAuthoritySchemaVersion, SQLITE_MIGRATIONS, deriveAuthorityUpgradePlanDigest, auditMigrationTableCoverage, migrationTableNames, tableClassification } from "./migrations.js";
@@ -1453,13 +1426,13 @@ function flatQueuedRunCancellationInventory(database: DatabaseSync, assertResour
   return { digest: sha256Hex(canonicalJsonStringify({ inspection: nativeInspection, facts })), candidates };
 }
 
-function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, backup = false): void {
+function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, _clock: Clock, backup = false): void {
   if (backup) requireRuntimeAdmission(admission).assertStoppedAuthorityBackup(path, processLockRoot);
   else requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(path, processLockRoot);
   requireDatabaseSourcePath(path);
-  const locks = observeRuntimeLockSnapshot({ processLockRoot,
-    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) }, clock);
-  if (Object.values(locks.processLocks).some(lock => lock.state === "active")) throw new Error("runtime-active: stop server, workers and geocode before storage upgrade");
+  const operation = admission.maintenanceOperation();
+  admission.assertOfflineMaintenance(operation);
+  assertOfflineMaintenanceForProcessRoot(operation, processLockRoot);
 }
 
 function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): AuthorityCopyInspection {
@@ -1924,14 +1897,14 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  static readProfileRestoreBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, restore: RestoreAdmissionHandle) {
+  static readProfileRestoreBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, restore: OfflineMaintenanceOperation) {
     const owner = requireRuntimeAdmission(admission), path = join(owner.stateRoot, "state.db");
     const assertHeld = () => {
       owner.assertExclusive(); owner.assertProfileRuntime();
       const context = owner.readInstallationContext();
       if (context === undefined) throw new Error("profile-restore-context-required");
       owner.assertFixedProcessLockRoot(context.workspace, processLockRoot);
-      assertRuntimeRestoreAdmission(restore, processLockRoot);
+      assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
     };
     assertHeld();
     return withAuthorityDatabaseReadOnly(owner, path, database => {
@@ -1965,7 +1938,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   // This finite native6 command cannot grant ordinary profile runtime authority.
-  static async cancelQueuedRunsNative6(browserClosure: ProfileBrowserClosure, lease: InstallationLease, restore: RestoreAdmissionHandle, expectedDigest: string, clock: Clock) {
+  static async cancelQueuedRunsNative6(browserClosure: ProfileBrowserClosure, lease: InstallationLease, restore: OfflineMaintenanceOperation, expectedDigest: string, clock: Clock) {
     const { assertInstallationLease: assertLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
     const assertInstallationLease: typeof import("../admission/installation.js").assertInstallationLease = assertLease;
     const { assertCredentialCopyResourcesClosed, probeFlatBrowserInventoryClosed } = await import("../maintenance/profile-inventory.js");
@@ -1975,10 +1948,8 @@ export class AuthorityDatabase implements Disposable {
     const installation = inspectFlatOfflineRunMaintenance(workspace);
     const stateRoot = lease.locator.stateRoot, path = join(stateRoot, "state.db");
     const assertHeld = () => {
-      lease.assertHeld(); assertRuntimeRestoreAdmission(restore, installation.processLockRoot);
-      const locks = observeRuntimeLockSnapshot({ processLockRoot: installation.processLockRoot,
-        sourceDatabaseIdentity: authoritySourceDatabaseIdentity(path) }, clock);
-      if (Object.values(locks.processLocks).some(lock => lock.state !== "stopped")) throw new Error("queued-run-cancellation-runtime-active");
+      lease.assertHeld(); assertOfflineMaintenanceForProcessRoot(restore, installation.processLockRoot);
+      lease.assertOfflineMaintenance(restore);
       if (canonicalJsonStringify(inspectFlatOfflineRunMaintenance(workspace)) !== canonicalJsonStringify(installation)
         || lease.locator.installationId !== installation.installationId) throw new Error("queued-run-cancellation-installation-changed");
     };
@@ -2041,13 +2012,13 @@ export class AuthorityDatabase implements Disposable {
     return runIds;
   }
 
-  static readFlatBackupRecoveryInventory(path: string, restore: RestoreAdmissionHandle) {
-    assertRuntimeRestoreAdmission(restore, join(dirname(path), "locks"));
+  static readFlatBackupRecoveryInventory(path: string, restore: OfflineMaintenanceOperation) {
+    assertOfflineMaintenanceForProcessRoot(restore, join(dirname(path), "locks"));
     return withReadonlyAuthoritySnapshot(path, database => {
       const inspection = inspectNativeAuthority(database, 6);
       if (inspection.installationId !== undefined || inspection.profileId !== undefined) throw new Error("flat-backup-recovery-binding-refused");
       const facts = maintenanceInventory(database, inspection);
-      assertRuntimeRestoreAdmission(restore, join(dirname(path), "locks"));
+      assertOfflineMaintenanceForProcessRoot(restore, join(dirname(path), "locks"));
       return { inspection, facts };
     });
   }

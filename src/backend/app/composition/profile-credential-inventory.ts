@@ -4,7 +4,7 @@ import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfi
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames, deriveAuthorityUpgradePlanDigest } from "../../storage/sqlite/migrations.js";
 import { readEmergencyFaults } from "../../logs/emergency-faults.js";
-import type { CredentialInitializationCopyInspection } from "../../storage/configuration/credential-store.js";
+import { type CredentialInitializationCopyInspection, isOwnedDraftAbortSource, inspectCredentialKeyCopy, inspectCredentialCopy, assertCredentialStoreOwner, readForErasure, attestStoppedControlCredentials, releaseStoppedControlCredentialAttestation } from "../../storage/configuration/credential-store.js";
 import type { CredentialEraseInput, CredentialStore } from "../../../models/config/credential-store.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import type { SignUpOperation, LogoutOperation } from "../../../models/profiles/profile.js";
@@ -12,18 +12,16 @@ import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
-import { isOwnedDraftAbortSource, inspectCredentialKeyCopy, inspectCredentialCopy, assertCredentialStoreOwner, readForErasure, attestStoppedControlCredentials, releaseStoppedControlCredentialAttestation } from "../../storage/configuration/credential-store.js";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readSync, type Stats } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { assessCredentialInventory, countProfileCredentialLoginRows, type CredentialInventory } from "../../profiles/credential-inventory.js";
 import { verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
 import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
-import { inspectRuntimeProcessOrphans, observeRuntimeLockSnapshot, readRuntimeProcessLock } from "../../storage/sqlite/runtime-process-locks.js";
+import { inspectRuntimeProcessOrphans, readRuntimeProcessLock } from "../../storage/sqlite/runtime-process-locks.js";
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { DuoDocumentEnvelopeSchema } from "../../../models/config/duo-credential-store.js";
 import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
-
 import { readProfilePublicationRegistry, requireStoppedControlProfileInventory, type ProfilePublicationRead, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
 import { RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
@@ -101,15 +99,12 @@ export function scanProfileCredentialCopy(path: string, capturedSecrets: readonl
 
 
 type CredentialMaintenancePurpose = Readonly<{ kind: "ordinary" }> | Readonly<{ kind: "stopped-control"; claim: StoppedControlProfileInventory }>;
-function observeStoppedControlProcessCustody(processLockRoot: string, admission: RuntimeAdmission, clock: Clock) {
-  const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db")) }, clock);
-  const orphans = inspectRuntimeProcessOrphans(processLockRoot);
-  if (Object.values(snapshot.processLocks).some((lock) => lock.state !== "stopped") || orphans.staleWorkerRecords > 0 || orphans.staleServerRecords > 0) {
-    throw new Error("profile-control-upgrade-process-custody-unproved");
-  }
-  const { recordedAt: _recordedAt, ...custody } = snapshot;
-  return { snapshot: custody, orphans };
+function observeStoppedControlProcessCustody(claim: StoppedControlProfileInventory) {
+  const issued = requireStoppedControlProfileInventory(claim);
+  issued.revalidateSource();
+  return { binding: issued.binding, locator: issued.locator };
 }
+
 function assessProfileCredentialCopies(admission: RuntimeAdmission, before: ReturnType<typeof enumerateProfileCredentialMembership>,
   backups: readonly Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[], fields: Readonly<{ capturedSecrets: readonly string[];
     abortSource?: CredentialInitializationCopyInspection["abortSource"]; capturedSecretsComplete: boolean; containsKey(value: unknown): boolean; readonly keyScanOverlap: number; inspectEncrypted(path: string): Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> }>,
@@ -233,7 +228,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       admission.assertLive();
       assertProcessRoot();
       const profileRoot = admission.stateRoot;
-      const processCustody = owner.kind === "ordinary" ? credentialCopyProcessCustody(input) : observeStoppedControlProcessCustody(processLockRoot, admission, input.clock);
+      const processCustody = owner.kind === "ordinary" ? credentialCopyProcessCustody(input) : observeStoppedControlProcessCustody(owner.claim);
       const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
       assertCredentialCopyResourcesClosed(facts);
       const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings

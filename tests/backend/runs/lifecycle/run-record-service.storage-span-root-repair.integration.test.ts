@@ -13,8 +13,6 @@ import { createCommandKernel } from "../../../../src/backend/runs/commands/comma
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { RunRecordService,requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { OfflineSpanRootRepairService } from "../../../../src/backend/runs/recovery/span-root-repair.js";
-import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { SpanEventWireSchema } from "../../../../src/models/events/types.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -87,24 +85,15 @@ async function fixture(ambiguous=false) {
     workerLifetime:testWorkerLifetime(database,descriptor.id,slot.poolIndex).workerLifetime,runtimeConfig:{
     generation:active.generation,settingsRevision:active.settingsRevision,settingsFingerprint:active.settingsFingerprint,configFingerprint:active.configFingerprint}}));
   database.close();
-  const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
-  const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, clock);
-  const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 300_000 }, clock);
-  proofs.recordRuntimeState(snapshot);
-  const issueProof=()=>{
-    const source=AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
-    proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:source},clock));
-    return proofs.issue({observedBy:"local-operator",sourceDatabaseIdentity:source});
-  };
-  const stoppedSystemProof = issueProof();
+  const issueOperation = () => profile.admission.acquireOfflineMaintenance();
+  const operation = issueOperation();
   const service = new OfflineSpanRootRepairService(profileBrowserClosure, profile.admission,{
     stateRoot,
     authorityPath,
     processLockRoot,
-    stoppedProofMaxAgeMs: 300_000,
     busyTimeoutMs: 500,
   }, clock);
-  return { repoRoot, stateRoot, authorityPath, processLockRoot, clock, run, plan, service, stoppedSystemProof,issueProof,admission:profile.admission };
+  return { repoRoot, stateRoot, authorityPath, processLockRoot, clock, run, plan, service, operation,issueOperation,admission:profile.admission };
 }
 
 describe("offline missing run.queued recovery", () => {
@@ -115,7 +104,7 @@ describe("offline missing run.queued recovery", () => {
       try { return db.authority.timelineEvents.page({}); } finally { db.close(); }
     };
     const before = read();
-    const report = f.service.repair({ runId: f.run.envelope.runId, stoppedSystemProof: f.stoppedSystemProof });
+    const report = f.service.repair({ runId: f.run.envelope.runId }, f.operation);
     assert.equal(report.state, "repaired");
     const after = read();
     assert.deepEqual(after.slice(0, before.length), before);
@@ -129,7 +118,7 @@ describe("offline missing run.queued recovery", () => {
     assert.equal(appended.pid, process.pid);
     assert.equal(appended.repair.priorCursor, before.at(-1)?.cursor);
     assert.equal(appended.title, f.plan.planned[0]?.title);
-    const replay=f.service.repair({runId:f.run.envelope.runId,stoppedSystemProof:f.issueProof()});
+    const replay=f.service.repair({ runId:f.run.envelope.runId }, f.issueOperation());
     assert.equal(replay.state,"already-repaired");assert.deepEqual(read(),after);
 
     const doctor = await doctorAuthorityStorage(f.admission, {
@@ -147,7 +136,7 @@ describe("offline missing run.queued recovery", () => {
     const f=await fixture(true);
     const database=AuthorityDatabase.open(f.admission,{path:f.authorityPath,busyTimeoutMs:500,migrationOwner:"repair-ambiguity-verifier"},f.clock);
     let before;try{before=database.authority.timelineEvents.page({});}finally{database.close();}
-    assert.throws(()=>f.service.repair({runId:f.run.envelope.runId,stoppedSystemProof:f.stoppedSystemProof}),/2 matching planned entries/u);
+    assert.throws(()=>f.service.repair({ runId:f.run.envelope.runId }, f.operation),/2 matching planned entries/u);
     const reopened=AuthorityDatabase.open(f.admission,{path:f.authorityPath,busyTimeoutMs:500,migrationOwner:"repair-ambiguity-verifier"},f.clock);
     try{assert.deepEqual(reopened.authority.timelineEvents.page({}),before);}finally{reopened.close();}
   });
@@ -159,7 +148,7 @@ describe("offline missing run.queued recovery", () => {
       if(fault==="input-mismatch")raw.prepare("UPDATE runs SET lifecycle_json=json_set(lifecycle_json,'$.input.raw.eid',?,'$.input.parsed.value.eid',?) WHERE id=?").run("10812346","10812346",f.run.envelope.runId);
       else raw.prepare("UPDATE commands SET request_digest=? WHERE id=?").run("a".repeat(64),UUID_1);
     }finally{raw.close();}
-    assert.throws(()=>f.service.repair({runId:f.run.envelope.runId,stoppedSystemProof:f.issueProof()}),/0 matching planned entries|identity-mismatch/u);
+    assert.throws(()=>f.service.repair({ runId:f.run.envelope.runId }, f.issueOperation()),/0 matching planned entries|identity-mismatch/u);
     const reopened=new DatabaseSync(f.authorityPath,{readOnly:true});
     try{assert.deepEqual(reopened.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),before);}finally{reopened.close();}
   });
@@ -192,10 +181,7 @@ describe("offline missing run.queued recovery", () => {
     // The stopped proof excludes runtime writers; reconstruction still refuses
     // because no authoritative session/plan chain can supply actor and title.
     assert.throws(
-      () => f.service.repair({
-        runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        stoppedSystemProof: f.stoppedSystemProof,
-      }),
+      () => f.service.repair({ runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }, f.operation),
       /has no durable run session/u,
     );
   });

@@ -78,7 +78,7 @@ async function writeCoupledBackup(browserClosure: ProfileBrowserClosure, machine
     }
   }
   if (authorityManifest === undefined) {
-    const backed = await backupStoppedAuthority(browserClosure, admission, admission.stateRoot, clock, processLockRoot, admission.maintenanceRestore() ?? machine.maintenanceRestore());
+    const backed = await backupStoppedAuthority(browserClosure, admission, admission.stateRoot, clock, processLockRoot, machine.maintenanceOperation());
     if (backed.manifests.length !== 1 || backed.manifests[0] === undefined) throw new Error("existing-data-backup-single-authority-required");
     authorityManifest = join(authorityDirectory, `${backed.manifests[0].backupFileName}.manifest.json`);
   }

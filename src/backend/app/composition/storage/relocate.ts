@@ -1,5 +1,7 @@
-import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
+import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../../storage/source-closure.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
+import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
 import { probeStoppedProfileBrowsersClosed } from "../../../storage/maintenance/profile-inventory.js";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, copyFileSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, unlinkSync } from "node:fs";
@@ -18,7 +20,6 @@ import { inspectAuthorityBackupReadOnly } from "../../../storage/sqlite/backup-i
 import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { verifyBackupManifestAtPath } from "../../../storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
-import { acquireRuntimeRestoreAdmission } from "../../../storage/sqlite/runtime-process-locks.js";
 import { acquireRecoveryRuntimeRelocation, type RuntimeAdmission, type RuntimeRelocationOperation } from "../../../storage/admission/admission.js";
 import { inspectPendingRelocationRecovery, type RelocationPlanBinding, type VerifiedRelocationActivationIntent,
   type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../../storage/admission/installation.js";
@@ -278,7 +279,10 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
   let admission = input.admission;
   let ownedAdmission = false;
   let operationId: string | undefined;
-  const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
+  const restore = input.command.kind === "resume" ? input.lifetime.beginOfflineMaintenance(workspace)
+    : requireRuntimeAdmission(admission).beginOfflineMaintenance();
+  restore.consume();
+  let primary: unknown;
   try {
     let operation: RuntimeRelocationOperation;
     if (input.command.kind === "resume") {
@@ -493,7 +497,13 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
     }
     return { operationId: operation.operationId, generation: inventory.fromGeneration + 1 };
   } catch (error) {
+    primary = error;
     if (operationId !== undefined) throw new StorageRelocationIncompleteError(operationId, error);
     throw error;
-  } finally { if (ownedAdmission) admission?.release(); restore.release(); }
+  } finally {
+    if (!hasUnprovedSourceClosure(primary)) {
+      try { restore.release(); if (ownedAdmission) admission?.release(); }
+      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary, error], { restore, admission }); }
+    }
+  }
 }

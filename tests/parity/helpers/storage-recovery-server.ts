@@ -1,6 +1,6 @@
-import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
-import { RuntimeAdmission as CanonicalRuntimeAdmission } from '../../../src/backend/storage/admission/admission.js';
+import { RuntimeAdmission as CanonicalRuntimeAdmission, acquireRecoveryRuntimeRestore, type RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { rebuildRuntimeIsolation } from '../../../src/backend/app/config/runtime-isolation.js';
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 /** Storage-owned test composition: real doctor route; fixture shell/settings/SSE/static responses. */
@@ -8,11 +8,10 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import { join } from "node:path";
-
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, renameSync, copyFileSync } from "node:fs";
 import { Hono } from "hono";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -21,9 +20,8 @@ import { createFixtureBff, startFixtureServer, type FixtureServer } from "../../
 import { assertParityBundleIsCurrent, PARITY_DIST_DIR, readBundleStamp } from "./bundle.js";
 import { registerStorageRoutes } from "../../../src/backend/transports/http/routes/storage.js";
 import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
-import { acquireRecoveryRuntimeRestore, type RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
-import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle, acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 
 const retainedStorageRecoveryOwners = new Set<object>();
@@ -32,7 +30,7 @@ export async function storageRecoveryTarget() {
   const fixture = await createBoundProfileFixture();
   const repoRoot = fixture.workspace, profileId = fixture.admission.profileBinding.profileId;
   const held: { fixture: typeof fixture; child?: ReturnType<typeof spawn>; admission?: RuntimeAdmission; machine?: RuntimeAdmission;
-    restore?: RestoreAdmissionHandle; server?: Server; shell?: FixtureServer; competing?: RuntimeAdmission;
+    restore?: OfflineMaintenanceOperation; server?: Server; shell?: FixtureServer; competing?: RuntimeAdmission;
     backendLock?: ReturnType<typeof acquireRuntimeProcessLock>; lifetime?: RuntimeLifetimeLock; primary?: unknown } = { fixture };
   retainedStorageRecoveryOwners.add(held);
   try {
@@ -42,8 +40,8 @@ export async function storageRecoveryTarget() {
   const sourceUrl = (path: string) => pathToFileURL(join(process.cwd(), path)).href;
   const code = `const { rebuildRuntimeIsolation } = await import(${JSON.stringify(sourceUrl('src/backend/app/config/runtime-isolation.ts'))});
 
-    import { readFileSync, renameSync, copyFileSync } from "node:fs";
-    import { join } from "node:path";
+
+
     const { systemClock } = await import(${JSON.stringify(sourceUrl("src/rules/time/clock.ts"))});
     const { RuntimeAdmission } = await import(${JSON.stringify(sourceUrl('src/backend/storage/admission/admission.ts'))});
     const { AuthorityDatabase } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/authority-database.ts"))});
@@ -52,8 +50,7 @@ export async function storageRecoveryTarget() {
     const { createCredentialStore } = await import(${JSON.stringify(sourceUrl("src/backend/storage/configuration/credential-store.ts"))});
     const { PROTECTED_SETTINGS_SCHEMA_HASH } = await import(${JSON.stringify(sourceUrl("src/models/config/protected-settings.ts"))});
     const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/runtime-process-locks.ts"))});
-    const { RecoveryStopProofStore } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/recovery-stop-proof.ts"))});
-    const { RuntimeLifetimeLock } = await import(${JSON.stringify(sourceUrl('src/backend/storage/admission/lifetime-lock.ts'))});
+        const { RuntimeLifetimeLock } = await import(${JSON.stringify(sourceUrl('src/backend/storage/admission/lifetime-lock.ts'))});
     const lifetime = await RuntimeLifetimeLock.acquire(Number(process.argv[3]));
     const workspace = process.argv[1], machine = RuntimeAdmission.acquireMachine(workspace, 'exclusive', lifetime);
     const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(process.argv[2])), root = admission.stateRoot;
@@ -69,19 +66,18 @@ export async function storageRecoveryTarget() {
     database.close();
     const manifestPath = join(directory, backup.manifests[0].backupFileName + ".manifest.json");
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(path);
-    const proofs = new RecoveryStopProofStore({processLockRoot, maxProofAgeMs: 60000});
-    proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot, sourceDatabaseIdentity}));
-    const stoppedSystemProof = proofs.issue({observedBy: "local-operator", sourceDatabaseIdentity});
+
+    const operation = admission.acquireOfflineMaintenance();
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, {authorityPath: path, suspectDirectory: join(root, "backups", "suspects"),
-      processLockRoot, busyTimeoutMs: 500, stoppedProofMaxAgeMs: 60000}, async () => {}, undefined,
+      processLockRoot, busyTimeoutMs: 500}, async () => {}, undefined,
       {copyFile: copyFileSync, atomicReplace(source, destination) {
         renameSync(source, destination); copyFileSync(destination, source);
         const journal = JSON.parse(readFileSync(join(workspace, ".tracker", "control", "journal.json"), "utf8"));
         process.send({root, authorityPath: path, manifestPath, stagedPath: source, operationId: journal.restore.operationId, sourceDatabaseIdentity});
         const wait = new Int32Array(new SharedArrayBuffer(4));
         for (;;) Atomics.wait(wait, 0, 0, 1000);
-      }}, undefined, credentials);
-    await restore.restore({manifestPath, stoppedSystemProof});
+      }}, credentials);
+    await restore.restore({ manifestPath }, operation);
   `;
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, repoRoot, profileId, String(port)],
     { detached: true,cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"]});
@@ -125,13 +121,13 @@ export async function storageRecoveryTarget() {
   assert.throws(() => { held.competing = acquireEntrypointAdmission(repoRoot, "shared", lifetime); }, /unfinished restoring/u);
   const credentialPath = join(root, "credentials", "protected.json");
   const credentialBytes = readFileSync(credentialPath);
-  let diagnosticAdmission: RuntimeAdmission | undefined, diagnosticMachine: RuntimeAdmission | undefined, restoreHandle: RestoreAdmissionHandle | undefined;
+  let diagnosticAdmission: RuntimeAdmission | undefined, diagnosticMachine: RuntimeAdmission | undefined, restoreHandle: OfflineMaintenanceOperation | undefined;
   const acquireDiagnostic = () => {
     if (held.primary instanceof AuthoritySourceClosureUnprovedError) throw held.primary;
     try {
     if (diagnosticAdmission !== undefined) return diagnosticAdmission;
     if (existsSync(journalPath)) {
-      restoreHandle = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock); held.restore = restoreHandle;
+      restoreHandle = lifetime.beginOfflineMaintenance(repoRoot); held.restore = restoreHandle;
       try { diagnosticAdmission = acquireRecoveryRuntimeRestore(repoRoot, lifetime, operationId, restoreHandle).admission; held.admission = diagnosticAdmission; }
       catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
     } else {
@@ -168,9 +164,9 @@ export async function storageRecoveryTarget() {
           await new Promise<void>((yes, no) => server?.close(error => error ? no(error) : yes())); server = undefined;
         }
         await shell?.close(); shell = undefined; baseUrl = undefined;
+        restoreHandle?.release(); restoreHandle = undefined;
         diagnosticAdmission?.release(); diagnosticAdmission = undefined;
         diagnosticMachine?.release(); diagnosticMachine = undefined;
-        restoreHandle?.release(); restoreHandle = undefined;
       } catch (error) { held.primary = error; stopFailure = retainAuthoritySourceClosure([error], { admission: held }); throw stopFailure; }
     })();
     return stopPromise;

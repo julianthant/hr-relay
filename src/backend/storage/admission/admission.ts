@@ -1,35 +1,27 @@
+import { assertOfflineMaintenanceForProcessRoot, acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, prepareStoppedDeviceRecertification, type StoppedDeviceRecertification, type DeviceRecertificationAuthorization, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease, type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory, type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier, type RelocationVerifier, type RuntimeLocator, type RuntimePair, type ProfileRestoreContext, type ErasureRequestIdentity, type VerifiedSourceControlEntries, type AuthorityRestoreInput, type AuthorityRestoreVerifier, type CompletedRestoreCustody, type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
+import { type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
-import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
-import { captureIncompleteProfileDraft, CredentialErasureHeadSchema, erasureRequestIdentity } from "../configuration/credential-store.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure } from "../source-closure.js";
+import { captureIncompleteProfileDraft, CredentialErasureHeadSchema, erasureRequestIdentity, type UnpublishedDraftAbortWitness, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, type CommittedCredentialInitialization, type CommittedCredentialKeyStage, type CredentialKeyStagePublication } from "../configuration/credential-store.js";
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
-import type { UnpublishedDraftAbortWitness, CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness, CommittedCredentialInitialization, CommittedCredentialKeyStage, CredentialKeyStagePublication } from "../configuration/credential-store.js";
 import { ProfileStorageRelocationUnsupportedError, registerRuntimeAdmission, requireRuntimeAdmission } from "./admission-identity.js";
 import { z } from "zod";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync, type BigIntStats, type Stats } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
-import { acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, prepareStoppedDeviceRecertification, type StoppedDeviceRecertification, type DeviceRecertificationAuthorization, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease,
-  type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
-  type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
-  type RelocationVerifier, type RuntimeLocator, type RuntimePair, type OfflineMaintenanceOperation } from "./installation.js";
-import type { ProfileRestoreContext, ErasureRequestIdentity, VerifiedSourceControlEntries, AuthorityRestoreInput, AuthorityRestoreVerifier, CompletedRestoreCustody } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
-
 import type { PreparedProfileVerifier } from "../configuration/verifier-store.js";
-import { assertFinishedProfileOnboarding, SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding, SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation, type ProfileRegistryDocument, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, captureCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
-import type { ProfileRegistryDocument, ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { type IssuedDuoTransaction } from "../configuration/duo-credential-store.js";
-import { type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
+
 
 export class ProfileUpgradeSourceRefusalError extends Error {
   readonly code = "PROFILE_UPGRADE_UNAVAILABLE";
@@ -55,7 +47,7 @@ function requireRegisteredProfileStorageClaim(claim: RegisteredProfileStorageCla
 
 
 const issuanceToken = Symbol("runtime-admission-issuance");
-const stoppedMaintenanceRestores = new WeakMap<InstallationLease, RestoreAdmissionHandle>();
+const stoppedMaintenanceRestores = new WeakMap<InstallationLease, OfflineMaintenanceOperation>();
 
 function within(parent: string, child: string): boolean {
   const part = relative(parent, child);
@@ -99,10 +91,10 @@ function assertActiveRootSafe(path: string): void {
 type AdmissionAuthority = Readonly<{
   assertHeld(): void;
   captureRestoreContext?(witness: VerifiedCredentialErasureHead): ProfileRestoreContext;
-  beginAuthorityRestore?(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void;
-  settleAuthorityRestore?(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier, restore: RestoreAdmissionHandle): void;
+  beginAuthorityRestore?(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
+  settleAuthorityRestore?(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier, restore: OfflineMaintenanceOperation): void;
   readAuthorityRestore?(operationId: string): AuthorityRestoreInput;
-  assertAuthorityRestoreCurrent?(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void;
+  assertAuthorityRestoreCurrent?(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
   assertCredentialErasureHead?(head: CredentialErasureHead): void;
   resumeCredentialErasure?(request: ErasureRequestIdentity, head: CredentialErasureHead): void;
   beginCredentialErasure?(witness: VerifiedCredentialErasureIntent): void;
@@ -263,17 +255,17 @@ export class RuntimeAdmission {
     } });
   }
   forStoppedProfileUpgrade(): RuntimeAdmission;
-  forStoppedProfileUpgrade(browserClosure: ProfileBrowserClosure, claim: RegisteredProfileStorageClaim, restore: RestoreAdmissionHandle, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission>;
-  forStoppedProfileUpgrade(...args: [] | [ProfileBrowserClosure, RegisteredProfileStorageClaim, RestoreAdmissionHandle, Clock, HostConfigFacts]): RuntimeAdmission | Promise<RuntimeAdmission> {
+  forStoppedProfileUpgrade(browserClosure: ProfileBrowserClosure, claim: RegisteredProfileStorageClaim, restore: OfflineMaintenanceOperation, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission>;
+  forStoppedProfileUpgrade(...args: [] | [ProfileBrowserClosure, RegisteredProfileStorageClaim, OfflineMaintenanceOperation, Clock, HostConfigFacts]): RuntimeAdmission | Promise<RuntimeAdmission> {
     if (args.length !== 0) return this.#readyStoppedProfileUpgrade(...args);
     this.assertExclusive();
     this.assertProfileInitialization();
     const database = join(this.#stateRoot, "state.db");
     if (readProfileDatabaseBinding(database).state !== "unbound") throw new Error("profile-stopped-conversion-not-required");
     return new RuntimeAdmission(issuanceToken, { assertHeld: () => this.assertLive(), release() {} }, this.#stateRoot, this.#artifactRoot,
-      [database], "profile-upgrade", this.#mode, this.#locator, this.profileBinding);
+      [database], "profile-upgrade", this.#mode, this.#locator, this.profileBinding, this);
   }
-  async #readyStoppedProfileUpgrade(browserClosure: ProfileBrowserClosure, claim: RegisteredProfileStorageClaim | undefined, restore: RestoreAdmissionHandle | undefined,
+  async #readyStoppedProfileUpgrade(browserClosure: ProfileBrowserClosure, claim: RegisteredProfileStorageClaim | undefined, restore: OfflineMaintenanceOperation | undefined,
     clock: Clock | undefined, hostFacts: HostConfigFacts | undefined): Promise<RuntimeAdmission> {
     const lease = this.#exclusiveInstallationLease();
     if (claim === undefined || restore === undefined || clock === undefined || hostFacts === undefined || claim.phase !== "runtime") throw new Error("profile-stopped-upgrade-runtime-claim-required");
@@ -281,7 +273,8 @@ export class RuntimeAdmission {
     const context = lease.readInstallationContext();
     const processLockRoot = resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot);
     lease.assertFixedProcessLockRoot(context.workspace, processLockRoot);
-    assertRuntimeRestoreAdmission(restore, processLockRoot);
+    lease.assertOfflineMaintenance(restore);
+    assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
     const root = join(this.#stateRoot, "profiles", claim.profileId), artifacts = join(root, "artifacts");
     const path = join(root, "state.db");
     const binding = { installationId: this.locator.installationId, profileId: claim.profileId };
@@ -299,7 +292,7 @@ export class RuntimeAdmission {
       try {
         this.assertLive();
         lease.assertFixedProcessLockRoot(context.workspace, processLockRoot);
-        assertRuntimeRestoreAdmission(restore, processLockRoot);
+        assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
         requireRegisteredProfileStorageClaim(claim, this, "issue");
         capture.assertHeld();
         if (!noSymlinkAncestry(root, ancestry) || !noSymlinkAncestry(artifacts, ancestry)) throw new Error("profile-stopped-upgrade-root-changed");
@@ -721,7 +714,7 @@ export class RuntimeAdmission {
     else assertCanonicalProfileBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(root, ancestry);
-    let restoreCustody: { input: AuthorityRestoreInput; restore: RestoreAdmissionHandle } | undefined;
+    let restoreCustody: { input: AuthorityRestoreInput; restore: OfflineMaintenanceOperation } | undefined;
     let restoreSettled = false;
     const assertHeld = () => {
       this.assertLive();
@@ -1000,13 +993,13 @@ export class RuntimeAdmission {
   release(): void {
     if (this.#released) return;
     const restore = this.#scope === "installation" ? stoppedMaintenanceRestores.get(this.#authority as InstallationLease) : undefined;
+    if (restore !== undefined) {
+      try { restore.release(); }
+      catch (error) { throw retainAuthoritySourceClosure([error], { restore, admission: this }); }
+    }
     this.#authority.release();
     this.#released = true;
-    if (restore !== undefined) {
-      stoppedMaintenanceRestores.delete(this.#authority as InstallationLease);
-      try { restore.release(); }
-      catch (error) { throw retainAuthoritySourceClosure([error], { restore }); }
-    }
+    if (restore !== undefined) stoppedMaintenanceRestores.delete(this.#authority as InstallationLease);
   }
   beginOfflineMaintenance(): OfflineMaintenanceOperation {
     this.assertLive();
@@ -1036,11 +1029,19 @@ export class RuntimeAdmission {
     this.#exclusiveInstallationLease().assertOfflineMaintenance(operation);
   }
 
-  maintenanceRestore(): RestoreAdmissionHandle | undefined {
+  acquireOfflineMaintenance(): OfflineMaintenanceOperation {
     this.assertLive();
-    if (this.#flatBackup !== undefined) return this.#profileParent?.maintenanceRestore();
-    if (this.#scope !== "installation") return undefined;
-    return stoppedMaintenanceRestores.get(this.#authority as InstallationLease);
+    if (this.#profileParent !== undefined) return this.#profileParent.acquireOfflineMaintenance();
+    const lease = this.#exclusiveInstallationLease();
+    const issued = stoppedMaintenanceRestores.get(lease);
+    if (issued !== undefined) { lease.assertOfflineMaintenance(issued); issued.assertAvailable(); return issued; }
+    return lease.beginOfflineMaintenance();
+  }
+
+  maintenanceOperation(): OfflineMaintenanceOperation {
+    this.assertLive();
+    if (this.#profileParent !== undefined) return this.#profileParent.maintenanceOperation();
+    return this.#exclusiveInstallationLease().offlineMaintenanceOperation();
   }
 
   #exclusiveInstallationLease(): ExclusiveInstallationLease {
@@ -1059,18 +1060,18 @@ export class RuntimeAdmission {
     if (this.#authority.captureRestoreContext === undefined) throw new Error("profile-restore-authority-required");
     return this.#authority.captureRestoreContext(witness);
   }
-  beginAuthorityRestore(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void {
+  beginAuthorityRestore(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void {
     this.assertExclusive();
     if (this.#authority.beginAuthorityRestore === undefined) throw new Error("profile-restore-authority-required");
     this.#authority.beginAuthorityRestore(input, restore);
   }
   settleAuthorityRestore(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier,
-    restore: RestoreAdmissionHandle): void {
+    restore: OfflineMaintenanceOperation): void {
     this.assertExclusive();
     if (this.#authority.settleAuthorityRestore === undefined) throw new Error("profile-restore-authority-required");
     this.#authority.settleAuthorityRestore(input, outcome, verify, restore);
   }
-  assertAuthorityRestoreCurrent(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void {
+  assertAuthorityRestoreCurrent(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void {
     this.assertExclusive();
     if (this.#authority.assertAuthorityRestoreCurrent === undefined) throw new Error("profile-restore-authority-required");
     this.#authority.assertAuthorityRestoreCurrent(input, restore);
@@ -1086,7 +1087,7 @@ export class RuntimeAdmission {
     if (locator === undefined || existsSync(join(locator.stateRoot, "machine")) || existsSync(join(locator.stateRoot, "profiles"))) throw new ProfileStorageRelocationUnsupportedError();
   }
   beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding,
-    restore: RestoreAdmissionHandle): RuntimeRelocationOperation {
+    restore: OfflineMaintenanceOperation): RuntimeRelocationOperation {
     this.assertStorageRelocationSupported();
     const lease = this.#exclusiveInstallationLease();
     const operationId = lease.beginRelocation(destination, plan, restore);
@@ -1150,7 +1151,7 @@ export class RuntimeAdmission {
     });
   }
 
-  stoppedRestoreProjection(path: string, restore: RestoreAdmissionHandle): RuntimeAdmission {
+  stoppedRestoreProjection(path: string, restore: OfflineMaintenanceOperation): RuntimeAdmission {
     this.assertExclusive();
     this.assertProfileRuntime();
     if (!isAbsolute(path) || resolve(path) !== path || dirname(path) !== this.#stateRoot
@@ -1159,7 +1160,7 @@ export class RuntimeAdmission {
     if (context === undefined) throw new Error("profile-restore-projection-parent-required");
     const assertHeld = () => {
       this.assertLive();
-      assertRuntimeRestoreAdmission(restore, resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot));
+      assertOfflineMaintenanceForProcessRoot(restore, resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot));
       assertProfileRestoreDatabaseBinding(path, this.profileBinding);
     };
     assertHeld();
@@ -1256,7 +1257,7 @@ export class RuntimeAdmission {
       this.#readyUpgrade === undefined ? undefined : { ...this.#readyUpgrade, copyPath: checked });
   }
 
-  resumeProfileAuthorityRestore(operationId: string, restore: RestoreAdmissionHandle): RuntimeAdmission {
+  resumeProfileAuthorityRestore(operationId: string, restore: OfflineMaintenanceOperation): RuntimeAdmission {
     const lease = this.#exclusiveInstallationLease();
     const input = lease.readAuthorityRestore(operationId);
     let settled = false;
@@ -1384,7 +1385,7 @@ export class RuntimeAdmission {
     lifetime.assertHeld();
     return lifetime;
   }
-  beginStoppedMachineControlUpgrade(restore: RestoreAdmissionHandle): StoppedProfileControlUpgradeAdmission {
+  beginStoppedMachineControlUpgrade(restore: OfflineMaintenanceOperation): StoppedProfileControlUpgradeAdmission {
     this.assertLive();
     this.assertExclusive();
     if (this.#scope !== "installation") throw new Error("profile-control-upgrade-machine-membership-unknown");
@@ -1399,7 +1400,7 @@ export class RuntimeAdmission {
       [join(stateRoot, "state.db")], "installation", lease.mode, lease.locator);
   }
 
-  #stoppedDuoRecovery(): { lease: InstallationLease; restore: RestoreAdmissionHandle } {
+  #stoppedDuoRecovery(): { lease: InstallationLease; restore: OfflineMaintenanceOperation } {
     this.assertLive();
     this.assertExclusive();
     if (this.#scope !== "installation") throw new Error("profile-control-upgrade-machine-membership-unknown");
@@ -1516,7 +1517,7 @@ export class RuntimeAdmission {
     lifetime.assertHeld();
     const canonical = realpathSync(workspace);
     if (canonical !== resolve(workspace)) throw new Error("device-recertification-workspace-invalid");
-    const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(canonical, rebuildRuntimeIsolation.processLockRoot), pid: process.pid });
+    const restore = lifetime.beginOfflineMaintenance(canonical);
     let lease: InstallationLease | undefined, closed = false, retained: AuthoritySourceClosureUnprovedError | undefined;
     const retainUnclosed = (error: unknown): void => {
       const pending: unknown[] = [error], seen = new Set<unknown>();
@@ -1534,14 +1535,14 @@ export class RuntimeAdmission {
     const release = () => {
       if (retained !== undefined) throw retained;
       if (closed) return;
+      try { restore.release(); }
+      catch (error) { retained = retainAuthoritySourceClosure([error], { admission: lease, restore }); throw retained; }
       try { lease?.release(); }
       catch (error) { retained = retainAuthoritySourceClosure([error], { admission: lease, restore }); throw retained; }
-      try { restore.release(); }
-      catch (error) { retained = retainAuthoritySourceClosure([error], { restore }); throw retained; }
       closed = true;
     };
     try {
-      const held = acquireInstallation(canonical, "exclusive", lifetime); lease = held;
+      const held = acquireInstallation(canonical, "exclusive", lifetime, { offlineOperation: restore }); lease = held;
       const prepared = prepareStoppedDeviceRecertification(held, restore, (profileId, assertHeld) => {
         const root = join(held.locator.stateRoot, "profiles", profileId);
         const admission = new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => held.readInstallationContext() },
@@ -1570,18 +1571,17 @@ export class RuntimeAdmission {
     lifetime.assertHeld();
     const canonical = realpathSync(workspace);
     lifetime.assertExclusiveWorkspaceTarget(canonical);
-    const processLockRoot = join(canonical, rebuildRuntimeIsolation.processLockRoot);
-    const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
+    const restore = lifetime.beginOfflineMaintenance(canonical);
     let lease: InstallationLease | undefined;
     try {
-      lease = acquireInstallation(canonical, "exclusive", lifetime, { stoppedControlForward: true });
+      lease = acquireInstallation(canonical, "exclusive", lifetime, { stoppedControlForward: true, offlineOperation: restore });
       assertStoppedMachineMaintenance(lease, restore);
     } catch (error) {
       if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { restore, admission: lease });
+      try { restore.release(); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { restore, admission: lease }); }
       try { lease?.release(); }
       catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { restore, admission: lease }); }
-      try { restore.release(); }
-      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { restore }); }
       throw error;
     }
     stoppedMaintenanceRestores.set(lease, restore);
@@ -1712,22 +1712,29 @@ export function acquireInitialRuntimeAdmission(workspace: string, lifetime: Runt
 
 export function acquireRecoveryRuntimeRelocation(workspace: string, lifetime: RuntimeLifetimeLock,
   binding: Readonly<{ installationId: string; fromGeneration: number; operationId: string }>,
-  restore: RestoreAdmissionHandle): Readonly<{ admission: RuntimeAdmission; operation: RuntimeRelocationOperation }> {
-  const lease = acquireInstallation(workspace, "exclusive", lifetime, { recoverRelocation: { ...binding, restoreAdmission: restore } });
+  restore: OfflineMaintenanceOperation): Readonly<{ admission: RuntimeAdmission; operation: RuntimeRelocationOperation }> {
+  const lease = acquireInstallation(workspace, "exclusive", lifetime, { offlineOperation: restore, recoverRelocation: { ...binding, restoreAdmission: restore } });
   try {
     const admission = RuntimeAdmission.fromInstallationLease(lease);
     return Object.freeze({ admission, operation: admission.resumeRelocation(binding.operationId) });
   } catch (error) {
-    lease.release();
+    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: lease, restore });
+    try { restore.release(); lease.release(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: lease, restore }); }
     throw error;
   }
 }
 
 export function acquireRecoveryRuntimeRestore(workspace: string, lifetime: RuntimeLifetimeLock, operationId: string,
-  restore: RestoreAdmissionHandle): Readonly<{ admission: RuntimeAdmission; input: AuthorityRestoreInput }> {
-  const lease = acquireInstallation(workspace, "exclusive", lifetime, { recoverAuthorityRestore: { operationId, restoreAdmission: restore } });
+  restore: OfflineMaintenanceOperation): Readonly<{ admission: RuntimeAdmission; input: AuthorityRestoreInput }> {
+  const lease = acquireInstallation(workspace, "exclusive", lifetime, { offlineOperation: restore, recoverAuthorityRestore: { operationId, restoreAdmission: restore } });
   try {
     const admission = RuntimeAdmission.fromInstallationLease(lease);
     return Object.freeze({ admission: admission.resumeProfileAuthorityRestore(operationId, restore), input: lease.readAuthorityRestore(operationId) });
-  } catch (error) { lease.release(); throw error; }
+  } catch (error) {
+    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: lease, restore });
+    try { restore.release(); lease.release(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: lease, restore }); }
+    throw error;
+  }
 }

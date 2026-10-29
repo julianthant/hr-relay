@@ -1,4 +1,5 @@
-import { assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "./runtime-process-locks.js";
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/installation.js";
+import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -21,8 +22,7 @@ import { pipeline } from "node:stream/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { systemClock } from "../../../rules/time/clock.js";
+import { type Clock, systemClock } from "../../../rules/time/clock.js";
 import { inspectOpenDatabase, inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly } from "./backup-inspection.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -152,15 +152,15 @@ export function verifyStoppedBackupManifestAtPath(admissionInput: RuntimeAdmissi
   });
 }
 
-export function verifyFlatBackupRecoveryManifest(manifestPath: string, sourceIdentity: string, restore: RestoreAdmissionHandle, processLockRoot: string): VerifiedBackup {
-  assertRuntimeRestoreAdmission(restore, processLockRoot);
+export function verifyFlatBackupRecoveryManifest(manifestPath: string, sourceIdentity: string, restore: OfflineMaintenanceOperation, processLockRoot: string): VerifiedBackup {
+  assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
   const assertPath = (path: string) => {
     if (dirname(path) !== join(dirname(processLockRoot), "backups", "authority")) throw new Error("flat-backup-recovery-manifest-path-refused");
   };
   assertPath(manifestPath);
   const result = verifyStoppedManifest(manifestPath, sourceIdentity, assertPath, path => withReadonlyAuthoritySnapshot(path, database => inspectOpenDatabase(database, 6)));
   if (result.manifest.schemaVersion !== 6 || result.manifest.installationId !== undefined || result.manifest.profileId !== undefined) throw new Error("flat-backup-recovery-manifest-binding-refused");
-  assertRuntimeRestoreAdmission(restore, processLockRoot);
+  assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
   return result;
 }
 

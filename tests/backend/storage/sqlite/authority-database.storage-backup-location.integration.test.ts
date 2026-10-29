@@ -7,8 +7,6 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
@@ -33,15 +31,14 @@ it("refuses a foreign physical origin even with matching profile UUIDs before st
     assert.equal(foreign.profileId,f.admission.profileBinding.profileId);
     writeFileSync(manifestPath,JSON.stringify(foreign),{mode:0o600});
     const processLockRoot = join(f.workspace,rebuildRuntimeIsolation.processLockRoot);
-    const identity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
-    const proofs = new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60_000},systemClock);
-    proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:identity},systemClock));
-    const stoppedSystemProof = proofs.issue({observedBy:"local-operator",sourceDatabaseIdentity:identity});
+
+
+    const operation = f.admission.acquireOfflineMaintenance();
     const suspects = join(f.stateRoot,"backups","suspects");
     const before = storageTree(f.workspace), bytes = readFileSync(f.path);
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure,f.admission,{authorityPath:f.path,suspectDirectory:suspects,
-      busyTimeoutMs:250,processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>{},systemClock,undefined,undefined,boundProfileCredentials(f.admission));
-    await assert.rejects(restore.restore({manifestPath,stoppedSystemProof}),/different authority database/u);
+      busyTimeoutMs:250,processLockRoot},async()=>{},systemClock,undefined,boundProfileCredentials(f.admission));
+    await assert.rejects(restore.restore({ manifestPath }, operation),/different authority database/u);
     assert.deepEqual(readFileSync(f.path),bytes);
     assert.deepEqual(storageTree(f.workspace),before);
     assert.equal(existsSync(suspects),false);

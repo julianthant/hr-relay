@@ -1,6 +1,6 @@
+import { proveProfileRootsUnused } from "../maintenance/process-closure.js";
+import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, offlineMaintenanceWorkspace, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import { ProfileStorageRelocationUnsupportedError } from "./admission-identity.js";
-import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
-import { authoritySourceDatabaseIdentity } from "../sqlite/database-identity.js";
 import { credentialKeyCustody, CredentialKeyCustodyError, type CredentialKeyMigrationAdmission } from "../configuration/credential-key-custody.js";
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { retainedStorageBackup, SourceRecordSchema, StorageBackupSchema, inventory as backupFileInventory, file as backupFile } from "../maintenance/existing-data-backup-files.js";
@@ -8,7 +8,7 @@ import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } fro
 import { capturePriorPrivateFileLock, withPrivateFileLock, type PrivateFileLock, readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStageTransition, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
 import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
-import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
+import { ProfileDatabaseBindingSchema, SignUpOperationSchema, LogoutOperationSchema, type ProfileOperation, ProfileRegistryDocumentSchema, ProfileRegistryRowSchema, ProfileVerifierDocumentSchema, ProfileOnboardingCompletionSchema, assertFinishedProfileOnboarding, deriveProfileNames, type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
@@ -18,17 +18,13 @@ import {
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { observeRuntimeLockSnapshot, inspectStoppedDeviceRecertificationCustody, readProcessCustodyFile, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle, RUNTIME_PROCESS_LOCK_NAMES, runtimeProcessLockIsActive, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
+import { readProcessCustodyFile } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
 import { NonNegativeIntSchema } from "../../../rules/identity/ids.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
-
-import { SignUpOperationSchema, LogoutOperationSchema, type ProfileOperation } from "../../../models/profiles/profile.js";
-import { ProfileRegistryDocumentSchema, ProfileRegistryRowSchema, ProfileVerifierDocumentSchema, ProfileOnboardingCompletionSchema,
-  assertFinishedProfileOnboarding, deriveProfileNames, type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
 import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 import { DuoContinuityRowSchema, type DuoContinuityRow } from "../../../models/config/duo-credential-store.js";
 import { DuoPublicationCaptureSchema, assertDuoDocumentWitness, assertDuoPublishedFile, duoStagePath, prepareIssuedDuoTransaction, verifyIssuedDuoTransaction, resumeIssuedDuoTransaction, issuedDuoDraftOperation, readDuoPublicationEnvelope, type IssuedDuoTransaction } from "../configuration/duo-credential-store.js";
@@ -224,18 +220,18 @@ export type RelocationPreparationVerifier = (source: RuntimeLocator, destination
   operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationPreparation;
 export type RelocationActivationVerifier = (source: RuntimeLocator, destination: RuntimePair,
   operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationActivationIntent;
-export type OfflineMaintenanceOperation = Readonly<{ operationId: string; assertHeld(): void; release(): void }>;
 export type InstallationLease = Readonly<{ lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock; mode: "shared" | "exclusive"; locator: RuntimeLocator;
   assertHeld(): void; assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void;
   beginOfflineMaintenance(): OfflineMaintenanceOperation;
+  offlineMaintenanceOperation(): OfflineMaintenanceOperation;
   assertOfflineMaintenance(operation: OfflineMaintenanceOperation): void;
   readRelocationReceipts(): readonly RelocationCompletionReceipt[];
   readProfileRegistry(): ProfileRegistryDocument;
   readCompletedRestores(profileId: string): readonly CompletedRestoreCustody[];
   requiresFlatStoreMigration(): boolean;
   flatStoreMigrationPending(): boolean;
-  eraseFlatStoreCredentials(restore: RestoreAdmissionHandle): void;
-  startCleanFlatStore(restore: RestoreAdmissionHandle): void;
+  eraseFlatStoreCredentials(restore: OfflineMaintenanceOperation): void;
+  startCleanFlatStore(restore: OfflineMaintenanceOperation): void;
   commitProfileDuo(transaction: IssuedDuoTransaction): void;
   assertDraftDuoPublicationRecovery(operationId: string, profileId: string, generation: number): z.infer<typeof SignUpOperationSchema>;
   abortUnpublishedProfile(witness: UnpublishedDraftAbortWitness): void;
@@ -260,11 +256,11 @@ export type InstallationLease = Readonly<{ lifetime: RuntimeLifetimeLock | Worke
   release(): void }>;
 export type ExclusiveInstallationLease = InstallationLease & Readonly<{
   captureProfileRestore(profileId: string, witness: VerifiedCredentialErasureHead): ProfileRestoreContext;
-  assertProfileRestoreHeld(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void;
+  assertProfileRestoreHeld(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
   readAuthorityRestore(operationId: string): AuthorityRestoreInput;
-  beginAuthorityRestore(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void;
-  settleAuthorityRestore(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier, restore: RestoreAdmissionHandle): void;
-  beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding, restore: RestoreAdmissionHandle): string;
+  beginAuthorityRestore(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
+  settleAuthorityRestore(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier, restore: OfflineMaintenanceOperation): void;
+  beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding, restore: OfflineMaintenanceOperation): string;
   relocationInventory(): RelocationInventory;
   prepareDestinationRoots(): void;
   verifiedSourceControlEntries(): VerifiedSourceControlEntries;
@@ -284,12 +280,6 @@ const FENCE = ".runtime-source-fence.json";
 export const RUNTIME_ROOT_AUTHORITY_ENTRY_NAMES = Object.freeze([MARKER,FENCE]);
 const RECEIPTS = "relocation-receipts";
 const issuedLeases = new WeakSet<object>();
-const offlineOperations = new WeakMap<OfflineMaintenanceOperation, string>();
-
-export function assertOfflineMaintenanceOperation(operation: OfflineMaintenanceOperation, workspace: string): void {
-  if (offlineOperations.get(operation) !== workspace) fail("offline-maintenance-unissued");
-  operation.assertHeld();
-}
 
 function fail(reason: string): never { throw new Error(`runtime-control: ${reason}`); }
 function pairOf(locator: RuntimeLocator): RuntimePair { return { stateRoot: locator.stateRoot, artifactRoot: locator.artifactRoot }; }
@@ -424,14 +414,32 @@ function verifyManagedEntries(journal: RelocationJournal, evidence: VerifiedRelo
   }
 }
 function fixedLockRoot(workspace: string): string { return resolve(workspace, rebuildRuntimeIsolation.processLockRoot); }
-function assertRestoreHeld(workspace: string, restore: RestoreAdmissionHandle | undefined): void {
-  if (restore === undefined) fail("fixed restore admission required");
-  const root = fixedLockRoot(workspace);
-  assertRuntimeRestoreAdmission(restore, root);
+export class OldBuildRuntimeArtifactsError extends Error {
+  readonly code = "RUNTIME_OLD_BUILD_ARTIFACTS";
+  constructor() { super(ERROR_CATALOG.RUNTIME_OLD_BUILD_ARTIFACTS.text); this.name = "OldBuildRuntimeArtifactsError"; }
+}
+
+export function assertNoOldBuildRuntimeArtifacts(workspace: string): void {
+  const root = fixedLockRoot(workspace), info = lstatMaybe(root);
+  if (info === undefined) return;
   assertNoSymlinkComponents(root);
   privateDirectory(root);
-
+  if (readdirSync(root).length !== 0) throw new OldBuildRuntimeArtifactsError();
 }
+
+export function assertOfflineMaintenanceForProcessRoot(operation: OfflineMaintenanceOperation, processLockRoot: string): void {
+  const workspace = offlineMaintenanceWorkspace(operation);
+  if (processLockRoot !== fixedLockRoot(workspace)) fail("offline-maintenance-workspace-mismatch");
+  assertOfflineMaintenanceOperation(operation, workspace);
+  assertNoOldBuildRuntimeArtifacts(workspace);
+}
+
+function assertRestoreHeld(workspace: string, operation: OfflineMaintenanceOperation | undefined): void {
+  if (operation === undefined) fail("offline-maintenance-unissued");
+  assertOfflineMaintenanceOperation(operation, workspace);
+  assertNoOldBuildRuntimeArtifacts(workspace);
+}
+
 function inside(parent: string, child: string): boolean {
   const part = relative(parent, child);
   return part === "" || (part !== ".." && !part.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) && !isAbsolute(part));
@@ -1030,7 +1038,7 @@ function checkRestoreInput(locator: RuntimeLocator, input: AuthorityRestoreInput
     || new Set(input.companions.map(row => row.suffix)).size !== input.companions.length) fail("restore path or companion binding mismatch");
 }
 function readLocator(control: string, workspace: string, recovery?: { installationId: string; fromGeneration: number; operationId: string },
-  restoreRecovery?: { operationId: string; restoreAdmission: RestoreAdmissionHandle }): RuntimeLocator {
+  restoreRecovery?: { operationId: string; restoreAdmission: OfflineMaintenanceOperation }): RuntimeLocator {
   const installation = readInstallation(control, workspace);
   if (!existsSync(join(control, "locator.json"))) fail("installation locator missing; offline recovery required");
   const locator = readStrict(join(control, "locator.json"), LocatorSchema);
@@ -1821,7 +1829,7 @@ function adopt(control: string, workspace: string, defaultPair: RuntimePair, ver
   unlinkSync(join(control, "journal.json")); syncDir(control);
   return locator;
 }
-type RecoveryRequest = Readonly<{ installationId: string; fromGeneration: number; operationId: string; restoreAdmission: RestoreAdmissionHandle }>;
+type RecoveryRequest = Readonly<{ installationId: string; fromGeneration: number; operationId: string; restoreAdmission: OfflineMaintenanceOperation }>;
 export function inspectPendingRelocationStatus(workspacePath: string): Readonly<{
   operationId: string; phase: RelocationInventory["phase"]; fromGeneration: number;
 }> | undefined {
@@ -1845,7 +1853,7 @@ export function inspectPendingRelocationStatus(workspacePath: string): Readonly<
     fromGeneration: pending.fromGeneration });
 }
 export function inspectPendingRelocationRecovery(workspacePath: string, operationId: string,
-  restore: RestoreAdmissionHandle): Readonly<{ installationId: string; fromGeneration: number; operationId: string }> {
+  restore: OfflineMaintenanceOperation): Readonly<{ installationId: string; fromGeneration: number; operationId: string }> {
   const workspace = realpathSync(workspacePath);
   if (resolve(workspacePath) !== workspace) fail("recovery workspace must be canonical");
   const control = join(workspace, CONTROL);
@@ -1863,14 +1871,19 @@ export function inspectPendingRelocationRecovery(workspacePath: string, operatio
   return binding;
 }
 export function acquireInstallation(workspacePath: string, mode: "shared", lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock, options?: { machine?: true; readonlyControl?: true }): InstallationLease;
-export function acquireInstallation(workspacePath: string, mode: "exclusive", lifetime: RuntimeLifetimeLock, options?: { readonlyControl?: true; stoppedControlForward?: true; defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; machine?: true; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: RestoreAdmissionHandle } }): ExclusiveInstallationLease;
-export function acquireInstallation(workspacePath: string, mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock, options?: { readonlyControl?: true; stoppedControlForward?: true; defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; machine?: true; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: RestoreAdmissionHandle } }): InstallationLease | ExclusiveInstallationLease {
+export function acquireInstallation(workspacePath: string, mode: "exclusive", lifetime: RuntimeLifetimeLock, options?: { offlineOperation?: OfflineMaintenanceOperation; readonlyControl?: true; stoppedControlForward?: true; defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; machine?: true; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: OfflineMaintenanceOperation } }): ExclusiveInstallationLease;
+export function acquireInstallation(workspacePath: string, mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock, options?: { offlineOperation?: OfflineMaintenanceOperation; readonlyControl?: true; stoppedControlForward?: true; defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; machine?: true; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: OfflineMaintenanceOperation } }): InstallationLease | ExclusiveInstallationLease {
   const workspace = realpathSync(workspacePath);
   if (!(lifetime instanceof RuntimeLifetimeLock) && !(lifetime instanceof WorkerRuntimeLifetimeLock)) fail("runtime-lifetime-required");
   lifetime.assertHeld();
   if (resolve(workspacePath) !== workspace) fail("installation workspace must be canonical");
   if ((mode === "exclusive" || options?.stoppedControlForward === true) && !(lifetime instanceof RuntimeLifetimeLock)) fail("exclusive-root-lifetime-required");
   if (options?.stoppedControlForward === true && mode !== "exclusive") fail("stopped-control-forward-exclusive-required");
+  if (lifetime instanceof RuntimeLifetimeLock) {
+    if (mode !== "exclusive" && options?.offlineOperation !== undefined) fail("offline-maintenance-exclusive-root-required");
+    lifetime.assertAdmissionOperation(options?.offlineOperation, workspace);
+    if (options?.offlineOperation !== undefined) assertNoOldBuildRuntimeArtifacts(workspace);
+  }
   if (lifetime instanceof RuntimeLifetimeLock) lifetime.initializeWorkspace(workspace, () => {
     lifetime.assertStartupWorkspace(workspace);
     const control = join(workspace, CONTROL);
@@ -1930,12 +1943,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   privateDirectory(control);
   const localAdmission: LocalAdmission = Object.freeze({ mode });
   const releaseExclusive = mode === "exclusive" && lifetime instanceof RuntimeLifetimeLock
-    ? lifetime.retainExclusiveAdmission(workspace) : undefined;
+    ? lifetime.retainExclusiveAdmission(workspace, options?.offlineOperation) : undefined;
   let resolvedLocator: RuntimeLocator;
   try { resolvedLocator = withInstallationControl(control, () => {
     const peers = activeAdmissions(control);
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
-    if (options?.recoverRelocation) assertRestoreHeld(workspace, options.recoverRelocation.restoreAdmission);
+    if (options?.recoverRelocation) assertLocalRestoreHeld(options.recoverRelocation.restoreAdmission);
     const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined, mode === "exclusive" ? options?.recoverAuthorityRestore : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting, options.initializeFresh, options.machine) : fail("installation locator missing"));
     credentialKeyCustody.migrateDirectory(join(resolved.stateRoot, "machine", "credential-keys"), resolved.installationId, admitCredentialKeyMigration(control, resolved, options?.stoppedControlForward === true), options?.readonlyControl !== true && options?.stoppedControlForward !== true && peers.length === 0);
     if (options?.machine === true) readMachineRegistry(control, resolved, options.readonlyControl !== true);
@@ -1960,7 +1973,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   const locator = Object.freeze({ ...resolvedLocator });
   const publicLocator = Object.freeze({ ...locator });
   let released = false;
-  let offlineOperation: OfflineMaintenanceOperation | undefined;
+  let offlineOperation: OfflineMaintenanceOperation | undefined = options?.offlineOperation;
+  function assertLocalRestoreHeld(operation: OfflineMaintenanceOperation | undefined): void {
+    assertRestoreHeld(workspace, operation);
+    if (!(lifetime instanceof RuntimeLifetimeLock) || operation === undefined) fail("offline-maintenance-exclusive-root-required");
+    lifetime.assertOfflineMaintenance(operation, workspace);
+  }
   function assertHeld(): void {
     lifetime.assertWorkspace(workspace);
     if (mode === "exclusive") {
@@ -2206,31 +2224,19 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     beginOfflineMaintenance(): OfflineMaintenanceOperation {
       assertHeld();
       if (mode !== "exclusive" || !(lifetime instanceof RuntimeLifetimeLock)) fail("offline-maintenance-exclusive-root-required");
-      if (offlineOperation !== undefined) fail("offline-maintenance-busy");
-      const releasePin = lifetime.retainExclusiveOperation(workspace);
-      let expired = false;
-      const operation: OfflineMaintenanceOperation = Object.freeze({
-        operationId: randomUUID(),
-        assertHeld() {
-          assertHeld();
-          if (expired || offlineOperation !== operation) fail("offline-maintenance-unissued");
-        },
-        release() {
-          if (expired) return;
-          operation.assertHeld();
-          releasePin();
-          offlineOperations.delete(operation);
-          offlineOperation = undefined;
-          expired = true;
-        },
-      });
-      offlineOperation = operation;
-      offlineOperations.set(operation, workspace);
-      return operation;
+      if (offlineOperation !== undefined && isOfflineMaintenanceOperationActive(offlineOperation)) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-busy");
+      offlineOperation = lifetime.beginOfflineMaintenance(workspace);
+      return offlineOperation;
+    },
+    offlineMaintenanceOperation(): OfflineMaintenanceOperation {
+      assertHeld();
+      if (offlineOperation === undefined) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
+      assertOfflineMaintenanceOperation(offlineOperation, workspace);
+      return offlineOperation;
     },
     assertOfflineMaintenance(operation: OfflineMaintenanceOperation) {
       assertHeld();
-      if (offlineOperation !== operation) fail("offline-maintenance-unissued");
+      if (offlineOperation !== operation) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
       assertOfflineMaintenanceOperation(operation, workspace);
     },
     assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string) {
@@ -2272,7 +2278,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       return true;
     },
     flatStoreMigrationPending() { assertHeld(); return lstatMaybe(join(control, "flat-start-clean.json")) !== undefined; },
-    eraseFlatStoreCredentials(restore: RestoreAdmissionHandle) {
+    eraseFlatStoreCredentials(restore: OfflineMaintenanceOperation) {
       return mutate(() => {
       assertStoppedMachineMaintenance(this, restore);
       if (!this.requiresFlatStoreMigration() || this.flatStoreMigrationPending()) fail("flat-start-clean-source-required");
@@ -2284,7 +2290,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       }
       });
     },
-    startCleanFlatStore(restore: RestoreAdmissionHandle) {
+    startCleanFlatStore(restore: OfflineMaintenanceOperation) {
       return mutate(() => {
       assertStoppedMachineMaintenance(this, restore);
       assertHeld();
@@ -2619,7 +2625,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     release() {
       if (released) return;
       assertHeld();
-      if (offlineOperation !== undefined) fail("offline-maintenance-busy");
+      if (offlineOperation !== undefined && isOfflineMaintenanceOperationActive(offlineOperation)) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-busy");
       admissions.delete(localAdmission);
       if (admissions.size === 0) installationAdmissions.delete(control);
       releaseExclusive?.();
@@ -2639,7 +2645,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   }
   function assertOperation(pending: RelocationJournal): void {
     assertHeld();
-    assertRestoreHeld(workspace, heldRestore);
+    assertLocalRestoreHeld(heldRestore);
     if (!equalLocator(rawLocator(control, workspace), sourceLocator(pending))
       && !equalLocator(rawLocator(control, workspace), destinationLocator(pending))) fail("operation locator mismatch");
   }
@@ -2671,9 +2677,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       return ProfileRestoreContextSchema.parse({ binding, continuity, head, credentialKey });
     },
     assertProfileRestoreHeld(input, restore) {
-      assertHeld(); assertRestoreHeld(workspace, restore);
+      assertHeld(); assertLocalRestoreHeld(restore);
       const pending = readStrict(join(control, "journal.json"), AuthorityRestoreJournalSchema);
-      if (pending.installationId !== locator.installationId || (pending.restoreAdmissionId !== restore.admissionId && options?.recoverAuthorityRestore?.restoreAdmission !== restore)
+      if (pending.installationId !== locator.installationId || (pending.restoreAdmissionId !== restore.operationId && options?.recoverAuthorityRestore?.restoreAdmission !== restore)
         || canonicalJsonStringify(pending.restore) !== canonicalJsonStringify(input)
         || canonicalJsonStringify(pending.source) !== canonicalJsonStringify(locator)) fail("profile-restore-custody-mismatch");
       checkRestoreInput(locator, input);
@@ -2699,11 +2705,11 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     },
     beginAuthorityRestore(input, restore) {
       const parsed = AuthorityRestoreInputSchema.parse(input);
-      assertHeld(); assertRestoreHeld(workspace, restore); checkRestoreInput(locator, parsed);
+      assertHeld(); assertLocalRestoreHeld(restore); checkRestoreInput(locator, parsed);
       assertProfileRestoreDatabaseBinding(parsed.authorityPath, parsed.profile.binding);
       assertProfileRestoreDatabaseBinding(parsed.stagedPath, parsed.profile.binding);
       mutate(() => {
-        assertHeld(); assertRestoreHeld(workspace, restore);
+        assertHeld(); assertLocalRestoreHeld(restore);
         readMachineRegistry(control, locator, false);
         if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-restore-erasure-pending");
         const continuity = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
@@ -2721,16 +2727,16 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         }
         atomicJson(join(control, "journal.json"), AuthorityRestoreJournalSchema.parse({ schemaVersion: 2,
           phase: "restoring", installationId: locator.installationId, source: locator,
-          restoreAdmissionId: restore.admissionId, restore: parsed }));
+          restoreAdmissionId: restore.operationId, restore: parsed }));
       });
     },
     settleAuthorityRestore(input, outcome, verify, restore) {
       const parsed = AuthorityRestoreInputSchema.parse(input);
-      assertHeld(); assertRestoreHeld(workspace, restore);
+      assertHeld(); assertLocalRestoreHeld(restore);
       assertProfileRestoreDatabaseBinding(parsed.authorityPath, parsed.profile.binding);
       const verified = outcome === "replaced" ? z.strictObject({ authorityGeneration: GenerationSchema, authorityContentFingerprint: DigestSchema }).parse(verify()) : undefined;
       mutate(() => {
-        assertHeld(); assertRestoreHeld(workspace, restore);
+        assertHeld(); assertLocalRestoreHeld(restore);
         let pending = readStrict(join(control, "journal.json"), AuthorityRestoreJournalSchema);
         if (pending.installationId !== locator.installationId
           || canonicalJsonStringify(pending.source) !== canonicalJsonStringify(locator)
@@ -2792,7 +2798,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     },
     beginRelocation(destination, plan, restore) {
       assertHeld();
-      assertRestoreHeld(workspace, restore);
+      assertLocalRestoreHeld(restore);
       if (lstatMaybe(join(control, "profile-registry.json"))
         && readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema).completedRestores.length !== 0) throw new ProfileStorageRelocationUnsupportedError();
       if (relocationStarted) fail("one relocation per exclusive lease; reacquire after settlement");
@@ -2821,7 +2827,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         artifact: target.artifactRoot === locator.artifactRoot ? sourceEpochs.artifact : locator.generation + 1 };
       writeJournal(control, { schemaVersion: 2, phase: "preparing", operationId, installationId: locator.installationId,
         fromGeneration: locator.generation, source: pairOf(locator), destination: target, sourceEpochs, destinationEpochs,
-        plan: parsedPlan, restoreAdmissionId: restore.admissionId, retentions, pinnedEntries });
+        plan: parsedPlan, restoreAdmissionId: restore.operationId, retentions, pinnedEntries });
       heldRestore = restore;
       relocationStarted = true;
       return operationId;
@@ -3135,7 +3141,7 @@ export function readIssuedDuoContinuity(lease: InstallationLease, profileId: str
   return Object.freeze(snapshot);
 }
 
-export function prepareStoppedDeviceRecertification(lease: InstallationLease, restore: RestoreAdmissionHandle,
+export function prepareStoppedDeviceRecertification(lease: InstallationLease, restore: OfflineMaintenanceOperation,
   verifyEmpty: (profileId: string, assertHeld: () => void) => void): StoppedDeviceRecertification {
   const { workspace } = lease.readInstallationContext(), locator = lease.locator, control = join(workspace, CONTROL);
   const controlPath = join(control, "profile-registry.json"), intentPath = join(control, "device-recertification.json");
@@ -3143,6 +3149,8 @@ export function prepareStoppedDeviceRecertification(lease: InstallationLease, re
   const ancestry = new Map<string, { device: number; inode: number }>();
   function held(): void {
     assertInstallationLease(lease); lease.assertHeld(); assertRestoreHeld(workspace, restore);
+    if (!(lease.lifetime instanceof RuntimeLifetimeLock)) fail("offline-maintenance-exclusive-root-required");
+    lease.lifetime.assertOfflineMaintenance(restore, workspace);
     if (lease.mode !== "exclusive" || !equalLocator(readLocator(control, workspace), locator)
       || !noSymlinkAncestry(control, ancestry) || !noSymlinkAncestry(locator.stateRoot, ancestry)
       || !noSymlinkAncestry(locator.artifactRoot, ancestry)) fail("device-recertification-ownership-unproved");
@@ -3152,7 +3160,9 @@ export function prepareStoppedDeviceRecertification(lease: InstallationLease, re
   }
   function source(prior: z.infer<typeof ProfileContinuitySchema>, current: z.infer<typeof ProfileContinuitySchema>): string {
     held();
-    const custody = inspectStoppedDeviceRecertificationCustody(fixedLockRoot(workspace));
+    assertOfflineMaintenanceOperation(restore, workspace);
+    proveProfileRootsUnused([locator.stateRoot, locator.artifactRoot]);
+    const custody = { workspace };
     const machine = join(locator.stateRoot, "machine"), document = readProfileEvidence(join(machine, "profiles.json"), ProfileRegistryDocumentSchema);
     const row = document.profiles[0], head = prior.erasures[0], key = current.erasures[0]?.credentialKey;
     if (document.profiles.length !== 1 || row === undefined || document.activeProfileId !== row.profileId
@@ -3262,6 +3272,7 @@ export function prepareStoppedDeviceRecertification(lease: InstallationLease, re
     recertify(input: DeviceRecertificationAuthorization): void {
       const authorization = DeviceRecertificationAuthorizationSchema.parse(input);
       if (authorization.captureDigest !== digest) fail("device-recertification-authorization-mismatch");
+      restore.consume();
       let state = prefix();
       if (journal === undefined) {
         writePrivateStage(stagePath, Buffer.from(`${JSON.stringify(capture.current)}\n`)); syncDir(control);
@@ -3307,25 +3318,23 @@ export function inspectFlatOfflineRunMaintenance(workspacePath: string) {
     }) };
 }
 
-export function assertStoppedMachineMaintenance(lease: InstallationLease, restore: RestoreAdmissionHandle): void {
+export function assertStoppedMachineMaintenance(lease: InstallationLease, restore: OfflineMaintenanceOperation): void {
   assertInstallationLease(lease);
   if (lease.mode !== "exclusive") fail("profile-control-upgrade-runtime-active");
   const workspace = lease.readInstallationContext().workspace;
   assertRestoreHeld(workspace, restore);
-  const processLockRoot = fixedLockRoot(workspace);
-  if (RUNTIME_PROCESS_LOCK_NAMES.some((name) => runtimeProcessLockIsActive(processLockRoot, name))) fail("profile-control-upgrade-runtime-active");
-  const orphans = inspectRuntimeProcessOrphans(processLockRoot);
-  if (orphans.staleServerRecords > 0 || orphans.staleWorkerRecords > 0) fail("profile-control-upgrade-process-custody-unproved");
+  if (!(lease.lifetime instanceof RuntimeLifetimeLock)) fail("offline-maintenance-exclusive-root-required");
+  lease.lifetime.assertOfflineMaintenance(restore, workspace);
   if (!equalLocator(readLocator(join(workspace, CONTROL), workspace), lease.locator)) fail("profile-control-upgrade-locator-changed");
 }
 
 export interface DuoPublicationRecoveryClaim { readonly profileId: string }
 const duoPublicationRecoveries = new WeakMap<DuoPublicationRecoveryClaim, {
-  lease: InstallationLease; restore: RestoreAdmissionHandle; intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "duo" | "draft-duo" }>;
+  lease: InstallationLease; restore: OfflineMaintenanceOperation; intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "duo" | "draft-duo" }>;
   path: string; digest: string;
 }>();
 
-function authenticateStoppedDuoPublication(lease: InstallationLease, restore: RestoreAdmissionHandle) {
+function authenticateStoppedDuoPublication(lease: InstallationLease, restore: OfflineMaintenanceOperation) {
   assertStoppedMachineMaintenance(lease, restore);
   const workspace = lease.readInstallationContext().workspace;
   return authenticateDuoPublication(join(workspace, CONTROL), lease.locator);
@@ -3369,7 +3378,7 @@ function authenticateDuoPublication(control: string, locator: RuntimeLocator) {
   return { intent, path, digest, document };
 }
 
-export function issueStoppedDuoPublicationRecovery(lease: InstallationLease, restore: RestoreAdmissionHandle): DuoPublicationRecoveryClaim {
+export function issueStoppedDuoPublicationRecovery(lease: InstallationLease, restore: OfflineMaintenanceOperation): DuoPublicationRecoveryClaim {
   const authenticated = authenticateStoppedDuoPublication(lease, restore);
   const claim = Object.freeze({ profileId: authenticated.intent.capture.profileId });
   duoPublicationRecoveries.set(claim, { lease, restore, intent: authenticated.intent, path: authenticated.path, digest: authenticated.digest });
@@ -3394,12 +3403,13 @@ export function completeStoppedDuoPublicationRecovery(claim: DuoPublicationRecov
   });
 }
 
-export function acquireStoppedProfileControlUpgrade(workspacePath: string, restore: RestoreAdmissionHandle, lifetime: RuntimeLifetimeLock, heldLease?: InstallationLease): StoppedProfileControlUpgradeAdmission {
+export function acquireStoppedProfileControlUpgrade(workspacePath: string, restore: OfflineMaintenanceOperation, lifetime: RuntimeLifetimeLock, heldLease?: InstallationLease): StoppedProfileControlUpgradeAdmission {
   if (!(lifetime instanceof RuntimeLifetimeLock)) fail("runtime-lifetime-required");
   lifetime.assertHeld();
   const workspace = realpathSync(workspacePath);
   if (resolve(workspacePath) !== workspace) fail("profile-control-upgrade-workspace-invalid");
   assertRestoreHeld(workspace, restore);
+  lifetime.assertOfflineMaintenance(restore, workspace);
   const ownsLease = heldLease === undefined;
   if (heldLease !== undefined) {
     assertInstallationLease(heldLease);
@@ -3408,7 +3418,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     const heldContext = heldLease.readInstallationContext();
     if (realpathSync(heldContext.workspace) !== workspace) fail("profile-control-upgrade-workspace-invalid");
   }
-  const lease = heldLease ?? acquireInstallation(workspace, "exclusive", lifetime, { stoppedControlForward: true }), locator = lease.locator, control = join(workspace, CONTROL);
+  const lease = heldLease ?? acquireInstallation(workspace, "exclusive", lifetime, { stoppedControlForward: true, offlineOperation: restore }), locator = lease.locator, control = join(workspace, CONTROL);
   const markerPath = join(locator.stateRoot, "machine", "profile-registry-version.json"), controlPath = join(control, "profile-registry.json");
   const intentPath = join(control, "profile-control-upgrade.json"), backupDirectory = join(control, "profile-control-upgrades");
   const inventorySnapshots = new Set<ReturnType<typeof createReadonlyAuthoritySnapshot>>();
@@ -3422,16 +3432,6 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
   function held(): void {
     lease.assertHeld(); assertRestoreHeld(workspace, restore);
     if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-control-upgrade-locator-changed");
-    const processLockRoot = fixedLockRoot(workspace);
-    if (RUNTIME_PROCESS_LOCK_NAMES.some(name => runtimeProcessLockIsActive(processLockRoot, name))) fail("profile-control-upgrade-runtime-active");
-    const registry = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
-    for (const profile of registry.profiles) {
-      const snapshot = observeRuntimeLockSnapshot({ processLockRoot,
-        sourceDatabaseIdentity: authoritySourceDatabaseIdentity(join(locator.stateRoot, "profiles", profile.profileId, "state.db")) });
-      if (Object.values(snapshot.processLocks).some(lock => lock.state !== "stopped")) fail("profile-control-upgrade-runtime-active");
-    }
-    const orphans = inspectRuntimeProcessOrphans(processLockRoot);
-    if (orphans.staleServerRecords > 0 || orphans.staleWorkerRecords > 0) fail("profile-control-upgrade-process-custody-unproved");
     if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-control-upgrade-publication-pending");
   }
   function finish(receipt: z.infer<typeof ControlUpgradeReceiptSchema>, afterPublication: readonly (() => void)[]): void {

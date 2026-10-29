@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import files, { type FileHandle } from "node:fs/promises";
-import type { ChildProcess } from "node:child_process";
-import type { OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/installation.js";
+import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { join } from "node:path";
 import { afterEach, it, vi } from "vitest";
 import { acquireInstallation } from "../../../../src/backend/storage/admission/installation.js";
-import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createInstallationControlTestWorld } from "../../../support/helpers/backend/installation-control-world.js";
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
@@ -40,7 +38,7 @@ for (const failOpen of [false, true]) it(failOpen
     try {
       assert.throws(() => lease.beginOfflineMaintenance(), /offline-maintenance-busy/u);
       assert.throws(() => lease.release(), /offline-maintenance-busy/u);
-      assert.throws(() => acquireInstallation(f.workspace, "exclusive", f.lifetime), /lease busy/u);
+      assert.throws(() => acquireInstallation(f.workspace, "exclusive", f.lifetime), /offline-maintenance-unissued/u);
       assert.throws(() => f.lifetime.share(ownedChild), /exclusive-lease-held/u);
       assert.equal(send.mock.calls.length, 0);
       lease.assertOfflineMaintenance(heldOperation);
@@ -108,7 +106,7 @@ for (const failOpen of [false, true]) it(failOpen
     await assert.rejects(file.close(), error => error === unproved);
     assert.equal((await file.stat()).isFile(), true);
     assert.throws(() => lease.release(), /offline-maintenance-busy/u);
-    assert.throws(() => acquireInstallation(f.workspace, "exclusive", f.lifetime), /lease busy/u);
+    assert.throws(() => acquireInstallation(f.workspace, "exclusive", f.lifetime), /offline-maintenance-unissued/u);
     let rootClosed = false;
     const closing = f.lifetime.close().then(() => { rootClosed = true; });
     await Promise.resolve();
@@ -135,4 +133,44 @@ for (const failOpen of [false, true]) it(failOpen
   if (primary !== undefined && failures.length > 0) throw new AggregateError([primary.error, ...failures], "unproved close and owned cleanup failed", { cause: primary.error });
   if (primary !== undefined) throw primary.error;
   if (failures.length > 0) throw new AggregateError(failures, "owned close cleanup failed", { cause: failures[0] });
+});
+
+it("issues before first admission and requires the exact root and workspace through consumption and restart", async () => {
+  const f = await fixture(), foreign = await fixture();
+  const before = storageTree(f.workspace), foreignBefore = storageTree(foreign.workspace);
+  const operation = f.lifetime.beginOfflineMaintenance(f.workspace);
+  const otherRoot = await RuntimeLifetimeLock.acquire(0), otherOperation = otherRoot.beginOfflineMaintenance(f.workspace);
+  let lease: ReturnType<typeof acquireInstallation> | undefined;
+  try {
+    operation.assertHeld();
+    assert.deepEqual(storageTree(f.workspace), before);
+    assert.throws(() => f.lifetime.beginOfflineMaintenance(f.workspace), /offline-maintenance-busy/u);
+    assert.throws(() => acquireInstallation(f.workspace, "exclusive", f.lifetime), /offline-maintenance-unissued/u);
+    assert.throws(() => acquireInstallation(f.workspace, "shared", f.lifetime), /offline-maintenance-unissued/u);
+    assert.throws(() => acquireInstallation(f.workspace, "exclusive", f.lifetime, { offlineOperation: { ...operation } }), /offline-maintenance-unissued/u);
+    assert.throws(() => acquireInstallation(foreign.workspace, "exclusive", foreign.lifetime, { offlineOperation: operation }), /offline-maintenance-unissued/u);
+    assert.deepEqual(storageTree(f.workspace), before);
+    assert.deepEqual(storageTree(foreign.workspace), foreignBefore);
+    assert.throws(() => acquireInstallation(f.workspace, "exclusive", f.lifetime, { offlineOperation: otherOperation }), /offline-maintenance-unissued/u);
+    assert.deepEqual(storageTree(f.workspace), before);
+    lease = acquireInstallation(f.workspace, "exclusive", f.lifetime, { offlineOperation: operation });
+    assert.equal(lease.offlineMaintenanceOperation(), operation);
+    lease.assertOfflineMaintenance(operation);
+    operation.consume();
+    assert.throws(() => operation.consume(), /offline-maintenance-already-consumed/u);
+    assert.throws(() => lease?.release(), /offline-maintenance-busy/u);
+    await assertRuntimeLifetimeHeld(f.lifetime);
+  } finally { otherOperation.release(); await otherRoot.close(); operation.release(); lease?.release(); await f.lifetime.close(); await foreign.lifetime.close(); }
+  assert.throws(() => operation.assertHeld(), /offline-maintenance-unissued/u);
+  const successor = await RuntimeLifetimeLock.acquire(f.lifetime.port);
+  try {
+    const unchanged = storageTree(f.workspace);
+    assert.throws(() => acquireInstallation(f.workspace, "exclusive", successor, { offlineOperation: operation }), /offline-maintenance-unissued/u);
+    assert.deepEqual(storageTree(f.workspace), unchanged);
+    const next = successor.beginOfflineMaintenance(f.workspace);
+    try {
+      const admitted = acquireInstallation(f.workspace, "exclusive", successor, { offlineOperation: next });
+      next.release(); admitted.release();
+    } finally { next.release(); }
+  } finally { await successor.close(); }
 });

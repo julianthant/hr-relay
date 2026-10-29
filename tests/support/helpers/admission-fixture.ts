@@ -1,4 +1,5 @@
-import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../../../src/backend/storage/source-closure.js";
 import { credentialKeyCustody } from "../../../src/backend/storage/configuration/credential-key-custody.js";
 import type { ProfileOnboardingDuoProvider } from "../../../src/backend/profiles/onboarding-duo.js";
 import { registerBoundProfile, unregisterBoundProfile, assertBoundFixtureWorkersReleased, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
@@ -266,4 +267,32 @@ export async function openBoundDatabaseFixture(migrationOwner: string, clock: Cl
     await profile.close();
     throw error;
   }
+}
+
+export async function withOfflineMaintenance<Result>(admission: RuntimeAdmission,
+  run: (operation: OfflineMaintenanceOperation) => Promise<Result>): Promise<Result> {
+  const operation = admission.acquireOfflineMaintenance();
+  let result: Result;
+  try { result = await run(operation); }
+  catch (error) {
+    if (hasUnprovedSourceClosure(error)) { retainUnprovedSourceOwners(error, { admission, restore: operation }); throw error; }
+    try { operation.release(); } catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission, restore: operation }); }
+    throw error;
+  }
+  try { operation.release(); } catch (error) { throw retainAuthoritySourceClosure([error], { admission, restore: operation }); }
+  return result;
+}
+
+export function withOfflineMaintenanceSync<Result>(admission: RuntimeAdmission,
+  run: (operation: OfflineMaintenanceOperation) => Result): Result {
+  const operation = admission.acquireOfflineMaintenance();
+  let result: Result;
+  try { result = run(operation); }
+  catch (error) {
+    if (hasUnprovedSourceClosure(error)) { retainUnprovedSourceOwners(error, { admission, restore: operation }); throw error; }
+    try { operation.release(); } catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission, restore: operation }); }
+    throw error;
+  }
+  try { operation.release(); } catch (error) { throw retainAuthoritySourceClosure([error], { admission, restore: operation }); }
+  return result;
 }

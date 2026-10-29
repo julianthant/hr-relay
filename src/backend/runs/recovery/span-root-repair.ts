@@ -1,32 +1,24 @@
+import { assertOfflineMaintenanceForProcessRoot } from "../../storage/admission/installation.js";
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
+import { type OfflineMaintenanceOperation } from "../../storage/admission/lifetime-lock.js";
 import { assertStoppedProfileBrowsersClosed, type ProfileBrowserClosure } from "../../storage/maintenance/profile-inventory.js";
-
 import { resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { systemClock } from "../../../rules/time/clock.js";
+import { type Clock, systemClock, localDatePart } from "../../../rules/time/clock.js";
 import { FingerprintSchema, RunIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
-import { localDatePart } from "../../../rules/time/clock.js";
 import { SpanEventWireSchema } from "../../../models/events/types.js";
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
-import { RecoveryStopProofStore } from "../../storage/sqlite/recovery-stop-proof.js";
-import { StoppedSystemProofSchema } from "../../storage/sqlite/recovery-contracts.js";
-import {
-  acquireRuntimeRestoreAdmission,
-  observeRuntimeLockSnapshot,
-  type RestoreAdmissionHandle,
-} from "../../storage/sqlite/runtime-process-locks.js";
 import { runQueuedSpanEvent } from "../commands/run-queued-span.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 
 const SpanRootRepairRequestSchema = z.strictObject({
   runId: RunIdSchema,
-  stoppedSystemProof: StoppedSystemProofSchema,
 });
 
 const SpanRootRepairReportSchema = z.strictObject({
@@ -45,14 +37,9 @@ const OfflineSpanRootRepairOptionsSchema = z.strictObject({
   stateRoot: z.string().min(1),
   authorityPath: z.string().min(1),
   processLockRoot: z.string().min(1),
-  stoppedProofMaxAgeMs: z.number().int().positive(),
   busyTimeoutMs: z.number().int().positive(),
 });
 
-type AdmissionFactory = (
-  input: Readonly<{ processLockRoot: string; pid: number }>,
-  clock: Clock,
-) => RestoreAdmissionHandle;
 
 function sameJson(left: unknown, right: unknown): boolean {
   return canonicalJsonStringify(left) === canonicalJsonStringify(right);
@@ -72,8 +59,6 @@ export class OfflineSpanRootRepairService {
   readonly #processLockRoot: string;
   readonly #busyTimeoutMs: number;
   readonly #clock: Clock;
-  readonly #proofs: RecoveryStopProofStore;
-  readonly #admissionFactory: AdmissionFactory;
   readonly #pid: number;
 
   constructor(
@@ -81,7 +66,6 @@ export class OfflineSpanRootRepairService {
     runtimeAdmission: RuntimeAdmission,
     input: unknown,
     clock: Clock = systemClock,
-    admissionFactory: AdmissionFactory = acquireRuntimeRestoreAdmission,
     pid: number = process.pid,
   ) {
     this.#browserClosure = browserClosure;
@@ -92,27 +76,17 @@ export class OfflineSpanRootRepairService {
     this.#processLockRoot = resolve(options.processLockRoot);
     this.#busyTimeoutMs = options.busyTimeoutMs;
     this.#clock = clock;
-    this.#admissionFactory = admissionFactory;
     this.#pid = z.number().int().positive().parse(pid);
-    this.#proofs = new RecoveryStopProofStore({
-      processLockRoot: this.#processLockRoot,
-      maxProofAgeMs: options.stoppedProofMaxAgeMs,
-    }, clock);
+
   }
 
-  repair(input: unknown): SpanRootRepairReport {
-    const request = SpanRootRepairRequestSchema.parse(input);
-    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(this.#authorityPath);
-    const admission = this.#admissionFactory({
-      processLockRoot: this.#processLockRoot,
-      pid: this.#pid,
-    }, this.#clock);
+  repair(input: unknown, admission: OfflineMaintenanceOperation): SpanRootRepairReport {
+    this.#runtimeAdmission.assertOfflineMaintenance(admission);
+    admission.consume();
+    let primary: unknown;
     try {
-      const liveSnapshot = observeRuntimeLockSnapshot({
-        processLockRoot: this.#processLockRoot,
-        sourceDatabaseIdentity,
-      }, this.#clock);
-      this.#proofs.consumeAgainstLiveSnapshot(request.stoppedSystemProof, liveSnapshot);
+      assertOfflineMaintenanceForProcessRoot(admission, this.#processLockRoot);
+      const request = SpanRootRepairRequestSchema.parse(input);
       assertStoppedProfileBrowsersClosed(this.#runtimeAdmission,this.#clock,this.#browserClosure);
 
       const before = AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(
@@ -227,8 +201,15 @@ export class OfflineSpanRootRepairService {
           workflow: queued.workflow, eventId, ...evidence });
         });
       } finally { database.close(); }
+    } catch (error) {
+      primary = error;
+      if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: this.#runtimeAdmission, restore: admission });
+      throw error;
     } finally {
-      admission.release();
+      if (!hasUnprovedSourceClosure(primary)) {
+        try { admission.release(); }
+        catch (cleanup) { throw retainAuthoritySourceClosure(primary === undefined ? [cleanup] : [primary, cleanup], { admission: this.#runtimeAdmission, restore: admission }); }
+      }
     }
   }
 }

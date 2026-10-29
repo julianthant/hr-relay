@@ -1,3 +1,4 @@
+import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
@@ -11,10 +12,8 @@ import { acquireSharedRuntimeAdmission } from "../../../../src/backend/storage/a
 import { createContentAddressedArtifactWriter, pendingDiagnosticArtifacts } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createFirstInstallCustodyFixture } from "../../../support/helpers/storage/first-install-custody-fixtures.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -41,13 +40,13 @@ credentials: unchanged`, exitCode: 0 });
     const before = readdirSync(artifactRoot).sort();
     const databasePath = join(stateRoot, "state.db"), databaseBytes = readFileSync(databasePath);
     const inspection = AuthorityDatabase.inspectExistingReadOnly(admission, databasePath);
-    const plan = await upgradeStorage(profileBrowserClosure, admission, { ...input, plan: true }, clock);
+    const plan = await withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission, { ...input, plan: true }, clock, operation));
     assert.equal(plan.state, "planned"); assert.equal(plan.diagnostics, undefined);
     assert.deepEqual(readdirSync(artifactRoot).sort(), before); assert.deepEqual(readFileSync(databasePath), databaseBytes);
-    const live = acquireRuntimeProcessLock({ processLockRoot: input.processLockRoot, name: "live-smoke", pid: process.pid }, clock);
-    try { await assert.rejects(upgradeStorage(profileBrowserClosure, admission, input, clock), /runtime-active/u); assert.deepEqual(readdirSync(artifactRoot).sort(), before); }
+    const live = admission.acquireOfflineMaintenance(); live.consume();
+    try { await assert.rejects(upgradeStorage(profileBrowserClosure, admission, input, clock, live), /offline-maintenance-already-consumed/u); assert.deepEqual(readdirSync(artifactRoot).sort(), before); }
     finally { live.release(); }
-    const report = await upgradeStorage(profileBrowserClosure, admission, input, clock);
+    const report = await withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission, input, clock, operation));
     assert.deepEqual(report.diagnostics, { reclaimedStages: 1, retainedStages: 1, capacityWarning: true });
     assert.equal(existsSync(join(artifactRoot, `${ordinary.ref.sha256}.artifact`)), false);
     assert.equal(existsSync(join(artifactRoot, `${pinned.ref.sha256}.artifact`)), true);
@@ -71,7 +70,7 @@ diagnostic stages: 0 reclaimed, 1 retained; retained evidence remains budget-acc
     try {
       const shared = sharedMachine.admitProfile(sharedMachine.issueRegisteredProfileClaim(profileId));
       sharedOwners.admission = shared;
-      await assert.rejects(upgradeStorage(profileBrowserClosure, shared, input, clock), /exclusive offline admission required/u);
+      await assert.rejects(withOfflineMaintenance(shared, operation => upgradeStorage(profileBrowserClosure, shared, input, clock, operation)), /exclusive installation authority required/u);
     } catch (error) { sharedPrimary = { error }; sharedOwners.primary = error; }
     if (!(sharedPrimary?.error instanceof AuthoritySourceClosureUnprovedError)) {
       try { sharedOwners.admission?.release(); sharedMachine.release(); }

@@ -2,14 +2,10 @@ import { profileBrowserClosure } from "../../../src/backend/runtime/browser/nati
 import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { readFileSync } from "node:fs";
-import { rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach } from "vitest";
-import { describe } from "vitest";
-import { it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { TimelineAppendSchema } from "../../../src/models/events/timeline.js";
 import { AuthoritySchemaVersionError } from "../../../src/backend/storage/sqlite/authority-database.js";
@@ -22,8 +18,8 @@ import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime
 import { createBoundProfileFixture, openBoundDatabaseFixture } from "../../support/helpers/admission-fixture.js";
 import { detachBoundFixtureWorkers } from "../../support/helpers/synthetic-database-admission.js";
 import { releaseSeededWriteOwners } from "../../support/helpers/timeline-write-fixture.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { upgradeStorage } from "../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase, upgradeStorage } from "../../support/helpers/synthetic-storage-admission.js";
+
 
 {
 
@@ -120,7 +116,7 @@ async function fresh() {
   const profile = await createBoundProfileFixture({ pending: "storage" });
   pendingProfiles.push(profile);
   const input = { stateRoot: profile.stateRoot, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false };
-  return { root: profile.stateRoot, path: profile.path, input, run: (plan = false) => upgradeStorage(profileBrowserClosure, { ...input, plan }, clock) };
+  return { admission: profile.admission, root: profile.stateRoot, path: profile.path, input, run: (plan = false) => upgradeStorage(profileBrowserClosure, { ...input, plan }, clock) };
 }
 function rows(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
@@ -139,8 +135,8 @@ afterEach(_afterEachFixture0);
 
   it("leaves a fresh root untouched when exclusive restore admission fails and permits exact rerun", async () => {
     const f = await fresh(); const before = storageTree(f.root);
-    await assert.rejects(upgradeStorage(profileBrowserClosure, f.input, clock, () => { throw new Error("injected-admission-failure"); }),
-      /injected-admission-failure/u);
+    const expired = f.admission.acquireOfflineMaintenance(); expired.release();
+    await assert.rejects(upgradeStorage(profileBrowserClosure, f.input, clock, expired), /offline-maintenance-unissued/u);
     assert.equal(existsSync(f.path), false);
     assert.deepEqual(storageTree(f.root), before);
     assert.equal((await f.run()).state, "initialized");

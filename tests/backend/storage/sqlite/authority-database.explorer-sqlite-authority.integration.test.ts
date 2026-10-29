@@ -8,8 +8,6 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { AuthorityBackupService,verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { explorerAuthorityFixture } from "../../../support/fixtures/explorer-authority.js";
 
@@ -41,23 +39,21 @@ describe("Explorer SQLite command authority", () => {
       assert.equal((await verifyBackupManifestAtPath(admission, manifestPath)).manifest.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       assert.equal(f.kernel.execute(f.command(SECOND, 1, "After backup")).state, "applied");
       f.database.close();
-      const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
+
       const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
-      const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock);
-      proofs.recordRuntimeState(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, f.clock));
-      const stoppedSystemProof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
+
+      const operation = admission.acquireOfflineMaintenance();
       let rebuilds = 0;
       const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path,
-        suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000,
-      }, async (staged, restoreAdmission) => {
+        suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, }, async (staged, restoreAdmission) => {
         const stageAdmission = admission.stoppedRestoreProjection(staged, restoreAdmission);
         try {
           const reopened = AuthorityDatabase.openStoppedRestoreProjection(stageAdmission, { path: staged, busyTimeoutMs: 250, migrationOwner: "restore-proof" }, f.clock);
           try { assert.deepEqual(reopened.authority.explorerOverrides.readAll(), saved); rebuilds += 1; }
           finally { reopened.close(); }
         } finally { stageAdmission.release(); }
-      }, f.clock, undefined, undefined, boundProfileCredentials(admission));
-      assert.equal((await restore.restore({ manifestPath, stoppedSystemProof })).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+      }, f.clock, undefined, boundProfileCredentials(admission));
+      assert.equal((await restore.restore({ manifestPath }, operation)).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       assert.equal(rebuilds, 1);
       assert.throws(() => admission.assertProfileRuntime(), /profile-restore-context-expired/u);
       profile.renewAfterRestore();

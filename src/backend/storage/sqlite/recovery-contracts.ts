@@ -1,18 +1,7 @@
 import { ProtectedSettingsPresenceEntriesSchema } from "../../../models/config/protected-settings.js";
 import { z } from "zod";
 import { AuthorityTableNameSchema, ProjectionTableNameSchema, AuthorityUpgradePhaseSchema } from "../../../models/config/authority.js";
-import {
-  ActorIdSchema,
-  CommandIdSchema,
-  ConfigSnapshotIdSchema,
-  FingerprintSchema,
-  ItemIdSchema,
-  IsoInstantSchema,
-  PositiveIntSchema,
-  RunIdSchema,
-  TraceIdSchema,
-  WorkflowIdSchema,
-} from "../../../rules/identity/ids.js";
+import { CommandIdSchema, ConfigSnapshotIdSchema, FingerprintSchema, ItemIdSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, TraceIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import {
   InstanceSelectionSchema,
   RunPrioritySchema,
@@ -416,26 +405,8 @@ export const RecoveryRuntimeLockSnapshotSchema = z.strictObject({
   }),
 });
 
-export const StoppedSystemProofSchema = z.strictObject({
-  state: z.literal("stopped"),
-  proofId: z.string().uuid(),
-  observedAt: IsoInstantSchema,
-  observedBy: ActorIdSchema,
-  sourceDatabaseIdentity: FingerprintSchema,
-  runtimeNamespace: z.literal("hrauto-rebuild"),
-  runtimeGeneration: PositiveIntSchema,
-  runtimeStateFingerprint: FingerprintSchema,
-  processLockGenerations: z.strictObject({
-    server: PositiveIntSchema,
-    workers: PositiveIntSchema,
-    geocode: PositiveIntSchema,
-    "live-smoke": PositiveIntSchema,
-  }),
-});
-
 export const OfflineRestoreRequestSchema = z.strictObject({
   manifestPath: z.string().min(1),
-  stoppedSystemProof: StoppedSystemProofSchema,
 });
 
 export const OfflineRestoreReportSchema = z.strictObject({
@@ -466,5 +437,4 @@ export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;
 export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;
 export type RecoveryRuntimeLockSnapshot = z.infer<typeof RecoveryRuntimeLockSnapshotSchema>;
-export type StoppedSystemProof = z.infer<typeof StoppedSystemProofSchema>;
 export type OfflineRestoreReport = z.infer<typeof OfflineRestoreReportSchema>;

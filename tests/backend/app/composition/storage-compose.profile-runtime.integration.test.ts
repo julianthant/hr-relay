@@ -1,11 +1,8 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import * as browserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
-import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
-
-
+import { syntheticOnboardingDuo, finishProfileOnboarding, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import * as accounts from "../../../../src/backend/accounts/chatgpt-account-service.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -19,14 +16,13 @@ import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
 import { RuntimeCustodyUncertainError, composeProfileRuntime, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { ChatGptCredentialRecordSchema, createChatGptCredentialRepository, createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+
 
 function credentialSnapshot(path: string) {
   const { dev, ino, size, mtimeNs, ctimeNs } = statSync(path, { bigint: true });
@@ -262,7 +258,7 @@ it("admits only the exact held stopped projection capability before opening stag
   await context.account.close(); context.database.close();
   const stagedPath = join(f.stateRoot, `.restore-${randomUUID()}.sqlite.tmp`);
   copyFileSync(f.path, stagedPath);
-  const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot), pid: process.pid }, clock);
+  const restore = f.admission.acquireOfflineMaintenance();
   let capability: ReturnType<typeof f.admission.stoppedRestoreProjection> | undefined;
   try {
     const before = readFileSync(stagedPath);

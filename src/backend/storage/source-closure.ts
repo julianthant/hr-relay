@@ -23,3 +23,28 @@ export function retainAuthoritySourceClosure(errors: readonly unknown[], owners:
   retainedSourceClosures.set(failure, owners);
   return failure;
 }
+
+export function hasUnprovedSourceClosure(error: unknown): boolean {
+  const pending: unknown[] = [error], seen = new Set<unknown>();
+  while (pending.length !== 0) {
+    const value = pending.pop();
+    if (seen.has(value)) continue;
+    seen.add(value);
+    if (value instanceof AuthoritySourceClosureUnprovedError) return true;
+    if (value instanceof AggregateError) pending.push(...value.errors);
+    if (value instanceof Error && value.cause !== undefined) pending.push(value.cause);
+  }
+  return false;
+}
+
+export function retainUnprovedSourceOwners(error: unknown, owners: RetainedSourceOwners): void {
+  const pending: unknown[] = [error], seen = new Set<unknown>();
+  while (pending.length !== 0) {
+    const value = pending.pop();
+    if (seen.has(value)) continue;
+    seen.add(value);
+    if (value instanceof AuthoritySourceClosureUnprovedError) retainedSourceClosures.set(value, { ...retainedSourceClosures.get(value), ...owners });
+    if (value instanceof AggregateError) pending.push(...value.errors);
+    if (value instanceof Error && value.cause !== undefined) pending.push(value.cause);
+  }
+}
