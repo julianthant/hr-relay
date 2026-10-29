@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
+import { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../../src/models/run/worker-slot.js";
+import { WorkerLeaseRecordSchema } from "../../../../src/models/run/worker.js";
 import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { spawn, spawnSync } from 'node:child_process';
@@ -47,7 +51,9 @@ export function createStorageRestoreTestWorld() {
   const admissions = new Map<string, Pick<Awaited<ReturnType<typeof createBoundProfileFixture>>, 'admission' | 'close' | 'lifetime'>>();
   const attemptChildren = new Map<ReturnType<typeof spawn>, Promise<readonly PromiseSettledResult<unknown>[]>>();
   const retainedAttemptScratch = new Set<string>();
-  const attemptDatabases = new Map<string, { database: AuthorityDatabase; closeDatabase: () => void }>();
+  const attemptDatabases = new Map<string, { database: AuthorityDatabase; closeDatabase: () => void;
+    shareWithSuccessor(child: ReturnType<typeof spawn>): Promise<void> }>();
+  let successorPermitsIssued = 0;
   const attemptClosureFailures = new Set<AuthoritySourceClosureUnprovedError>();
 
   async function composeStorageCommand(isolation:typeof rebuildRuntimeIsolation,args:readonly string[],clock:typeof CLOCK,repoRoot:string){const fixture=admissions.get(repoRoot);assert.ok(fixture);return composeNativeStorageCommand(isolation,args,clock,repoRoot,fixture.admission,boundProfileCredentials(fixture.admission));}
@@ -76,6 +82,7 @@ export function createStorageRestoreTestWorld() {
       closeRootListener(): Promise<void> }>): Promise<void>;
   }>, accounting?: Readonly<{ backupAfterCommit: boolean }>): Promise<{
     paths: DrillPaths; database: AuthorityDatabase; closeDatabase: () => void; manifestPath: string; beforeManifestPath: string;
+    originalChild: { pid: number; signal: "SIGKILL" };
   }> {
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'relay-restore-attempt-')));
     retainedAttemptScratch.add(scratch);
@@ -173,7 +180,8 @@ export function createStorageRestoreTestWorld() {
       assert.equal(admission.stateRoot, receipt.stateRoot);
       assert.equal(admission.profileBinding.installationId, receipt.installationId);
       registerBoundProfile(admission, machine); registered = true;
-      const heldMachine = machine, heldLifetime = lifetimeLock;
+      let heldMachine = machine;
+      const heldLifetime = lifetimeLock;
       let heldAdmission = admission;
       const fixture = { lifetime: heldLifetime, get admission() { return heldAdmission; }, async close() {
         unregisterBoundProfile(heldAdmission); heldAdmission.release(); heldMachine.release(); await heldLifetime.close();
@@ -191,14 +199,28 @@ export function createStorageRestoreTestWorld() {
           registerBoundProfile(heldAdmission, heldMachine);
         } };
       database = open(paths);
-      attemptDatabases.set(receipt.workspace, { database, closeDatabase });
+      attemptDatabases.set(receipt.workspace, { database, closeDatabase, async shareWithSuccessor(successor) {
+        try {
+          closeDatabase();
+          unregisterBoundProfile(heldAdmission); heldAdmission.release(); heldMachine.release();
+          heldMachine = acquireEntrypointAdmission(receipt.workspace, "shared", heldLifetime);
+          heldAdmission = heldMachine.admitProfile(createProfileRegistry(heldMachine).storageClaim(receipt.profileId));
+          registerBoundProfile(heldAdmission, heldMachine);
+          await heldLifetime.share(successor);
+        } catch (error) {
+          const retained = retainAuthoritySourceClosure([error], { admission: { heldMachine, heldAdmission },
+            directory: { successor, scratch, heldLifetime } });
+          attemptClosureFailures.add(retained); throw retained;
+        }
+      } });
       assert.equal(child.signalCode, 'SIGKILL');
       assert.equal(database.authority.workerLeases.get(receipt.workerId)?.processId, receipt.pid);
       const run = database.authority.runs.get(receipt.runId);
       assert.ok(run);
       assert.equal(run.claimGeneration, receipt.claimGeneration);
       assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, accounting === undefined ? 'attempting' : 'committed');
-      return { paths, database, closeDatabase, manifestPath: receipt.manifestPath, beforeManifestPath: receipt.beforeManifestPath };
+      return { paths, database, closeDatabase, manifestPath: receipt.manifestPath, beforeManifestPath: receipt.beforeManifestPath,
+        originalChild: { pid: receipt.pid, signal: "SIGKILL" } };
     } catch (error) {
       writeFileSync(join(scratch, 'child.stdout'), Buffer.concat(stdout), { mode: 0o600 });
       writeFileSync(join(scratch, 'child.stderr'), Buffer.concat(stderr), { mode: 0o600 });
@@ -221,6 +243,68 @@ export function createStorageRestoreTestWorld() {
       }
       if (workspace !== undefined) { admissions.delete(workspace); attemptDatabases.delete(workspace); }
       throw error;
+    }
+  }
+
+  async function renewConfirmedInSuccessor(paths: DrillPaths, input: Readonly<{
+    runId: string; member: WorkerPoolMember; oldLeaseGeneration: number; oldProcessId: number; oldLeaseStartedAt: string;
+    oldClaimGeneration: number; oldAttempt: number;
+    expectedPoolVersion: number; now: string;
+  }>) {
+    const owner = attemptDatabases.get(paths.repoRoot); assert.ok(owner);
+    const nonce = randomUUID(), scratch = dirname(paths.repoRoot);
+    const successor = spawn(process.execPath, ["--import", "tsx", fileURLToPath(new URL("../../../support/processes/storage-restore-attempt-worker.ts", import.meta.url)),
+      "successor-renew-confirmed", String(paths.lifetime.port), paths.repoRoot, paths.admission.profileBinding.profileId], {
+      cwd: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.."), detached: true,
+      env: credentialKeychainTestEnvironment({ ...process.env, TMPDIR: scratch }), stdio: ["ignore", "pipe", "pipe", "ipc"],
+    });
+    const ending = Promise.allSettled([once(successor, "exit"), once(successor, "close")]);
+    attemptChildren.set(successor, ending);
+    const stdout: Buffer[] = [], stderr: Buffer[] = [];
+    successor.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk));
+    successor.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
+    const receive = () => Promise.race([once(successor, "message"), ending.then(() => {
+      throw new Error("confirmed-successor-exited-before-receipt");
+    })]);
+    try {
+      const ready = receive();
+      await owner.shareWithSuccessor(successor);
+      assert.deepEqual((await ready)[0], { state: "successor-ready" });
+      const renewed = receive();
+      successorPermitsIssued++;
+      successor.send({ nonce, ...input });
+      const receipt = z.strictObject({ state: z.literal("successor-renewed"), nonce: z.uuid(),
+        run: RunRecordSchema, member: WorkerPoolMemberSchema, lease: WorkerLeaseRecordSchema,
+        previousLifetime: z.strictObject({ workerId: z.string().min(1), processId: z.number().int().positive(),
+          leaseGeneration: z.number().int().positive(), startedAt: z.string().min(1) }) }).parse((await renewed)[0]);
+      assert.equal(receipt.nonce, nonce); assert.deepEqual(receipt.member, input.member);
+      assert.deepEqual(receipt.previousLifetime, { workerId: input.member.workerId, processId: input.oldProcessId,
+        leaseGeneration: input.oldLeaseGeneration, startedAt: input.oldLeaseStartedAt });
+      assert.equal(receipt.run.envelope.runId, input.runId); assert.equal(receipt.run.envelope.attempt, input.oldAttempt);
+      assert.equal(receipt.run.claimGeneration, input.oldClaimGeneration + 1);
+      const claim = runClaim(receipt.run); assert.ok(claim); assert.equal(claim.workerId, input.member.workerId);
+      assert.equal(receipt.lease.workerId, input.member.workerId); assert.equal(receipt.lease.processId, successor.pid);
+      assert.equal(receipt.lease.leaseGeneration, input.oldLeaseGeneration + 1);
+      assert.ok("workerLifetime" in receipt.run.lifecycle);
+      assert.deepEqual(receipt.run.lifecycle.workerLifetime, { membershipRevision: input.member.membershipRevision,
+        leaseGeneration: receipt.lease.leaseGeneration });
+      for (const closed of await ending) {
+        if (closed.status !== "fulfilled") throw closed.reason;
+        assert.deepEqual(closed.value, [0, null]);
+      }
+      assert.ok(successor.pid !== undefined);
+      for (const pid of [successor.pid, -successor.pid]) assert.throws(() => process.kill(pid, 0),
+        (error: unknown) => error instanceof Error && "code" in error && error.code === "ESRCH");
+      const descriptors = spawnSync("lsof", ["-nP", "-t", "+D", paths.repoRoot], { encoding: "utf8" });
+      assert.equal(descriptors.error, undefined); assert.equal(descriptors.status, 1);
+      assert.equal(descriptors.stdout, ""); assert.equal(descriptors.stderr, "");
+      attemptChildren.delete(successor);
+      return { ...receipt, ownedExit: { pid: successor.pid, code: 0, signal: null } };
+    } catch (error) {
+      writeFileSync(join(scratch, "successor.stdout"), Buffer.concat(stdout), { mode: 0o600 });
+      writeFileSync(join(scratch, "successor.stderr"), Buffer.concat(stderr), { mode: 0o600 });
+      const retained = retainAuthoritySourceClosure([error], { admission: paths.admission, directory: { owner, successor, scratch, lifetime: paths.lifetime } });
+      attemptClosureFailures.add(retained); throw retained;
     }
   }
 
@@ -314,5 +398,6 @@ export function createStorageRestoreTestWorld() {
     roots.splice(0);
     assert.equal(retainedAttemptScratch.size, 0, 'storage-restore-attempt-scratch-retained');
   };
-  return { CLOCK, roots, admissions, composeStorageCommand, drillPaths, attemptingDrillPaths, open, seedRealShapedAuthority, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup };
+  return { CLOCK, roots, admissions, composeStorageCommand, drillPaths, attemptingDrillPaths, renewConfirmedInSuccessor,
+    get successorPermitsIssued() { return successorPermitsIssued; }, open, seedRealShapedAuthority, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup };
 }
