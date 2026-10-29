@@ -37,6 +37,7 @@ if (process.argv[2] === "worker") {
   const release = once(process, "message");
   process.send({ state: "inherited-held" });
   assert.deepEqual((await release)[0], { state: "release-inherited" });
+  assert.ok(process.disconnect !== undefined);
   admission.release(); machine.release(); await lifetime.close(); process.disconnect();
 } else {
   const lifetimeLock = await RuntimeLifetimeLock.acquire(Number(process.argv[2]));
