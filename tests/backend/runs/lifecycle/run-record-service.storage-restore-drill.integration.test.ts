@@ -58,7 +58,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
       checkpoint:db.prepare("SELECT 1 FROM run_checkpoints WHERE run_id=?").get(run.envelope.runId)!==undefined,
       events:db.prepare("SELECT * FROM timeline_events ORDER BY cursor").all().map(timelineEventFromRow).map(record=>record.payload.kind==="span"?record.payload.event.t:record.payload.kind)};
   });
-  const initial = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-seed" }, CLOCK);
+  const initial = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-seed" }, CLOCK, undefined, undefined, undefined, p.credentials);
   try {
     seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT,p.authorityPath);
     const queued = initial.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId); assert.ok(queued);
@@ -86,7 +86,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
   assert.equal(backup.exitCode, 0, backup.output);
   let manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
   CLOCK.setWall(new Date(ATOMIC_WRITE_COMMIT.confirmedAt));
-  const newer = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-commit" }, CLOCK);
+  const newer = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-commit" }, CLOCK, undefined, undefined, undefined, p.credentials);
   try {
     const service = new RunRecordService({ database: newer, clock: CLOCK, ids: { uuid: randomUUID },
       publishQueued: () => { throw new Error("test must not enqueue"); } });
@@ -116,7 +116,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
   assert.deepEqual(current, backupAfterCommit ? committed : before); assert.deepEqual(preserved, committed);
   assert.equal(doctor.exitCode, backupAfterCommit ? 0 : 1, doctor.output);
   if (backupAfterCommit) {
-    const healthy = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-control" }, CLOCK);
+    const healthy = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-control" }, CLOCK, undefined, undefined, undefined, p.credentials);
     try {
       const service = new RunRecordService({ database: healthy, clock: CLOCK, ids: { uuid: randomUUID },
         publishQueued: () => { throw new Error("test must not enqueue"); } });
@@ -129,7 +129,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
     return;
   }
   CLOCK.advanceWall(60 * 60 * 1000);
-  const mutationDb = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-crash-recovery" }, CLOCK);
+  const mutationDb = AuthorityDatabase.open(p.admission,{ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-crash-recovery" }, CLOCK, undefined, undefined, undefined, p.credentials);
   try {
     const recovered = recoverInterruptedTestRun(mutationDb, CLOCK, before.runId, p.lifetime);
     assert.equal(recovered.lifecycle.state, "parked-write");
