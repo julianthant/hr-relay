@@ -11,7 +11,10 @@ import { PARITY_THEMES } from "./helpers/capture.js";
 
 const cases = [
   { state: "loading" }, { state: "signed-out" }, { state: "expired" }, { state: "unavailable" },
+  { state: "ocr-loading" }, { state: "ocr-completed" }, { state: "ocr-failed" }, { state: "ocr-refused" }, { state: "ocr-uncertain" },
   { state: "enabled" }, { state: "disabled" }, { state: "limit-reached" },
+  { state: "enabled", action: "pending", control: "Test OCR" },
+  { state: "expired", action: "pending", control: "Disconnect" },
   { state: "signed-out", action: "pending", control: "Connect ChatGPT" },
   { state: "enabled", action: "pending", control: "Disconnect" },
   { state: "signed-out", action: "failed", control: "Connect ChatGPT" },
@@ -53,6 +56,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       else if (entry.state === "expired") await expect(account).toContainText("Your ChatGPT session expired.");
       else if (entry.state === "disabled") await expect(account).toContainText("ChatGPT plan access not enabled");
       else if (entry.state === "limit-reached") await expect(account).toContainText("Usage limit reached");
+      if (entry.state.startsWith("ocr-")) {
+        const titles: Record<string, string> = { "ocr-loading": "Testing OCR", "ocr-completed": "OCR test completed", "ocr-failed": "OCR test failed", "ocr-refused": "OCR test refused", "ocr-uncertain": "OCR test outcome uncertain" };
+        await expect(page.getByText(titles[entry.state], { exact: true })).toBeVisible();
+        if (entry.state === "ocr-loading" || entry.state === "ocr-uncertain") await expect(account.getByRole("button", { name: "Test OCR", exact: true })).toBeDisabled();
+      }
       if ("control" in entry) {
         await account.getByRole("button", { name: entry.control, exact: true }).click();
         await expect(page.locator("body")).toHaveAttribute("data-action-calls", "1");

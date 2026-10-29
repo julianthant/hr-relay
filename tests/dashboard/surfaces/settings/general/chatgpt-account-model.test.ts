@@ -26,7 +26,7 @@ async function click(name: string) { await act(async () => { button(name).click(
 
 function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut">> = {}): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
+    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), testOcr: () => Promise.resolve(), ...operations };
 }
 
 describe("General ChatGPT account", () => {

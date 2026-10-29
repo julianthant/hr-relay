@@ -5,14 +5,20 @@ import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../../models/failure
 import { systemClock } from "../../../../rules/time/clock.js";
 import { createContext, useSyncExternalStore } from "react";
 
-export type ChatGptAccountSnapshot =
+export type ChatGptOcrTestSnapshot =
+  | { readonly state: "loading" }
+  | { readonly state: "completed"; readonly model: string }
+  | { readonly state: "failed" | "refused" | "uncertain"; readonly code: ErrorCatalogCode };
+
+export type ChatGptAccountSnapshot = (
   | { readonly state: "loading" }
   | { readonly state: "signed-out" }
   | { readonly state: "expired" | "sign-in-expired" }
   | { readonly state: "signing-in"; readonly attemptId: string; readonly expiresAt: string; readonly authorizationUrl?: string }
   | { readonly state: "unavailable"; readonly message: string; readonly account?: ChatGptAccountView }
   | { readonly state: "connected"; readonly name: string; readonly email: string;
-      readonly expiresAt?: string; readonly planUsage: "enabled" | "disabled" | "limit-reached" };
+      readonly expiresAt?: string; readonly planUsage: "enabled" | "disabled" | "limit-reached" }
+) & { readonly ocrTest?: ChatGptOcrTestSnapshot };
 
 export interface ChatGptAccountPort {
   readonly getResource?: () => ChatGptAccountResource;
@@ -23,6 +29,7 @@ export interface ChatGptAccountPort {
   readonly signIn: (input: { readonly usePlan: boolean }) => Promise<void>;
   readonly signOut: () => Promise<void>;
   readonly cancelSignIn: () => Promise<void>;
+  readonly testOcr: () => Promise<void>;
 }
 
 export const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
@@ -43,6 +50,7 @@ export function createPreviewChatGptAccountPort(): ChatGptAccountPort {
       publish({ state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", planUsage: usePlan ? "enabled" : "disabled" });
       return Promise.resolve();
     },
+    testOcr: () => { publish({ ...snapshot, ocrTest: { state: "completed", model: "Preview OCR" } }); return Promise.resolve(); },
     signOut: () => { publish({ state: "signed-out" }); return Promise.resolve(); },
     cancelSignIn: () => { publish({ state: "signed-out" }); return Promise.resolve(); },
   };
@@ -167,6 +175,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     return reading;
   }
   return {
+    testOcr: async () => { throw new Error(ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text); },
     mode: "live", getSnapshot: () => snapshot, getResource: () => resource,
     subscribe: listener => {
       listeners.add(listener);

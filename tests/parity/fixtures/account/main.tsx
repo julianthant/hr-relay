@@ -18,6 +18,11 @@ const snapshots: Readonly<Record<string, ChatGptAccountSnapshot>> = {
   expired: { state: "expired" },
   unavailable: { state: "unavailable", message: "Account service is unavailable." },
   enabled: { state: "connected", ...identity, planUsage: "enabled" },
+  "ocr-loading": { state: "connected", ...identity, planUsage: "enabled", ocrTest: { state: "loading" } },
+  "ocr-completed": { state: "connected", ...identity, planUsage: "enabled", ocrTest: { state: "completed", model: "Synthetic OCR" } },
+  "ocr-failed": { state: "connected", ...identity, planUsage: "enabled", ocrTest: { state: "failed", code: "CHATGPT_OCR_FAILED" } },
+  "ocr-refused": { state: "connected", ...identity, planUsage: "enabled", ocrTest: { state: "refused", code: "CHATGPT_PLAN_DISABLED" } },
+  "ocr-uncertain": { state: "connected", ...identity, planUsage: "enabled", ocrTest: { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" } },
   disabled: { state: "connected", ...identity, planUsage: "disabled" },
   "limit-reached": { state: "connected", ...identity, planUsage: "limit-reached" },
 };
@@ -40,6 +45,7 @@ const port: ChatGptAccountPort = {
   signIn: action,
   signOut: action,
   cancelSignIn: action,
+  testOcr: action,
 };
 const container = document.getElementById("account-fixture");
 if (container === null) throw new Error("account-fixture-container-missing");

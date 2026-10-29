@@ -17,9 +17,9 @@ let host: HTMLElement | undefined;
 beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
 
-function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut">> = {}): ChatGptAccountPort {
+function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut" | "testOcr">> = {}): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
+    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), testOcr: () => Promise.resolve(), ...operations };
 }
 
 describe("General ChatGPT account", () => {
@@ -103,4 +103,43 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     assert.match(host.textContent ?? "", /Exact held operator.*exact@example.com/u);
     assert.equal(host.textContent?.includes(message), false); assert.equal(reads, 1); assert.equal(starts, 1);
   } finally { port.dispose(); }
+});
+
+
+it("lets a known expired session disconnect without inventing credentials for unknown accounts", async () => {
+  let signOuts = 0;
+  const port = controlledPort({ state: "expired" }, { signOut: async () => { signOuts++; } });
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
+  const disconnect = [...host.querySelectorAll("button")].find(button => button.textContent === "Disconnect");
+  assert.ok(disconnect); await act(async () => disconnect.click()); assert.equal(signOuts, 1);
+  const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "unavailable", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text }) }));
+  assert.doesNotMatch(html, /Disconnect/u);
+});
+
+it("dispatches Test OCR only on an explicit click and locks duplicate actions until settlement", async () => {
+  let calls = 0;
+  const pending = Promise.withResolvers<void>();
+  const port = controlledPort({ state: "connected", name: "Operator", email: "operator@example.com", planUsage: "enabled" }, { testOcr: () => { calls++; return pending.promise; } });
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
+  assert.equal(calls, 0);
+  const action = [...host.querySelectorAll("button")].find(button => button.textContent === "Test OCR");
+  assert.ok(action);
+  await act(async () => { action.click(); action.click(); });
+  assert.equal(calls, 1); assert.equal(action.disabled, true);
+  await act(async () => pending.resolve()); assert.equal(action.disabled, false);
+});
+
+for (const state of ["loading", "completed", "failed", "refused", "uncertain"] as const) it(`renders the distinct OCR ${state} result using fixed catalog failures`, () => {
+  const ocrTest = state === "completed" ? { state, model: "Synthetic model" } : state === "loading" ? { state } : { state, code: "CHATGPT_OCR_INVALID" as const };
+  const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "connected", name: "Operator", email: "operator@example.com", planUsage: "enabled", ocrTest }) }));
+  assert.match(html, state === "loading" ? /Testing OCR/u : state === "completed" ? /OCR test completed.*Synthetic model/u : state === "uncertain" ? /OCR test outcome uncertain/u : new RegExp(`OCR test ${state}`, "u"));
+  if (state !== "loading" && state !== "completed") assert.ok(html.includes(ERROR_CATALOG.CHATGPT_OCR_INVALID.text));
+  if (state === "loading" || state === "uncertain") assert.match(html, /disabled=""[^>]*>.*Test OCR/u);
+});
+
+it("keeps Test OCR disabled when the retained account read is unavailable", () => {
+  const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "unavailable", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text, account: { state: "connected", name: "Held", email: "held@example.com", expiresAt: IsoInstantSchema.parse("2099-01-01T00:00:00.000Z"), planUsage: "enabled" } }) }));
+  assert.match(html, /disabled=""[^>]*>.*Test OCR/u);
 });
