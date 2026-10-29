@@ -13,7 +13,7 @@ import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, prepareStoppedDeviceRecertification, type StoppedDeviceRecertification, type DeviceRecertificationAuthorization, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease,
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
   type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
-  type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
+  type RelocationVerifier, type RuntimeLocator, type RuntimePair, type OfflineMaintenanceOperation } from "./installation.js";
 import type { ProfileRestoreContext, ErasureRequestIdentity, VerifiedSourceControlEntries, AuthorityRestoreInput, AuthorityRestoreVerifier } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -1012,6 +1012,18 @@ export class RuntimeAdmission {
       catch (error) { throw retainAuthoritySourceClosure([error], { restore }); }
     }
   }
+  beginOfflineMaintenance(): OfflineMaintenanceOperation {
+    this.assertLive();
+    if (this.#profileParent !== undefined) return this.#profileParent.beginOfflineMaintenance();
+    return this.#exclusiveInstallationLease().beginOfflineMaintenance();
+  }
+
+  assertOfflineMaintenance(operation: OfflineMaintenanceOperation): void {
+    this.assertLive();
+    if (this.#profileParent !== undefined) { this.#profileParent.assertOfflineMaintenance(operation); return; }
+    this.#exclusiveInstallationLease().assertOfflineMaintenance(operation);
+  }
+
   maintenanceRestore(): RestoreAdmissionHandle | undefined {
     this.assertLive();
     if (this.#flatBackup !== undefined) return this.#profileParent?.maintenanceRestore();

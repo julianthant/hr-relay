@@ -36,6 +36,7 @@ export class RuntimeLifetimeLock {
   readonly #port: number;
   readonly #children = new Set<ChildProcess>();
   #exclusiveAdmission = false;
+  #exclusiveOperation: Promise<void> | undefined;
   #workspace: string | undefined;
   #startup: "initializing" | "ready" | "failed" | undefined;
   private constructor(server: Server, port: number) { this.#server = server; this.#port = port; }
@@ -71,12 +72,14 @@ export class RuntimeLifetimeLock {
   }
 
   assertExclusiveWorkspaceTarget(workspace: string): void {
+    if (this.#closing !== undefined) throw new Error("runtime-lifetime-closing");
     this.bindWorkspace(workspace);
     if (this.#startup === "initializing" || this.#startup === "failed") throw new Error("runtime-lifetime-workspace-unproved");
     if (this.#children.size !== 0) throw new Error("runtime-lifetime-owned-children-unclosed");
   }
 
   initializeWorkspace(workspace: string, startup: () => void): void {
+    if (this.#closing !== undefined) throw new Error("runtime-lifetime-closing");
     this.bindWorkspace(workspace);
     if (this.#startup !== undefined) { this.assertWorkspace(workspace); return; }
     this.#startup = "initializing";
@@ -100,13 +103,26 @@ export class RuntimeLifetimeLock {
 
   retainExclusiveAdmission(workspace: string): () => void {
     this.assertExclusiveWorkspace(workspace);
-    if (this.#exclusiveAdmission) throw new Error("installation lease busy");
+    if (this.#exclusiveAdmission || this.#closing !== undefined) throw new Error("installation lease busy");
     this.#exclusiveAdmission = true;
     let active = true;
     return () => {
       if (!active) return;
       active = false;
       this.#exclusiveAdmission = false;
+    };
+  }
+
+  retainExclusiveOperation(workspace: string): () => void {
+    this.assertExclusiveWorkspace(workspace);
+    if (!this.#exclusiveAdmission || this.#exclusiveOperation !== undefined || this.#closing !== undefined) throw new Error("offline-maintenance-busy");
+    let complete: () => void = () => { throw new Error("offline-maintenance-completion-unissued"); };
+    const pending = new Promise<void>(resolve => { complete = resolve; });
+    this.#exclusiveOperation = pending;
+    return () => {
+      if (this.#exclusiveOperation !== pending) throw new Error("offline-maintenance-completion-unissued");
+      this.#exclusiveOperation = undefined;
+      complete();
     };
   }
 
@@ -117,6 +133,7 @@ export class RuntimeLifetimeLock {
 
   share(child: ChildProcess): Promise<void> {
     this.assertHeld();
+    if (this.#closing !== undefined) throw new Error("runtime-lifetime-closing");
     if (this.#startup !== "ready" || this.#workspace === undefined) throw new Error("runtime-lifetime-workspace-unproved");
     if (this.#exclusiveAdmission) throw new Error("runtime-lifetime-exclusive-lease-held");
     if (!child.connected || child.exitCode !== null || child.signalCode !== null || this.#children.has(child)) throw new Error("runtime-lifetime-child-transfer-invalid");
@@ -130,7 +147,12 @@ export class RuntimeLifetimeLock {
     });
   }
 
-  close(): Promise<void> { return this.#closing ??= closeListener(this.#server); }
+  close(): Promise<void> {
+    return this.#closing ??= (async () => {
+      if (this.#exclusiveOperation !== undefined) await this.#exclusiveOperation;
+      await closeListener(this.#server);
+    })();
+  }
 }
 
 export class WorkerRuntimeLifetimeLock {

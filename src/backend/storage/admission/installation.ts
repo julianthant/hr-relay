@@ -212,8 +212,11 @@ export type RelocationPreparationVerifier = (source: RuntimeLocator, destination
   operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationPreparation;
 export type RelocationActivationVerifier = (source: RuntimeLocator, destination: RuntimePair,
   operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationActivationIntent;
+export type OfflineMaintenanceOperation = Readonly<{ operationId: string; assertHeld(): void; release(): void }>;
 export type InstallationLease = Readonly<{ lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock; mode: "shared" | "exclusive"; locator: RuntimeLocator;
   assertHeld(): void; assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void;
+  beginOfflineMaintenance(): OfflineMaintenanceOperation;
+  assertOfflineMaintenance(operation: OfflineMaintenanceOperation): void;
   readRelocationReceipts(): readonly RelocationCompletionReceipt[];
   readProfileRegistry(): ProfileRegistryDocument;
   requiresFlatStoreMigration(): boolean;
@@ -268,6 +271,12 @@ const FENCE = ".runtime-source-fence.json";
 export const RUNTIME_ROOT_AUTHORITY_ENTRY_NAMES = Object.freeze([MARKER,FENCE]);
 const RECEIPTS = "relocation-receipts";
 const issuedLeases = new WeakSet<object>();
+const offlineOperations = new WeakMap<OfflineMaintenanceOperation, string>();
+
+export function assertOfflineMaintenanceOperation(operation: OfflineMaintenanceOperation, workspace: string): void {
+  if (offlineOperations.get(operation) !== workspace) fail("offline-maintenance-unissued");
+  operation.assertHeld();
+}
 
 function fail(reason: string): never { throw new Error(`runtime-control: ${reason}`); }
 function pairOf(locator: RuntimeLocator): RuntimePair { return { stateRoot: locator.stateRoot, artifactRoot: locator.artifactRoot }; }
@@ -1910,6 +1919,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   const locator = Object.freeze({ ...resolvedLocator });
   const publicLocator = Object.freeze({ ...locator });
   let released = false;
+  let offlineOperation: OfflineMaintenanceOperation | undefined;
   function assertHeld(): void {
     lifetime.assertWorkspace(workspace);
     if (mode === "exclusive") {
@@ -2133,6 +2143,36 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     mode,
     locator: publicLocator,
     assertHeld,
+    beginOfflineMaintenance(): OfflineMaintenanceOperation {
+      assertHeld();
+      if (mode !== "exclusive" || !(lifetime instanceof RuntimeLifetimeLock)) fail("offline-maintenance-exclusive-root-required");
+      if (offlineOperation !== undefined) fail("offline-maintenance-busy");
+      const releasePin = lifetime.retainExclusiveOperation(workspace);
+      let expired = false;
+      const operation: OfflineMaintenanceOperation = Object.freeze({
+        operationId: randomUUID(),
+        assertHeld() {
+          assertHeld();
+          if (expired || offlineOperation !== operation) fail("offline-maintenance-unissued");
+        },
+        release() {
+          if (expired) return;
+          operation.assertHeld();
+          releasePin();
+          offlineOperations.delete(operation);
+          offlineOperation = undefined;
+          expired = true;
+        },
+      });
+      offlineOperation = operation;
+      offlineOperations.set(operation, workspace);
+      return operation;
+    },
+    assertOfflineMaintenance(operation: OfflineMaintenanceOperation) {
+      assertHeld();
+      if (offlineOperation !== operation) fail("offline-maintenance-unissued");
+      assertOfflineMaintenanceOperation(operation, workspace);
+    },
     assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string) {
       assertHeld();
       if (resolve(workspaceRoot) !== workspace || realpathSync(workspaceRoot) !== workspace
@@ -2519,6 +2559,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     release() {
       if (released) return;
       assertHeld();
+      if (offlineOperation !== undefined) fail("offline-maintenance-busy");
       admissions.delete(localAdmission);
       if (admissions.size === 0) installationAdmissions.delete(control);
       releaseExclusive?.();
