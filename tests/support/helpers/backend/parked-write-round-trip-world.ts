@@ -98,7 +98,7 @@ export function createParkedWriteRoundTripTestWorld() {
     });
 
     const park = async (failCommit = true) => {
-      const queued = writeFixtureQueuedRun();
+      const queued = RunRecordSchema.parse(writeFixtureQueuedRun());
       const run = RunRecordSchema.parse({ ...queued, envelope: { ...queued.envelope,
         configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
       assert.equal(database.authority.runs.enqueue(run).state, "inserted");
