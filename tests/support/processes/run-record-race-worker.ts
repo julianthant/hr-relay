@@ -1,11 +1,14 @@
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
+import { randomUUID } from "node:crypto";
+import { registerBoundProfile, unregisterBoundProfile } from "../helpers/synthetic-database-admission.js";
+import { testWorkerLifetime, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { CanonicalFailureTerminalizeRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 import { once } from "node:events";
 import { readSync } from "node:fs";
 import { WorkerRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { z } from "zod";
-import { RunRecordService, CreateRunRequestSchema } from "../../../src/backend/runs/lifecycle/run-record-service.js";
+import { RunRecordService, CreateRunRequestSchema, requireLifecycleApplied } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../src/models/config/runtime-generation.js";
 import { WorkerClaimLifetimeSchema } from "../../../src/models/run/worker.js";
@@ -30,6 +33,7 @@ const request: unknown = (await once(process, "message"))[0];
 const data = z.strictObject({
   path: z.string(), now: z.iso.datetime(), runId: RunIdSchema,
   operation: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("own-terminal-failure"), runtimeConfig: RuntimeConfigClaimTokenSchema }),
     z.strictObject({ kind: z.literal("terminal-failure"), request: CanonicalFailureTerminalizeRequestSchema }),
     z.strictObject({ kind: z.literal("create"), request: CreateRunRequestSchema }),
     z.strictObject({ kind: z.literal("claim"), request: z.strictObject({
@@ -61,12 +65,29 @@ const admission = machine.admitProfile(createProfileRegistry(machine).storageCla
 const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
   erasureJournalPath: resolve(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
 const database = AuthorityDatabase.open(admission, { path: data.path, busyTimeoutMs: 250, migrationOwner: "race-proof" },
-  clock, undefined, { afterFailureStorageStep: (step) => { if (step === "failure") pause(); } }, { afterClaimSelection: pause }, credentials);
+  clock, undefined, { afterFailureStorageStep: (step) => { if (step === "failure") pause(); } },
+  { afterClaimSelection: () => { if (data.operation.kind === "claim") pause(); } }, credentials);
 const service = new RunRecordService({ database, clock, ids: { uuid: () => data.runId }, publishQueued: () => undefined },
   { afterCreateReservation: pause });
+if (data.operation.kind === "own-terminal-failure") {
+  registerBoundProfile(admission, machine);
+  testWorkerPorts(database, clock, { path: data.path, descriptor: personLookupDescriptor, poolIndex: 2 });
+  const owner = testWorkerLifetime(database, personLookupDescriptor.id, 2);
+  const claimed = requireLifecycleApplied(service.claimNext({ commandId: randomUUID(), workflow: personLookupDescriptor.id,
+    workerId: owner.workerId, workerLifetime: owner.workerLifetime, runtimeConfig: data.operation.runtimeConfig }));
+  if (claimed.envelope.runId !== data.runId) throw new Error("race-worker-claimed-another-run");
+  const claim = { workerId: owner.workerId, claimGeneration: claimed.claimGeneration };
+  requireLifecycleApplied(service.workerTransition({ commandId: randomUUID(), runId: data.runId, claim,
+    lifecycle: { state: "validating", workerId: owner.workerId, claimedAt: data.now, heartbeatAt: data.now } }));
+  requireLifecycleApplied(service.workerTransition({ commandId: randomUUID(), runId: data.runId, claim,
+    lifecycle: { state: "running", workerId: owner.workerId, claimedAt: data.now, heartbeatAt: data.now, currentNodeId: "crm-dates" } }));
+}
+let terminalRequest: z.infer<typeof CanonicalFailureTerminalizeRequestSchema> | undefined;
 let closing: Promise<void> | undefined;
 closeOwned = () => closing ??= (async () => {
-  database.close(); admission.release(); machine.release();
+  database.close();
+  if (data.operation.kind === "own-terminal-failure") unregisterBoundProfile(admission);
+  admission.release(); machine.release();
   await lifetime.close();
   if (process.connected) {
     if (process.disconnect === undefined) throw new Error("race worker parent channel disappeared");
@@ -74,15 +95,23 @@ closeOwned = () => closing ??= (async () => {
   }
 })();
 process.on("message", (input: unknown) => {
-  const message = z.enum(["run", "close"]).parse(input);
+  const message = z.union([z.enum(["run", "close"]), z.strictObject({ type: z.literal("terminal-failure"),
+    request: CanonicalFailureTerminalizeRequestSchema })]).parse(input);
+  if (typeof message === "object") {
+    if (data.operation.kind !== "own-terminal-failure" || terminalRequest !== undefined
+      || message.request.terminal.authorization.runId !== data.runId) throw new Error("race-worker-terminal-request-refused");
+    terminalRequest = message.request;
+    return;
+  }
   if (message === "close") {
     void closeOwned().catch(error => { setImmediate(() => { throw error; }); });
     return;
   }
   try {
+    if (data.operation.kind === "own-terminal-failure" && terminalRequest === undefined) throw new Error("race-worker-terminal-request-required");
     const outcome = data.operation.kind === "create"
       ? service.create(data.operation.request) : data.operation.kind === "claim" ? service.claimNext(data.operation.request)
-        : service.terminalize({ kind: "failure", ...data.operation.request }, personLookupDescriptor);
+        : service.terminalize({ kind: "failure", ...(data.operation.kind === "terminal-failure" ? data.operation.request : terminalRequest) }, personLookupDescriptor);
     send({ type: "result", outcome });
   } catch (error) {
     if (!(error instanceof Error)) throw error;

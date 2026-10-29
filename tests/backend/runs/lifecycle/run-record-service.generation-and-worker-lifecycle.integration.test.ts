@@ -399,19 +399,28 @@ for (const finishingGeneration of [2, 3]) {
 }
 
 it("competing connections cannot accept conflicting failure settlements", async () => {
-  const f = await fixture(); const running = runningRun(f.service, f.request, f.runtimeConfig);
-  const firstRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000051");
-  const secondRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000052");
-  secondRequest.terminal.failure.failureId = UUID_5;
-  secondRequest.terminal.authorization.failureId = UUID_5;
+  const f = await fixture(), queued = created(f.service, { ...f.request,
+    descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint });
   const connections: Awaited<ReturnType<typeof raceConnection>>[] = [];
   try {
-    for (const request of [firstRequest, secondRequest]) {
-      connections.push(await raceConnection({
-        path: join(f.root, "state.db"), now: NOW, runId: running.envelope.runId,
-        operation: { kind: "terminal-failure", request: { commandId: request.commandId, terminal: request.terminal } },
-      }, f.lifetime));
-    }
+    connections.push(await raceConnection({ path: join(f.root, "state.db"), now: NOW, runId: queued.envelope.runId,
+      operation: { kind: "own-terminal-failure", runtimeConfig: f.runtimeConfig } }, f.lifetime));
+    const running = f.database.authority.runs.get(queued.envelope.runId); assert.ok(running);
+    assert.equal(running.lifecycle.state, "running");
+    const claim = runClaim(running); assert.ok(claim);
+    const firstOwner = connections[0]; assert.ok(firstOwner?.pid !== undefined);
+    const member = f.database.authority.workerSlots.get(claim.workerId), lease = f.database.authority.workerLeases.get(claim.workerId);
+    assert.ok(member && lease && "workerLifetime" in running.lifecycle && running.lifecycle.workerLifetime);
+    assert.equal(lease.processId, firstOwner.pid);
+    assert.equal(running.lifecycle.workerLifetime.membershipRevision, member.membershipRevision);
+    assert.equal(running.lifecycle.workerLifetime.leaseGeneration, lease.leaseGeneration);
+    const firstRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000051");
+    const secondRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000052");
+    secondRequest.terminal.failure.failureId = UUID_5;
+    secondRequest.terminal.authorization.failureId = UUID_5;
+    firstOwner.terminalFailure(firstRequest);
+    connections.push(await raceConnection({ path: join(f.root, "state.db"), now: NOW, runId: running.envelope.runId,
+      operation: { kind: "terminal-failure", request: { commandId: secondRequest.commandId, terminal: secondRequest.terminal } } }, f.lifetime));
     const [first, second] = connections; assert.ok(first && second && typeof first.release === "function" && typeof second.release === "function");
     assert.deepEqual(first.ready, { type: "ready" }); assert.deepEqual(second.ready, { type: "ready" });
     first.run(); assert.deepEqual(await first.next(), { type: "reserved" });

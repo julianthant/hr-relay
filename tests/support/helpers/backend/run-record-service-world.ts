@@ -202,7 +202,11 @@ export function createRunRecordServiceTestWorld() {
     const closed = once(worker, "close").then(values => ({ values }), (error: unknown) => ({ error }));
     let released = false;
     const connection = {
+      pid: worker.pid,
       run: () => { worker.send("run"); },
+      terminalFailure: (request: ReturnType<typeof failureTerminalRequest>) => {
+        worker.send({ type: "terminal-failure", request: { commandId: request.commandId, terminal: request.terminal } });
+      },
       release: async () => {
         if (released || worker.exitCode !== null || worker.signalCode !== null) return;
         const input = worker.stdin;
@@ -270,6 +274,7 @@ export function createRunRecordServiceTestWorld() {
   }
 
   function failureTerminalRequest(run: RunRecord, commandId: string) {
+    const claim = runClaim(run); assert.ok(claim);
     return {
       kind: "failure" as const,
       commandId,
@@ -304,7 +309,7 @@ export function createRunRecordServiceTestWorld() {
           descriptorVersion: run.envelope.descriptorVersion,
           contractFingerprint: run.envelope.contractFingerprint,
           expectedVersion: run.version,
-          claim: { workerId: WORKER_ID, claimGeneration: 1 },
+          claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
           authorizedAt: LATER,
           failureId: UUID_6,
         },
