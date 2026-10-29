@@ -85,7 +85,7 @@ for (const malformed of ["browser", "config", "control"] as const) it(`refuses m
           return handle;
         } catch (error) {
           try { handle.release(); }
-          catch (cleanup) { throw new AggregateError([error, cleanup], "restore-browser-custody-acquisition-close-failed", { cause: error }); }
+          catch (cleanup) { throw new AggregateError([error, cleanup], "restore-browser-custody-acquisition-close-failed", { cause: cleanup }); }
           throw error;
         }
       }, boundProfileCredentials(fixture.admission));
