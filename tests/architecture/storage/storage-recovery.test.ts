@@ -7,6 +7,9 @@ import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.j
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../support/helpers/run-integration-world.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
+import { initialSettingsFileRecord } from "../../../src/models/config/settings.js";
+import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 import { completionFromAuthorization } from "../../../src/models/run/completion.js";
@@ -137,10 +140,14 @@ function runningTerminalFixture(
   const workerId = member.workerId;
   const lease = database.authority.workerLeases.get(workerId);
   assert.ok(lease);
+  const activeConfig = database.authority.runtimeConfig.get();
+  assert.ok(activeConfig);
   database.authority.runs.enqueue({
     ...QUEUED_RUN,
     envelope: {
       ...QUEUED_RUN.envelope,
+      configSnapshotId: activeConfig.configSnapshotId,
+      configFingerprint: activeConfig.configFingerprint,
       runId,
       itemId,
       traceId,
@@ -295,14 +302,19 @@ function seedTerminalAuthority(database: AuthorityDatabase) {
   return { failure, failureAuthorization, result: built.record, successAuthorization };
 }
 
-async function testRoot(): Promise<string> {
+async function testRoot(configScope: "global" | "profile" = "global"): Promise<string> {
   const profile = await createBoundProfileFixture();
   profiles.set(profile.stateRoot, profile);
   roots.push(profile.workspace);
   admissions.set(profile.stateRoot, profile.admission);
   const database = FixtureAuthorityDatabase.open(databaseOptions(profile.path), CLOCK);
   try {
-    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    const resolved = configScope === "profile" ? resolveConfigWithProvenance(initialSettingsFileRecord().settings,
+      { primaryDisplay: null }, CLOCK, { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot }) : undefined;
+    const snapshot = resolved === undefined ? CONFIG_SNAPSHOT : ConfigSnapshotRecordSchema.parse({
+      ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint, provenance: resolved.provenance,
+    });
+    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(snapshot);
     initialGenerations.set(profile.stateRoot, database.getMeta().authorityGeneration);
   } finally { database.close(); }
   return profile.stateRoot;
@@ -1833,7 +1845,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 
 describe("offline exact-backup restore", () => {
   it("consumes the exact issued proof when the wall clock advances before exclusive verification", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -1848,7 +1860,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("preserves nonempty failure, result and immutable same-row completion authority", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -1878,7 +1890,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("preserves the suspect DB and restores authority without resurrecting retired projections", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1914,7 +1926,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("refuses restore without the explicit stopped-system proof before preserving or swapping", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1933,7 +1945,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("refuses when a worker starts after the stopped proof was issued", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1961,7 +1973,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("refuses a never-run proof after the first singleton starts and releases", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1988,7 +2000,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("holds exclusive admission through verification and authority replacement", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2013,7 +2025,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("does not fall back when the exact newest manifest is bad", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2032,7 +2044,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("keeps live and suspect recoverable when projection rebuild fails", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2055,7 +2067,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("leaves live authority untouched on an injected atomic-swap failure", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2082,7 +2094,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("restores a companion when its displacement rename throws after moving it", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2118,7 +2130,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("reports authority replaced when atomic swap throws after replacing it", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2154,7 +2166,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("reports cleanup-only failure after authority replacement and names the staged path", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2189,7 +2201,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("preserves primary failure before staged cleanup failure", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2234,7 +2246,7 @@ describe("offline exact-backup restore", () => {
     operation,
     expectedLiveCompanion,
   }) => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2297,7 +2309,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("refuses when verified backup bytes mutate during the staged copy", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2327,7 +2339,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("classifies post-swap directory fsync failure as authority replaced", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2354,7 +2366,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("classifies post-swap report validation failure as authority replaced", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2379,7 +2391,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("classifies exclusive-admission release failure after swap as authority replaced", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2407,7 +2419,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("rejects stale, replayed, generation-mismatched, and currently-active process-lock proofs", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2474,7 +2486,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("rejects a checksum-valid restore copy whose authority record is schema-invalid", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2578,6 +2590,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/notification-publications.ts",
       "src/backend/storage/sqlite/profile-local-databases.ts",
       "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
+      "src/backend/storage/sqlite/run-record-row.ts",
       "src/backend/storage/sqlite/run-search-index.ts",
       "src/backend/storage/sqlite/run-summaries.ts",
       "src/backend/storage/sqlite/settings-activation.ts",
