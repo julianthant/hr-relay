@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -8,7 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
 import { acquireStorageBackupEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { prepareStorageBackupCommand, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -50,7 +51,6 @@ it("backs up an adopted native6 flat source without login, preserves source iden
   const f = await createHistoricalFlatProfileFixture({ closedBrowser: true });
   const paths = [f.databasePath, f.protectedPath, f.artifact, f.reportPath, join(f.stateRoot, "browsers", "w1", "ucpath", "Default", "Preferences")];
   for (const path of paths.filter(path => path !== f.protectedPath)) chmodSync(path, 0o644);
-  const before = paths.map(path => ({ bytes: readFileSync(path), stat: statSync(path) }));
   let admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
   try {
     assert.equal(admission.isFlatBackup(), true);
@@ -62,7 +62,25 @@ it("backs up an adopted native6 flat source without login, preserves source iden
     assert.throws(() => admission.assertArtifactRoot(f.artifact), /flat-backup-artifact-refused/u);
     assert.throws(() => admission.assertProfileMigration(f.databasePath, 6), /profile-initialization-authority-required/u);
     assert.throws(() => AuthorityDatabase.upgradeStopped(admission, f.databasePath, f.processLockRoot, systemClock), /flat-backup-upgrade-refused/u);
-    const outcome = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], systemClock, f.workspace, admission);
+    const preparation = vi.spyOn(profileBrowserClosure, "probeClosed");
+    let prepared: Awaited<ReturnType<typeof prepareStorageBackupCommand>>;
+    try {
+      prepared = await prepareStorageBackupCommand(rebuildRuntimeIsolation, ["--json"], systemClock, f.workspace, admission);
+      assert.equal(preparation.mock.calls.length, 1);
+      assert.deepEqual(preparation.mock.calls[0]?.[0].map(profile => profile.profileDirectory), [join(f.stateRoot, "browsers", "w1", "ucpath")]);
+    } finally { preparation.mockRestore(); }
+    const before = paths.map(path => ({ bytes: readFileSync(path), stat: statSync(path) }));
+    const assertSourceUnchanged = (captured: typeof before) => {
+      for (const [index, path] of paths.entries()) {
+        assert.deepEqual(readFileSync(path), captured[index]?.bytes);
+        assert.equal(statSync(path).ino, captured[index]?.stat.ino); assert.equal(statSync(path).mode, captured[index]?.stat.mode);
+      }
+    };
+    const native = vi.spyOn(profileBrowserClosure, "probeClosed");
+    let outcome: Awaited<ReturnType<typeof prepared.run>>;
+    try { outcome = await prepared.run(); assert.equal(native.mock.calls.length, 0); }
+    finally { native.mockRestore(); }
+    assertSourceUnchanged(before);
     assert.equal(outcome.exitCode, 0);
     const report = JSON.parse(outcome.output) as { manifests: { backupFileName: string }[]; coupledBackup: { backupPath: string } };
     const manifest = report.manifests[0]; assert.ok(manifest);
@@ -76,11 +94,15 @@ it("backs up an adopted native6 flat source without login, preserves source iden
     assert.ok(record.files.some(entry => entry.path === `profile/backups/authority/${manifest.backupFileName}`));
     for (const entry of record.files) assert.equal(statSync(join(dirname(report.coupledBackup.backupPath), "files", entry.path)).mode & 0o7777, 0o600);
     const sourceRecord = readFileSync(join(dirname(report.coupledBackup.backupPath), "source.json"));
-    const again = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], systemClock, f.workspace, admission);
-    assert.equal(again.output, outcome.output); assert.deepEqual(readFileSync(join(dirname(report.coupledBackup.backupPath), "source.json")), sourceRecord);
-    for (const [index, path] of paths.entries()) {
-      assert.deepEqual(readFileSync(path), before[index]?.bytes); assert.equal(statSync(path).ino, before[index]?.stat.ino); assert.equal(statSync(path).mode, before[index]?.stat.mode);
-    }
+    assert.deepEqual(readFileSync(join(dirname(report.coupledBackup.backupPath), "files", "profile", "browsers", "w1", "ucpath", "Default", "Preferences")), before[4]?.bytes);
+    const firstBackup = oldArtifactSnapshot(dirname(report.coupledBackup.backupPath));
+    assertSourceUnchanged(before);
+    const repeated = await prepareStorageBackupCommand(rebuildRuntimeIsolation, ["--json"], systemClock, f.workspace, admission);
+    const afterProbe = paths.map(path => ({ bytes: readFileSync(path), stat: statSync(path) }));
+    await assert.rejects(repeated.run(), { code: "STORAGE_BACKUP_SOURCE_CHANGED" });
+    assertSourceUnchanged(afterProbe);
+    assert.deepEqual(oldArtifactSnapshot(dirname(report.coupledBackup.backupPath)), firstBackup);
+    assert.deepEqual(readFileSync(join(dirname(report.coupledBackup.backupPath), "source.json")), sourceRecord);
     untouched(f);
   } finally { admission.release(); await f.close(); }
 });

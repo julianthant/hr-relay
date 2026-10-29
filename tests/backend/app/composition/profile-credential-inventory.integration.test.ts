@@ -1,3 +1,4 @@
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { withOfflineMaintenance, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure, DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
@@ -491,7 +492,8 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
       const processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot);
       restore=f.machine.acquireOfflineMaintenance();
       const stoppedAdmission=await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, createProfileRegistry(f.machine).storageClaim(profileId),restore,f.clock,{primaryDisplay:null});stopped=stoppedAdmission;
-      const report=await backupStoppedAuthority(profileBrowserClosure, stoppedAdmission,f.stateRoot,f.clock,processLockRoot,restore);
+      const heldRestore = restore;
+      const report=await prepareStoppedBackupClosure(profileBrowserClosure, stoppedAdmission, heldRestore, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, stoppedAdmission, f.stateRoot, f.clock, processLockRoot, heldRestore));
       assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);
     }
   }catch(error){primary={error};}

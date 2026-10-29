@@ -1,3 +1,4 @@
+import ts from "typescript";
 import { mkdtempSync, realpathSync, appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { OldBuildRuntimeArtifactsError } from "../../../src/backend/storage/admission/installation.js";
@@ -2480,6 +2481,38 @@ describe("authority.health preflight and static recovery boundary", () => {
 
     assert.equal(withoutBackup.state, "healthy");
     assert.match(withoutBackup.summary, /backup missing/);
+  });
+
+  it("keeps native browser preparation outside stopped backup IO", () => {
+    const sourceFile = (path: string) => ts.createSourceFile(path, readFileSync(join(REPO_ROOT, path), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const nativeCalls = (node: ts.Node) => {
+      const calls: string[] = [];
+      const visit = (child: ts.Node): void => {
+        if (ts.isCallExpression(child)) {
+          const target = child.expression;
+          const name = ts.isIdentifier(target) ? target.text : ts.isPropertyAccessExpression(target) ? target.name.text : "";
+          if (["prepareStoppedBackupClosure", "probeClosed", "assertClosed", "probeStoppedProfileBrowsersClosed",
+            "probeRestoreProfileBrowsersClosed", "probeClosedBrowserProfile", "assertNativeBrowserProfilesClosed", "runNativeProfileProbeChild", "launch", "launchPersistentContext"].includes(name)) calls.push(name);
+        }
+        ts.forEachChild(child, visit);
+      };
+      visit(node); return calls;
+    };
+    for (const [path, names] of [
+      ["src/backend/storage/maintenance/upgrade.ts", ["backupStoppedAuthority"]],
+      ["src/backend/storage/maintenance/existing-data-backup.ts", ["inspectCoupledBackupSource", "writeCoupledBackup", "backupFlatStorage"]],
+    ] as const) {
+      const source = sourceFile(path);
+      for (const name of names) {
+        const owner = source.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === name);
+        assert.ok(owner && ts.isFunctionDeclaration(owner) && owner.body);
+        assert.deepEqual(nativeCalls(owner.body), [], name);
+      }
+    }
+    for (const method of ["probeClosed", "assertClosed", "prepareStoppedBackupClosure", "assertNativeBrowserProfilesClosed"]) {
+      const control = ts.createSourceFile("bad-backup.ts", `function backup() { browser.${method}(); }`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      assert.deepEqual(nativeCalls(control), [method]);
+    }
   });
 
   it("keeps native SQLite use in the reviewed recovery boundaries and bans copy or VACUUM fallbacks", () => {

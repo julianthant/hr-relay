@@ -1434,7 +1434,10 @@ export class RuntimeAdmission {
         lease.eraseFlatStoreCredentials(restore);
         const backup = await this.forStoppedFlatBackup();
         const { backupFlatStorage } = await import("../maintenance/existing-data-backup.js");
-        await backupFlatStorage(browserClosure, backup, systemClock);
+        const { prepareStoppedBackupClosure } = await import("../maintenance/profile-inventory.js");
+        const closure = await prepareStoppedBackupClosure(browserClosure, backup, restore, systemClock,
+          join(lease.readInstallationContext().workspace, rebuildRuntimeIsolation.processLockRoot));
+        await backupFlatStorage(closure, backup, systemClock);
       }
       lease.startCleanFlatStore(restore);
     } catch (error) {

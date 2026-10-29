@@ -1,3 +1,4 @@
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
@@ -273,7 +274,7 @@ describe("native authority backup", () => {
         const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
         expect(Object.keys(snapshot.processLocks).sort()).toEqual(["geocode", "live-smoke", "server", "workers"]);
         expect(snapshot.processLocks[role].state).toBe("active");
-        await expect(backupStoppedAuthority(profileBrowserClosure, f.admission, f.root, f.clock, processLockRoot, operation)).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
+        await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, operation))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
         await expect(upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.root, processLockRoot, plan: false }, f.clock, operation)).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
         expect(readFileSync(f.path)).toEqual(before);
       } finally { operation.release(); lock.release(); }
@@ -284,7 +285,7 @@ describe("native authority backup", () => {
     expect(RecoveryRuntimeLockSnapshotSchema.safeParse({ ...stopped, processLocks: { ...stopped.processLocks, "live-smoke": undefined } }).success).toBe(false);
     const oldOperation = f.admission.acquireOfflineMaintenance();
     try {
-      await expect(backupStoppedAuthority(profileBrowserClosure, f.admission, f.root, f.clock, processLockRoot, oldOperation)).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
+      await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, oldOperation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, oldOperation))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
     } finally { oldOperation.release(); }
     const clean = await fixture(); clean.database.close();
     const cleanRoot = join(clean.workspace, rebuildRuntimeIsolation.processLockRoot), upgrade = clean.admission.acquireOfflineMaintenance();
@@ -293,7 +294,7 @@ describe("native authority backup", () => {
     } finally { upgrade.release(); }
     const backup = clean.admission.acquireOfflineMaintenance();
     try {
-      await expect(backupStoppedAuthority(profileBrowserClosure, clean.admission, clean.root, clean.clock, cleanRoot, backup)).resolves.toMatchObject({ state: "verified" });
+      await expect(prepareStoppedBackupClosure(profileBrowserClosure, clean.admission, backup, clean.clock, cleanRoot).then(closure => backupStoppedAuthority(closure, clean.admission, clean.root, clean.clock, cleanRoot, backup))).resolves.toMatchObject({ state: "verified" });
       expect(() => clean.admission.beginOfflineMaintenance()).toThrow(/offline-maintenance-busy/u);
     } finally { backup.release(); }
   });
@@ -307,7 +308,7 @@ describe("native authority backup", () => {
     expect(()=>observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock)).toThrow();
     const operation = f.admission.acquireOfflineMaintenance();
     try {
-      await expect(backupStoppedAuthority(profileBrowserClosure, f.admission,f.root,f.clock,processLockRoot,operation)).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
+      await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, operation))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
       await expect(upgradeStorage(profileBrowserClosure, f.admission,{stateRoot:f.root,processLockRoot,plan:false},f.clock,operation)).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
     } finally { operation.release(); }
     expect(readFileSync(f.path)).toEqual(before);

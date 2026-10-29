@@ -1,4 +1,4 @@
-import type { ProfileBrowserClosure } from "../../../src/backend/storage/maintenance/profile-inventory.js";
+import { prepareStoppedBackupClosure, type ProfileBrowserClosure } from "../../../src/backend/storage/maintenance/profile-inventory.js";
 import { createBoundProfileCredentialStore, findProfileFixtureAdmission, withOfflineMaintenance } from "./admission-fixture.js";
 import { findProfileFixtureInWorkspace } from "./synthetic-database-admission.js";
 import { withAuthorityDatabaseReadOnly as realWithAuthorityDatabaseReadOnly } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
@@ -81,8 +81,8 @@ export async function backupStoppedAuthority(browserClosure: ProfileBrowserClosu
   processLockRoot: string, heldRestore?: Parameters<typeof realBackupStoppedAuthority>[5]) {
   const admission = syntheticStateRoot(stateRoot);
   return heldRestore === undefined
-    ? withOfflineMaintenance(admission, operation => realBackupStoppedAuthority(browserClosure, admission, stateRoot, clock, processLockRoot, operation))
-    : realBackupStoppedAuthority(browserClosure, admission, stateRoot, clock, processLockRoot, heldRestore);
+    ? withOfflineMaintenance(admission, operation => prepareStoppedBackupClosure(browserClosure, admission, operation, clock, processLockRoot).then(closure => realBackupStoppedAuthority(closure, admission, stateRoot, clock, processLockRoot, operation)))
+    : prepareStoppedBackupClosure(browserClosure, admission, heldRestore, clock, processLockRoot).then(closure => realBackupStoppedAuthority(closure, admission, stateRoot, clock, processLockRoot, heldRestore));
 }
 
 export async function upgradeStorage(browserClosure: ProfileBrowserClosure, input: Parameters<typeof realUpgradeStorage>[2], clock: Parameters<typeof realUpgradeStorage>[3],

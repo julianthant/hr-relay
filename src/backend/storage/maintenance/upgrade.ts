@@ -17,7 +17,7 @@ import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { probeStoppedProfileBrowsersClosed, readStoppedProfileUpgradeInventory, type ProfileBrowserClosure } from "./profile-inventory.js";
+import { prepareStoppedBackupClosure, assertStoppedBackupClosure, StorageBackupClosureUnprovedError, type StoppedBackupClosure, readStoppedProfileUpgradeInventory, type ProfileBrowserClosure } from "./profile-inventory.js";
 
 
 
@@ -41,12 +41,12 @@ function requireStopped(admission:RuntimeAdmission,input:StorageUpgradeInput,_cl
   admission.assertOfflineMaintenance(operation);
   assertOfflineMaintenanceForProcessRoot(operation, input.processLockRoot);
 }
-export async function backupStoppedAuthority(browserClosure: ProfileBrowserClosure, admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,restore:OfflineMaintenanceOperation) {
+export async function backupStoppedAuthority(closure: StoppedBackupClosure, admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,restore:OfflineMaintenanceOperation) {
   requireRuntimeAdmission(admission).assertStoppedAuthorityBackup(join(stateRoot,"state.db"),processLockRoot);admission.assertStateRoot(stateRoot);
   const input={stateRoot,processLockRoot,plan:false};
   requireStopped(admission,input,clock,true);
-  await probeStoppedProfileBrowsersClosed(admission,clock,browserClosure,processLockRoot);
-  const verifyHeld=()=>{ admission.assertOfflineMaintenance(restore); assertOfflineMaintenanceForProcessRoot(restore,processLockRoot); };
+  assertStoppedBackupClosure(closure, admission, restore);
+  const verifyHeld=()=>{ admission.assertOfflineMaintenance(restore); assertOfflineMaintenanceForProcessRoot(restore,processLockRoot); assertStoppedBackupClosure(closure,admission,restore); };
   let operationFailure: { error: unknown } | undefined;
   let result: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
   try {
@@ -61,6 +61,7 @@ export async function backupStoppedAuthority(browserClosure: ProfileBrowserClosu
     }catch(error){primary={error};}
     const failures: unknown[] = [];
     try{source.close();}catch(error){failures.push(error);}
+    if(failures.length===0)try{verifyHeld();}catch(error){failures.push(error);}
     if(failures.length!==0){
       const errors=primary===undefined?failures:[primary.error,...failures];
       if(errors.some(error=>hasUnprovedSourceClosure(error)))throw retainAuthoritySourceClosure(errors,{backupSource:source,admission,restore});
@@ -100,7 +101,8 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
     if(inspection!==undefined){const again=AuthorityDatabase.inspectStoppedUpgrade(admission,path,input.processLockRoot,clock);
       if(again.authorityGeneration!==inspection.authorityGeneration||again.authorityContentFingerprint!==inspection.authorityContentFingerprint)throw new Error("source-changed: re-plan upgrade");
       if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
-        const backupReport=await backupStoppedAuthority(browserClosure, admission,input.stateRoot,clock,input.processLockRoot,restore);
+        const closure = await prepareStoppedBackupClosure(browserClosure, admission, restore, clock, input.processLockRoot);
+        const backupReport=await backupStoppedAuthority(closure, admission,input.stateRoot,clock,input.processLockRoot,restore);
         const manifest=backupReport.manifests.at(-1);
         if(manifest===undefined)throw new Error("upgrade-verified-backup-required");
         const backup=await verifyBackupManifestAtPath(admission,join(input.stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`),AuthorityDatabase.sourceDatabaseIdentity(path));
@@ -204,6 +206,8 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   const inspect = () => AuthorityDatabase.inspectStoppedUpgrade(owner, path, processLockRoot, clock);
   const inspectInventory = () => readStoppedProfileUpgradeInventory({ machine, admission: owner, hostFacts: input.hostFacts, clock, browserClosure });
   const initial = inspect();
+  const closure = !input.plan && initial.schemaVersion === 8
+    ? await prepareStoppedBackupClosure(browserClosure, owner, restore, clock, processLockRoot) : undefined;
   let inventory = inspectInventory();
   const revalidate = (backup?: VerifiedBackup) => {
     owner.assertReadyStoppedProfileUpgradeOwner(machine);
@@ -220,7 +224,8 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   if (input.plan) return report("planned");
   if (initial.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return report("already-upgraded");
   if (initial.schemaVersion !== 8) throw new Error("profile-stopped-upgrade-version-refused");
-  const backed = await backupStoppedAuthority(browserClosure, owner, owner.stateRoot, clock, processLockRoot, restore);
+  if (closure === undefined) throw new StorageBackupClosureUnprovedError();
+  const backed = await backupStoppedAuthority(closure, owner, owner.stateRoot, clock, processLockRoot, restore);
   if (backed.manifests.length !== 1) throw new Error("profile-stopped-upgrade-single-backup-required");
   const manifest = backed.manifests[0];
   if (manifest === undefined) throw new Error("upgrade-verified-backup-required");

@@ -1,3 +1,4 @@
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
@@ -175,7 +176,7 @@ it("confines the issued READY purpose and its verified backup copy to their exac
     assert.throws(() => AuthorityDatabase.initializeProfile(issued), { message: "profile-initialization-authority-required" });
     assert.throws(() => issued.verifiedReadOnlyCopy(f.path, digest(f.path)), { message: "profile-stopped-upgrade-copy-refused" });
     assert.throws(() => issued.stoppedStagedAuthority(join(f.stateRoot, `.restore-${randomUUID()}.sqlite.tmp`)), { message: "profile-stopped-upgrade-exclusive-refused" });
-    const backed = await backupStoppedAuthority(profileBrowserClosure, issued, f.stateRoot, systemClock, f.processLockRoot, restore);
+    const backed = await prepareStoppedBackupClosure(profileBrowserClosure, issued, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, issued, f.stateRoot, systemClock, f.processLockRoot, restore));
     const manifest = backed.manifests[0]; assert.ok(manifest);
     const verified = verifyStoppedBackupManifestAtPath(issued, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
     const copy = issued.verifiedReadOnlyCopy(verified.backupPath, verified.manifest.sha256);
@@ -247,7 +248,7 @@ it("requires a real verified own backup before changing the ready source schema"
     assert.throws(() => AuthorityDatabase.upgradeStopped(owner, f.path, f.processLockRoot, systemClock, inspection.authorityContentFingerprint),
       { message: "upgrade-verified-backup-required" });
     assert.deepEqual(storageTree(f.stateRoot), before);
-    const backed = await backupStoppedAuthority(profileBrowserClosure, owner, f.stateRoot, systemClock, f.processLockRoot, restore);
+    const backed = await prepareStoppedBackupClosure(profileBrowserClosure, owner, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, owner, f.stateRoot, systemClock, f.processLockRoot, restore));
     const manifest = backed.manifests[0]; assert.ok(manifest);
     const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
     const backedBefore = storageTree(f.stateRoot);
@@ -271,7 +272,7 @@ it("refuses changed source content inside the real migration transaction and can
   const owner = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts);
   try {
     const inspection = AuthorityDatabase.inspectStoppedUpgrade(owner, f.path, f.processLockRoot, systemClock);
-    const backed = await backupStoppedAuthority(profileBrowserClosure, owner, f.stateRoot, systemClock, f.processLockRoot, restore);
+    const backed = await prepareStoppedBackupClosure(profileBrowserClosure, owner, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, owner, f.stateRoot, systemClock, f.processLockRoot, restore));
     const manifest = backed.manifests[0]; assert.ok(manifest);
     const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
     const raw = new DatabaseSync(f.path);

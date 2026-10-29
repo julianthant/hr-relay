@@ -1,3 +1,4 @@
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
@@ -196,7 +197,7 @@ it("supported single-authority restore re-checks healthy without inventing repai
   try {
     copyFileSync(join(process.cwd(),"package.json"),join(workspace,"package.json"));
     AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"preflight-restore"},clock,undefined,undefined,undefined,boundProfileCredentials(admission)).close();
-    const backup=await withOfflineMaintenance(admission, operation => backupStoppedAuthority(profileBrowserClosure, admission, stateRoot, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot), operation));
+    const backup=await withOfflineMaintenance(admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot)).then(closure => backupStoppedAuthority(closure, admission, stateRoot, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot), operation)));
     const manifest=backup.manifests.at(-1);assert.ok(manifest);
     const path=join(stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`);
     const restored=await composeStorageCommand(rebuildRuntimeIsolation,["restore","--from",path,"--json"],clock,workspace,admission,boundProfileCredentials(admission));

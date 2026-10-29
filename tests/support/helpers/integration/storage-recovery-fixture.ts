@@ -1,3 +1,4 @@
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createBoundProfileFixture, withOfflineMaintenance } from "../admission-fixture.js";
@@ -25,7 +26,7 @@ export async function storageRecoveryFixture(version = 0) {
   }
   const input = { stateRoot: root, processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot), environmentFile: join(root, ".env"), plan: false };
   return { root, path, clock, input, get admission() { return fixture.admission; },
-    backup: () => withOfflineMaintenance(fixture.admission, operation => backupStoppedAuthority(profileBrowserClosure, fixture.admission, root, clock, input.processLockRoot, operation)),
+    backup: () => withOfflineMaintenance(fixture.admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, fixture.admission, operation, clock, input.processLockRoot).then(closure => backupStoppedAuthority(closure, fixture.admission, root, clock, input.processLockRoot, operation))),
     run: (plan = false) => withOfflineMaintenance(fixture.admission, operation => upgradeStorage(profileBrowserClosure, fixture.admission, { ...input, plan }, clock, operation)),
     dispose: async () => await fixture.close() };
 }

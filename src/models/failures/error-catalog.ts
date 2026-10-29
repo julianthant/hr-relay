@@ -489,6 +489,14 @@ export const ERROR_CATALOG = Object.freeze({
     "This installation contains runtime lock evidence from an older build. Offline maintenance is stopped and the evidence is preserved. Use the approved start-clean procedure.",
     EmptyParametersSchema,
   ),
+  STORAGE_BACKUP_SOURCE_CHANGED: catalogEntry(
+    "The source no longer matches the retained backup. The first backup is preserved; keep this installation for recovery.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_BACKUP_CLOSURE_UNPROVED: catalogEntry(
+    "Relay could not verify a completed browser closure step for this backup. The backup is refused; preserve the current installation for recovery.",
+    EmptyParametersSchema,
+  ),
   PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED: catalogEntry(
     "Browser closure for damaged profile storage could not be proved. This restore requires macOS and a complete unchanged browser-directory census. Existing storage is preserved.",
     EmptyParametersSchema,

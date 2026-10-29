@@ -1,13 +1,15 @@
+import { profileProcessQuery } from "../../../../src/backend/storage/maintenance/process-closure.js";
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { withOfflineMaintenance, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { default as assert } from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { backupStoppedAuthority, upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
@@ -65,7 +67,7 @@ try {
   try {
     held.assertHeld();
     assert.throws(() => f.admission.beginOfflineMaintenance(), /offline-maintenance-busy/u);
-    const report = await backupStoppedAuthority(profileBrowserClosure, f.admission, f.stateRoot, clock, f.processLockRoot, held);
+    const report = await prepareStoppedBackupClosure(profileBrowserClosure, f.admission, held, clock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.stateRoot, clock, f.processLockRoot, held));
     assert.equal(report.state, "verified");
     assert.equal(report.manifests.length, 1);
     const manifest = report.manifests[0]; assert.ok(manifest);
@@ -91,7 +93,7 @@ try {
   const f = await fixture(), bytes = readFileSync(f.path), before = inspectAuthorityBackupReadOnly(f.admission, f.path);
   const held = f.admission.acquireOfflineMaintenance();
   held.release();
-  await assert.rejects(backupStoppedAuthority(profileBrowserClosure, f.admission, f.stateRoot, clock, f.processLockRoot, held), /offline-maintenance-unissued/u);
+  await assert.rejects(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, held, clock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.stateRoot, clock, f.processLockRoot, held)), /offline-maintenance-unissued/u);
   assert.deepEqual(readFileSync(f.path), bytes);
   assert.deepEqual(inspectAuthorityBackupReadOnly(f.admission, f.path), before);
   assert.equal(existsSync(join(f.stateRoot, "backups", "authority")), false);
@@ -135,3 +137,47 @@ it("rechecks the actual native schema after priming its immutable expected ident
   }
 });
 }
+
+for (const fault of ["missing", "copied", "foreign", "expired", "census-changed", "os-query"] as const) it(`refuses ${fault} stopped backup closure before backup IO`, async () => {
+  const f = await fixture(), other = fault === "foreign" ? await fixture() : undefined;
+  let operation = f.admission.acquireOfflineMaintenance();
+  let foreignOperation: ReturnType<typeof f.admission.acquireOfflineMaintenance> | undefined;
+  try {
+    const closure = await prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, f.processLockRoot);
+    const before = readFileSync(f.path);
+    let candidate = closure;
+    if (fault === "copied") candidate = { ...closure };
+    if (other !== undefined) {
+      foreignOperation = other.admission.acquireOfflineMaintenance();
+      candidate = await prepareStoppedBackupClosure(profileBrowserClosure, other.admission, foreignOperation, other.clock, other.processLockRoot);
+    }
+    if (fault === "expired") { operation.release(); operation = f.admission.acquireOfflineMaintenance(); }
+    if (fault === "census-changed") mkdirSync(join(f.stateRoot, "browsers", "w99", "ucpath"), { recursive: true, mode: 0o700 });
+    const query = fault === "os-query" ? vi.spyOn(profileProcessQuery, "spawnSync").mockReturnValue({ pid: 0, output: [],
+      stdout: "", stderr: "synthetic incomplete observation", status: 1, signal: null }) : undefined;
+    try {
+      await assert.rejects(async () => {
+        if (fault === "missing") {
+          const result: unknown = Reflect.apply(backupStoppedAuthority, undefined, [undefined, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation]);
+          await result;
+        } else await backupStoppedAuthority(candidate, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation);
+      }, { code: "STORAGE_BACKUP_CLOSURE_UNPROVED" });
+      assert.deepEqual(readFileSync(f.path), before);
+      assert.equal(existsSync(join(f.stateRoot, "backups")), false);
+    } finally { query?.mockRestore(); }
+  } finally { operation.release(); foreignOperation?.release(); await _afterEachFixture0(); }
+});
+
+it("backs up under genuine prepared closure without invoking native browser launch again", async () => {
+  const f = await fixture(), operation = f.admission.acquireOfflineMaintenance();
+  try {
+    const closure = await prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, f.processLockRoot);
+    const native = vi.spyOn(profileBrowserClosure, "probeClosed").mockRejectedValue(new Error("backup-must-not-launch-browser"));
+    try {
+      const before = readFileSync(f.path);
+      const report = await backupStoppedAuthority(closure, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation);
+      assert.equal(report.state, "verified"); assert.equal(native.mock.calls.length, 0);
+      assert.deepEqual(readFileSync(f.path), before);
+    } finally { native.mockRestore(); }
+  } finally { operation.release(); await _afterEachFixture0(); }
+});

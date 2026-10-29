@@ -817,7 +817,17 @@ profile using the ordinary onboarding path.
 
 `npm run cli -- storage backup [--json]` still backs up a selected READY profile through its
 registered child, or a stopped native6 flat source through its finite backup admission. The command
-neither signs in nor creates a profile. Coupled copies complement the verified SQLite backup.
+neither signs in nor creates a profile. Its owner holds the same root-issued offline operation through
+an explicit native browser closure step, then captures source bytes and runs the backup. The real
+probe can update browser state; the backup copies that post-probe state and never launches a browser.
+A private in-memory closure observation binds the exact operation, admitted source, browser census
+and directory identities. Backup revalidates that observation and read-only OS closure at its IO
+boundaries; copied, foreign, expired or changed observations refuse. Unproved closure retains owners.
+Coupled copies complement the verified SQLite backup. Every existing source file keeps its bytes,
+inode and mode throughout backup IO, including browser Preferences; the probe finishes before that
+interval. The flat backup is a one-time pre-migration source snapshot. A fresh command probes again;
+changed post-probe source refuses with STORAGE_BACKUP_SOURCE_CHANGED and preserves the first
+verified backup and source.json. It never overwrites that receipt or creates a versioned substitute.
 An exact interrupted copy prefix may resume; missing, extra or corrupt completed copies refuse.
 A genuinely abandoned admission mutex requires current closed process custody and exact backup,
 source-record, allocation and recovery-history evidence. Unproved source closure retains custody.

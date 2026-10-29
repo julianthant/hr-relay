@@ -1,5 +1,6 @@
+import { prepareStoppedBackupClosure, StorageBackupClosureUnprovedError, type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { isOfflineMaintenanceOperationActive, OfflineMaintenanceOperationUnavailableError, type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
-import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
+import { type AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
 import { assertProfileBrowserRoot, composeProfileCredentialInitializationInventory, composeProfileCredentialRepairInventory, composeProfilePendingLogoutInventory, composeProfileCredentialInventory } from "./profile-credential-inventory.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
@@ -859,20 +860,38 @@ async function repairSpanRootCommand(
 
 
 // Backup opens existing authority only; missing authority is a refusal, never an empty backup.
-async function backupCommand(
+export interface PreparedStorageBackupCommand {
+  run(): Promise<StorageCommandOutcome>;
+  release(): void;
+}
+
+export async function prepareStorageBackupCommand(
   isolation: RuntimeIsolation,
   rest: readonly string[],
   clock: Clock,
   repoRoot: string,
   admission: RuntimeAdmission,
-): Promise<StorageCommandOutcome> {
+): Promise<PreparedStorageBackupCommand> {
   const operation = admission.acquireOfflineMaintenance(); operation.consume();
   let profile: RuntimeAdmission | undefined;
   let storage = admission;
-  let outcome: StorageCommandOutcome;
+  let retained: AuthoritySourceClosureUnprovedError | undefined;
+  let released = false, executed = false;
+  const release = (primary?: { error: unknown }) => {
+    if (retained !== undefined) throw retained;
+    if (released) return;
+    try { operation.release(); profile?.release(); }
+    catch (error) {
+      retained = retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { admission: storage, restore: operation });
+      throw retained;
+    }
+    released = true;
+  };
+  let selected: ReturnType<typeof captureSelectedProfileStorage> | undefined;
+  let closure: StoppedBackupClosure | undefined;
   try {
     const context = admission.readInstallationContext();
-    const selected = !admission.isFlatBackup() && context !== undefined && context.locator.stateRoot === admission.stateRoot
+    selected = !admission.isFlatBackup() && context !== undefined && context.locator.stateRoot === admission.stateRoot
       ? captureSelectedProfileStorage(admission) : undefined;
     if (selected !== undefined) admission.assertExclusive();
     const claim = selected === undefined ? undefined : admission.issueRegisteredProfileClaim(selected.profileId);
@@ -880,44 +899,68 @@ async function backupCommand(
     profile = claim === undefined ? undefined : admission.admitProfile(claim);
     storage = profile ?? admission;
     selected?.assertCurrent();
-    const json = rest.includes("--json"), stateRoot = storage.stateRoot;
-    const authorityPath = join(stateRoot, "state.db");
-    if (!existsSync(authorityPath)) {
-      outcome = {
-        output: `storage backup REFUSED — no authority database exists at ${basename(stateRoot)}/state.db; `
-          + "complete profile setup and select that READY profile before requesting its backup",
-        exitCode: 1,
-      };
-    } else {
-      const { backupStoppedAuthority } = await import("../../storage/maintenance/upgrade.js");
-      const report = storage.isFlatBackup()
-        ? await (await import("../../storage/maintenance/existing-data-backup.js")).backupFlatStorage(profileBrowserClosure, storage, clock)
-        : await backupStoppedAuthority(profileBrowserClosure, storage, stateRoot, clock, join(repoRoot, isolation.processLockRoot), operation);
-      selected?.assertCurrent();
-      const manifest = report.manifests.at(-1);
-      if (manifest === undefined) throw new Error("verified backup run reported no manifest");
-      outcome = {
-        output: json
-          ? JSON.stringify(report, null, 2)
-          : [
-              `backup: verified — ${manifest.backupFileName}`,
-              `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
-              `  manifest ${manifest.backupFileName}.manifest.json${"coupledBackup" in report ? "" : " (restore with: storage restore --from <that manifest>)"}`,
-              ...("coupledBackup" in report ? [`  private coupled companions: ${report.coupledBackup.backupPath}; no flat data is carried into sign-up`] : []),
-            ].join("\n"),
-        exitCode: 0,
-      };
+    if (existsSync(join(storage.stateRoot, "state.db"))) {
+      closure = await prepareStoppedBackupClosure(profileBrowserClosure, storage, operation, clock, join(repoRoot, isolation.processLockRoot));
     }
   } catch (error) {
     if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: storage, restore: operation });
-    try { operation.release(); } catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: storage, restore: operation }); }
-    try { profile?.release(); }
-    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: storage }); }
-    throw error;
+    release({ error }); throw error;
   }
-  try { operation.release(); profile?.release(); }
-  catch (error) { throw retainAuthoritySourceClosure([error], { admission: storage, restore: operation }); }
-  return outcome;
+  return Object.freeze({
+    async run() {
+      if (retained !== undefined) throw retained;
+      operation.assertHeld();
+      if (executed) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-already-consumed");
+      executed = true;
+      let outcome: StorageCommandOutcome;
+      try {
+        selected?.assertCurrent();
+        const json = rest.includes("--json"), stateRoot = storage.stateRoot;
+        if (!existsSync(join(stateRoot, "state.db"))) {
+          outcome = {
+            output: `storage backup REFUSED — no authority database exists at ${basename(stateRoot)}/state.db; `
+              + "complete profile setup and select that READY profile before requesting its backup",
+            exitCode: 1,
+          };
+        } else {
+          if (closure === undefined) throw new StorageBackupClosureUnprovedError();
+          const { backupStoppedAuthority } = await import("../../storage/maintenance/upgrade.js");
+          const report = storage.isFlatBackup()
+            ? await (await import("../../storage/maintenance/existing-data-backup.js")).backupFlatStorage(closure, storage, clock)
+            : await backupStoppedAuthority(closure, storage, stateRoot, clock, join(repoRoot, isolation.processLockRoot), operation);
+          selected?.assertCurrent();
+          const manifest = report.manifests.at(-1);
+          if (manifest === undefined) throw new Error("verified backup run reported no manifest");
+          outcome = {
+            output: json
+              ? JSON.stringify(report, null, 2)
+              : [
+                  `backup: verified — ${manifest.backupFileName}`,
+                  `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
+                  `  manifest ${manifest.backupFileName}.manifest.json${"coupledBackup" in report ? "" : " (restore with: storage restore --from <that manifest>)"}`,
+                  ...("coupledBackup" in report ? [`  private coupled companions: ${report.coupledBackup.backupPath}; no flat data is carried into sign-up`] : []),
+                ].join("\n"),
+            exitCode: 0,
+          };
+        }
+      } catch (error) {
+        if (hasUnprovedSourceClosure(error)) {
+          retained = retainAuthoritySourceClosure([error], { admission: storage, restore: operation });
+          throw retained;
+        }
+        release({ error }); throw error;
+      }
+      release();
+      return outcome;
+    },
+    release() { release(); },
+  });
+}
+
+async function backupCommand(isolation: RuntimeIsolation, rest: readonly string[], clock: Clock,
+  repoRoot: string, admission: RuntimeAdmission): Promise<StorageCommandOutcome> {
+  const prepared = await prepareStorageBackupCommand(isolation, rest, clock, repoRoot, admission);
+  return prepared.run();
 }
 
 /** Clears a ChatGPT credential lock whose recorded owner process is gone; a live owner is refused. */
