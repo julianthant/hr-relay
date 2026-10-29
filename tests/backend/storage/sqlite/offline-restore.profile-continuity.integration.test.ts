@@ -1,3 +1,6 @@
+import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
+import { RuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import * as nativeBrowserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
@@ -119,6 +122,66 @@ async function closeCustodyFixture(close: () => Promise<void>, primary: { error:
 }
 
 describe("profile restore continuity", () => {
+  for (const kind of ["root", "inherited-child"] as const) it(kind === "root"
+    ? "refuses another genuine root before restore effects, then preserves attempting write identity after exact root release"
+    : "refuses restore while an inherited child retains the listener, then preserves attempting write identity after owned child close", async () => {
+    const drill = createStorageRestoreTestWorld();
+    let primary: { error: unknown } | undefined;
+    try {
+      const { paths, database, closeDatabase } = await drill.attemptingDrillPaths({ kind, async inspect(held) {
+        const before = storageTree(held.repoRoot), entries = readdirSync(held.repoRoot, { recursive: true }).sort();
+        const stat = lstatSync(held.authorityPath);
+        const refuse = async () => {
+          await assert.rejects(runSecureEnvironmentBootstrap(["cli", "storage", "restore", "--from", held.manifestPath], {
+            acquireLifetimeLock: () => RuntimeLifetimeLock.acquire(held.port),
+            acquireAdmission: () => assert.fail("competing restore reached installation admission"),
+          }), RuntimeAlreadyRunningError);
+          assert.deepEqual(storageTree(held.repoRoot), before);
+          assert.deepEqual(readdirSync(held.repoRoot, { recursive: true }).sort(), entries);
+          const after = lstatSync(held.authorityPath);
+          assert.deepEqual([after.dev, after.ino, after.size, after.mtimeMs, after.ctimeMs],
+            [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs]);
+          assert.equal(existsSync(join(held.stateRoot, "backups", "suspects")), false);
+        };
+        await refuse();
+        if (kind === "inherited-child") { await held.closeRootListener(); await refuse(); }
+      } });
+      const intent = database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId);
+      const run = database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
+      assert.ok(intent); assert.ok(run); const claim = runClaim(run); assert.ok(claim);
+      assert.equal(intent.status, "attempting"); assert.equal(run.lifecycle.state, "running");
+      assert.equal(run.envelope.attempt, intent.runAttempt);
+      assert.deepEqual(database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
+      const membership = database.authority.workerSlots.get(claim.workerId), lease = database.authority.workerLeases.get(claim.workerId);
+      assert.ok(membership); assert.ok(lease); assert.equal(claim.claimGeneration, run.claimGeneration);
+      assert.notEqual(lease.lifecycle.state, "stopped");
+      const manifestPath = await drill.takeBackup(database, paths);
+      closeDatabase(); drill.corrupt(paths);
+      const corrupted = readFileSync(paths.authorityPath);
+      const protectedBytes = readFileSync(join(paths.stateRoot, "credentials", "protected.json"));
+      const machineRoot = join(paths.repoRoot, rebuildRuntimeIsolation.stateRoot, "machine");
+      const independent = () => Object.fromEntries(Object.entries(storageTree(machineRoot)).filter(([path]) => path !== "profiles.json"));
+      const independentBefore = independent();
+      const restored = await drill.composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", manifestPath], drill.CLOCK, paths.repoRoot);
+      assert.equal(restored.exitCode, 0, restored.output);
+      assert.notDeepEqual(readFileSync(paths.authorityPath), corrupted);
+      assert.deepEqual(independent(), independentBefore);
+      assert.deepEqual(readFileSync(join(paths.stateRoot, "credentials", "protected.json")), protectedBytes);
+      paths.renewAfterRestore();
+      const current = drill.open(paths);
+      try {
+        assert.deepEqual(current.authority.writeIntents.get(intent.writeIntentId), intent);
+        assert.deepEqual(current.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
+        assert.deepEqual(current.authority.runs.get(run.envelope.runId), run);
+        assert.deepEqual(current.authority.workerSlots.get(claim.workerId), membership);
+        assert.deepEqual(current.authority.workerLeases.get(claim.workerId), lease);
+        assert.equal(current.authority.writeIntents.get(intent.writeIntentId)?.status, "attempting");
+        assert.equal(current.authority.runs.get(run.envelope.runId)?.envelope.attempt, intent.runAttempt);
+      } finally { current.close(); }
+    } catch (error) { primary = { error }; }
+    await closeCustodyFixture(drill.cleanup, primary);
+  });
+
   for(const closure of ["busy","unproved"] as const)it(`retains source, suspects, backups and journals with zero replacement after ${closure} native browser closure`,async()=>{
     const clock=manualClock(new Date("2026-10-21T12:00:00.000Z")),f=await world(clock);
     const refusal=closure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy"))

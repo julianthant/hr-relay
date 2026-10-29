@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { FakeKeyringEntry, credentialKeychainTestEnvironment } from "../credential-keychain-fake.js";
 import { acquireEntrypointAdmission } from '../../../../src/backend/storage/admission/bootstrap-admission.js';
 import { createProfileRegistry } from '../../../../src/backend/profiles/registry.js';
 
@@ -69,15 +70,19 @@ export function createStorageRestoreTestWorld() {
     };
   }
 
-  async function attemptingDrillPaths(): Promise<{ paths: DrillPaths; database: AuthorityDatabase; closeDatabase: () => void }> {
+  async function attemptingDrillPaths(heldRoot?: Readonly<{
+    kind: "root" | "inherited-child";
+    inspect(input: Readonly<{ repoRoot: string; authorityPath: string; stateRoot: string; port: number; manifestPath: string;
+      closeRootListener(): Promise<void> }>): Promise<void>;
+  }>): Promise<{ paths: DrillPaths; database: AuthorityDatabase; closeDatabase: () => void }> {
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'relay-restore-attempt-')));
     retainedAttemptScratch.add(scratch);
     const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
     const portOwner = await RuntimeLifetimeLock.acquire(0), port = portOwner.port;
     await portOwner.close();
     let lifetimeLock: RuntimeLifetimeLock | undefined;
-    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(port)], {
-      cwd: sourceRoot, env: { ...process.env, TMPDIR: scratch }, detached: true,
+    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(port), heldRoot?.kind ?? 'root'], {
+      cwd: sourceRoot, env: credentialKeychainTestEnvironment({ ...process.env, TMPDIR: scratch }), detached: true,
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
     const ending = Promise.allSettled([once(child, 'exit'), once(child, 'close')]);
@@ -105,7 +110,8 @@ export function createStorageRestoreTestWorld() {
       const message: unknown = (await awaitingReceipt)[0];
       const receipt = z.strictObject({ state: z.literal('attempting'), workspace: z.string().min(1),
         stateRoot: z.string().min(1), authorityPath: z.string().min(1), profileId: z.string().min(1),
-        workerId: z.string().min(1), processLockRoot: z.string().min(1),
+        installationId: z.uuid(), workerId: z.string().min(1), processLockRoot: z.string().min(1),
+        keychain: z.array(z.tuple([z.string().min(1), z.string().min(1)])).length(1), manifestPath: z.string().min(1),
         pid: z.number().int().positive(),
         claimGeneration: z.number().int().positive(), runId: z.string().min(1),
         databaseClosed: z.literal(true), retained: z.literal(true) }).parse(message);
@@ -119,6 +125,25 @@ export function createStorageRestoreTestWorld() {
         try { assert.fail("attempt controller listener was not retained"); }
         finally { await competing.close(); }
       }, RuntimeAlreadyRunningError);
+      assert.equal(receipt.stateRoot, join(receipt.workspace, rebuildRuntimeIsolation.stateRoot, "profiles", receipt.profileId));
+      assert.equal(dirname(receipt.manifestPath), join(receipt.stateRoot, "backups", "authority"));
+      assert.equal(receipt.keychain[0]?.[0], `Relay:${receipt.installationId}:${receipt.profileId}`);
+      FakeKeyringEntry.import(receipt.keychain);
+      const nextMessage = () => Promise.race([once(child, 'message'), ending.then(() => {
+        throw new Error('storage-restore-attempt-worker-exited-before-release');
+      })]);
+      if (heldRoot !== undefined) {
+        await heldRoot.inspect({ repoRoot: receipt.workspace, authorityPath: receipt.authorityPath, stateRoot: receipt.stateRoot,
+          port, manifestPath: receipt.manifestPath, async closeRootListener() {
+            assert.equal(heldRoot.kind, "inherited-child");
+            const closed = nextMessage(); child.send({ state: "close-root-listener" });
+            assert.deepEqual((await closed)[0], { state: "root-listener-closed" });
+          } });
+        if (heldRoot.kind === "inherited-child") {
+          const closed = nextMessage(); child.send({ state: "release-inherited" });
+          assert.deepEqual((await closed)[0], { state: "inherited-closed" });
+        }
+      }
       assert.equal(child.exitCode, null); assert.equal(child.signalCode, null);
       process.kill(-receipt.pid, 0);
       assert.equal(child.kill('SIGKILL'), true);
@@ -143,6 +168,7 @@ export function createStorageRestoreTestWorld() {
       machine = acquireEntrypointAdmission(receipt.workspace, 'exclusive', lifetimeLock);
       admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(receipt.profileId));
       assert.equal(admission.stateRoot, receipt.stateRoot);
+      assert.equal(admission.profileBinding.installationId, receipt.installationId);
       registerBoundProfile(admission, machine); registered = true;
       const heldMachine = machine, heldLifetime = lifetimeLock;
       let heldAdmission = admission;
@@ -263,7 +289,7 @@ export function createStorageRestoreTestWorld() {
   }
   const cleanup = async () => {
     for (const [child, ending] of attemptChildren) {
-      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) process.kill(-child.pid, 'SIGKILL');
       await ending;
       if (child.pid !== undefined) for (const pid of [child.pid, -child.pid]) {
         assert.throws(() => process.kill(pid, 0), (error: unknown) => error instanceof Error
