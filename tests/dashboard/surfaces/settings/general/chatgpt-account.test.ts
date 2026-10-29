@@ -77,6 +77,7 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     startChatGptSignIn: async () => { starts++; return started; },
     completeChatGptSignIn: () => completion.promise,
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId: started.attemptId }),
+    testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }),
     signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "unconfirmed" }),
   };
   const port = createServedChatGptAccountPort(queries, { open: () => ({ navigate() {}, close() {} }) });

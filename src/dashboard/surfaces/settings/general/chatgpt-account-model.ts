@@ -86,6 +86,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   let cancelling: number | undefined;
   let ownedPopup: ChatGptAuthorizationWindow | undefined;
   let refreshing: Promise<void> | undefined;
+  let ocrController: AbortController | undefined;
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
   const listeners = new Set<() => void>();
   const nowMs = options.nowMs ?? (() => systemClock.nowMs());
@@ -155,6 +156,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     else problem("refused", result.code);
   };
   async function readAccount(): Promise<void> {
+    ocrController?.abort(); ocrController = undefined;
     const request = ++epoch;
     try {
       const account = await readWithDeadline(() => client.chatGptAccount(), "CHATGPT_AUTH_UNAVAILABLE");
@@ -175,7 +177,23 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     return reading;
   }
   return {
-    testOcr: async () => { throw new Error(ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text); },
+    testOcr: async () => {
+      if (disposed || busy || refreshing !== undefined || resource.state !== "loaded" || snapshot.state !== "connected"
+        || snapshot.planUsage !== "enabled" || snapshot.ocrTest?.state === "uncertain") return;
+      busy = true;
+      const request = ++epoch;
+      const controller = new AbortController(); ocrController = controller;
+      snapshot = { ...snapshot, ocrTest: { state: "loading" } }; notify();
+      try {
+        const result = await readWithDeadline(signal => client.testChatGptOcr(signal), "CHATGPT_OCR_FAILED", 120_000, controller.signal);
+        if (current(request)) { snapshot = { ...snapshot, ocrTest: result }; notify(); }
+      } catch {
+        if (current(request)) { snapshot = { ...snapshot, ocrTest: { state: "uncertain", code: "CHATGPT_OCR_FAILED" } }; notify(); }
+      } finally {
+        if (ocrController === controller) ocrController = undefined;
+        if (current(request)) busy = false;
+      }
+    },
     mode: "live", getSnapshot: () => snapshot, getResource: () => resource,
     subscribe: listener => {
       listeners.add(listener);
@@ -183,7 +201,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       return () => { listeners.delete(listener); };
     },
     refresh,
-    dispose: () => { disposed = true; ++epoch; closePopup(); clearTimeout(expiryTimer); listeners.clear(); },
+    dispose: () => { disposed = true; ++epoch; ocrController?.abort(); ocrController = undefined; closePopup(); clearTimeout(expiryTimer); listeners.clear(); },
     signIn: async input => {
       if (disposed || busy || resource.state === "loading") return;
       let popup: ChatGptAuthorizationWindow | undefined;

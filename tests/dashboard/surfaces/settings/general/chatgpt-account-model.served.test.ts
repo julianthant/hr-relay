@@ -17,6 +17,7 @@ function setup(overrides: Partial<ChatGptAccountQueries> = {}, open?: () => Chat
     startChatGptSignIn: async () => { calls.push("start"); return started; },
     completeChatGptSignIn: async () => { calls.push("complete"); return { state: "completed", attemptId, account }; },
     cancelChatGptSignIn: async () => { calls.push("cancel"); return { state: "cancelled", attemptId }; },
+    testChatGptOcr: async () => { calls.push("ocr"); return { state: "completed", model: "Synthetic OCR" }; },
     signOutChatGpt: async () => { calls.push("out"); return { state: "signed-out", remoteRevocation: "confirmed" }; }, ...overrides,
   };
   const popup = { navigate: (url: string) => { calls.push(`navigate:${url}`); }, close: () => { calls.push("close"); } };
@@ -79,7 +80,7 @@ it("suppresses stale reads and completion settlements and resumes the original s
 });
 it("reads current state once at connected expiry without starting sign-in", async () => {
   vi.useFakeTimers(); let reads = 0, now = Date.parse("2026-10-12T12:59:59.000Z");
-  const queries: ChatGptAccountQueries = { chatGptAccount: async () => { reads++; return reads === 1 ? account : { state: "expired" }; }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }) };
+  const queries: ChatGptAccountQueries = { testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }), chatGptAccount: async () => { reads++; return reads === 1 ? account : { state: "expired" }; }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }) };
   const port = createServedChatGptAccountPort(queries, { nowMs: () => now });
   try { await port.refresh(); now += 1000; await vi.advanceTimersByTimeAsync(1000); assert.equal(reads, 2); assert.deepEqual(port.getSnapshot(), { state: "expired" }); } finally { port.dispose(); vi.useRealTimers(); }
 });
@@ -284,4 +285,91 @@ it("expires a new pending attempt observed after confirmed cancellation", async 
     completion.resolve({ state: "completed", attemptId, account }); await signing;
     assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
   } finally { completion.resolve({ state: "completed", attemptId, account }); f.port.dispose(); vi.useRealTimers(); }
+});
+
+
+it("never auto-tests during sign-in and dispatches one OCR call despite duplicate clicks", async () => {
+  const result = Promise.withResolvers<Awaited<ReturnType<ChatGptAccountQueries["testChatGptOcr"]>>>();
+  let calls = 0;
+  const f = setup({ testChatGptOcr: () => { calls++; return result.promise; } });
+  try {
+    await f.port.refresh(); await f.port.signIn({ usePlan: true }); assert.equal(calls, 0);
+    const testing = f.port.testOcr(); await f.port.testOcr();
+    assert.equal(calls, 1); assert.deepEqual(f.port.getSnapshot().ocrTest, { state: "loading" });
+    result.resolve({ state: "completed", model: "Synthetic OCR" }); await testing;
+    assert.deepEqual(f.port.getSnapshot().ocrTest, { state: "completed", model: "Synthetic OCR" });
+    assert.equal(f.port.getSnapshot().state, "connected");
+  } finally { f.port.dispose(); }
+});
+
+for (const state of ["refused", "uncertain"] as const) it(`retains exact OCR ${state} without redispatch or fabricated success`, async () => {
+  let calls = 0;
+  const f = setup({ chatGptAccount: async () => account, testChatGptOcr: async () => { calls++; return { state, code: "CHATGPT_OCR_INVALID", message: ERROR_CATALOG.CHATGPT_OCR_INVALID.text }; } });
+  try {
+    await f.port.refresh(); await f.port.testOcr();
+    assert.equal(f.port.getSnapshot().ocrTest?.state, state); assert.equal(calls, 1);
+    if (state === "uncertain") { await f.port.testOcr(); assert.equal(calls, 1); }
+  } finally { f.port.dispose(); }
+});
+
+it("keeps a lost OCR response uncertain with fixed catalog text and no retry", async () => {
+  let calls = 0;
+  const f = setup({ chatGptAccount: async () => account, testChatGptOcr: async () => { calls++; throw new Error("synthetic-private-transport-detail"); } });
+  try {
+    await f.port.refresh(); await f.port.testOcr(); await f.port.testOcr();
+    assert.equal(calls, 1); assert.deepEqual(f.port.getSnapshot().ocrTest, { state: "uncertain", code: "CHATGPT_OCR_FAILED" });
+    assert.equal(JSON.stringify(f.port.getSnapshot()).includes("synthetic-private"), false);
+  } finally { f.port.dispose(); }
+});
+
+for (const change of ["refresh", "dispose"] as const) it(`aborts and ignores an OCR result after ${change}`, async () => {
+  const result = Promise.withResolvers<Awaited<ReturnType<ChatGptAccountQueries["testChatGptOcr"]>>>();
+  let signal: AbortSignal | undefined;
+  let calls = 0;
+  const f = setup({ chatGptAccount: async () => account, testChatGptOcr: value => { signal = value; calls++; return result.promise; } });
+  try {
+    await f.port.refresh(); const testing = f.port.testOcr();
+    assert.equal(calls, 1);
+    if (change === "refresh") await f.port.refresh(); else f.port.dispose();
+    assert.equal(signal?.aborted, true);
+    const before = f.port.getSnapshot();
+    result.resolve({ state: "completed", model: "Stale model" }); await testing;
+    assert.equal(f.port.getSnapshot(), before);
+  } finally { f.port.dispose(); }
+});
+
+it("bounds a hung OCR call as uncertain and aborts its signal without redispatch", async () => {
+  vi.useFakeTimers();
+  let signal: AbortSignal | undefined;
+  let calls = 0;
+  const f = setup({ chatGptAccount: async () => account, testChatGptOcr: value => { signal = value; calls++; return new Promise<never>(() => {}); } });
+  try {
+    await f.port.refresh(); const testing = f.port.testOcr();
+    await vi.advanceTimersByTimeAsync(120_000); await testing;
+    assert.equal(signal?.aborted, true); assert.equal(calls, 1);
+    assert.equal(f.port.getSnapshot().ocrTest?.state, "uncertain"); await f.port.testOcr(); assert.equal(calls, 1);
+  } finally { f.port.dispose(); vi.useRealTimers(); }
+});
+
+it("does not test absent, expired, disabled, limited or unavailable account authority", async () => {
+  const views = [
+    { state: "signed-out" }, { state: "expired" },
+    { ...account, planUsage: "disabled" }, { ...account, planUsage: "limit-reached" },
+    { state: "unavailable", code: "CHATGPT_AUTH_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text },
+  ];
+  for (const view of views) {
+    const f = setup({ chatGptAccount: async () => ChatGptAccountStateSchema.parse(view) });
+    try { await f.port.refresh(); await f.port.testOcr(); assert.equal(f.calls.includes("ocr"), false); }
+    finally { f.port.dispose(); }
+  }
+});
+
+it("lets expired sign-out retain closure refusal and calls the existing sign-out once", async () => {
+  let calls = 0;
+  const f = setup({ chatGptAccount: async () => ({ state: "expired" }), signOutChatGpt: async () => { calls++; return { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text }; } });
+  try {
+    await f.port.refresh(); await f.port.signOut();
+    assert.equal(calls, 1); assert.equal(f.port.getResource().state, "uncertain");
+    assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text, account: { state: "expired" } });
+  } finally { f.port.dispose(); }
 });

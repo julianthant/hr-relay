@@ -368,7 +368,12 @@ not an end-user field.
 `ChatGptAccountContext` provides `ChatGptAccountPort`; its default is a memory preview. Continue
 with ChatGPT invokes `signIn` directly with plan use requested. There is no intermediate dashboard
 sign-in dialog. The model distinguishes loading, signed-out, expired, unavailable, and connected,
-with plan-use state separate from identity. Sign-out requires acknowledgment. Usage links to
+with plan-use state separate from identity. Known expired sessions can Disconnect through the same
+acknowledged sign-out action; unknown unavailable state never implies stored credentials. Test OCR is
+an explicit action for a freshly loaded plan-enabled account and reads only the fixed synthetic page.
+Its loading, completion/model, failure, refusal and uncertain states use existing notices; neither
+sign-in nor a failed result automatically dispatches another OCR request. Sign-out requires
+acknowledgment. Usage links to
 `https://chatgpt.com/settings/usage`. OAuth, consent, eligibility, usage limits, and secure token
 persistence require the backend account adapter. A displayed preview identity never proves plan access.
 
