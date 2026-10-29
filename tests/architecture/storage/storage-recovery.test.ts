@@ -1672,74 +1672,76 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("opens corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files degraded", async () => {
-    const root = await testRoot();
-    const paths: Array<readonly [string, string]> = [];
-
-    const corruptPath = join(await testRoot(), "state.db");
-    writeFileSync(corruptPath, "not a sqlite database");
-    paths.push([corruptPath, "authority-not-sqlite"]);
-
-    const truncatedPath = join(await testRoot(), "state.db");
-    openDatabase(truncatedPath).close();
-    truncateSync(truncatedPath, 128);
-    paths.push([truncatedPath, "authority-corrupt"]);
-
-    const newerPath = join(await testRoot(), "state.db");
-    openDatabase(newerPath).close();
-    const newer = new DatabaseSync(newerPath);
-    newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
-    newer.close();
-    paths.push([newerPath, "authority-schema-mismatch"]);
-
-    const foreignKeyPath = join(await testRoot(), "state.db");
-    openDatabase(foreignKeyPath).close();
-    const badForeignKey = new DatabaseSync(foreignKeyPath, { enableForeignKeyConstraints: false });
-    badForeignKey.prepare(`
-      INSERT INTO command_audits (id, command_id, payload_json, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(UUID_2, UUID_8, JSON.stringify({ invalid: "but valid JSON" }), NOW);
-    badForeignKey.close();
-    paths.push([foreignKeyPath, "authority-foreign-key"]);
-
-    const invariantPath = join(await testRoot(), "state.db");
-    const invariantDatabase = openDatabase(invariantPath);
-    invariantDatabase.authority.commands.insert(COMMAND_FIXTURES[0]);
-    invariantDatabase.close();
-    const badInvariant = new DatabaseSync(invariantPath);
-    badInvariant.prepare("UPDATE commands SET family = ? WHERE id = ?").run("run", UUID_1);
-    badInvariant.close();
-    paths.push([invariantPath, "authority-record-invalid"]);
-
-    const recordSchemaPath = join(await testRoot(), "state.db");
-    const recordSchemaDatabase = openDatabase(recordSchemaPath);
-    fenceWriteFixture(recordSchemaDatabase, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, recordSchemaPath);
-    releaseSeededWriteOwners(recordSchemaDatabase, CLOCK.now().toISOString());
-    recordSchemaDatabase.close();
-    const badRecordSchema = new DatabaseSync(recordSchemaPath);
-    badRecordSchema.prepare("UPDATE write_intents SET payload_json = ? WHERE id = ?")
-      .run(JSON.stringify({ status: "attempting" }), WRITE_INTENT_ATTEMPTING.writeIntentId);
-    badRecordSchema.close();
-    paths.push([recordSchemaPath, "authority-record-invalid"]);
-
-    for (const [path, expectedCode] of paths) {
-      const before = readFileSync(path);
-      const store = openBootStore(path);
-      const report = store.report();
-      assert.equal(report.state, "degraded-read-only", path);
-      if (report.state !== "degraded-read-only") throw new Error("expected degraded report");
-      assert.equal(report.cause.code, expectedCode, path);
-      for (const operation of ["enqueue", "claim", "commit", "control"] as const) {
-        assert.throws(
-          () => store.requireWritable(operation),
-          (error: unknown) => error instanceof AuthorityMutationUnavailableError
-            && error.operation === operation
-            && error.health.code === expectedCode,
-        );
-      }
-      assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
+    const root = await testRoot(), path = join(root, "state.db");
+    openDatabase(path).close();
+    const baseline = readFileSync(path);
+    const assertClosedCompanions = () => {
+      for (const suffix of ["-wal", "-shm", "-journal"]) assert.equal(existsSync(path + suffix), false);
+    };
+    assertClosedCompanions();
+    const corruptions: ReadonlyArray<readonly [string, () => void]> = [
+      ["authority-not-sqlite", () => { writeFileSync(path, "not a sqlite database"); }],
+      ["authority-corrupt", () => { truncateSync(path, 128); }],
+      ["authority-schema-mismatch", () => {
+        const newer = new DatabaseSync(path);
+        try { newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`); }
+        finally { newer.close(); }
+      }],
+      ["authority-foreign-key", () => {
+        const badForeignKey = new DatabaseSync(path, { enableForeignKeyConstraints: false });
+        try {
+          badForeignKey.prepare(`
+            INSERT INTO command_audits (id, command_id, payload_json, created_at)
+            VALUES (?, ?, ?, ?)
+          `).run(UUID_2, UUID_8, JSON.stringify({ invalid: "but valid JSON" }), NOW);
+        } finally { badForeignKey.close(); }
+      }],
+      ["authority-record-invalid", () => {
+        const invariantDatabase = openDatabase(path);
+        try { invariantDatabase.authority.commands.insert(COMMAND_FIXTURES[0]); }
+        finally { invariantDatabase.close(); }
+        const badInvariant = new DatabaseSync(path);
+        try { badInvariant.prepare("UPDATE commands SET family = ? WHERE id = ?").run("run", UUID_1); }
+        finally { badInvariant.close(); }
+      }],
+      ["authority-record-invalid", () => {
+        const recordSchemaDatabase = openDatabase(path);
+        try {
+          fenceWriteFixture(recordSchemaDatabase, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, path);
+          releaseSeededWriteOwners(recordSchemaDatabase, CLOCK.now().toISOString());
+        } finally { recordSchemaDatabase.close(); }
+        const badRecordSchema = new DatabaseSync(path);
+        try {
+          badRecordSchema.prepare("UPDATE write_intents SET payload_json = ? WHERE id = ?")
+            .run(JSON.stringify({ status: "attempting" }), WRITE_INTENT_ATTEMPTING.writeIntentId);
+        } finally { badRecordSchema.close(); }
+      }],
+    ];
+    for (const [expectedCode, corrupt] of corruptions) {
+      assertClosedCompanions();
+      writeFileSync(path, baseline);
+      assert.deepEqual(readFileSync(path), baseline);
+      corrupt();
+      assertClosedCompanions();
+      const before = readFileSync(path), store = openBootStore(path);
+      try {
+        const report = store.report();
+        assert.equal(report.state, "degraded-read-only", path);
+        if (report.state !== "degraded-read-only") throw new Error("expected degraded report");
+        assert.equal(report.cause.code, expectedCode, path);
+        for (const operation of ["enqueue", "claim", "commit", "control"] as const) {
+          assert.throws(
+            () => store.requireWritable(operation),
+            (error: unknown) => error instanceof AuthorityMutationUnavailableError
+              && error.operation === operation
+              && error.health.code === expectedCode,
+          );
+        }
+        assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
+      } finally { store.close(); }
+      assertClosedCompanions();
     }
-    const doctorPath = join(root, "state.db");
-    copyFileSync(recordSchemaPath, doctorPath);
+    const doctorPath = path;
     const beforeDoctor = readFileSync(doctorPath);
     const doctor = await doctorAuthorityStorage(admissionFor(root), {
       stateRootTrustAnchor: root,
