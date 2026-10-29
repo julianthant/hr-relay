@@ -21,12 +21,17 @@ import { AuthorityBackupManifestSchema,RecoveryRuntimeLockSnapshotSchema } from 
 import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
 import { acquireRuntimeProcessLock,acquireRuntimeRestoreAdmission,observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { ProtectedSettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+const expectedTables = AUTHORITY_TABLE_REGISTRY.map(({name,classification})=>({name,classification}))
+  .sort((left,right)=>left.name.localeCompare(right.name));
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of [...cleanups]) { await cleanup(); cleanups.splice(cleanups.indexOf(cleanup), 1); } });
 async function fixture() {
@@ -38,6 +43,9 @@ async function fixture() {
   const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-backup" }, undefined, undefined, undefined, undefined, credentials);
   cleanups.push(async () => { database.close(); admission.release(); await bound.close(); });
   const directory = join(root, "backups", "authority"), clock = capturedInstantClock(NOW);
+  const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, clock, admission);
+  const configSnapshot = { ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint,
+    provenance: resolved.provenance, capturedAt: clock.now().toISOString() };
   const service = new AuthorityBackupService(admission, database, { directory }, clock);
   return { workspace, lifetime: bound.lifetime, root, path, get admission() { return admission; }, get credentials() { return credentials; }, machine: bound.machine,
     renewAfterRestore() {
@@ -45,12 +53,12 @@ async function fixture() {
       admission = bound.machine.admitProfile(createProfileRegistry(bound.machine).storageClaim(profileId));
       credentials = createCredentialStore({ admission, stateRoot: root, erasureJournalAdmission: bound.machine,
         erasureJournalPath: join(bound.machine.stateRoot, "machine", "erasures", `${profileId}.json`) });
-    }, database, directory, clock, service };
+    }, database, directory, clock, service, configSnapshot };
 }
 describe("native authority backup", () => {
   it("restores the genuine protected command and audit while retaining independent credential bytes and exact replay", async () => {
     const f = await fixture(), store = f.credentials;
-    f.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    f.database.authority.runtimeConfig.initialize(f.configSnapshot);
     const command = ProtectedSettingsCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: NOW,
       requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "settings-surface", family: "settings", type: "apply-protected-settings",
       target: { expectedRevision: store.read().revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
@@ -99,7 +107,7 @@ describe("native authority backup", () => {
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, { authorityPath: f.path,
       suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 },
       async staged => { rebuilds += 1; const stagedAdmission = f.admission.stoppedStagedAuthority(staged);
-        try { expect(inspectAuthorityBackupReadOnly(stagedAdmission, staged).tables).toHaveLength(39); } finally { stagedAdmission.release(); } }, f.clock, undefined, undefined, f.credentials);
+        try { expect(inspectAuthorityBackupReadOnly(stagedAdmission, staged).tables).toEqual(expectedTables); } finally { stagedAdmission.release(); } }, f.clock, undefined, undefined, f.credentials);
     const restored = await restore.restore({ manifestPath, stoppedSystemProof });
     expect(restored.state).toBe("restored"); expect(rebuilds).toBe(1);
     expect(readFileSync(join(f.root, "backups", "suspects", restored.suspectFileName))).toEqual(original);
@@ -136,7 +144,7 @@ describe("native authority backup", () => {
     reacquired.release();
   });
   it.each([false,true])("keeps exact SQLite companion custody on rollback and retains an unfinished operation on rollback fault: %s", async rollbackFault => {
-    const f = await fixture(); f.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    const f = await fixture(); f.database.authority.runtimeConfig.initialize(f.configSnapshot);
     const report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     const companions = ["-wal","-shm"].map(suffix => ({ suffix, bytes: readFileSync(`${f.path}${suffix}`) }));
@@ -168,7 +176,7 @@ describe("native authority backup", () => {
   });
   it.each(["replaced","unchanged"] as const)("keeps %s settlement and stopped recovery fenced when exact preserved suspect custody changes", async outcome => {
     for(const fault of ["missing","replaced-inode","changed-bytes","companion-missing","companion-inode","companion-bytes"]){
-      const f=await fixture();f.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+      const f=await fixture();f.database.authority.runtimeConfig.initialize(f.configSnapshot);
       const report=await f.service.request({trigger:"operator",requiredGeneration:f.database.getMeta().authorityGeneration});
       const manifest=report.manifests[0],manifestPath=join(f.directory,`${manifest.backupFileName}.manifest.json`);
       const companions=["-wal","-shm"].map(suffix=>({suffix,bytes:readFileSync(`${f.path}${suffix}`)}));f.database.close();
@@ -264,7 +272,7 @@ describe("native authority backup", () => {
     expect(manifest.verification.authorityGeneration).toBe(f.database.getMeta().authorityGeneration);
     const copy = f.admission.verifiedReadOnlyCopy(verified.backupPath, manifest.sha256);
     try { const inspection = inspectAuthorityBackupReadOnly(copy, verified.backupPath);
-      expect(inspection.tables).toHaveLength(39); expect(inspection.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
+      expect(inspection.tables).toEqual(expectedTables); expect(inspection.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
       expect(inspection.exactTableRegistry).toBe(true); expect(inspection.invariantViolations).toEqual([]);
     } finally { copy.release(); }
   });
