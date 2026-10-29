@@ -8,13 +8,15 @@ import { DashboardClientProvider } from "../../../../../src/dashboard/state/clie
 import { PreflightActionsProvider } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
 import { PreflightReportContent } from "../../../../../src/dashboard/surfaces/settings/preflight/settings-preflight.js";
 import { PreflightOcrContext, createServedPreflightOcrPort, type PreflightOcrPort, type PreflightOcrSnapshot } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-ocr-model.js";
+import { WorkflowBootstrapPrimitiveSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
+import { FIXTURE_BOOTSTRAP } from "../../../../parity/helpers/fixture-bootstrap.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined, host: HTMLElement | undefined;
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; });
 async function mount(port: PreflightOcrPort, onRerun = () => {}) {
-  const client = { preflightScopes: async () => [] } as unknown as DashboardClient;
+  const client = { preflightScopes: async () => FIXTURE_BOOTSTRAP.workflows } as unknown as DashboardClient;
   host = document.createElement("div"); document.body.append(host);
   await act(async () => {
     root = createRoot(host!);
@@ -45,8 +47,13 @@ it("keeps OCR dispatch separate from Run preflight and scope refresh", async () 
   await mount({ getSnapshot: () => idle, subscribe: () => () => {}, testOcr: async () => { calls++; } }, () => { reruns++; });
   const buttons = [...host!.querySelectorAll("button")];
   await act(async () => buttons.find(node => node.textContent === "Run preflight")!.click());
-  const scope = host!.querySelector("select"); assert.ok(scope);
-  await act(async () => scope.dispatchEvent(new Event("change", { bubbles: true })));
+  const scope = host!.querySelector<HTMLButtonElement>('[role="combobox"]'); assert.ok(scope);
+  const workflow = WorkflowBootstrapPrimitiveSchema.parse(FIXTURE_BOOTSTRAP.workflows[0]);
+  assert.equal(scope.getAttribute("data-value"), "dashboard");
+  await act(async () => scope.click());
+  const option = document.querySelector<HTMLElement>(`[role="option"][data-value="${workflow.id}"]`); assert.ok(option);
+  await act(async () => option.click());
+  assert.equal(scope.getAttribute("data-value"), workflow.id);
   assert.equal(calls, 0); assert.equal(reruns, 1);
   await act(async () => buttons.find(node => node.textContent === "Test OCR")!.click());
   assert.equal(calls, 1); assert.equal(reruns, 1);
