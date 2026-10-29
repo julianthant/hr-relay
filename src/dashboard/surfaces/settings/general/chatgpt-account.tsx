@@ -80,7 +80,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
               <Button variant="ghost" disabled={pending !== undefined} loading={pending === "cancel"} onClick={() => { void perform("cancel"); }}>Cancel</Button>
             </>}
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : displayed.state === "expired" ? "Reconnect" : "Connect ChatGPT"}</Button>}
-            {connected && <Button variant="ghost" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Disconnect</Button>}
+            {(connected || displayed.state === "expired") && <Button variant="ghost" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Disconnect</Button>}
           </div>} />}
     </div></FormGroup>
   </BodySection>;

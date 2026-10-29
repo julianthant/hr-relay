@@ -1,5 +1,5 @@
 import { ChatGptAccountViewSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
-  ChatGptSignInCompletionSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema, ChatGptSignOutResultSchema,
+  ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema, ChatGptSignOutResultSchema,
   type ChatGptSignInRequest } from "../../../models/dashboard/chatgpt-account.js";
 import type { z } from "zod";
 import type { DashboardTransport } from "../transport.js";
@@ -11,6 +11,7 @@ export interface ChatGptAccountQueries {
   startChatGptSignIn(input: ChatGptSignInRequest): Promise<z.infer<typeof ChatGptSignInStartResultSchema>>;
   completeChatGptSignIn(attemptId: string, signal?: AbortSignal): Promise<z.infer<typeof ChatGptSignInCompletionSchema>>;
   cancelChatGptSignIn(attemptId: string, signal?: AbortSignal): Promise<z.infer<typeof ChatGptCancelResultSchema>>;
+  testChatGptOcr(signal?: AbortSignal): Promise<z.infer<typeof ChatGptOcrTestResultSchema>>;
   signOutChatGpt(): Promise<z.infer<typeof ChatGptSignOutResultSchema>>;
 }
 export function createChatGptAccountQueries(transport: DashboardTransport): ChatGptAccountQueries {
@@ -33,6 +34,11 @@ export function createChatGptAccountQueries(transport: DashboardTransport): Chat
         { method: "POST", body: JSON.stringify(ChatGptEmptyRequestSchema.parse({})), ...(signal === undefined ? {} : { signal }) }));
       if (result.state === "cancelled" && result.attemptId !== attemptId) throw schemaError(`POST ${path}`, "account attempt differs from request");
       return result;
+    },
+    async testChatGptOcr(signal?: AbortSignal) {
+      const path = "/api/v1/settings/chatgpt-account/test-ocr";
+      return parseOrThrow(ChatGptOcrTestResultSchema, `POST ${path}`, await transport.requestJson(path,
+        { method: "POST", body: JSON.stringify(ChatGptEmptyRequestSchema.parse({})), ...(signal === undefined ? {} : { signal }) }));
     },
     async signOutChatGpt() {
       const path = "/api/v1/settings/chatgpt-account/sign-out";
