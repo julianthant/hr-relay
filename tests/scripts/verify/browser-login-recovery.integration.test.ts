@@ -6,6 +6,7 @@ import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js
 import { DatabaseSync } from "node:sqlite";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { runRecordColumns } from "../../../src/backend/storage/sqlite/run-record-row.js";
+import { createRunSearchIndex } from "../../../src/backend/storage/sqlite/run-search-index.js";
 import { attemptingOwnedWrite } from "../../support/helpers/backend/worker-lifetime-world.js";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -146,17 +147,39 @@ it("refuses unexpected run ownership in a verification-only member without retir
   const claimed = RunRecordSchema.parse({ ...queued, claimGeneration: 1, version: queued.version + 1,
     lifecycle: { state: "claimed", workerId: f.slot.workerId, workerLifetime: { leaseGeneration: 1,
       membershipRevision: f.slot.membershipRevision }, claimedAt: f.now, heartbeatAt: f.now } });
-  const columns = runRecordColumns(claimed), raw = new DatabaseSync(join(f.root, "state.db"));
+  const raw = new DatabaseSync(join(f.root, "state.db")), sourceGeneration = f.database.getMeta().authorityGeneration;
+  const search = createRunSearchIndex(raw); search.installTracking();
+  const replace = (run: typeof queued) => {
+    const columns = runRecordColumns(run);
+    raw.exec("BEGIN IMMEDIATE");
+    try {
+      assert.equal(raw.prepare("UPDATE runs SET state=?,owner_worker_id=?,claim_generation=?,heartbeat_at=?,version=?,lifecycle_json=? WHERE id=?")
+        .run(columns.state, columns.owner_worker_id, columns.claim_generation, columns.heartbeat_at, columns.version,
+          columns.lifecycle_json, columns.id).changes, 1);
+      let publication = search.rebuild({ restart: true, limit: 500 }, sourceGeneration, f.now);
+      while (publication.state === "building") publication = search.rebuild({ restart: false, limit: 500 }, sourceGeneration, f.now);
+      raw.exec("COMMIT");
+    } catch (error) {
+      try { raw.exec("ROLLBACK"); }
+      catch (cleanup) { throw new AggregateError([error, cleanup], "verification fixture mutation and rollback failed", { cause: cleanup }); }
+      throw error;
+    }
+  };
+  let primary: { error: unknown } | undefined;
   try {
-    assert.equal(raw.prepare("UPDATE runs SET state=?,owner_worker_id=?,claim_generation=?,heartbeat_at=?,version=?,lifecycle_json=? WHERE id=?")
-      .run(columns.state, columns.owner_worker_id, columns.claim_generation, columns.heartbeat_at, columns.version,
-        columns.lifecycle_json, columns.id).changes, 1);
-  } finally { raw.close(); }
-  const before = f.database.readProfileResourceCustody(), generation = f.database.getMeta().authorityGeneration;
-  assert.throws(() => f.database.retireVerificationWorker(f.retirementRequest, f.lock), /worker-verification-unexpected-run-owner/u);
-  assert.deepEqual(f.database.readProfileResourceCustody(), before);
-  assert.equal(f.database.getMeta().authorityGeneration, generation);
-  assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);
+    replace(claimed);
+    const before = f.database.readProfileResourceCustody(), generation = f.database.getMeta().authorityGeneration;
+    assert.throws(() => f.database.retireVerificationWorker(f.retirementRequest, f.lock), /worker-verification-unexpected-run-owner/u);
+    assert.deepEqual(f.database.readProfileResourceCustody(), before);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);
+  } catch (error) { primary = { error }; }
+  const failures: unknown[] = [];
+  try { replace(queued); } catch (error) { failures.push(error); }
+  try { raw.close(); } catch (error) { failures.push(error); }
+  if (primary !== undefined && failures.length > 0) throw new AggregateError([primary.error, ...failures], "verification refusal and fixture cleanup failed", { cause: primary.error });
+  if (primary !== undefined) throw primary.error;
+  if (failures.length > 0) throw new AggregateError(failures, "verification fixture cleanup failed", { cause: failures[0] });
 });
 
 it("refuses unproved write ownership and rolls back startup cleanup without settling or retrying UNKNOWN", async () => {
@@ -168,16 +191,26 @@ it("refuses unproved write ownership and rolls back startup cleanup without sett
     profileRunId: randomUUID(), system: "ucpath", credentialKey: "ab".repeat(32), leaseGeneration: 1,
     now: f.clock.now().toISOString() }, f.lock);
   const raw = new DatabaseSync(join(f.root, "state.db"));
-  try { assert.equal(raw.prepare("DELETE FROM timeline_events WHERE kind='run.claimed' AND run_id=?").run(f.run.envelope.runId).changes, 1); }
-  finally { raw.close(); }
-  const before = f.database.readProfileResourceCustody(), generation = f.database.getMeta().authorityGeneration;
-  const attempts = f.database.authority.writeAttempts.listByIntent(intent.writeIntentId);
-  assert.throws(() => reconcileStartupCrash({ ...f, lifecycle: f.service }));
-  assert.deepEqual(f.database.readProfileResourceCustody(), before);
-  assert.equal(f.database.getMeta().authorityGeneration, generation);
-  assert.deepEqual(f.database.authority.writeIntents.get(intent.writeIntentId), intent);
-  assert.deepEqual(f.database.authority.writeAttempts.listByIntent(intent.writeIntentId), attempts);
-  assert.deepEqual(f.database.authority.runs.get(f.run.envelope.runId), f.run);
-  assert.equal(f.database.authority.workerSlots.get(slot.workerId)?.retiredAt, null);
-  assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);
+  let primary: { error: unknown } | undefined;
+  try {
+    raw.prepare("CREATE TEMP TABLE retained_claim_event AS SELECT * FROM timeline_events WHERE kind='run.claimed' AND run_id=?").run(f.run.envelope.runId);
+    assert.equal(raw.prepare("DELETE FROM timeline_events WHERE kind='run.claimed' AND run_id=?").run(f.run.envelope.runId).changes, 1);
+    const before = f.database.readProfileResourceCustody(), generation = f.database.getMeta().authorityGeneration;
+    const attempts = f.database.authority.writeAttempts.listByIntent(intent.writeIntentId);
+    assert.throws(() => reconcileStartupCrash({ ...f, lifecycle: f.service }));
+    assert.deepEqual(f.database.readProfileResourceCustody(), before);
+    assert.equal(f.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(f.database.authority.writeIntents.get(intent.writeIntentId), intent);
+    assert.deepEqual(f.database.authority.writeAttempts.listByIntent(intent.writeIntentId), attempts);
+    assert.deepEqual(f.database.authority.runs.get(f.run.envelope.runId), f.run);
+    assert.equal(f.database.authority.workerSlots.get(slot.workerId)?.retiredAt, null);
+    assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), []);
+  } catch (error) { primary = { error }; }
+  const failures: unknown[] = [];
+  try { assert.equal(raw.prepare("INSERT INTO timeline_events SELECT * FROM retained_claim_event").run().changes, 1); }
+  catch (error) { failures.push(error); }
+  try { raw.close(); } catch (error) { failures.push(error); }
+  if (primary !== undefined && failures.length > 0) throw new AggregateError([primary.error, ...failures], "verification write refusal and fixture cleanup failed", { cause: primary.error });
+  if (primary !== undefined) throw primary.error;
+  if (failures.length > 0) throw new AggregateError(failures, "verification write fixture cleanup failed", { cause: failures[0] });
 });
