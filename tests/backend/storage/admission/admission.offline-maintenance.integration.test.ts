@@ -137,6 +137,10 @@ for (const failOpen of [false, true]) it(failOpen
 
 it("issues before first admission and requires the exact root and workspace through consumption and restart", async () => {
   const f = await fixture(), foreign = await fixture();
+  const seed = adoptSynthetic(f.workspace, f.pair, f.lifetime); seed.release();
+  const port = f.lifetime.port;
+  await f.lifetime.close();
+  f.lifetime = await RuntimeLifetimeLock.acquire(port);
   const before = storageTree(f.workspace), foreignBefore = storageTree(foreign.workspace);
   const operation = f.lifetime.beginOfflineMaintenance(f.workspace);
   const otherRoot = await RuntimeLifetimeLock.acquire(0), otherOperation = otherRoot.beginOfflineMaintenance(f.workspace);
