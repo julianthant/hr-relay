@@ -200,7 +200,8 @@ describe("profile restore continuity", () => {
           claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, lifecycle: { state: "parked-write", writeIntentId: WRITE_INTENT_ATTEMPTING.writeIntentId,
             intentGeneration: 1, parkedAt: now, code: "unknown", message: "synthetic-unresolved-submit" }, now }).state, "applied");
         const patch = { "concurrency.defaultWorkers": { set: 3 } };
-        const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, systemClock), f.store());
+        const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, systemClock,
+          { stateRoot: f.stateRoot, artifactRoot: f.admission.artifactRoot }), f.store());
         const result = executeSettingsCommand({ authority: database, clock: systemClock, ids: { uuid: randomUUID }, settings },
           { family: "settings", type: "apply-settings", commandId: settingsCommandId, requestedAt: now, requestedBy: "local-operator", source: "settings-surface",
             target: { expectedRevision: 1 }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
