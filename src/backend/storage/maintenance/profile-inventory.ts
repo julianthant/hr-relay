@@ -4,7 +4,7 @@ import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { CredentialLockRecordSchema, readPrivateFile } from "../configuration/credential-safe-file.js";
 import { lstatSync, readdirSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
+import { type RestoreAdmissionHandle, observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { ProfileBrowserRootRefusalError } from "../admission/admission-identity.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -99,6 +99,16 @@ export function assertStoppedProfileBrowsersClosed(admission: RuntimeAdmission, 
 
 export async function probeStoppedProfileBrowsersClosed(admission: RuntimeAdmission, clock: Clock, browserClosure: ProfileBrowserClosure, processLockRoot?: string): Promise<void> {
   await probeRetainedBrowsersClosed({admission,...stoppedBrowserFacts(admission,clock,processLockRoot),clock,browserClosure,signal:new AbortController().signal});
+}
+
+export async function probeRestoreProfileBrowsersClosed(admission: RuntimeAdmission, processLockRoot: string,
+  restore: RestoreAdmissionHandle, clock: Clock, browserClosure: ProfileBrowserClosure): Promise<void> {
+  const custody = AuthorityDatabase.readProfileRestoreBrowserInventory(admission, processLockRoot, restore);
+  const settings = custody.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
+    : custody.settingsAuthority.record.saved?.settings ?? custody.settingsAuthority.record.initialization.settings.settings;
+  const config = resolveConfigWithProvenance(settings, { primaryDisplay: null }, clock,
+    { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
+  await probeRetainedBrowsersClosed({ admission, custody, config, browserClosure, clock, signal: new AbortController().signal });
 }
 
 export function assertRetainedProfileBrowserRoot(admissionInput: RuntimeAdmission, path: string): void {

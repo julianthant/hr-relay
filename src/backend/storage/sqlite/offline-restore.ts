@@ -1,4 +1,4 @@
-import { probeStoppedProfileBrowsersClosed, type ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
+import { probeRestoreProfileBrowsersClosed, type ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { assertProfileRestoreDatabaseBinding } from "./profile-local-databases.js";
 import { captureCredentialErasureHead } from "../configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
@@ -294,7 +294,7 @@ export class OfflineAuthorityRestoreService {
           liveSnapshot,
         );
 
-        await probeStoppedProfileBrowsersClosed(this.#runtimeAdmission,this.#clock,this.#browserClosure);
+        await probeRestoreProfileBrowsersClosed(this.#runtimeAdmission, this.#processLockRoot, restoreAdmission, this.#clock, this.#browserClosure);
         mkdirSync(this.#suspectDirectory, { recursive: true, mode: 0o700 });
         const token = randomUUID();
         const compactTime = this.#clock.now().toISOString().replaceAll(/[^0-9]/g, "");

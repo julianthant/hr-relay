@@ -1924,6 +1924,29 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  static readProfileRestoreBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, restore: RestoreAdmissionHandle) {
+    const owner = requireRuntimeAdmission(admission), path = join(owner.stateRoot, "state.db");
+    const assertHeld = () => {
+      owner.assertExclusive(); owner.assertProfileRuntime();
+      const context = owner.readInstallationContext();
+      if (context === undefined) throw new Error("profile-restore-context-required");
+      owner.assertFixedProcessLockRoot(context.workspace, processLockRoot);
+      assertRuntimeRestoreAdmission(restore, processLockRoot);
+    };
+    assertHeld();
+    return withAuthorityDatabaseReadOnly(owner, path, database => {
+      const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID
+        || version !== owner.profileMaintenanceSchemaVersion() || meta.schema_version !== version
+        || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) {
+        throw new Error("profile-maintenance-binding-mismatch");
+      }
+      const custody = Object.freeze(browserProfileInventory(database));
+      assertHeld();
+      return custody;
+    });
+  }
+
   static readStoppedBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, clock: Clock) {
     const owner=requireRuntimeAdmission(admission),path=join(owner.stateRoot,"state.db");
     owner.assertStoppedAuthorityBackup(path,processLockRoot);

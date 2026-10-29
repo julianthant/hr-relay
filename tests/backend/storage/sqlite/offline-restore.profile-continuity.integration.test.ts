@@ -187,7 +187,7 @@ describe("profile restore continuity", () => {
     const refusal=closure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy"))
       :new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
     let primary:{error:unknown}|undefined;
-    const inventoryProbe=vi.spyOn(nativeBrowserInventory,"probeStoppedProfileBrowsersClosed");
+    const inventoryProbe=vi.spyOn(nativeBrowserInventory,"probeRestoreProfileBrowsersClosed");
     const native=vi.spyOn(profileBrowserClosure,"probeClosed").mockRejectedValue(refusal);
     try{
       const manifestPath=await f.backup(),request={manifestPath,stoppedSystemProof:f.proof()};
