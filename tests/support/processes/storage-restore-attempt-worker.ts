@@ -1,3 +1,4 @@
+import { acquireRuntimeProcessLock, WorkerProcessLockFileSchema, type WorkerProcessLockFile } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import type { WorkerLeaseRecord } from "../../../src/models/run/worker.js";
 import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { randomUUID } from "node:crypto";
@@ -12,7 +13,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { join } from "node:path";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -212,6 +213,16 @@ if (process.argv[2] === "successor-renew-confirmed") {
   const files = [authorityPath, authorityPath + "-wal", authorityPath + "-shm", authorityPath + "-journal"];
   assert.equal(descriptors().some(path => files.some(file => path === file || path === file + " (deleted)")), false);
   lifetimeLock.assertHeld();
+  let workerLock: WorkerProcessLockFile | undefined;
+  if (process.argv[3] === "crashed-holder") {
+    const held = acquireRuntimeProcessLock({ processLockRoot, name: "workers", workerId: claim.workerId,
+      pid: process.pid }, clock);
+    assert.ok(held.acquisitionId);
+    workerLock = WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(
+      join(processLockRoot, "workers", `${held.acquisitionId}.lock.json`), "utf8")));
+    assert.ok("workerId" in workerLock); assert.equal(workerLock.workerId, claim.workerId);
+    assert.equal(workerLock.pid, process.pid); assert.equal(workerLock.releasedAt, null);
+  }
   let inherited: ReturnType<typeof spawn> | undefined;
   let inheritedClose: Promise<unknown[]> | undefined;
   if (process.argv[3] === "inherited-child") {
@@ -230,7 +241,8 @@ if (process.argv[2] === "successor-renew-confirmed") {
   process.send({ state: "attempting", workspace: profile.workspace, stateRoot: profile.stateRoot,
     authorityPath, profileId: binding.profileId, installationId: binding.installationId, workerId: claim.workerId,
     processLockRoot, pid: process.pid, keychain, manifestPath, beforeManifestPath,
-    claimGeneration: current.claimGeneration, runId: current.envelope.runId, databaseClosed: true, retained: true });
+    claimGeneration: current.claimGeneration, runId: current.envelope.runId, databaseClosed: true, retained: true,
+    ...(workerLock === undefined ? {} : { workerLock }) });
   if (inherited !== undefined) {
     assert.deepEqual((await request)[0], { state: "close-root-listener" });
     await lifetimeLock.close();

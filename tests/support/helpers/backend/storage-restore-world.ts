@@ -1,3 +1,4 @@
+import { observeRuntimeLockSnapshot, WorkerProcessLockFileSchema, type WorkerProcessLockFile } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { randomUUID } from "node:crypto";
 import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
 import { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../../src/models/run/worker-slot.js";
@@ -18,7 +19,7 @@ import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT, COMMAND_FIXTURES, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
 import { seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { composeStorageCommand as composeNativeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -80,17 +81,19 @@ export function createStorageRestoreTestWorld() {
     kind: "root" | "inherited-child";
     inspect(input: Readonly<{ repoRoot: string; authorityPath: string; stateRoot: string; port: number; manifestPath: string;
       closeRootListener(): Promise<void> }>): Promise<void>;
-  }>, accounting?: Readonly<{ backupAfterCommit: boolean }>): Promise<{
+  }>, accounting?: Readonly<{ backupAfterCommit: boolean }>, options: Readonly<{ crashedHolder?: true }> = {}): Promise<{
     paths: DrillPaths; database: AuthorityDatabase; closeDatabase: () => void; manifestPath: string; beforeManifestPath: string;
     originalChild: { pid: number; signal: "SIGKILL" };
+    workerLock: WorkerProcessLockFile | undefined;
   }> {
+    if (options.crashedHolder === true) assert.equal(heldRoot, undefined);
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'relay-restore-attempt-')));
     retainedAttemptScratch.add(scratch);
     const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
     const portOwner = await RuntimeLifetimeLock.acquire(0), port = portOwner.port;
     await portOwner.close();
     let lifetimeLock: RuntimeLifetimeLock | undefined;
-    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(port), heldRoot?.kind ?? 'root', ...(accounting === undefined ? [] : [accounting.backupAfterCommit ? 'after' : 'before'])], {
+    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(port), options.crashedHolder === true ? 'crashed-holder' : heldRoot?.kind ?? 'root', ...(accounting === undefined ? [] : [accounting.backupAfterCommit ? 'after' : 'before'])], {
       cwd: sourceRoot, env: credentialKeychainTestEnvironment({ ...process.env, TMPDIR: scratch }), detached: true,
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -123,7 +126,7 @@ export function createStorageRestoreTestWorld() {
         keychain: z.array(z.tuple([z.string().min(1), z.string().min(1)])).length(1), manifestPath: z.string().min(1), beforeManifestPath: z.string().min(1),
         pid: z.number().int().positive(),
         claimGeneration: z.number().int().positive(), runId: z.string().min(1),
-        databaseClosed: z.literal(true), retained: z.literal(true) }).parse(message);
+        databaseClosed: z.literal(true), retained: z.literal(true), workerLock: WorkerProcessLockFileSchema.optional() }).parse(message);
       assert.equal(receipt.pid, child.pid);
       assert.equal(realpathSync(receipt.workspace), receipt.workspace);
       assert.equal(dirname(receipt.workspace), scratch);
@@ -154,6 +157,29 @@ export function createStorageRestoreTestWorld() {
           assert.deepEqual((await closed)[0], { state: "inherited-closed" });
         }
       }
+      assert.equal(receipt.workerLock !== undefined, options.crashedHolder === true);
+      const workerLock = receipt.workerLock;
+      const captureWorkerLock = () => {
+        assert.ok(workerLock);
+        const path = join(receipt.processLockRoot, "workers", `${workerLock.acquisitionId}.lock.json`);
+        const stat = lstatSync(path);
+        assert.equal(stat.isFile(), true); assert.equal(stat.isSymbolicLink(), false); assert.equal(stat.nlink, 1);
+        assert.equal(stat.mode & 0o022, 0);
+        const bytes = readFileSync(path);
+        assert.deepEqual(WorkerProcessLockFileSchema.parse(JSON.parse(bytes.toString("utf8"))), workerLock);
+        return { bytes, device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid, links: stat.nlink,
+          size: stat.size, modifiedAt: stat.mtimeMs, changedAt: stat.ctimeMs };
+      };
+      let lockBefore: ReturnType<typeof captureWorkerLock> | undefined;
+      if (workerLock !== undefined) {
+        assert.ok("workerId" in workerLock); assert.equal(workerLock.workerId, receipt.workerId);
+        assert.equal(workerLock.pid, receipt.pid); assert.equal(workerLock.releasedAt, null);
+        lockBefore = captureWorkerLock();
+        assert.deepEqual(observeRuntimeLockSnapshot({ processLockRoot: receipt.processLockRoot,
+          sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(receipt.authorityPath) }, CLOCK).processLocks.workers,
+        { state: "active", generation: 2, pid: receipt.pid });
+        assert.deepEqual(captureWorkerLock(), lockBefore);
+      }
       assert.equal(child.exitCode, null); assert.equal(child.signalCode, null);
       process.kill(-receipt.pid, 0);
       assert.equal(child.kill('SIGKILL'), true);
@@ -172,6 +198,12 @@ export function createStorageRestoreTestWorld() {
       assert.equal(descriptors.status, 1);
       assert.equal(descriptors.stdout, '');
       assert.equal(descriptors.stderr, '');
+      if (workerLock !== undefined) {
+        assert.deepEqual(observeRuntimeLockSnapshot({ processLockRoot: receipt.processLockRoot,
+          sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(receipt.authorityPath) }, CLOCK).processLocks.workers,
+        { state: "stopped", generation: 2 });
+        assert.deepEqual(captureWorkerLock(), lockBefore);
+      }
       attemptChildren.delete(child);
       workspace = receipt.workspace;
       lifetimeLock = await RuntimeLifetimeLock.acquire(port);
@@ -220,7 +252,7 @@ export function createStorageRestoreTestWorld() {
       assert.equal(run.claimGeneration, receipt.claimGeneration);
       assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, accounting === undefined ? 'attempting' : 'committed');
       return { paths, database, closeDatabase, manifestPath: receipt.manifestPath, beforeManifestPath: receipt.beforeManifestPath,
-        originalChild: { pid: receipt.pid, signal: "SIGKILL" } };
+        originalChild: { pid: receipt.pid, signal: "SIGKILL" }, workerLock };
     } catch (error) {
       writeFileSync(join(scratch, 'child.stdout'), Buffer.concat(stdout), { mode: 0o600 });
       writeFileSync(join(scratch, 'child.stderr'), Buffer.concat(stderr), { mode: 0o600 });

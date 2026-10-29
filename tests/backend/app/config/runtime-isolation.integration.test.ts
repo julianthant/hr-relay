@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 
-const {CLOCK, composeStorageCommand, drillPaths, open, seedRealShapedAuthority, cleanup } = createStorageRestoreTestWorld();
+const {CLOCK, composeStorageCommand, drillPaths, cleanup } = createStorageRestoreTestWorld();
 
 
 afterEach(cleanup);
@@ -29,9 +29,6 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
 
   it("refuses restore without an exact named manifest", async () => {
     const paths = await drillPaths();
-    const database = open(paths);
-    seedRealShapedAuthority(database,paths);
-    database.close();
     const usage = await composeStorageCommand(
       rebuildRuntimeIsolation,
       ["restore"],
