@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { proveProfileRootsUnused } from "../maintenance/process-closure.js";
 import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, offlineMaintenanceWorkspace, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import { ProfileStorageRelocationUnsupportedError } from "./admission-identity.js";
