@@ -1,9 +1,10 @@
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import {existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, beforeEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -13,54 +14,70 @@ const {CLOCK, composeStorageCommand, drillPaths, attemptingDrillPaths, open, tak
 
 afterEach(cleanup);
 
+const oldBuildRefusalMembers = new Set([
+  "refuses while a live process holds a runtime lock, and touches nothing",
+  "refuses restore while any worker process is alive",
+]);
+async function prepareRestoreFixture() {
+  const { paths, database, closeDatabase } = await attemptingDrillPaths();
+  const manifestPath = await takeBackup(database, paths);
+  closeDatabase(); corrupt(paths);
+  return { paths, manifestPath, corrupted: readFileSync(paths.authorityPath) };
+}
+let oldBuildFixture: Awaited<ReturnType<typeof prepareRestoreFixture>> | undefined;
+let currentFixture: Awaited<ReturnType<typeof prepareRestoreFixture>> | undefined;
+beforeEach(async ({ task }) => {
+  oldBuildFixture = undefined; currentFixture = undefined;
+  if (oldBuildRefusalMembers.has(task.name)) oldBuildFixture = await prepareRestoreFixture();
+});
+beforeEach(async ({ task }) => {
+  if (oldBuildRefusalMembers.has(task.name)) currentFixture = await prepareRestoreFixture();
+});
+function captureOldArtifacts(root: string) {
+  return readdirSync(root, { recursive: true }).map(String).sort().map(name => {
+    const path = join(root, name), info = lstatSync(path);
+    assert.equal(info.isSymbolicLink(), false);
+    return { name, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid,
+      links: info.nlink, size: info.size, modified: info.mtimeMs, changed: info.ctimeMs,
+      bytes: info.isFile() ? readFileSync(path) : undefined };
+  });
+}
+async function assertOldBuildRefusal(fixture: Awaited<ReturnType<typeof prepareRestoreFixture>>) {
+  const artifacts = captureOldArtifacts(fixture.paths.processLockRoot);
+  assert.ok(artifacts.length > 0);
+  const refused = await composeStorageCommand(rebuildRuntimeIsolation,
+    ["restore", "--from", fixture.manifestPath], CLOCK, fixture.paths.repoRoot);
+  assert.equal(refused.exitCode, 1);
+  assert.equal(refused.output, `authority restore REFUSED — ${ERROR_CATALOG.RUNTIME_OLD_BUILD_ARTIFACTS.text}\nthe live authority database was not modified`);
+  assert.deepEqual(captureOldArtifacts(fixture.paths.processLockRoot), artifacts);
+  assert.deepEqual(readFileSync(fixture.paths.authorityPath), fixture.corrupted);
+  assert.equal(existsSync(join(fixture.paths.stateRoot, "backups", "suspects")), false);
+}
+async function assertCurrentRestore(fixture: Awaited<ReturnType<typeof prepareRestoreFixture>>) {
+  const { paths, manifestPath } = fixture;
+  const after = await composeStorageCommand(rebuildRuntimeIsolation,
+    ["restore", "--from", manifestPath], CLOCK, paths.repoRoot);
+  assert.equal(after.exitCode, 0, after.output);
+  paths.renewAfterRestore();
+  const restored = open(paths);
+  try {
+    assert.equal(restored.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, 'attempting');
+    assert.deepEqual(restored.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
+    assert.equal(restored.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId)?.envelope.attempt,
+      WRITE_INTENT_ATTEMPTING.runAttempt);
+  } finally { restored.close(); }
+}
+
 describe("corruption → degraded → restore → rebuild, through the CLI", () => {
 
   it("refuses while a live process holds a runtime lock, and touches nothing", async () => {
-    const { paths, database, closeDatabase } = await attemptingDrillPaths();
-    const manifestPath = await takeBackup(database, paths);
-    closeDatabase();
-    corrupt(paths);
-    const corrupted = readFileSync(paths.authorityPath);
-
-    // This test process IS a live pid, which is exactly the condition.
+    assert.ok(oldBuildFixture && currentFixture);
     const held = acquireRuntimeProcessLock(
-      { processLockRoot: paths.processLockRoot, name: "server", pid: process.pid },
-      CLOCK,
-    );
-    try {
-      const refused = await composeStorageCommand(
-        rebuildRuntimeIsolation,
-        ["restore", "--from", manifestPath],
-        CLOCK,
-        paths.repoRoot,
-      );
-      assert.equal(refused.exitCode, 1);
-      assert.match(refused.output, /authority restore REFUSED/u);
-      assert.match(refused.output, new RegExp(`server process lock generation 2 is active for pid ${String(process.pid)}`, "u"));
-      assert.match(refused.output, /the live authority database was not modified/u);
-      assert.match(refused.output, new RegExp(`server=ACTIVE pid ${String(process.pid)}`, "u"));
-      assert.equal(readFileSync(paths.authorityPath).equals(corrupted), true);
-      assert.equal(existsSync(join(paths.stateRoot, "backups", "suspects")), false);
-    } finally {
-      held.release();
-    }
-
-
-    const after = await composeStorageCommand(
-      rebuildRuntimeIsolation,
-      ["restore", "--from", manifestPath],
-      CLOCK,
-      paths.repoRoot,
-    );
-    assert.equal(after.exitCode, 0, after.output);
-    paths.renewAfterRestore();
-    const restored = open(paths);
-    try {
-      assert.equal(restored.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, 'attempting');
-      assert.deepEqual(restored.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
-      assert.equal(restored.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId)?.envelope.attempt,
-        WRITE_INTENT_ATTEMPTING.runAttempt);
-    } finally { restored.close(); }
+      { processLockRoot: oldBuildFixture.paths.processLockRoot, name: "server", pid: process.pid }, CLOCK);
+    try { await assertOldBuildRefusal(oldBuildFixture); }
+    finally { held.release(); }
+    await assertOldBuildRefusal(oldBuildFixture);
+    await assertCurrentRestore(currentFixture);
   });
 
   it("admits concurrent worker processes under one aggregate restore lock", async () => {
@@ -240,33 +257,13 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
   });
 
   it("refuses restore while any worker process is alive", async () => {
-    const { paths, database, closeDatabase } = await attemptingDrillPaths();
-    const manifestPath = await takeBackup(database, paths);
-    closeDatabase();
-    corrupt(paths);
-    const corrupted = readFileSync(paths.authorityPath);
-    const held = acquireRuntimeProcessLock({
-      processLockRoot: paths.processLockRoot,
-      name: "workers",
-      workerId: "person-lookup-worker-2",
-      pid: process.pid,
-    }, CLOCK);
-    try {
-      const refused = await composeStorageCommand(
-        rebuildRuntimeIsolation,
-        ["restore", "--from", manifestPath],
-        CLOCK,
-        paths.repoRoot,
-      );
-      assert.equal(refused.exitCode, 1);
-      assert.match(refused.output, new RegExp(
-        `workers=ACTIVE pid ${String(process.pid)} \\(generation ${String(held.generation)}\\)`,
-        "u",
-      ));
-      assert.equal(readFileSync(paths.authorityPath).equals(corrupted), true);
-    } finally {
-      held.release();
-    }
+    assert.ok(oldBuildFixture && currentFixture);
+    const held = acquireRuntimeProcessLock({ processLockRoot: oldBuildFixture.paths.processLockRoot,
+      name: "workers", workerId: "person-lookup-worker-2", pid: process.pid }, CLOCK);
+    try { await assertOldBuildRefusal(oldBuildFixture); }
+    finally { held.release(); }
+    await assertOldBuildRefusal(oldBuildFixture);
+    await assertCurrentRestore(currentFixture);
   });
 
   it("fails loud on a malformed worker process-lock record", async () => {

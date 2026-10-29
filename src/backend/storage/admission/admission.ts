@@ -1273,7 +1273,7 @@ export class RuntimeAdmission {
         held();
         if (handle !== restore || canonicalJsonStringify(binding) !== canonicalJsonStringify(input)) throw new Error("profile-restore-custody-mismatch");
         lease.settleAuthorityRestore(binding, outcome, verify, handle); settled = true;
-      }, release: () => this.release() }, root, join(root, "artifacts"), [join(root, "state.db")], "profile-restore", "exclusive", this.#locator, input.profile.binding);
+      }, release: () => this.release() }, root, join(root, "artifacts"), [join(root, "state.db")], "profile-restore", "exclusive", this.#locator, input.profile.binding, this);
   }
 
   captureDuoCredentialCustody(profile: RuntimeAdmission): Readonly<{ binding: ProfileDatabaseBinding; generation: number; assertHeld(): void;

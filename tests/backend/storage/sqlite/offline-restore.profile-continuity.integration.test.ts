@@ -747,6 +747,8 @@ describe("profile restore continuity", () => {
       const port = f.lifetime.port;
       await f.closeController();
       const imports = `
+        import { existsSync, writeFileSync } from "node:fs";
+        import { join } from "node:path";
 
 
         import { acquireEntrypointAdmission } from './src/backend/storage/admission/bootstrap-admission.ts';
