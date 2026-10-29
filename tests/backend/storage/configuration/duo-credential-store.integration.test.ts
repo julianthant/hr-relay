@@ -207,11 +207,12 @@ async function stoppedControlFixture(retainedCredential?: unknown) {
     if (retainedCredential !== undefined) writeFileSync(join(fixture.profileRoot, "credentials", "duo-webauthn.json"), JSON.stringify(retainedCredential), { mode: 0o600 });
     const controlPath = fixture.controlPath;
     const markerPath = fixture.markerPath;
-    const current = JSON.parse(readFileSync(controlPath, "utf8")) as { schemaVersion: number; duo: Array<{ state: string }> };
-    assert.equal(current.schemaVersion, 2);
+    const current = JSON.parse(readFileSync(controlPath, "utf8")) as { schemaVersion: number; duo: Array<{ state: string }>; completedRestores: unknown[] };
+    assert.equal(current.schemaVersion, 3);
+    assert.deepEqual(current.completedRestores, []);
     assert.ok(current.duo.every(row => row.state === "never-initialized"));
     assert.deepEqual(current.duo, [{ profileId, state: 'never-initialized', revision: 0 }]);
-    const { duo: _duo, ...prior } = current;
+    const { duo: _duo, completedRestores: _completed, ...prior } = current;
     writeFileSync(controlPath, JSON.stringify({ ...prior, schemaVersion: 1 }));
     writeFileSync(markerPath, JSON.stringify({ schemaVersion: 2 }));
     const processLockRoot = fixture.processLockRoot;
@@ -544,10 +545,11 @@ function downgradeStoppedControl(fixture: Pick<Awaited<ReturnType<typeof createH
   "databasePath" | "controlPath" | "markerPath" | "processLockRoot" | "profileId">, markerVersion: 1 | 2, dropCredentialKey = false) {
   const paths = { databasePath: fixture.databasePath, database: readFileSync(fixture.databasePath),
     controlPath: fixture.controlPath, markerPath: fixture.markerPath, processLockRoot: fixture.processLockRoot };
-  const current = JSON.parse(readFileSync(paths.controlPath, "utf8")) as { schemaVersion: number; duo?: unknown; erasures?: Array<Record<string, unknown>> };
-  assert.equal(current.schemaVersion, 2);
+  const current = JSON.parse(readFileSync(paths.controlPath, "utf8")) as { schemaVersion: number; duo?: unknown; completedRestores: unknown[]; erasures?: Array<Record<string, unknown>> };
+  assert.equal(current.schemaVersion, 3);
+  assert.deepEqual(current.completedRestores, []);
   assert.deepEqual(current.duo, [{ profileId: fixture.profileId, state: 'never-initialized', revision: 0 }]);
-  const { duo: _duo, erasures, ...prior } = current;
+  const { duo: _duo, completedRestores: _completed, erasures, ...prior } = current;
   const nextErasures = dropCredentialKey === true ? (erasures ?? []).map((row) => { const { credentialKey: _key, ...rest } = row; return rest; }) : erasures;
   privateJson(paths.controlPath, { ...prior, ...(nextErasures === undefined ? {} : { erasures: nextErasures }), schemaVersion: 1 });
   privateJson(paths.markerPath, { schemaVersion: markerVersion });
@@ -907,8 +909,8 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     assert.equal(statSync(join(backupDirectory, `${operationId}.control.before.json`)).mode & 0o777, 0o600);
     assert.equal(statSync(join(backupDirectory, `${operationId}.marker.before.json`)).mode & 0o777, 0o600);
     assert.equal(createHash("sha256").update(controlBackup).digest("hex"), createHash("sha256").update(paths.controlBytes).digest("hex"));
-    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 3);
-    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.controlPath, "utf8"))).schemaVersion, 2);
+    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 4);
+    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.controlPath, "utf8"))).schemaVersion, 3);
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
     const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(current.state, "current");
@@ -925,12 +927,12 @@ it("recovers a machine-control publication stopped between the control and marke
     execFileSync("/usr/bin/chflags", ["uchg", paths.markerPath]);
     await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
     execFileSync("/usr/bin/chflags", ["nouchg", paths.markerPath]);
-    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.controlPath, "utf8"))).schemaVersion, 2);
+    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.controlPath, "utf8"))).schemaVersion, 3);
     assert.equal(readFileSync(paths.markerPath).equals(paths.markerBytes), true);
     const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory);
     assert.equal(upgraded.state, "upgraded");
     assert.equal(upgraded.runtimeAccess, "onboarding-incomplete");
-    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 3);
+    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 4);
     const backupDirectory = join(fixture.workspace, ".tracker/control", "profile-control-upgrades");
     const controlName = readdirSync(backupDirectory).find((name) => name.endsWith(".control.before.json"));
     assert.equal(typeof controlName, "string");

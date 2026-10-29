@@ -4,7 +4,7 @@ import { captureIncompleteProfileDraft, CredentialErasureHeadSchema, erasureRequ
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import type { UnpublishedDraftAbortWitness, CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness, CommittedCredentialInitialization, CommittedCredentialKeyStage, CredentialKeyStagePublication } from "../configuration/credential-store.js";
-import { registerRuntimeAdmission, requireRuntimeAdmission } from "./admission-identity.js";
+import { ProfileStorageRelocationUnsupportedError, registerRuntimeAdmission, requireRuntimeAdmission } from "./admission-identity.js";
 import { z } from "zod";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync, type BigIntStats, type Stats } from "node:fs";
 import { createHash } from "node:crypto";
@@ -14,7 +14,7 @@ import { acquireInstallation, assertInstallationLease, acquireStoppedProfileCont
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
   type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
   type RelocationVerifier, type RuntimeLocator, type RuntimePair, type OfflineMaintenanceOperation } from "./installation.js";
-import type { ProfileRestoreContext, ErasureRequestIdentity, VerifiedSourceControlEntries, AuthorityRestoreInput, AuthorityRestoreVerifier } from "./installation.js";
+import type { ProfileRestoreContext, ErasureRequestIdentity, VerifiedSourceControlEntries, AuthorityRestoreInput, AuthorityRestoreVerifier, CompletedRestoreCustody } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
@@ -29,11 +29,6 @@ import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { type IssuedDuoTransaction } from "../configuration/duo-credential-store.js";
 import { type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
-
-export class ProfileStorageRelocationUnsupportedError extends Error {
-  readonly code = "PROFILE_STORAGE_RELOCATION_UNSUPPORTED";
-  constructor() { super(ERROR_CATALOG.PROFILE_STORAGE_RELOCATION_UNSUPPORTED.text); this.name = "ProfileStorageRelocationUnsupportedError"; }
-}
 
 export class ProfileUpgradeSourceRefusalError extends Error {
   readonly code = "PROFILE_UPGRADE_UNAVAILABLE";
@@ -1018,6 +1013,22 @@ export class RuntimeAdmission {
     return this.#exclusiveInstallationLease().beginOfflineMaintenance();
   }
 
+  readCompletedRestores(): readonly CompletedRestoreCustody[] {
+    this.assertLive();
+    if (this.#scope === "stopped-control-inventory" && this.#stoppedControlInventory !== undefined) {
+      const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory);
+      source.revalidateSource();
+      return [];
+    }
+    const { profileId } = this.profileBinding;
+    let machine: RuntimeAdmission = this;
+    while (machine.#profileParent !== undefined) machine = machine.#profileParent;
+    if (machine.#scope !== "installation") throw new Error("completed-restore-installation-required");
+    const authority = machine.#authority;
+    assertInstallationLease(authority);
+    return authority.readCompletedRestores(profileId);
+  }
+
   assertOfflineMaintenance(operation: OfflineMaintenanceOperation): void {
     this.assertLive();
     if (this.#profileParent !== undefined) { this.#profileParent.assertOfflineMaintenance(operation); return; }
@@ -1562,7 +1573,7 @@ export class RuntimeAdmission {
     const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid });
     let lease: InstallationLease | undefined;
     try {
-      lease = acquireInstallation(canonical, "exclusive", lifetime);
+      lease = acquireInstallation(canonical, "exclusive", lifetime, { stoppedControlForward: true });
       assertStoppedMachineMaintenance(lease, restore);
     } catch (error) {
       if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { restore, admission: lease });

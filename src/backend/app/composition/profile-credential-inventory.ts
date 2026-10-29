@@ -121,12 +121,14 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
       for (const path of [...before.copies, ...before.backupPaths]) {
         if (isOwnedDraftAbortSource(fields.abortSource, path, admission)) continue;
         const scanned = scanProfileCredentialCopy(path, fields.capturedSecrets, fields), backup = backups.find(value => value.backupPath === path);
+        const suspect = before.suspects.find(value => value.path === path);
         if (backup !== undefined && scanned.digest !== backup.manifest.sha256) throw new Error("profile-inventory-backup-changed");
+        if (suspect !== undefined && scanned.digest !== suspect.sha256) throw new Error("profile-inventory-suspect-changed");
         let containsSecret = scanned.containsSecret;
         const enginePath = join(root, "credentials", "duo-webauthn.json");
         const retainedEngine = purpose.kind === "stopped-control" && path === enginePath;
         if (purpose.kind === "ordinary" && path === enginePath) unknownFormats.push(path);
-        if (backup === undefined && basename(path) !== "Login Data" && !before.unsupported.includes(path)) {
+        if (backup === undefined && suspect === undefined && basename(path) !== "Login Data" && !before.unsupported.includes(path)) {
           try {
             const bootLog = path === join(root, "logs", "boot.jsonl");
             if (bootLog && readEmergencyFaults(root).state !== "present") throw new Error("profile-inventory-log-unavailable");
@@ -162,12 +164,15 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
             unknownFormats.push(path);
           }
         }
-        if (backup !== undefined) {
-          const copyAdmission = admission.verifiedReadOnlyCopy(path, backup.manifest.sha256);
+        if (backup !== undefined || suspect !== undefined && !suspect.companion) {
+          const digest = backup?.manifest.sha256 ?? suspect?.sha256;
+          if (digest === undefined) throw new Error("profile-inventory-copy-custody-unproved");
+          const copyAdmission = admission.verifiedReadOnlyCopy(path, digest);
           try {
+            const schemaVersion = backup?.manifest.schemaVersion ?? AuthorityDatabase.inspectExistingReadOnly(copyAdmission, path).schemaVersion;
             containsSecret ||= withAuthorityDatabaseReadOnly(copyAdmission, path, database => {
               const bytes = credentialSearchBytes(fields.capturedSecrets);
-              for (const table of migrationTableNames(backup.manifest.schemaVersion)) for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
+              for (const table of migrationTableNames(schemaVersion)) for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
                 for (const [column, value] of Object.entries(row)) {
                   if (fields.containsKey(value)) return true;
                   if (containsCredentialValue(typeof value === "string" && column.endsWith("_json") ? JSON.parse(value) : value, fields.capturedSecrets)) return true;

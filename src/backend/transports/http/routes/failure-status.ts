@@ -9,8 +9,8 @@ import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
 import { ProfileUpgradeUnavailableError } from "../../../profiles/profile-session.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
-import { ProfileStorageRelocationUnsupportedError, ProfileUpgradeSourceRefusalError } from "../../../storage/admission/admission.js";
-import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
+import { ProfileUpgradeSourceRefusalError } from "../../../storage/admission/admission.js";
+import { ProfileBrowserRootRefusalError, ProfileStorageRelocationUnsupportedError } from "../../../storage/admission/admission-identity.js";
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";

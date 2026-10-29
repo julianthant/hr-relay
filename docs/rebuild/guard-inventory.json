@@ -651,7 +651,7 @@
       "file": "tests/architecture/storage/admission-identity.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
-      "invariant": "Reason: opaque profile registration exposed a dependency cycle and an unchecked issuer escape. Only the existing token-protected RuntimeAdmission constructor registers issued identities; consumers use the single identity owner, whose RuntimeAdmission dependency stays type-only. Negative mutations reject foreign, aliased, escaped, dynamic and nonconstructor registration. Credential-store, ChatGPT credential repository and restore-snapshot imports must erase the RuntimeAdmission dependency at declaration level; verbatim emit and mixed-specifier mutations protect against the observed erasure-head initialization cycle.",
+      "invariant": "Reason: opaque profile registration exposed a dependency cycle and an unchecked issuer escape. Only the existing token-protected RuntimeAdmission constructor registers issued identities; consumers use the single identity owner, whose RuntimeAdmission dependency stays type-only; its only runtime dependency is the exact error catalog for the two shared refusal classes. Negative mutations reject unknown names and runtime dependencies as well as foreign, aliased, escaped, dynamic and nonconstructor registration. Credential-store, ChatGPT credential repository and restore-snapshot imports must erase the RuntimeAdmission dependency at declaration level; verbatim emit and mixed-specifier mutations protect against the observed erasure-head initialization cycle.",
       "replacementRequired": true
     }
   ],
@@ -671,6 +671,12 @@
     "state": "active-with-target-family"
   },
   "repositoryChecks": [
+    {
+      "name": "completed-restore-custody",
+      "command": "npm test -- tests/backend/storage/sqlite/offline-restore.profile-continuity.integration.test.ts",
+      "owner": "docs/rebuild/reference/clock-config-secrets.md",
+      "invariant": "Reason: settled restore suspects outlive their journal, and the raw public relocation lease bypasses the profile wrapper's unsupported-relocation check. Strict completed history binds exact profile/operation/file identities and complete companions before credential inventory. Raw relocation refuses nonempty history before destination or journal effects; unrelated registry mutations preserve it, and interrupted history publication settles once without accepting divergence."
+    },
     {
       "name": "public-repository-privacy",
       "command": "npm run privacy:check",

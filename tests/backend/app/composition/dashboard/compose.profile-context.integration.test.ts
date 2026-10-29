@@ -15,7 +15,7 @@ import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/aut
 import * as accounts from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import * as kernel from "../../../../../src/backend/runs/commands/command-kernel.js";
-import { ProfileStorageRelocationUnsupportedError } from "../../../../../src/backend/storage/admission/admission.js";
+import { ProfileStorageRelocationUnsupportedError } from "../../../../../src/backend/storage/admission/admission-identity.js";
 import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest, storageRelocationRequestFingerprint } from "../../../../../src/rules/commands/commands.js";

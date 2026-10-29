@@ -364,11 +364,22 @@ backups. A missing or corrupt current witness refuses instead of supplying an em
 Same-enrollment backups remain readable, and restore still refuses a backup that would lower a burned
 counter. Decrypt refuses during pending publication; that check does not change the separate
 same-issued or stopped publication settlement. Erase does not delete or import `duo-webauthn.json`.
-`storage upgrade --machine-control` acquires the same stopped maintenance admission, which does not
-require marker 3, and converts only continuity schema 1 plus registry marker 2 into continuity schema
-2 plus marker 3. It backs up those two control files before mutation and reads them back. A failed
-snapshot close keeps that restore admission. The control backup is not a profile SQLite backup or a
-Duo-key backup. Marker or continuity versions outside that pair fail as an unsupported hold.
+`storage upgrade --machine-control` acquires the same stopped maintenance admission and converts
+continuity schema 1/marker 2 or schema 2/marker 3 into strict continuity schema 3/marker 4. Ordinary
+startup reads only the current pair. Conversion preserves existing Duo continuity and requires
+authenticated empty suspect membership before publishing an empty completed-restore history. An
+unbound suspect or an existing prior upgrade directory remains a hold. The operation backs up both
+control files before mutation and reads them back; these are not profile SQLite or Duo-key backups.
+A failed snapshot close retains its maintenance admission.
+
+Completed restores append exact profile, operation, source generation, outcome and retained suspect
+file identities to `control/profile-registry.json` before removing the restore journal. Recovery
+accepts the identical append once and refuses divergent custody. Credential inventory validates the
+recorded paths, inode, bytes and complete companions, then scans the authenticated SQLite copies
+through the existing read-only owner. Missing, substituted or extra files remain unknown. Registry
+mutations preserve this history. Profile relocation is unsupported; the raw lease also refuses
+completed history before destination or journal effects because its file identities cannot be
+carried through an unverified copy.
 
 The selected ChatGPT account owner fetches its current model catalog in server order and returns only
 list-visible slugs and display names. Assistant requests use that catalog, explicit trusted model

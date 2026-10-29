@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import nativeFs, { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import nativeFs, { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { it, vi } from "vitest";
@@ -11,17 +11,18 @@ import { composeStoppedControlCredentialInventory } from "../../../../src/backen
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createHistoricalIncompleteProfileFixture, historicalIncompleteProfileFields } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const hostFacts = { primaryDisplay: null };
 
-async function priorFormatFixture() {
+async function priorFormatFixture(version: 1 | 2 = 1) {
   const f = await createHistoricalIncompleteProfileFixture();
-  const current = z.looseObject({ schemaVersion: z.number().int(), duo: z.array(z.looseObject({ state: z.string() })) }).parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
-  assert.equal(current.schemaVersion, 2); assert.equal(current.duo.length, 1);
+  const current = z.looseObject({ schemaVersion: z.number().int(), duo: z.array(z.looseObject({ state: z.string() })), completedRestores: z.array(z.unknown()) }).parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
+  assert.equal(current.schemaVersion, 3); assert.deepEqual(current.completedRestores, []); assert.equal(current.duo.length, 1);
   assert.equal(current.duo[0]?.state, "never-initialized");
-  const { duo: _duo, ...prior } = current;
-  writeFileSync(f.controlPath, JSON.stringify({ ...prior, schemaVersion: 1 }));
-  writeFileSync(f.markerPath, JSON.stringify({ schemaVersion: 2 }));
+  const { duo: _duo, completedRestores: _completed, ...prior } = current;
+  writeFileSync(f.controlPath, JSON.stringify({ ...prior, ...(version === 2 ? { duo: current.duo } : {}), schemaVersion: version }));
+  writeFileSync(f.markerPath, JSON.stringify({ schemaVersion: version + 1 }));
   return f;
 }
 
@@ -43,8 +44,8 @@ it("converts only stopped machine-control format while keeping an incomplete his
   assert.equal(readFileSync(join(backup, `${upgraded.receiptId}.control.before.json`)).equals(controlBytes), true);
   assert.equal(readFileSync(join(backup, `${upgraded.receiptId}.marker.before.json`)).equals(markerBytes), true);
   assert.equal(readdirSync(backup).filter(name => name.endsWith(".receipt.json")).length, 1);
-  assert.equal(z.looseObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.controlPath, "utf8"))).schemaVersion, 2);
-  assert.equal(z.strictObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.markerPath, "utf8"))).schemaVersion, 3);
+  assert.equal(z.looseObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.controlPath, "utf8"))).schemaVersion, 3);
+  assert.equal(z.strictObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.markerPath, "utf8"))).schemaVersion, 4);
   const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.throws(() => maintenance.admitProfile(maintenance.issueRegisteredProfileClaim(f.profileId)), /profile-storage-claim-unavailable/u);
@@ -60,6 +61,48 @@ it("converts only stopped machine-control format while keeping an incomplete his
   await profile.close(); machine.release();
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
   await f.close();
+});
+
+it("converts stopped schema2 only with authenticated empty suspect membership and preserves Duo and source bytes", async () => {
+  const f = await priorFormatFixture(2), original = sourceBytes(f);
+  const prior = z.looseObject({ duo: z.array(z.unknown()) }).parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  let primary: { error: unknown } | undefined;
+  try {
+    assert.throws(() => RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime));
+    const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+    assert.equal(result.state, "upgraded"); assert.equal(result.runtimeAccess, "onboarding-incomplete");
+    const current = z.looseObject({ schemaVersion: z.literal(3), duo: z.array(z.unknown()), completedRestores: z.array(z.unknown()) })
+      .parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
+    assert.deepEqual(current.duo, prior.duo); assert.deepEqual(current.completedRestores, []);
+    assert.deepEqual(JSON.parse(readFileSync(f.markerPath, "utf8")), { schemaVersion: 4 });
+    for (const source of original) assert.deepEqual(readFileSync(source.path), source.bytes);
+  } catch (error) { primary = { error }; }
+  finally {
+    try { maintenance.release(); await f.close(); }
+    catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "schema2-conversion-fixture-close-failed", { cause: error }); }
+    if (primary !== undefined) throw primary.error;
+  }
+});
+
+it("retains unbound schema2 suspect files and refuses conversion before control or key effects", async () => {
+  const f = await priorFormatFixture(2);
+  const suspects = join(f.profileRoot, "backups", "suspects");
+  mkdirSync(suspects, { recursive: true, mode: 0o700 });
+  writeFileSync(join(suspects, "unbound.sqlite"), "synthetic-unbound-suspect", { mode: 0o600 });
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  let primary: { error: unknown } | undefined;
+  try {
+    const before = storageTree(f.workspace);
+    await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory),
+      /profile-control-upgrade-suspect-custody-unproved/u);
+    assert.deepEqual(storageTree(f.workspace), before);
+  } catch (error) { primary = { error }; }
+  finally {
+    try { maintenance.release(); await f.close(); }
+    catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "schema2-suspect-fixture-close-failed", { cause: error }); }
+    if (primary !== undefined) throw primary.error;
+  }
 });
 
 it("retains the runtime hold through a cold machine-control format publication recovery", async () => {

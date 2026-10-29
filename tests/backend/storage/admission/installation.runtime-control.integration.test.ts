@@ -9,8 +9,9 @@ import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync,
 import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 
-import { RuntimeAdmission, ProfileStorageRelocationUnsupportedError, acquireRecoveryRuntimeRelocation } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireInstallation, inspectPendingRelocationRecovery, inspectPendingRelocationStatus, type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair } from "../../../../src/backend/storage/admission/installation.js";
+import { RuntimeAdmission, acquireRecoveryRuntimeRelocation } from "../../../../src/backend/storage/admission/admission.js";
+import { ProfileStorageRelocationUnsupportedError } from "../../../../src/backend/storage/admission/admission-identity.js";
+import { acquireInstallation, assertInstallationLease, inspectPendingRelocationRecovery, inspectPendingRelocationStatus, type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair } from "../../../../src/backend/storage/admission/installation.js";
 import { createStorageRelocationPlanReader } from "../../../../src/backend/storage/maintenance/storage-relocation-plans.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
@@ -112,9 +113,12 @@ it.each(["credential key", "erasure journal", "Duo membership"] as const)(
 it("adopts empty defaults, admits shared readers, and refuses lost locator and owner mismatch", async () => {
   const { workspace, pair, lifetime } = await fixture();
   const first = adoptSynthetic(workspace, pair, lifetime);
+  expect(() => assertInstallationLease({ assertHeld() { throw new Error("forged-held-check-must-not-run"); } })).toThrow(/unissued installation lease/u);
+  assertInstallationLease(first);
   expect(first.locator.generation).toBe(0);
   expect(() => acquireInstallation(workspace, "shared", lifetime)).toThrow(/lease busy/u);
   first.release();
+  expect(() => assertInstallationLease(first)).toThrow(/released/u);
   const one = acquireInstallation(workspace, "shared", lifetime);
   const two = acquireInstallation(workspace, "shared", lifetime);
   expect(one.locator).toEqual(two.locator);

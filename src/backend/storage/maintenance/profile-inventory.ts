@@ -137,17 +137,22 @@ export function enumerateProfileCredentialMembership<Custody extends CredentialM
   admission.assertLive();
   const root = admission.stateRoot, flat = admission.profileMaintenanceSchemaVersion() === 6;
   if (admission.artifactRoot !== join(root, "artifacts")) throw new Error("profile-inventory-artifact-root-unavailable");
-  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, path => admission.assertStateRoot(path), ownedWriter);
+  const restores = flat ? [] : admission.readCompletedRestores();
+  const suspects = restores.flatMap(row => [{ path: join(root, row.suspect.relativePath), sha256: row.suspect.file.sha256,
+    companion: false }, ...row.companions.map(companion => ({ path: `${join(root, row.suspect.relativePath)}${companion.suffix}`,
+      sha256: companion.file.sha256, companion: true }))]);
+  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, path => admission.assertStateRoot(path), suspects, ownedWriter);
 }
 
 export function enumerateFlatBackupRecoveryMembership<Custody extends CredentialMembershipCustody>(root: string, custody: Custody) {
   return enumerateCredentialMembership(root, true, custody, join(root, "browsers"), path => {
     if (path !== root && !path.startsWith(`${root}${sep}`)) throw new Error("flat-backup-recovery-path-refused");
-  });
+  }, []);
 }
 
 function enumerateCredentialMembership<Custody extends CredentialMembershipCustody>(root: string, flat: boolean, custody: Custody,
   savedBrowserRoot: string, assertPath: (path: string) => void,
+  suspects: readonly Readonly<{ path: string; sha256: string; companion: boolean }>[],
   ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>) {
     const profiles = retainedBrowserProfiles(root, custody, savedBrowserRoot);
     const browserRootPaths = [...new Set([...custody.configSnapshots.map(snapshot => snapshot.config.paths.browserProfileRoot), savedBrowserRoot,
@@ -201,6 +206,12 @@ function enumerateCredentialMembership<Custody extends CredentialMembershipCusto
         return;
       }
       if (top === "backups") {
+        if (parts.length === 3 && parts[1] === "suspects") {
+          const bound = suspects.find(suspect => suspect.path === path);
+          if (bound === undefined) throw new Error("profile-inventory-suspect-custody-unproved");
+          copies.push(path);
+          return;
+        }
         if (parts.length !== 3 || parts[1] !== "authority") throw new Error("profile-inventory-backup-unverified");
         if (path.endsWith(".manifest.json")) manifests.push(path);
         else backupPaths.push(path);
@@ -222,10 +233,11 @@ function enumerateCredentialMembership<Custody extends CredentialMembershipCusto
       copies.push(path);
     };
     visit(root);
+    for (const suspect of suspects) if (!identities.some(entry => entry.path === suspect.path)) throw new Error("profile-inventory-suspect-missing");
     for (const ref of custody.artifactReferences) {
       if (!identities.some(entry => entry.path === join(root, "artifacts", `${ref.sha256}.artifact`))) throw new Error("profile-inventory-artifact-missing");
     }
-    return { custody, savedBrowserRoot, identities, copies, loginDataPaths, unsupported, backupPaths, manifests };
+    return { custody, savedBrowserRoot, identities, copies, loginDataPaths, unsupported, backupPaths, manifests, suspects };
 }
 
 export function credentialCopyProcessCustody(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; clock: Clock }>) {

@@ -72,6 +72,6 @@ export async function createHistoricalIncompleteProfileFixture() {
   return { workspace: root, lifetime, stateRoot, machineRoot, profileRoot, profileId: draft.profileId, processLockRoot,
     operation: { operationId: operation.operationId, commandId: operation.commandId, writeId: operation.writeId },
     operationPath, registryPath, verifierPath, controlPath, markerPath: join(machineRoot, "profile-registry-version.json"),
-    keyPath, protectedPath, databasePath, schema: { control: 2, marker: 3 } as const,
+    keyPath, protectedPath, databasePath, schema: { control: 3, marker: 4 } as const,
     async close(): Promise<void> { assertClosedWorkspace(root); await lifetime.close(); rmSync(root, { recursive: true }); } };
 }
