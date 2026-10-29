@@ -205,6 +205,9 @@ new attempt. Input methods follow declared workflow capability: typed identifier
 or parent-only delegation. Served spreadsheet intake uploads in the launcher before opening a
 real `intake` session route.
 
+Rerun prefills safe source identity fields in Values, using the declared input parser. Protected
+values and identities that no longer satisfy the current input stay uncopied.
+
 Options show Priority as Interactive or Bulk, Browser mode as Headed or Headless, Dry run where
 declared, Capture screenshots and workflow-specific fields. New/reset dashboard
 launches start with Dry run off, Headed browser mode, and captures on. The operator explicitly

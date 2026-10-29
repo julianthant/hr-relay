@@ -10,7 +10,7 @@ import { RunWorkflowPicker } from "./run-start-picker.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
 import type { RerunWarningWire } from "../../../models/dashboard/rerun-warning.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
-import { candidateText, defaultRerunSteps, partialRerunTypedInput, rerunTypedSourceInput, initialRerunValueDrafts, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
+import { candidateText, defaultRerunSteps, partialRerunTypedInput, plainRerunInputText, rerunTypedSourceInput, initialRerunValueDrafts, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
 import { readLaunchRecovery, readLaunchVerificationPlan, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "./run-launch-recovery.js";
 import { createRunLaunchService, type RerunLaunchSource } from "./run-launch-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
@@ -398,6 +398,8 @@ export function RunStartDialog({
           setSelectedStepKeys(sourceWorkflow.steps.filter(step => step.control.state !== "selectable"
             || restored[step.control.inputField] === true).map(step => step.key));
           setValueDrafts({});
+        } else if (sourceWorkflow.inputRun.state === "present" && rerunInputText === undefined) {
+          setText(plainRerunInputText(sourceWorkflow.inputRun.surface, response.snapshot.sourceInput));
         }
       }).catch((caught: unknown) => {
         if (launchInstance.current === instance) { setSnapshot(null); setSourceError(caught instanceof Error ? caught.message : String(caught)); }

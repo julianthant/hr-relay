@@ -60,11 +60,14 @@ for (const input of [
   } finally { await f.close(); }
 });
 
-it("refuses an old Run confirmation after an actual Settings command without spawning or rewriting its reviewed plan", async () => {
+for (const input of [
+  { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false },
+  { workflowId: "separations", submissions: [{ documentNumber: "4510" }], dryRun: true },
+]) it(`refuses an old ${input.workflowId} Run confirmation after an actual Settings command without spawning or rewriting its reviewed plan`, async () => {
   const f = await fixture();
   try {
     const db = f.context.database;
-    const proposed = await f.post("start-plans", { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false });
+    const proposed = await f.post("start-plans", input);
     assert.equal(proposed.status, 200);
     const plan = StartPlanWireSchema.parse(await proposed.json());
     const stored = db.authority.startPlans.get(plan.startPlanId);
@@ -82,7 +85,7 @@ it("refuses an old Run confirmation after an actual Settings command without spa
     if (result.state !== "rejected") throw new Error("old configuration requires a new plan");
     assert.equal(result.code, "replan-required");
     assert.deepEqual(db.authority.startPlans.get(plan.startPlanId), stored);
-    assert.deepEqual(db.authority.runs.listByWorkflow("person-lookup"), []);
+    assert.deepEqual(db.authority.runs.listByWorkflow(input.workflowId), []);
     assert.equal(f.spawns(), 0);
   } finally { await f.close(); }
 });
