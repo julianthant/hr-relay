@@ -192,7 +192,7 @@ describe("canonical run-record service", () => {
     const slot = database.authority.workerSlots.get(WORKER_ID), lease = database.authority.workerLeases.get(WORKER_ID);
     assert.ok(slot !== undefined && lease !== undefined);
     const recoveryCommandId = commandId();
-    assert.deepEqual(service.read(UUID_6), { state: "absent" });
+    assert.deepEqual(service.read(UUID_6), { state: "absent", runId: UUID_6 });
     assert.deepEqual(measure("recoverCrash", 0, () => service.recoverCrash({
       commandId: recoveryCommandId, runId: UUID_6, expectedVersion: 1,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
