@@ -74,14 +74,16 @@ export function createStorageRestoreTestWorld() {
     kind: "root" | "inherited-child";
     inspect(input: Readonly<{ repoRoot: string; authorityPath: string; stateRoot: string; port: number; manifestPath: string;
       closeRootListener(): Promise<void> }>): Promise<void>;
-  }>): Promise<{ paths: DrillPaths; database: AuthorityDatabase; closeDatabase: () => void }> {
+  }>, accounting?: Readonly<{ backupAfterCommit: boolean }>): Promise<{
+    paths: DrillPaths; database: AuthorityDatabase; closeDatabase: () => void; manifestPath: string; beforeManifestPath: string;
+  }> {
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'relay-restore-attempt-')));
     retainedAttemptScratch.add(scratch);
     const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
     const portOwner = await RuntimeLifetimeLock.acquire(0), port = portOwner.port;
     await portOwner.close();
     let lifetimeLock: RuntimeLifetimeLock | undefined;
-    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(port), heldRoot?.kind ?? 'root'], {
+    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(port), heldRoot?.kind ?? 'root', ...(accounting === undefined ? [] : [accounting.backupAfterCommit ? 'after' : 'before'])], {
       cwd: sourceRoot, env: credentialKeychainTestEnvironment({ ...process.env, TMPDIR: scratch }), detached: true,
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -111,7 +113,7 @@ export function createStorageRestoreTestWorld() {
       const receipt = z.strictObject({ state: z.literal('attempting'), workspace: z.string().min(1),
         stateRoot: z.string().min(1), authorityPath: z.string().min(1), profileId: z.string().min(1),
         installationId: z.uuid(), workerId: z.string().min(1), processLockRoot: z.string().min(1),
-        keychain: z.array(z.tuple([z.string().min(1), z.string().min(1)])).length(1), manifestPath: z.string().min(1),
+        keychain: z.array(z.tuple([z.string().min(1), z.string().min(1)])).length(1), manifestPath: z.string().min(1), beforeManifestPath: z.string().min(1),
         pid: z.number().int().positive(),
         claimGeneration: z.number().int().positive(), runId: z.string().min(1),
         databaseClosed: z.literal(true), retained: z.literal(true) }).parse(message);
@@ -127,6 +129,7 @@ export function createStorageRestoreTestWorld() {
       }, RuntimeAlreadyRunningError);
       assert.equal(receipt.stateRoot, join(receipt.workspace, rebuildRuntimeIsolation.stateRoot, "profiles", receipt.profileId));
       assert.equal(dirname(receipt.manifestPath), join(receipt.stateRoot, "backups", "authority"));
+      assert.equal(dirname(receipt.beforeManifestPath), join(receipt.stateRoot, "backups", "authority"));
       assert.equal(receipt.keychain[0]?.[0], `Relay:${receipt.installationId}:${receipt.profileId}`);
       FakeKeyringEntry.import(receipt.keychain);
       const nextMessage = () => Promise.race([once(child, 'message'), ending.then(() => {
@@ -194,8 +197,8 @@ export function createStorageRestoreTestWorld() {
       const run = database.authority.runs.get(receipt.runId);
       assert.ok(run);
       assert.equal(run.claimGeneration, receipt.claimGeneration);
-      assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, 'attempting');
-      return { paths, database, closeDatabase };
+      assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, accounting === undefined ? 'attempting' : 'committed');
+      return { paths, database, closeDatabase, manifestPath: receipt.manifestPath, beforeManifestPath: receipt.beforeManifestPath };
     } catch (error) {
       writeFileSync(join(scratch, 'child.stdout'), Buffer.concat(stdout), { mode: 0o600 });
       writeFileSync(join(scratch, 'child.stderr'), Buffer.concat(stderr), { mode: 0o600 });
