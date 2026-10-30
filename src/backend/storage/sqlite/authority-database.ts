@@ -1108,7 +1108,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
     }
   }
   if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
-    && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode='every-action'").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
+    && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
   if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database);
   if (expectedSchemaVersion >= 9) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   try{readAppSettings(database);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
@@ -1292,7 +1292,11 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
     if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
   }
-  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  const currentTables = AuthorityCopyInspectionSchema.shape.tables;
+  const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
+    z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
+  ])) : currentTables;
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1303,7 +1307,8 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
-    tables: names.map((name) => ({ name, classification: tableClassification(AuthorityTableNameSchema.parse(name)) })),
+    tables: names.map((name) => ({ name, classification: expectedSchemaVersion < 10 && name === "explorer_overrides"
+      ? "authority" : tableClassification(AuthorityTableNameSchema.parse(name)) })),
     counts: pendingCounts(database),
   });
 }

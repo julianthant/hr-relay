@@ -18,7 +18,7 @@ export function createAssistantAuthorizationRepository(ports: Ports) {
   };
   const grant = (pendingCommandId?: string) => {
     const value = read("assistant_grants", "current");
-    if (value === undefined && ports.database.prepare("SELECT 1 FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' AND id IS NOT ? LIMIT 1").get(pendingCommandId ?? null) !== undefined) throw new Error("assistant-grant-missing-with-history");
+    if (value === undefined && ports.database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' AND id IS NOT ? ORDER BY rowid DESC LIMIT 1) WHERE mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(pendingCommandId ?? null) !== undefined) throw new Error("assistant-grant-missing-with-history");
     return value === undefined ? undefined : AssistantGrantRecordSchema.parse(value);
   };
   return Object.freeze({

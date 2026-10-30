@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, credentialCopyProcessCustody, assertCredentialCopyResourcesClosed, assertRetainedBrowsersClosed, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";

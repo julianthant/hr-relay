@@ -430,7 +430,7 @@ it.each([9, 10] as const)("upgrades supported schema %s to the current version w
     assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: sourceVersion, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table], rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }

@@ -423,7 +423,6 @@ export async function harness(options: {
     runDetail: runDetailDeps,
     commands,
     startPlans,
-    ...(options.explorerEdits === undefined ? {} : { explorerEdits: options.explorerEdits }),
     hub,
     runLogsHub,
 

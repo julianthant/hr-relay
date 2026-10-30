@@ -745,8 +745,18 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   { version: 10, statements: [
     "DROP TABLE explorer_overrides",
     "DROP TRIGGER command_audits_retained",
-    "DELETE FROM command_audits WHERE json_extract(payload_json,'$.request.family')='explorer' AND json_extract(payload_json,'$.request.type')='apply-explorer-edit' AND command_id IN (SELECT id FROM commands WHERE family='explorer' AND json_extract(request_json,'$.type')='apply-explorer-edit')",
-    "DELETE FROM commands WHERE family='explorer' AND json_extract(request_json,'$.type')='apply-explorer-edit'",
+    `DELETE FROM command_audits
+      WHERE json_extract(payload_json,'$.request.family')='explorer'
+        AND json_extract(payload_json,'$.request.type')='apply-explorer-edit'
+        AND json_extract(payload_json,'$.request.commandId')=command_id
+        AND command_id IN (SELECT id FROM commands WHERE family='explorer'
+          AND json_extract(request_json,'$.family')='explorer'
+          AND json_extract(request_json,'$.type')='apply-explorer-edit'
+          AND json_extract(request_json,'$.commandId')=id)`,
+    `DELETE FROM commands WHERE family='explorer'
+      AND json_extract(request_json,'$.family')='explorer'
+      AND json_extract(request_json,'$.type')='apply-explorer-edit'
+      AND json_extract(request_json,'$.commandId')=id`,
     `CREATE TRIGGER command_audits_retained BEFORE DELETE ON command_audits
       BEGIN SELECT RAISE(ABORT,'retained-evidence-required'); END`,
   ] },

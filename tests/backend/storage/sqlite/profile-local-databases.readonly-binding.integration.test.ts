@@ -1,4 +1,3 @@
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { withOfflineMaintenanceSync, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -330,6 +329,7 @@ it("takes and disposes a fresh strict snapshot for every ordinary binding read",
 
 it.each([9, 10, 11, 12])("accepts only supported bound database version %s", async version => {
   const f = await createBoundProfileFixture();
+  const expectedBinding = f.admission.profileBinding;
   try {
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`PRAGMA user_version=${version}`); } finally { raw.close(); }
@@ -339,7 +339,7 @@ it.each([9, 10, 11, 12])("accepts only supported bound database version %s", asy
       assert.equal(result.schemaVersion, version);
       assert.equal(result.state, "bound");
       if (result.state !== "bound") throw new Error("bound fixture required");
-      assert.deepEqual(result.binding, f.admission.profileBinding);
+      assert.deepEqual(result.binding, expectedBinding);
     }
   } finally {
     const raw = new DatabaseSync(f.path);

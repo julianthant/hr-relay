@@ -221,7 +221,7 @@ it("requires both grant and Settings CAS and keeps exact permission replay idemp
   assert.equal(f.execute(first).state, "already-applied");
   assert.deepEqual(f.database.authority.assistantAuthorization.grant(), granted);
   assert.equal(f.database.getMeta().authorityGeneration, after);
-  assert.equal(f.execute({ ...first, payload: { ...first.payload, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } }).state, "rejected");
+  assert.equal(f.execute({ ...first, payload: { ...first.payload, assistantPermission: { expectedPolicyRevision: 1, mode: "every-action" } } }).state, "rejected");
   assert.equal(f.grant("every-action", f.context.settings.read().record.revision, 0).state, "conflict");
   assert.equal(f.database.getMeta().authorityGeneration, after);
   assert.deepEqual(f.database.authority.assistantAuthorization.grant(), granted);
