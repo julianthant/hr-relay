@@ -23,6 +23,11 @@ describe("named test project policy", () => {
     assert.deepEqual(vitestCommandArguments(["run", "--project", "local", "--passWithNoTests=true"]), [
       "run", "--project", "local", "--passWithNoTests=true",
     ]);
+    assert.deepEqual(vitestCommandArguments(["run", "--config", "custom.ts", "proof.test.ts"]), [
+      "run", "--config", "custom.ts", "proof.test.ts",
+    ]);
+    assert.deepEqual(vitestCommandArguments(["run", "--config=custom.ts"]), ["run", "--config=custom.ts"]);
+    assert.deepEqual(vitestCommandArguments(["run", "-c", "custom.ts"]), ["run", "-c", "custom.ts"]);
     assert.deepEqual(vitestCommandArguments(["unit", "tests/models/owned.test.ts"]), [
       "run", "--project", "unit", "--passWithNoTests=false", "tests/models/owned.test.ts",
     ]);

@@ -27,7 +27,7 @@ const DEFAULT_RUN_PROJECTS = ["unit", "integration", "architecture", "perf"] as 
 
 export function vitestCommandArguments(args: readonly string[]): string[] {
   if (args[0] === "unit" || args[0] === "integration") return selectedTestArguments(args[0], args.slice(1));
-  if (args[0] === "run" && !args.slice(1).some((arg) => arg === "--project" || arg.startsWith("--project="))) {
+  if (args[0] === "run" && !args.slice(1).some((arg) => arg === "--project" || arg.startsWith("--project=") || arg === "--config" || arg.startsWith("--config=") || arg === "-c")) {
     return ["run", ...DEFAULT_RUN_PROJECTS.flatMap((name) => ["--project", name]), ...args.slice(1)];
   }
   return [...args];
