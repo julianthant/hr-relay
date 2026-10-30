@@ -606,3 +606,12 @@ Queue controls expose per-run Pause and Resume, Pause all, and the explicit
 owner supplies recorded completion. No submit is interrupted. Unavailable authority disables
 the controls; unknown closure cannot show a completed pause or clean shutdown. The isolated
 `run-pause` parity fixture changes mock state only. Backend lifecycle wiring is separate.
+
+### UCPath found transactions presentation
+
+The in-app found table displays transaction, person/EID, type, effective date, submission time,
+match quality, verified detail, list completeness, and authority. Submitted requires a selected
+exact row with verified detail. Not submitted requires a complete authoritative list containing
+no exact or ambiguous match. Check again requests confirmation readback only; a typed transaction
+number supplies no proof. Pending decisions keep the original outcome unknown. The isolated
+`ucpath-found` fixture is synthetic; backend acquisition and resolution wiring are separate.
