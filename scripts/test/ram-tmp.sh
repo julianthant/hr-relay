@@ -1,6 +1,7 @@
 #!/bin/sh
 # APFS RAM disk for test temp files. Prints one 0700 directory.
 # The volume root stays mode 755: a group-writable ancestor is refused by credential checks.
+# Ownership is enabled. A noowners mount reports every file as the current user, so owner checks pass vacuously.
 # Usage: scripts/test/ram-tmp.sh <mebibytes>
 #        scripts/test/ram-tmp.sh eject <volume>
 set -eu
@@ -39,6 +40,20 @@ if ! diskutil erasevolume APFS "$name" "$dev" >/dev/null; then
 fi
 mount="/Volumes/$name"
 chmod 755 "$mount"
+# diskutil asks for root. CI runners have passwordless sudo; a local password prompt would hang.
+if ! sudo -n diskutil enableOwnership "$mount" >/dev/null; then
+  echo "ram-tmp: enableOwnership needs passwordless sudo" >&2
+  diskutil eject "$mount" >/dev/null || true
+  exit 1
+fi
+owners=$(mount | grep -F " on ${mount} " || true)
+case "$owners" in
+  *noowners*)
+    echo "ram-tmp: ownership is still disabled on $mount" >&2
+    diskutil eject "$mount" >/dev/null || true
+    exit 1
+    ;;
+esac
 dir="$mount/tmp"
 mkdir -m 0700 "$dir"
 printf '%s\n' "$dir"
