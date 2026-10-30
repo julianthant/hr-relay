@@ -14,6 +14,7 @@ import type { BrowserSystemId, WorkerId } from "../../../src/rules/identity/ids.
 import { AuthorityDatabase, syntheticDatabasePath } from "./synthetic-database-admission.js";
 import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "./registered-workflows.js";
+import { closeFixtures } from "./duo-ceremony-cleanup.js";
 
 export const FIXTURE_DUO_CREDENTIAL_KEY = FingerprintSchema.parse("d0".repeat(32));
 
@@ -26,15 +27,6 @@ const realScheduler: MonotonicDeadlineScheduler = {
     return { cancel: () => { clearTimeout(handle); } };
   },
 };
-
-const closeFixtures: (() => void | Promise<void>)[] = [];
-export async function closeDuoCeremonyFixtures(): Promise<void> {
-  const failures: unknown[] = [];
-  for (const close of closeFixtures.splice(0).reverse()) {
-    try { await close(); } catch (error) { failures.push(error); }
-  }
-  if (failures.length > 0) throw new AggregateError(failures, "Duo fixture cleanup failed");
-}
 
 export async function openDuoCeremonyLeaseDatabase(clock: Clock): Promise<AuthorityDatabase> {
   const profile = await createBoundProfileFixture();
