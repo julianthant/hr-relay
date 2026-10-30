@@ -88,7 +88,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/write-sequencer-fixtures.ts` | write sequencer fixtures |
 | `helpers/admission-fixture.ts` | admission fixture |
 | `helpers/credential-keychain-fake.ts` | process-local fake keychain and child custody snapshots |
-| `helpers/credential-keychain-process-preload.ts` | resolves keyring imports to the fake before child fixture evaluation |
+| `helpers/credential-keychain-process-preload.mjs` | resolves keyring imports to the fake before child fixture evaluation |
 | `helpers/caching-compiler-host.ts` | content-checked shared parsed compiler sources and fresh Programs |
 | `helpers/backend/cross-date-search-harness.ts` | cross date search harness |
 | `helpers/backend/dashboard-harness.ts` | dashboard harness |

@@ -6,7 +6,7 @@ vi.mock("@napi-rs/keyring", async () => {
   return { Entry: FakeKeyringEntry };
 });
 
-const keychainPreload = new URL("./helpers/credential-keychain-process-preload.ts", import.meta.url).href;
+const keychainPreload = new URL("./helpers/credential-keychain-process-preload.mjs", import.meta.url).href;
 process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ""} --import=${keychainPreload}`;
 
 afterEach(closeDuoCeremonyFixtures);
