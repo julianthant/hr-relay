@@ -37,7 +37,7 @@ WebP assets are recognized by extension and format signature; their bytes are st
 recognizable embedded text. The check does not inspect image pixels. Document exceptions remain
 digest-pinned.
 
-`scripts/verify/privacy-synthetic.json` pins the paths and content digests of the three existing
+`scripts/verify/privacy-synthetic.json` pins the paths and content digests of the two existing
 synthetic document fixtures, and names source paths containing schema examples, mock scenes or
 placeholder guidance. Its token digests identify existing synthetic IDs and redaction canaries from
 those examples and tests. Both a known

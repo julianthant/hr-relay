@@ -7,10 +7,6 @@
     {
       "path": "tests/support/fixtures/spreadsheet/color-filtered-roster.xlsx",
       "sha256": "501ace4ab135aad65016e3327fe0a58fb45d79c931ab5b24202402643e9158c8"
-    },
-    {
-      "path": "tests/support/helpers/dashboard/color-filtered-roster.xlsx",
-      "sha256": "501ace4ab135aad65016e3327fe0a58fb45d79c931ab5b24202402643e9158c8"
     }
   ],
   "sourcePaths": [
