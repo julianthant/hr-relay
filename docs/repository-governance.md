@@ -17,8 +17,6 @@ operator merges the release pull request.
 | `staging` | `static`, `unit (macos-15)`, `integration (macos-15)`, `architecture (macos-15)`, `parity`, `privacy`, and the Cursor Bugbot check once its name is known |
 | `main` | the `staging` checks, plus `release` |
 
-`unit (windows-latest)`, `integration (windows-latest)`, and `architecture (windows-latest)` stay in the workflow until a Windows run confirms the shared startup path check. They are not required. After that confirmation they are removed. They do not become required checks.
-
 `release` runs only on PRs targeting `main`, after the other checks. Its isolated runner builds the
 web bundle, runs coverage alone, then performance. The operator authorizes release PRs from
 `staging` to `main`, and syncs `main` back into `staging` after merging. Branch protection is configured
@@ -27,8 +25,7 @@ before locking them. Add the Cursor Bugbot check when its name is known; do not 
 
 CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
 required unit, integration, and architecture on `macos-15`, and parity on macOS. Static and
-privacy stay on Ubuntu. The tests stay portable to Windows and macOS. The Windows suite jobs
-do not gate `release` or merges. Desktop parity uses headless Chromium and existing references;
+privacy stay on Ubuntu. CI runs no Windows jobs. Desktop parity uses headless Chromium and existing references;
 CI never updates references or uploads HR evidence.
 
 ## Privacy check
