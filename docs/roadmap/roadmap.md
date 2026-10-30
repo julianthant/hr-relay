@@ -20,6 +20,7 @@ Complete these in order.
 
 - [next] Portable storage core — one database and settings per person, simpler safety checks on Mac and Windows, backup and same-person restore, with no folder relocation.
 - [next] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucpath.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Logout keeps credentials. Put Delete account in Settings > General. An empty machine says to sign up first. Back up the old store, then start clean.
+- [next] Workflow logins — use fast-duo for every workflow login and remove duo-autopilot before the dry runs.
 - [next] Windows test runner and portability — make Windows checks required.
 - [next] Runs — add Pause and Resume, "Pause all and quit" and reruns of failed items only. A crash parks items caught mid-submit as unknown.
 - [next] Write safety — take screenshots at every browser step and before and after submit. Dry runs fill the whole workflow with sample values where needed, without submitting. UCPath shows transaction-list findings for the operator to decide. Kuali keeps its reload check.
@@ -30,7 +31,6 @@ Complete these in order.
 
 ## After the dashboard is ready
 
-- [later] Workflow logins — use fast-duo and remove duo-autopilot.
 - [later] Shared-laptop access — add a login screen and profile menu.
 - [later] Desktop app — package for Mac and Windows with updates.
 - [later] Remaining workflows, one at a time — Oath Signature, Oath Upload, OnBase Emergency Contact, I-9 Check, I-9 Lookup, Onboarding, Work-Study, Kronos Pay Rule, CRM Document Download, SharePoint Download, Old Kronos Reports and Background Check.
