@@ -126,13 +126,13 @@ it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s aut
       await assert.rejects(dashboard.stop(), error => {
         assert.ok(error instanceof RuntimeCustodyUncertainError);
         assert.equal(error.code, "RUNTIME_CUSTODY_UNCERTAIN");
-        assert.equal(error.errors.length, 2);
-        const primary: unknown = error.errors[0];
-        assert.ok(primary instanceof Error);
-        assert.equal(primary.constructor, Error);
-        assert.equal(primary.message, "profile-worker-lifetime-unavailable");
-        assert.equal(error.cause, primary);
-        assert.equal(assertClosureRefusal(error.errors[1], "profile-worker-lifetime-unavailable"), primary);
+        assert.equal(error.errors.length, 1);
+        const inner: unknown = error.errors[0];
+        assert.equal(error.cause, inner);
+        const primary = assertClosureRefusal(inner, "profile-worker-lifetime-unavailable");
+        assert.ok(inner instanceof RuntimeCustodyUncertainError);
+        assert.equal(inner.cause, primary);
+        assert.equal(inner.errors[0], primary);
         assert.ok(context);
         context.admission.assertLive();
         f.machine.assertLive();
