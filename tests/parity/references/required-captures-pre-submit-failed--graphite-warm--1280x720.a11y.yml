@@ -1,0 +1,20 @@
+# required-captures-pre-submit-failed--graphite-warm--1280x720
+# adapter: fixture
+# fixture: required-captures
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - status: UI mock No browser capture or submit is attempted.
+  - heading "Screenshots" [level=1]
+  - paragraph: Run options and Logs
+  - status:
+    - text: Required screenshot unavailable
+    - paragraph: "BROWSER_SCREENSHOT_CAPTURE_FAILED: The browser screenshot could not be captured or saved."
+    - paragraph: Stopped before submit. The required before-submit capture is unavailable; no submit was clicked.
+  - button "Show required"
+  - button "Show pre-submit-failed"
+  - button "Show post-submit-unknown"
+  - button "Show post-submit-proved"

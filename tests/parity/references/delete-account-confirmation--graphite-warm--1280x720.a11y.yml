@@ -1,0 +1,18 @@
+# delete-account-confirmation--graphite-warm--1280x720
+# adapter: fixture
+# fixture: delete-account
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Delete account?":
+  - banner:
+    - heading "Delete account?" [level=2]
+    - paragraph: Permanently erase Example Operator’s Relay account from this device.
+    - button "Close"
+  - paragraph: All data, history, evidence, settings, and encrypted credentials for this person will be erased. Other people’s accounts are unaffected.
+  - paragraph: This does not remove devices enrolled on the Duo website.
+  - contentinfo:
+    - button "Keep account"
+    - button "Delete account permanently"

@@ -1,0 +1,51 @@
+# ucpath-found-ambiguous--graphite-warm--1280x720
+# adapter: fixture
+# fixture: ucpath-found
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - status: UI mock Synthetic transactions. No UCPath reads, decisions, or writes are sent.
+  - heading "Logs" [level=1]
+  - paragraph: Separation · Unknown submission
+  - region "UCPath found transactions":
+    - heading "UCPath found transactions" [level=4]
+    - text: Outcome unknown
+    - paragraph: Example original attempt 1 · Original submit remains held. These controls never submit again.
+    - paragraph: "List: Complete · Authority: Verified"
+    - status: "Evidence remains uncertain PARKED_CHECK_AMBIGUOUS: The target evidence is ambiguous. The write remains held. A not-submitted decision is unavailable."
+    - table "Transactions found in UCPath":
+      - rowgroup:
+        - row "Select Transaction Person / EID Type / effective date Submitted Match / details":
+          - columnheader "Select"
+          - columnheader "Transaction"
+          - columnheader "Person / EID"
+          - columnheader "Type / effective date"
+          - columnheader "Submitted"
+          - columnheader "Match / details"
+      - rowgroup:
+        - row "Select transaction EXAMPLE-1024 EXAMPLE-1024 Example Person EXAMPLE-EID Separation 10/30/2026 10/30/2026 9:00 AM ambiguous · Detail verified":
+          - cell "Select transaction EXAMPLE-1024":
+            - button "Select transaction EXAMPLE-1024" [disabled]: Select
+          - cell "EXAMPLE-1024"
+          - cell "Example Person EXAMPLE-EID"
+          - cell "Separation 10/30/2026"
+          - cell "10/30/2026 9:00 AM"
+          - cell "ambiguous · Detail verified"
+    - text: Exact transaction number
+    - textbox "Exact transaction number"
+    - paragraph: Optional. Requests exact readback; typing a number supplies no proof.
+    - text: Decide from verified evidence.
+    - button "Submitted" [disabled]
+    - button "Not submitted" [disabled]
+    - button "Check again"
+  - button "Show exact"
+  - button "Show ambiguous"
+  - button "Show absent"
+  - button "Show incomplete"
+  - button "Show unverified"
+  - button "Show unauthoritative"
+  - button "Show loading"
+  - button "Show unavailable"

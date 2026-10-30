@@ -1,0 +1,17 @@
+# fixed-backup-restore-confirmation--graphite-warm--1280x720
+# adapter: fixture
+# fixture: fixed-backup
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Restore this backup?":
+  - banner:
+    - heading "Restore this backup?" [level=2]
+    - paragraph: Example verified backup · same person and installation
+    - button "Close"
+  - paragraph: Replace this person’s database and artifacts with the verified backup. Stop ordinary work and prove owned resources closed first. Current credentials remain outside the restored database. Unresolved writes remain protected.
+  - contentinfo:
+    - button "Keep current data"
+    - button "Restore verified backup"

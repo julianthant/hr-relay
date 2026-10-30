@@ -76,8 +76,8 @@
     - text: Customize steps Choose optional steps.
     - checkbox "Dry run"
     - text: Dry run Stop before submission.
-    - checkbox "Capture screenshots" [checked]
-    - text: Capture screenshots Keep browser captures. Workbook · Optional
+    - status: Screenshots required Capture every declared browser-step boundary, including before and after submit. Required workflow captures cannot be turned off.
+    - text: Workbook · Optional
     - button "None Workbook · Optional": None
     - paragraph: Choose an already imported workbook for reference or results.
     - group "Priority":

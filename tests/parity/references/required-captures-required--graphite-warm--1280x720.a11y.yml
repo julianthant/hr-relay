@@ -1,0 +1,17 @@
+# required-captures-required--graphite-warm--1280x720
+# adapter: fixture
+# fixture: required-captures
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - status: UI mock No browser capture or submit is attempted.
+  - heading "Screenshots" [level=1]
+  - paragraph: Run options and Logs
+  - status: Screenshots required Capture every declared browser-step boundary, including before and after submit. Required workflow captures cannot be turned off.
+  - button "Show required"
+  - button "Show pre-submit-failed"
+  - button "Show post-submit-unknown"
+  - button "Show post-submit-proved"

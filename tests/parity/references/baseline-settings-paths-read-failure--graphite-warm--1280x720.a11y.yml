@@ -22,16 +22,16 @@
     - alert:
       - text: Editable settings could not be read Settings could not be read. Try again.
       - button "Try again"
-    - heading "Runtime locations" [level=2]
+    - heading "App data" [level=2]
+    - paragraph: Relay assigns the app-data location. Moving the data folder is unavailable. Document, download, and report folders remain selectable.
     - group "Runtime locations":
       - text: Runtime state folder
-      - paragraph: Persistent settings and run data.
-      - text: /tmp/settings-fixture/state
-      - button "Change Runtime state folder": Change
+      - paragraph: Fixed app-data location.
+      - textbox "Runtime state folder": /tmp/settings-fixture/state
       - text: Artifact folder
-      - paragraph: Run evidence and generated artifacts.
-      - text: /tmp/settings-fixture/artifacts
-      - button "Change Artifact folder": Change
+      - paragraph: Fixed evidence location.
+      - textbox "Artifact folder": /tmp/settings-fixture/artifacts
+    - group "Runtime browser locations"
     - heading "Generated files" [level=2]
     - group "Generated files"
     - heading "Workflow documents" [level=2]

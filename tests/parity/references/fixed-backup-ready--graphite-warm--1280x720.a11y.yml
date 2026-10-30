@@ -1,0 +1,26 @@
+# fixed-backup-ready--graphite-warm--1280x720
+# adapter: fixture
+# fixture: fixed-backup
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - status: UI mock No backup, restore, or file operation is performed.
+  - heading "Paths" [level=1]
+  - paragraph: Fixed app data · Backup and Restore
+  - heading "App data" [level=2]
+  - paragraph: Relay assigns the app-data location. Moving the data folder is unavailable.
+  - text: Runtime state folder
+  - textbox "Runtime state folder": Example app data / person / database
+  - text: Artifact folder
+  - textbox "Artifact folder": Example app data / person / artifacts
+  - paragraph: Backup is explicit. Restore accepts only a verified backup for the same person and installation, with ordinary Relay work stopped.
+  - button "Backup"
+  - button "Restore"
+  - paragraph: "Selected verified backup: Example verified backup · same person and installation"
+  - button "Show ready"
+  - button "Show backup-complete"
+  - button "Show blocked"
+  - button "Show unavailable"

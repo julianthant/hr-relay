@@ -1,0 +1,31 @@
+# duo-signup-virtual--graphite-warm--1280x720
+# adapter: fixture
+# fixture: duo-signup
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - status: UI mock No Duo enrollment, credential creation, or account publication occurs.
+  - heading "Set up Duo" [level=1]
+  - paragraph: Sign-up · Two required methods
+  - region "Required Duo methods":
+    - paragraph: Add both methods in Duo device management at duo.ucpath.edu. Each method requires verified enrollment.
+    - heading "1 · Touch ID" [level=2]
+    - paragraph: Touch ID hardware is unavailable. Chromium supplies a virtual platform authenticator for this method.
+    - text: Not started
+    - button "Add Touch ID"
+    - heading "2 · Security key" [level=2]
+    - paragraph: FastDuo answers Duo’s security-key challenge in Relay’s browser. This is separate from the Touch ID method.
+    - text: Not started
+    - button "Add Security key"
+    - paragraph: Finish stays unavailable until both method enrollments are verified. Capture alone is not enrollment.
+    - button "Back to login"
+    - button "Finish" [disabled]
+  - button "Verify mock Touch ID"
+  - button "Verify mock both"
+  - button "Show unknown"
+  - button "Show unavailable"
+  - button "Show virtual platform"
+  - button "Reset mock"

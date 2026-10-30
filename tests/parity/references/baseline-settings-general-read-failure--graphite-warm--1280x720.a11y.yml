@@ -33,6 +33,10 @@
     - group "Assistant permission":
       - text: Assistant permission Choose when Relay asks before taking an action.
       - button "Ask only before submits"
+    - heading "Account" [level=2]
+    - paragraph: Delete the signed-in person’s data, history, evidence, settings, and encrypted credentials from this device. This cannot be undone.
+    - paragraph: Account deletion is unavailable until Relay can verify the signed-in person and resource closure.
+    - button "Delete account" [disabled]
     - alert:
       - text: Editable settings could not be read Settings could not be read. Try again.
       - button "Try again"

@@ -1,0 +1,24 @@
+# run-pause-all-unavailable--graphite-warm--1280x720
+# adapter: fixture
+# fixture: run-pause
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - status: UI mock No run or shutdown commands are dispatched.
+  - heading "Run controls" [level=1]
+  - paragraph: Example run · Person Lookup
+  - text: Running
+  - button "Pause"
+  - paragraph: Pause stops new items after the current step finishes.
+  - button "Pause all" [disabled]
+  - button "Quit Relay" [disabled]
+  - paragraph: Pause all and quit authority is unavailable.
+  - button "Show running"
+  - button "Show paused"
+  - button "Show unavailable"
+  - button "Show closure unknown"
+  - button "Show all unavailable"
+  - button "Record mock pauses"

@@ -78,8 +78,7 @@
     - text: Customize steps Choose optional steps.
     - checkbox "Dry run"
     - text: Dry run Stop before submission.
-    - checkbox "Capture screenshots"
-    - text: Capture screenshots Keep browser captures.
+    - status: Screenshots required Capture every declared browser-step boundary, including before and after submit. Required workflow captures cannot be turned off.
     - group "Hire type":
       - text: Hire type
       - radio "New hire" [checked]

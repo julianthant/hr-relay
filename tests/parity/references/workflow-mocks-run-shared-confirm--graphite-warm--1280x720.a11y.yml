@@ -85,7 +85,7 @@
     - term: Queue
     - definition: Bulk
     - term: Browser
-    - definition: Headless · screenshots off
+    - definition: Headless · screenshots required
     - term: Dry run
     - definition: "Off"
     - term: Hire type
