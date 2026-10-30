@@ -21,7 +21,7 @@ async function fixture() {
     configFingerprint: f.snapshot.fingerprint, descriptorFingerprint: f.run.envelope.contractFingerprint, fields: [],
     attachments: [{ kind: "console-summary" as const, mediaType: "application/json", sensitivity: "redacted" as const, bytes: Buffer.from(text) }] });
   const inventory = () => existsSync(admission.artifactRoot) ? readdirSync(admission.artifactRoot).sort() : [];
-  return { ...f, admission, writer, service, request, inventory, dispose: async () => { admission.release(); await f.dispose(); } };
+  return { ...f, admission, writer, service, request, inventory, dispose: () => f.dispose() };
 }
 
 function withAttachments(base: DiagnosticBundle, attachments: DiagnosticBundle["attachments"]) {
