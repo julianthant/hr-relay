@@ -595,3 +595,11 @@ supply the existing model policy with synchronous currentness; without it the se
 transaction-free capability canary remain required before the assistant is usable. Subject actions,
 freeform or protected changes, unsupported owners and remaining served actions require their current
 operator interface until their canonical assistant binding is implemented.
+
+### Required capture presentation
+
+Run and Rerun have no capture-off choice. Options label workflow screenshots required; browser
+summary facts say “screenshots required.” The shared capture notice distinguishes a pre-submit
+capture failure (no click) from post-submit missing evidence with either independently proved or
+unknown write outcome. The `required-captures` fixture is presentation-only. Execution enforcement
+and served per-step capture projection remain owned by the workflow capture implementation.

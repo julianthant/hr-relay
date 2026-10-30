@@ -1,3 +1,4 @@
+import { RequiredCaptureStatus } from "../run-detail/logs/log-screenshots.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
@@ -327,7 +328,7 @@ export function RunStartDialog({
   const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
   const [browserMode, setBrowserMode] = useState<BrowserMode>("headed");
-  const [captureBrowserScreenshots, setCaptureBrowserScreenshots] = useState(true);
+  const captureBrowserScreenshots = true;
   const [plan, setPlan] = useState<StartPlanResponse | null>(null);
   const [result, setResult] = useState<Exclude<CommandResult, { state: "pending" }> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -888,7 +889,7 @@ export function RunStartDialog({
                   flags={<>
                     {!isRerun && <Checkbox checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} label="Customize steps" description="Choose optional steps." />}
                     {supportsDryRun && <Checkbox checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} label="Dry run" description="Stop before submission." />}
-                    <Checkbox checked={captureBrowserScreenshots} onCheckedChange={next => setCaptureBrowserScreenshots(next === true)} label="Capture screenshots" description="Keep browser captures." />
+                    <RequiredCaptureStatus state="required" />
                   </>}
                   fixedFacts={workflow && <><LockedFact label="Active policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} /><LockedFact label="Workflow version" value={versionTag(workflow.version)} reason="Fixed by the selected workflow." /></>}>
                   <div>
@@ -954,7 +955,7 @@ export function RunStartDialog({
                       ...omissionRows.map(row => ({ key: row.form.fields.every(field => field.kind === "us-date") ? "Entered dates" : row.label, value: stepOmissionFactsSummary(row) })),
                       ...(workbookId ? [{ key: "Workbook", value: `${spreadsheetMocks.files.find(file => file.id === workbookId)?.name ?? "Unavailable"}` }] : []),
                       { key: "Queue", value: plan.priority === "interactive" ? "Interactive" : "Bulk" },
-                      { key: "Browser", value: `${browserMode === "headed" ? "Headed" : "Headless"} · screenshots ${captureBrowserScreenshots ? "on" : "off"}` },
+                      { key: "Browser", value: `${browserMode === "headed" ? "Headed" : "Headless"} · screenshots required` },
                       { key: "Dry run", value: plan.dryRun ? "On" : "Off" },
                   ]}>
                   {omissionMismatch && (

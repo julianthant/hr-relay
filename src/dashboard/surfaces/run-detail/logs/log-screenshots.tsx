@@ -1,6 +1,7 @@
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, Minus, Monitor, Plus, RotateCw } from "lucide-react";
-import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton } from "../../../ds/ui.js";
+import { Banner, Select, Button, Dialog, DialogContent, DialogTrigger, IconButton } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { LogScreenshot } from "./log-feed-model.js";
 import { captureGeometry, captureKindLabel, captureLoadProblem, captureSourceDimensions, type CaptureMode } from "./log-screenshots-model.js";
@@ -92,4 +93,13 @@ export function LogScreenshots({ screenshots }: { screenshots: readonly LogScree
   return <Dialog><div className={cn("log-capture-group", browsers && "log-capture-group--browsers", screenshots.length === 1 && "log-capture-group--single")} aria-label="Screenshots">{screenshots.map((item, index) => <CapturePreview key={`${item.src}-${item.width}-${item.height}-${index}`} screenshot={item} onChoose={button => { opener.current = button; setSelected(index); }} />)}</div>
     <DialogContent className="ui-theme-scope log-viewer-dialog font-ui text-ui-primary" title={`${capture.system ?? "Capture"} · ${capture.label ?? captureKindLabel(capture.kind)}`} description={<span className="sr-only">Captured screenshot viewer</span>} size="xl" onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}><CaptureWorkspace screenshots={screenshots} selected={selected} choose={setSelected} /></DialogContent>
   </Dialog>;
+}
+
+export function RequiredCaptureStatus({ state }: { state: "required" | "pre-submit-failed" | "post-submit-unknown" | "post-submit-proved" }) {
+  return <Banner tone={state === "required" ? "info" : "warning"} title={state === "required" ? "Screenshots required" : "Required screenshot unavailable"}>
+    {state === "required" ? "Capture every declared browser-step boundary, including before and after submit. Required workflow captures cannot be turned off." : <>
+      <p>BROWSER_SCREENSHOT_CAPTURE_FAILED: {ERROR_CATALOG.BROWSER_SCREENSHOT_CAPTURE_FAILED.text}</p>
+      <p>{state === "pre-submit-failed" ? "Stopped before submit. The required before-submit capture is unavailable; no submit was clicked." : state === "post-submit-unknown" ? "The after-submit capture is unavailable. The original write outcome stays unknown and held. Do not submit again." : "The after-submit capture is unavailable. The separately proved write outcome is preserved. Do not submit again."}</p>
+    </>}
+  </Banner>;
 }
