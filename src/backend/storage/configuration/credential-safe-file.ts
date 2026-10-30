@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { systemClock } from "../../../rules/time/clock.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
@@ -300,6 +301,33 @@ export class PrivateFileLockUnavailableError extends Error {
   constructor() { super("private file lock is unavailable"); this.name = "PrivateFileLockUnavailableError"; }
 }
 
+/** Reused checks for one profile operation. Discarded when that operation ends; a nested lock keeps the outer proof. */
+export type OperationProof = { readonly slots: Map<string, unknown>; readonly release: Array<() => void> };
+const operationProof = new AsyncLocalStorage<OperationProof>();
+export function outermostOperationProof(): OperationProof | undefined {
+  return operationProof.getStore();
+}
+function discardOperationProof(proof: OperationProof): void {
+  const release = proof.release.splice(0);
+  proof.slots.clear();
+  for (const finish of release) finish();
+}
+export function withOperationProof<T>(body: () => T): T {
+  if (operationProof.getStore() !== undefined) return body();
+  const proof: OperationProof = { slots: new Map(), release: [] };
+  let settled = false;
+  const finish = () => { if (settled) return; settled = true; discardOperationProof(proof); };
+  try {
+    const result = operationProof.run(proof, body);
+    if (result instanceof Promise) return result.finally(finish) as T;
+    finish();
+    return result;
+  } catch (error) {
+    finish();
+    throw error;
+  }
+}
+
 export function withPrivateFileLock<T>(directory: string, name: string, body: (held: PrivateFileLock) => T): T {
   if (name === "." || name === ".." || name.includes("/") || name.includes("\\") || name.length === 0) {
     throw new Error("directory-integrity: private lock name is invalid");
@@ -341,19 +369,21 @@ export function withPrivateFileLock<T>(directory: string, name: string, body: (h
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
   }
   let outcome: { kind: "value"; value: T } | { kind: "error"; error: unknown };
-  try { held.assertHeld(); outcome = { kind: "value", value: body(held) }; }
-  catch (error) { outcome = { kind: "error", error }; }
-  try {
-    held.assertHeld();
-    if (identity === undefined) throw new Error("private lock identity is unavailable");
-    removeExactPath(path, identity, false, "directory-integrity: private lock changed before release");
-    fsyncPath(directory);
-  } catch (error) {
-    if (outcome.kind === "error") throw new AggregateError([outcome.error, error], "operation and private lock release failed", { cause: error });
-    throw error;
-  } finally { active = false; }
-  if (outcome.kind === "error") throw outcome.error;
-  return outcome.value;
+  return withOperationProof(() => {
+    try { held.assertHeld(); outcome = { kind: "value", value: body(held) }; }
+    catch (error) { outcome = { kind: "error", error }; }
+    try {
+      held.assertHeld();
+      if (identity === undefined) throw new Error("private lock identity is unavailable");
+      removeExactPath(path, identity, false, "directory-integrity: private lock changed before release");
+      fsyncPath(directory);
+    } catch (error) {
+      if (outcome.kind === "error") throw new AggregateError([outcome.error, error], "operation and private lock release failed", { cause: error });
+      throw error;
+    } finally { active = false; }
+    if (outcome.kind === "error") throw outcome.error;
+    return outcome.value;
+  });
 }
 
 export const ChatGptCredentialLockSchema = z.strictObject({ id: z.uuid(), pid: z.number().int().positive(), identity: ProcessStartIdentitySchema });

@@ -6,7 +6,7 @@ import { credentialKeyCustody, CredentialKeyCustodyError, type CredentialKeyMigr
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { retainedStorageBackup, SourceRecordSchema, StorageBackupSchema, inventory as backupFileInventory, file as backupFile } from "../maintenance/existing-data-backup-files.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
-import { capturePriorPrivateFileLock, withPrivateFileLock, type PrivateFileLock, readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
+import { capturePriorPrivateFileLock, withPrivateFileLock, outermostOperationProof, type PrivateFileLock, readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStageTransition, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
 import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { ProfileDatabaseBindingSchema, SignUpOperationSchema, LogoutOperationSchema, type ProfileOperation, ProfileRegistryDocumentSchema, ProfileRegistryRowSchema, ProfileVerifierDocumentSchema, ProfileOnboardingCompletionSchema, assertFinishedProfileOnboarding, deriveProfileNames, type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
@@ -540,11 +540,20 @@ function atomicJson(path: string, value: unknown, parentKind: "control" | "data"
   if (primary !== undefined) throw primary.error;
 }
 function assertNoSymlinkComponents(path: string): void {
+  const proof = outermostOperationProof();
+  const existing = proof?.slots.get("symlink-free");
+  const proven = existing instanceof Set ? existing as Set<string> : new Set<string>();
+  if (proof !== undefined && existing !== proven) proof.slots.set("symlink-free", proven);
+  if (proven.has(path)) return;
   let component = parse(path).root;
+  const checked: string[] = [];
   for (const part of relative(component, path).split(/[\\/]/u)) {
     component = join(component, part);
+    checked.push(component);
+    if (proven.has(component)) continue;
     if (lstatMaybe(component)?.isSymbolicLink()) fail(`symlink in root path ${component}`);
   }
+  for (const item of checked) proven.add(item);
 }
 function preflightRoot(path: string): void {
   assertNoSymlinkComponents(path);
@@ -1692,6 +1701,23 @@ function assertErasureMembership(document: ProfileRegistryDocument, heads: reado
     || heads.some(head => !document.profiles.some(row => row.profileId === head.profileId && row.registration.operationId === head.originOperationId))) fail("profile-erasure-membership-mismatch");
 }
 
+const PROFILE_REGISTRY_PROOF = "profile-registry";
+function profileRegistryProofKey(control: string, locator: RuntimeLocator): string {
+  return `${control}\0${locator.installationId}\0${String(locator.generation)}\0${locator.stateRoot}`;
+}
+function provenProfileRegistry(control: string, locator: RuntimeLocator): ProfileRegistryDocument | undefined {
+  const slot = outermostOperationProof()?.slots.get(PROFILE_REGISTRY_PROOF);
+  if (slot === undefined || typeof slot !== "object" || !("key" in slot) || !("document" in slot)) return undefined;
+  const proof = slot as { key: string; document: ProfileRegistryDocument };
+  return proof.key === profileRegistryProofKey(control, locator) ? proof.document : undefined;
+}
+function rememberProfileRegistry(control: string, locator: RuntimeLocator, document: ProfileRegistryDocument): void {
+  outermostOperationProof()?.slots.set(PROFILE_REGISTRY_PROOF, { key: profileRegistryProofKey(control, locator), document });
+}
+function dropProfileRegistryProof(): void {
+  outermostOperationProof()?.slots.delete(PROFILE_REGISTRY_PROOF);
+}
+
 function profileEvidencePaths(control: string, locator: RuntimeLocator): readonly string[] {
   const machine = join(locator.stateRoot, "machine");
   return [join(control, "installation.json"), join(control, "locator.json"), join(control, "profile-registry.json"),
@@ -1992,7 +2018,10 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   function mutate<T>(callback: (held: PrivateFileLock) => T): T {
     assertHeld();
     if (options?.readonlyControl === true) fail("worker-machine-control-read-only");
-    return withInstallationControl(control, callback);
+    outermostOperationProof()?.slots.delete("symlink-free");
+    dropProfileRegistryProof();
+    try { return withInstallationControl(control, callback); }
+    finally { dropProfileRegistryProof(); }
   }
   function publishOperation(input: ProfileOperation | string, creating: boolean, keyStageWitness?: CommittedCredentialKeyStage): void {
       mutate(held => {
@@ -2341,6 +2370,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           return readMachineRegistry(control, locator);
         });
       }
+      const proven = provenProfileRegistry(control, locator);
+      if (proven !== undefined) return proven;
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
       const before = profileObservation(control, locator);
       const document = readMachineRegistry(control, locator, false);
@@ -2348,6 +2379,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       assertHeld();
       if (before !== after || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
+      rememberProfileRegistry(control, locator, document);
       return document;
     },
     assertDraftDuoPublicationRecovery(operationId: string, profileId: string, generation: number) {
