@@ -31,7 +31,9 @@ keyboard access, and reduced motion. `workflow-batches.test.ts` explicitly tests
 outside the default reference axis. Do not add phone or coarse-pointer variants.
 
 `tests/parity/helpers/global-setup.ts` builds or verifies the bundle once before workers start.
-`helpers/bundle.ts` owns `dist/parity-dashboard` and its input stamp. Per-spec
+`helpers/bundle.ts` owns `dist/parity-dashboard` and its input stamp. Parity inputs include the
+UI control fixtures under `tests/support/helpers/dashboard/controls/`; changing a fixture invalidates
+the bundle. Control reference cases wait for their loaded heading before capture. Per-spec
 `ensureParityBundle()` checks the same proof. Fixture/seeded BFF servers use ephemeral ports and
 owned temporary state rather than dashboard runtime ports or live HR state.
 `helpers/workflow-composition.ts` selects the test composition explicitly.
