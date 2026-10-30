@@ -48,6 +48,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect(await page.evaluate(() => window.scrollY)).toBe(0); await expect(header).toBeVisible();
         await expect.poll(() => logViewport.evaluate(element => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(1);
         await jump.click();
+        await expect.poll(() => logViewport.evaluate(element => element.contains(document.activeElement))).toBe(true);
         await latest.focus(); await latest.press('Enter');
         expect(await page.evaluate(() => window.scrollY)).toBe(0); await expect(header).toBeVisible();
         await expect.poll(() => logViewport.evaluate(element => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(1);
