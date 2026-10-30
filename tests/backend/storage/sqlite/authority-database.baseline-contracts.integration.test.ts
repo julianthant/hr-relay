@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe,it } from "vitest";
 import { buildIntakeManifest } from "../../../../src/models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../../src/models/intake/session.js";
@@ -22,6 +24,27 @@ function manifest(n = 1) {
     currentRejects: new Map(), rejectionHistory: [], corrections: [], exclusions: [] });
 }
 describe("native imported-artifact contracts", () => {
+  for (const mode of ["read", "write"] as const) it(`rechecks profile authority before committing a ${mode} operation`, async () => {
+    const f = await foundationFixture();
+    const path = join(f.profile.machine.stateRoot, "machine", "profiles.json");
+    const before = readFileSync(path);
+    const generation = f.db.getMeta().authorityGeneration;
+    try {
+      const work = () => {
+        if (mode === "write") f.db.authority.intakeSessions.create(session());
+        writeFileSync(path, "{}");
+      };
+      assert.throws(() => mode === "write"
+        ? f.db.withAuthorityTransaction(work)
+        : f.db.withAuthorityReadSnapshot(work), { name: "ZodError" });
+      writeFileSync(path, before);
+      assert.equal(f.db.authority.intakeSessions.get(id(1)), undefined);
+      assert.equal(f.db.getMeta().authorityGeneration, generation);
+    } finally {
+      writeFileSync(path, before);
+      await f.dispose();
+    }
+  });
   it("keeps nested writes and generation in the outer transaction and freezes submitted content", async () => {
     const f = await foundationFixture();
     const db = f.db;

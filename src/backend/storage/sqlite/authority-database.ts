@@ -1,3 +1,4 @@
+import { outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
@@ -3449,94 +3450,106 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result, searchValidation: "all" | "progress" | "none" = "all"): Result {
-    this.#assertOpen();
-    if (this.#transactionDepth > 0) {
-      if (this.#transactionMode === "read") throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
-      if (this.#transactionMode === "projection" && mode === "authority") throw new Error("authority mutation cannot run inside a projection transaction");
-      const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
-      const dirtyBefore = this.#authorityDirty;
-      const explorerDirtyBefore = this.#explorerOverridesDirty;
-      const workerMembershipBefore = new Set(this.#workerMembershipChanges);
-      const callbacksBefore = this.#authorityCommitCallbacks.length;
-      this.#database.exec(`SAVEPOINT ${savepoint}`);
-      this.#transactionDepth += 1;
-      try {
-        const result = work();
-        this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
-        return result;
-      } catch (error) {
-        this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
-        this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
-        this.#authorityDirty = dirtyBefore;
-        this.#explorerOverridesDirty = explorerDirtyBefore;
-        this.#workerMembershipChanges = workerMembershipBefore;
-        this.#authorityCommitCallbacks.splice(callbacksBefore);
-        throw error;
-      } finally { this.#transactionDepth -= 1; }
-    }
-    this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
-    this.#database.exec("BEGIN IMMEDIATE");
-    this.#transactionDepth = 1;
-    this.#transactionMode = mode;
-    this.#authorityDirty = false;
-    this.#explorerOverridesDirty = false;
-    this.#workerMembershipChanges.clear();
-    let result: Result;
-    try {
-      this.#validateExternalQuerySources("mutation", searchValidation);
-      const search = createRunSearchIndex(this.#database);
-      const priorSearch = search.publication();
-      result = work();
-      for (const workflow of this.#workerMembershipChanges) requireWorkerPoolRoster(this.authority, workflow);
-      if (this.#authorityDirty) {
-        const update = this.#database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(this.#now());
-        if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
-        search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
+    return withOperationProof(() => {
+      if (this.#transactionDepth === 0) outermostOperationProof()?.slots.clear();
+      this.#assertOpen();
+      if (this.#transactionDepth > 0) {
+        if (this.#transactionMode === "read") throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
+        if (this.#transactionMode === "projection" && mode === "authority") throw new Error("authority mutation cannot run inside a projection transaction");
+        const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
+        const dirtyBefore = this.#authorityDirty;
+        const explorerDirtyBefore = this.#explorerOverridesDirty;
+        const workerMembershipBefore = new Set(this.#workerMembershipChanges);
+        const callbacksBefore = this.#authorityCommitCallbacks.length;
+        this.#database.exec(`SAVEPOINT ${savepoint}`);
+        this.#transactionDepth += 1;
+        try {
+          const result = work();
+          this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
+          return result;
+        } catch (error) {
+          this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+          this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
+          this.#authorityDirty = dirtyBefore;
+          this.#explorerOverridesDirty = explorerDirtyBefore;
+          this.#workerMembershipChanges = workerMembershipBefore;
+          this.#authorityCommitCallbacks.splice(callbacksBefore);
+          throw error;
+        } finally { this.#transactionDepth -= 1; }
       }
-      if (this.#explorerOverridesDirty) validateExplorerOverrides(this.#database);
-      this.#database.exec("COMMIT");
-      if (searchValidation === "none") this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
-    } catch (error) {
-      this.#database.exec("ROLLBACK");
-      this.#authorityCommitCallbacks.splice(0);
-      throw error;
-    } finally {
-      this.#transactionDepth = 0;
-      this.#transactionMode = undefined;
-      this.#snapshotExternalDataVersion = undefined;
+      this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
+      this.#database.exec("BEGIN IMMEDIATE");
+      this.#transactionDepth = 1;
+      this.#transactionMode = mode;
       this.#authorityDirty = false;
       this.#explorerOverridesDirty = false;
       this.#workerMembershipChanges.clear();
-    }
-    const callbacks = this.#authorityCommitCallbacks.splice(0);
-    for (const callback of callbacks) callback();
-    return result;
+      let result: Result;
+      try {
+        this.#validateExternalQuerySources("mutation", searchValidation);
+        const search = createRunSearchIndex(this.#database);
+        const priorSearch = search.publication();
+        result = work();
+        for (const workflow of this.#workerMembershipChanges) requireWorkerPoolRoster(this.authority, workflow);
+        if (this.#authorityDirty) {
+          const update = this.#database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(this.#now());
+          if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
+          search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
+        }
+        if (this.#explorerOverridesDirty) validateExplorerOverrides(this.#database);
+        outermostOperationProof()?.slots.clear();
+        this.#assertOpen();
+        this.#database.exec("COMMIT");
+        if (searchValidation === "none") this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
+      } catch (error) {
+        this.#database.exec("ROLLBACK");
+        this.#authorityCommitCallbacks.splice(0);
+        throw error;
+      } finally {
+        outermostOperationProof()?.slots.clear();
+        this.#transactionDepth = 0;
+        this.#transactionMode = undefined;
+        this.#snapshotExternalDataVersion = undefined;
+        this.#authorityDirty = false;
+        this.#explorerOverridesDirty = false;
+        this.#workerMembershipChanges.clear();
+      }
+      const callbacks = this.#authorityCommitCallbacks.splice(0);
+      for (const callback of callbacks) callback();
+      return result;
+    });
   }
 
   #withReadSnapshot<Result>(read: () => Result): Result {
-    this.#assertOpen();
-    if (this.#transactionDepth > 0) return read();
+    return withOperationProof(() => {
+      if (this.#transactionDepth === 0) outermostOperationProof()?.slots.clear();
+      this.#assertOpen();
+      if (this.#transactionDepth > 0) return read();
 
-    this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
-    this.#database.exec("BEGIN");
-    this.#transactionDepth = 1;
-    this.#transactionMode = "read";
-    this.#authorityDirty = false;
-    this.#explorerOverridesDirty = false;
-    try {
-      const result = read();
-      this.#database.exec("COMMIT");
-      return result;
-    } catch (error) {
-      this.#database.exec("ROLLBACK");
-      throw error;
-    } finally {
-      this.#transactionDepth = 0;
-      this.#transactionMode = undefined;
-      this.#snapshotExternalDataVersion = undefined;
+      this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
+      this.#database.exec("BEGIN");
+      this.#transactionDepth = 1;
+      this.#transactionMode = "read";
       this.#authorityDirty = false;
       this.#explorerOverridesDirty = false;
+      try {
+        const result = read();
+        outermostOperationProof()?.slots.clear();
+        this.#assertOpen();
+        this.#database.exec("COMMIT");
+        return result;
+      } catch (error) {
+        this.#database.exec("ROLLBACK");
+        throw error;
+      } finally {
+        outermostOperationProof()?.slots.clear();
+        this.#transactionDepth = 0;
+        this.#transactionMode = undefined;
+        this.#snapshotExternalDataVersion = undefined;
+        this.#authorityDirty = false;
+        this.#explorerOverridesDirty = false;
       }
+    });
   }
 
   #authorityWrite<Outcome extends Readonly<{ result: unknown; changes: number }>>(

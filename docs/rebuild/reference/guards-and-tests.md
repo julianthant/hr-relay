@@ -98,11 +98,14 @@ per-assertion progress messages. Multi-stage harnesses may emit stable phase mar
 `KEEP_TEST_TMP=1` keeps the directory. `tests/support/private-temp.test.ts` checks the directory
 the workers see.
 
-On macOS, `scripts/test/ram-tmp.sh <mebibytes>` attaches an APFS RAM disk, sets the volume root
-to mode `755`, creates a `0700` directory on it, and prints that path. Point `TMPDIR` at the
-printed path before Vitest; the private-temp setup still nests its own directory underneath and
-keeps its checks. Eject with `scripts/test/ram-tmp.sh eject` and the volume path (the parent of
-the printed directory). CI macOS test jobs mount 4096 MiB and export `TMPDIR` before the suite.
+On macOS, `scripts/test/ram-tmp.sh <mebibytes>` formats an APFS RAM disk with `newfs_apfs` as
+the current user, enables volume ownership with `sudo -n /usr/sbin/diskutil enableOwnership`,
+sets the volume root to mode `755`, creates a `0700` directory on it, and prints that path. The
+script fails if that volume still shows `noowners` or is not owned by the current user. The CI
+mount step also fails if the volume still shows `noowners`. Point `TMPDIR` at the printed path
+before Vitest; the private-temp setup still nests its own directory underneath and keeps its
+checks. Eject with `scripts/test/ram-tmp.sh eject` and the volume path (the parent of the
+printed directory). CI macOS test jobs mount 4096 MiB and export `TMPDIR` before the suite.
 The size stays inside runner memory; raise it only after a measured peak no longer fits.
 
 Parity launches Playwright directly. After 180 seconds without output it kills that child and

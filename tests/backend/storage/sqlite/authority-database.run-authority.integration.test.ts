@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { createRunClaimFixtures } from "../../../support/helpers/backend/run-claim-fixtures.js";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { createRunClaimFixtures, heldClaim } from "../../../support/helpers/backend/run-claim-fixtures.js";
 
 
 
@@ -37,7 +37,7 @@ const databases: AuthorityDatabase[] = [];
 const LATER = "2026-07-31T17:05:00.000Z";
 const MUCH_LATER = "2026-07-31T18:00:00.000Z";
 
-const { openDatabase, claimOne, cleanup: cleanupClaims } =
+const { openDatabase, claimOne, claimLifetime, cleanup: cleanupClaims } =
   createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID);
 
 /** A second queued run for the same workflow, distinguishable by id and priority. */
@@ -77,7 +77,7 @@ describe("run claim store", () => {
       const changed = database.authority.runs.transition({
         runId: RUN_ID, expectedVersion: current.version,
         claim: { workerId: WORKER_ID, claimGeneration: claimed.claimGeneration },
-        lifecycle: { state, workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: LATER },
+        lifecycle: heldClaim(current, { state, workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: LATER }),
         now: LATER,
       });
       assert.equal(changed.state, "applied");
@@ -162,7 +162,7 @@ describe("run claim store", () => {
   it("reports idle with no rows and deferred while every row is held back", async () => {
     const database = await openDatabase();
     assert.deepEqual(
-      database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
+      database.authority.runs.claimNext({ workerLifetime: claimLifetime(database, 1).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
       { state: "idle" },
     );
     database.authority.runs.enqueue({
@@ -170,12 +170,12 @@ describe("run claim store", () => {
       lifecycle: { state: "queued", notBefore: MUCH_LATER },
     });
     assert.deepEqual(
-      database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, 1).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
+      database.authority.runs.claimNext({ workerLifetime: claimLifetime(database, 1).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW }),
       { state: "deferred", nextEligibleAt: MUCH_LATER },
     );
     const claimMember1 = database.authority.workerSlots.get(WORKER_ID);
     if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
-    const outcome = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember1.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: MUCH_LATER });
+    const outcome = database.authority.runs.claimNext({ workerLifetime: claimLifetime(database, claimMember1.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: WORKER_ID, now: MUCH_LATER });
     assert.equal(outcome.state, "claimed");
   });
 
@@ -189,7 +189,7 @@ describe("run claim store", () => {
     assert.equal(claimOne(database, LATER).envelope.priority, "interactive");
     const claimMember2 = database.authority.workerSlots.get(`${WORKFLOW_ID}-worker-2`);
     if (claimMember2 === undefined) throw new Error("fixture-claim-member-required");
-    const second = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember2.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: `${WORKFLOW_ID}-worker-2`, now: LATER });
+    const second = database.authority.runs.claimNext({ workerLifetime: claimLifetime(database, claimMember2.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: `${WORKFLOW_ID}-worker-2`, now: LATER });
     if (second.state !== "claimed") throw new Error("the bulk row should still be claimable");
     assert.equal(second.run.envelope.priority, "bulk");
   });
@@ -262,7 +262,7 @@ describe("run claim store", () => {
     // count, and nothing about the first claim blocks it.
     const claimMember3 = database.authority.workerSlots.get(`${WORKFLOW_ID}-worker-2`);
     if (claimMember3 === undefined) throw new Error("fixture-claim-member-required");
-    const second = database.authority.runs.claimNext({ workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember3.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: `${WORKFLOW_ID}-worker-2`, now: LATER });
+    const second = database.authority.runs.claimNext({ workerLifetime: claimLifetime(database, claimMember3.poolIndex).workerLifetime, workflow: WORKFLOW_ID, workerId: `${WORKFLOW_ID}-worker-2`, now: LATER });
     assert.equal(second.state, "claimed");
     assert.equal(database.authority.runs.listByWorker(WORKER_ID).length, 1);
     assert.equal(database.authority.runs.listByWorker(`${WORKFLOW_ID}-worker-2`).length, 1);
@@ -379,7 +379,7 @@ describe("run claim store", () => {
       runId: RUN_ID,
       expectedVersion: claimed.version,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
-      lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+      lifecycle: heldClaim(claimed, { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW }),
       now: LATER,
     });
     if (validating.state !== "applied") throw new Error("validating transition should apply");
@@ -387,7 +387,7 @@ describe("run claim store", () => {
       runId: RUN_ID,
       expectedVersion: validating.run.version,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
-      lifecycle: { state: "running", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: LATER },
+      lifecycle: heldClaim(validating.run, { state: "running", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: LATER }),
       now: LATER,
     });
     if (running.state !== "applied") throw new Error("running transition should apply");

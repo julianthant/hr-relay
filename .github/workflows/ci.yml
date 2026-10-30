@@ -46,6 +46,10 @@ jobs:
       - name: Mount test temp on a RAM disk
         run: |
           dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
+          vol=$(dirname "$dir")
+          case "$(mount | grep -F " on ${vol} " || true)" in
+            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
+          esac
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - run: npm run test:unit
 
@@ -69,6 +73,10 @@ jobs:
       - name: Mount test temp on a RAM disk
         run: |
           dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
+          vol=$(dirname "$dir")
+          case "$(mount | grep -F " on ${vol} " || true)" in
+            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
+          esac
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - run: npm run test:integration -- --shard=${{ matrix.shard }}/4
 
@@ -94,6 +102,10 @@ jobs:
       - name: Mount test temp on a RAM disk
         run: |
           dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
+          vol=$(dirname "$dir")
+          case "$(mount | grep -F " on ${vol} " || true)" in
+            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
+          esac
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - run: npm run test:architecture
 
@@ -111,6 +123,10 @@ jobs:
       - name: Mount test temp on a RAM disk
         run: |
           dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
+          vol=$(dirname "$dir")
+          case "$(mount | grep -F " on ${vol} " || true)" in
+            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
+          esac
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - run: npm run test:parity
 
@@ -143,6 +159,10 @@ jobs:
       - name: Mount test temp on a RAM disk
         run: |
           dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
+          vol=$(dirname "$dir")
+          case "$(mount | grep -F " on ${vol} " || true)" in
+            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
+          esac
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - run: npm run test:coverage
       - run: npm run test:perf
