@@ -99,10 +99,14 @@ The repository holds only the current version. No compatibility readers, old mig
 - Finish a feature on its branch. Run `npm run test:local`, `npm run typecheck` and `npm run lint`,
   then push and open a pull request into `staging`. The pull request auto-merges with a merge
   commit when the cloud checks and Cursor Bugbot are green. The owner fixes a red check.
+- One pull request per feature or fix, so Bugbot reviews one concern at a time. Never bundle
+  unrelated changes; split a large task into separate pull requests that each build and pass alone.
+  Title and describe what changed and why.
   The operator previews `staging` in the main checkout, which owns the store, credentials and
   ports: stop the dashboard, switch to `staging`, start it. A rejected feature is reverted on `staging`.
 - A release pull request merges `staging` into `main` with a merge commit, only on the operator's
-  explicit go. Sync `main` back into `staging` afterward. Push only on explicit instruction.
+  explicit go. Sync `main` back into `staging` afterward. Push feature branches only through this
+  pull-request flow; push nothing else without explicit instruction.
   Required check names are in [repository governance](docs/repository-governance.md).
 - A `staging` with a store migration is previewed only after a verified `storage backup`.
 - Verify base, path and ownership before editing. Stage exact paths and commit by logical category.
