@@ -7,13 +7,13 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "Only the canonical typed RerunRefusedError suppresses an unavailable recovery action; it grants no correction or retry. Unexpected snapshot, custody or validation failures propagate. Separate negative controls verify typed refusal and original unexpected-error propagation."
   },
   {
-    "path": "src/backend/profiles/onboarding-duo-provider.ts",
-    "sha256": "cde74a9139ec54d0d02b1c497b26cb4887fadd5c028510d76dd528b6b9cad959",
+    "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
+    "sha256": "7cbed0d0e7b1078c0f9c8b6748ede60635bde192220609a2381bf66142716618",
     "reason": "A failed UNKNOWN-retention or failure-report callback marks closure unproved and retains the original and retention errors. Closure propagates that stored failure with both causes, keeps the active attempt and browser uncertain, and refuses replacement or relaunch; it never reports successful cleanup. Worker stop failure remains uncertain while pump/report settlement is awaited, and the enclosing browser close retains both causes."
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "0f53bc7657bfa560716292328812bd261e761bb5ea42fa9d2454f04254abbf31",
+    "sha256": "5a1f54db1254a3920090ee71595afd7ae83a0078165ab770a6153e1dfc94cfcb",
     "reason": "Startup source-closure uncertainty records failed producer closure before unwind, retaining dependent database and admission custody. Selected-context open failure retains typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and immediate stop promises, whose callers await and propagate failures before storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately. Required native browser closure failures follow the same upgrade rejection and custody-retention path."
   },
   {

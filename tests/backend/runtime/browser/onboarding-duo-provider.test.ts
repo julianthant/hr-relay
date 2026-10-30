@@ -1,4 +1,4 @@
-import { onboardingProfileDirectory } from "../../../src/backend/runtime/browser/native-profile-probe.js";
+import { onboardingProfileDirectory } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -7,9 +7,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import type { BrowserContext, Worker } from "playwright";
-import { manualClock } from "../../../src/rules/time/clock.js";
-import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../src/backend/profiles/onboarding-duo-provider.js";
-import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext } from "../../../src/backend/profiles/onboarding-duo.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext } from "../../../../src/backend/profiles/onboarding-duo.js";
 
 function world(method: "key" | "touch" = "key") {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "relay-onboarding-provider-")));

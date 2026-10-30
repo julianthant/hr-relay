@@ -3,7 +3,7 @@ import { deleteOwnedBrowserProfile } from "../runtime/browser/browser-session-fa
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
 import { NativeBrowserClosureUnprovedError, onboardingProfileDirectory, probeClosedBrowserProfile, assertPrivateProfilePath } from "../runtime/browser/native-profile-probe.js";
-import { ProfileOnboardingDuoProviderError } from "./onboarding-duo-provider.js";
+import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";

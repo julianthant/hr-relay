@@ -1,4 +1,4 @@
-import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,12 +7,12 @@ import { chromium, expect } from "@playwright/test";
 import type { BrowserContext } from "playwright";
 import { it } from "vitest";
 import { z } from "zod";
-import { createProfileOnboardingDuoProvider } from "../../../src/backend/profiles/onboarding-duo-provider.js";
-import type { DraftDuoBrowserOwner } from "../../../src/backend/profiles/onboarding-duo.js";
-import { systemClock } from "../../../src/rules/time/clock.js";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { composeProfileRuntime } from "../../../src/backend/app/composition/storage-compose.js";
-import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { createProfileOnboardingDuoProvider } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import type { DraftDuoBrowserOwner } from "../../../../src/backend/profiles/onboarding-duo.js";
+import { systemClock } from "../../../../src/rules/time/clock.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const FORM = `<!doctype html><form action="${SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="username"><label for="ssopassword">Password</label><input id="ssopassword" name="password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
