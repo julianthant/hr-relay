@@ -598,3 +598,11 @@ supply the existing model policy with synchronous currentness; without it the se
 transaction-free capability canary remain required before the assistant is usable. Subject actions,
 freeform or protected changes, unsupported owners and remaining served actions require their current
 operator interface until their canonical assistant binding is implemented.
+
+### Run pause presentation
+
+Queue controls expose per-run Pause and Resume, Pause all, and the explicit
+“Pause all and quit?” confirmation. Requested pause/resume states stay pending until the
+owner supplies recorded completion. No submit is interrupted. Unavailable authority disables
+the controls; unknown closure cannot show a completed pause or clean shutdown. The isolated
+`run-pause` parity fixture changes mock state only. Backend lifecycle wiring is separate.
