@@ -150,8 +150,8 @@ export interface TransactionNode<
   readonly prepare: Readonly<{ uses: P; bind: (scope: Scope) => z.input<P["input"]> }>;
     // Bind commit input before probes; never include ephemeral prepare output in durable transaction identity.
   readonly commit: Readonly<{ uses: C; bind: (scope: Scope) => z.input<C["input"]> }>;
-  /** Same context/page lease from prepare start through commit verification. */
   readonly previewBind?: (scope: Scope) => DryRunBinding | undefined;
+  /** Same context/page lease from prepare start through commit verification. */
   readonly leaseScope: "transaction";
   readonly dryRun: "stop-after-prepare" | "unsupported";
   readonly probePolicy: "always" | "retries-and-recovery-only";

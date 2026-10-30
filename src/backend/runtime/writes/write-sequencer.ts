@@ -1,3 +1,4 @@
+import { containsDryRunSample, DryRunSampleSchema } from "../../../models/workflow/dry-run.js";
 import { acceptsRecheckTransactionId } from "../../../rules/write-safety/parked-resolution.js";
 import { UcpathTerminationTargetSchema } from "../../../models/ui/ucpath-smart-hr-termination.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
@@ -13,7 +14,7 @@ import { z } from "zod";
 import { TaskError } from "../../../workflow-kit/errors.js";
 import type { AnyTask, BrowserDriver, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
-import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -218,7 +219,7 @@ export interface TransactionSessionHost {
     instance: string | undefined,
     signal: AbortSignal,
     operation: (driver: BrowserDriver, captureScreenshot: () => Promise<void>) => Promise<Result>,
-    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>,
+    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn">; sampleLabels?: readonly string[] }>,
   ): Promise<Result>;
   withTransactionDriver<Result>(
     need: SessionNeed,
@@ -229,7 +230,7 @@ export interface TransactionSessionHost {
       ownership: Readonly<{ retainAfterFence(): void }>,
       captureScreenshot: (boundary?: "step" | "before-submit" | "after-submit") => Promise<void>,
     ) => Promise<Result>,
-    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>,
+    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn">; sampleLabels?: readonly string[] }>,
   ): Promise<Result>;
   closeAll(reason: "parked"): Promise<void>;
 }
@@ -1750,8 +1751,16 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         + "click a real external write for it, whatever the caller passed — use executeDryRun");
     }
 
+    if (context.previewBinding !== undefined || context.scope.dryRun !== undefined) {
+      throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_REFUSED", "Dry-run samples cannot authorize a real submission.");
+    }
+
     /* stable commit input + key BEFORE any replay, probe or browser (ref workflow-model ) */
     const commitInput: unknown = commitContract.input.parse(node.commit.bind(context.scope));
+    const prepareInput: unknown = prepareContract.input.parse(node.prepare.bind(context.scope));
+    if (containsDryRunSample(commitInput) || containsDryRunSample(prepareInput)) {
+      throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_REFUSED", "Dry-run samples cannot authorize a real submission.");
+    }
     const system = systemOf(commitContract.id);
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
     const naturalKey = IdempotencyKeySchema.parse(keyRaw);
@@ -1957,7 +1966,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         emitTaskSpan(context, "prepare", "span.started");
         let prepareOutput: unknown;
         try {
-          const prepareInput: unknown = prepareContract.input.parse(node.prepare.bind(context.scope));
           const { raw } = await invokeTransactionTask(
             context,
             "prepare",
@@ -2223,7 +2231,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         }
         return { intent: fenced, proofValue: captured.proofValue, outputValue: captured.outputValue };
         },
-        { taskId: commitContract.id, nodeId: String(node.id), attempt: envelope.attempt, log: context.captureLog ?? deps.log },
+        { taskId: commitContract.id, nodeId: String(node.id), attempt: envelope.attempt,
+          log: { warn(message, fields) { (context.captureLog ?? deps.log).warn(message, { ...fields,
+            ...(retainedIntent === undefined ? {} : { writeIntentId: retainedIntent.writeIntentId,
+              writeAttemptId: retainedIntent.currentAttemptId, generation: retainedIntent.generation }),
+          }); } },
+        },
       );
     } catch (error) {
       if (error instanceof PostFenceWriteFailure) {
@@ -2321,11 +2334,33 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const commitContract = node.commit.uses;
     const prepareContract = node.prepare.uses;
     const envelope = context.run.envelope;
+    if (!context.dryRun || !envelope.dryRun) {
+      throw new TaskError(commitContract.id, "capability-unavailable", "Preview requires an accepted dry-run envelope.");
+    }
     if (node.dryRun !== "stop-after-prepare") {
       throw new TaskError(commitContract.id, "capability-unavailable",
         `transaction node "${node.id}" declares dryRun:"${node.dryRun}"; there is no preview arm to run`);
     }
-    const commitInput: unknown = commitContract.input.parse(node.commit.bind(context.scope));
+    const commitInput: unknown = commitContract.input.parse(context.previewBinding?.commit ?? node.commit.bind(context.scope));
+    const samples = DryRunSampleSchema.array().parse(context.previewBinding?.samples ?? []);
+    const usesSamples = samples.length > 0;
+    const ancestors = new Set<string>();
+    const includeAncestors = (ids: readonly string[]): void => {
+      for (const id of ids) {
+        if (ancestors.has(id)) continue;
+        ancestors.add(id);
+        const source = descriptorRuntimeNodes(context.descriptor).find(candidate => candidate.id === id);
+        if (source === undefined) throw new Error("preview dependency is undeclared");
+        includeAncestors(source.dependsOn);
+      }
+    };
+    if (usesSamples) includeAncestors(node.dependsOn);
+    if (samples.some(sample => !ancestors.has(sample.sourceNodeId)
+      || !context.scope.dryRun?.transactions.some(step => step.nodeId === sample.sourceNodeId
+        && step.preview.outcome.state === "would-prepare"))) {
+      throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_UNDECLARED", "Dry-run sample values require declared preview provenance.");
+    }
+    if (!usesSamples && containsDryRunSample(commitInput)) throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_UNDECLARED", "Dry-run sample values require declared preview provenance.");
     const completion = commitContract.writeSafety.completion;
     const proofSchemaHash = deriveSchemaHash(completion.proofSchema, "output");
     const outputSchemaHash = deriveSchemaHash(commitContract.output, "output");
@@ -2406,12 +2441,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
 
     /* beat ① — the policy-controlled live probe, on its own read lease */
-    const mustProbe = source !== undefined || node.probePolicy === "always"
-      || durable !== undefined
-      || envelope.attempt > 1;
+    const mustProbe = !usesSamples && (source !== undefined || node.probePolicy === "always"
+      || durable !== undefined || envelope.attempt > 1);
     let probe: z.input<typeof DryRunProbeObservationSchema>;
     if (!mustProbe) {
-      probe = { state: "not-required", reason: "policy-retries-and-recovery-only" };
+      probe = { state: "not-required", reason: usesSamples ? "preview-only-sample" : "policy-retries-and-recovery-only" };
     } else {
       let verdict: RuntimeProbeVerdict;
       try {
@@ -2486,7 +2520,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     if (need === undefined) throw new Error(`${commitContract.id} declares no transaction session need`);
     const instance = resolvedInstanceFor(context, need.system);
     return deps.sessions.withDriver(need, instance, context.signal, async (driver, captureScreenshot) => {
-      const prepareInput: unknown = prepareContract.input.parse(node.prepare.bind(context.scope));
+      const prepareInput: unknown = prepareContract.input.parse(context.previewBinding?.prepare ?? node.prepare.bind(context.scope));
+      if (!usesSamples && containsDryRunSample(prepareInput)) throw new TaskError(prepareContract.id, "DRY_RUN_SAMPLE_UNDECLARED", "Dry-run sample values require declared preview provenance.");
       emitTaskSpan(context, "prepare", "span.started");
       let prepareOutput: unknown;
       try {
@@ -2552,7 +2587,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         },
         observedAt,
       });
-    }, { taskId: prepareContract.id, nodeId: String(node.id), attempt: envelope.attempt, log: context.captureLog ?? deps.log });
+    }, { taskId: prepareContract.id, nodeId: String(node.id), attempt: envelope.attempt, log: context.captureLog ?? deps.log,
+      ...(samples.length === 0 ? {} : { sampleLabels: samples.map(sample => `${sample.label}: ${sample.field} = ${JSON.stringify(sample.value)}`) }),
+    });
   }
 
   return Object.freeze({ executeTransaction, executeDryRun });

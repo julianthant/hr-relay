@@ -384,12 +384,22 @@ export const LogPageCursorSchema = z.string()
   .regex(/^lc:[0-9a-f]{64}:[1-9]\d*$/, "log cursor must be lc:<snapshot digest>:<positive offset>")
   .brand<"LogPageCursor">();
 
+export const DryRunPreviewWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("pending") }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["preview-authority-unavailable", "preview-not-completed", "preview-result-unreadable"]) }),
+  z.strictObject({ state: z.literal("available"), coverage: z.enum(["full", "partial"]), stages: z.array(z.strictObject({
+    id: NodeIdSchema, label: z.string().min(1), state: z.enum(["exercised", "unavailable", "skipped"]), detail: z.string().min(1),
+    sample: z.strictObject({ label: z.literal("dry-run sample"), value: z.string().min(1) }).optional(),
+  })) }),
+]);
+
 export const NotePageSchema = z.strictObject({
   runId: RunIdSchema,
   confirmedActions: z.array(ConfirmedActionEventSchema).optional(),
   confirmedActionBindings: z.array(ConfirmedActionBindingWireSchema).optional(),
   /** Live Logs always send this; older frozen archive pages predate it. */
   operationStructure: RunOperationStructureWireSchema.optional(),
+  dryRunPreview: DryRunPreviewWireSchema.optional(),
     /* The one combined page; optional only so a frozen archive written before observed-log rows existed remains readable, and `notes` stays as an exact compatibility mirror. */
   rows: z.array(LogRowWireSchema).optional(),
   notes: z.array(NoteWireSchema),

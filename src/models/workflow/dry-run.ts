@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { NodeIdSchema } from "../../rules/identity/ids.js";
-import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { TransactionDryRunPreviewSchema } from "../../rules/write-safety/write-safety-primitives.js";
 
 export const DRY_RUN_TRANSACTION_NUMBER = "T000000000000";
@@ -9,9 +8,15 @@ export const DryRunSampleSchema = z.strictObject({
   label: z.literal("dry-run sample"),
   sourceNodeId: NodeIdSchema,
   field: z.string().min(1),
-  value: JsonValueSchema,
+  value: z.literal(DRY_RUN_TRANSACTION_NUMBER),
 });
 export type DryRunSample = z.infer<typeof DryRunSampleSchema>;
+
+export const DryRunCoverageSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("full") }),
+  z.strictObject({ state: z.literal("partial"), boundaryNodeId: NodeIdSchema,
+    reason: z.literal("historical-first-transaction-only") }),
+]);
 
 export const DryRunStepSchema = z.discriminatedUnion("state", [
   z.strictObject({ nodeId: NodeIdSchema, state: z.literal("exercised") }),
@@ -32,7 +37,7 @@ export interface DryRunScope {
 }
 
 export function containsDryRunSample(value: unknown): boolean {
-  if (typeof value === "string") return value === DRY_RUN_TRANSACTION_NUMBER || value.includes("dry-run sample");
+  if (typeof value === "string") return value.includes(DRY_RUN_TRANSACTION_NUMBER);
   if (Array.isArray(value)) return value.some(containsDryRunSample);
   return value !== null && typeof value === "object" && Object.values(value).some(containsDryRunSample);
 }

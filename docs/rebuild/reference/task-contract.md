@@ -469,7 +469,12 @@ The would-prepare arm stages the page and observes the subject under the retaine
 Refused or uncertain real-path conditions also refuse preview.
 The preview creates no write intent or fence and invokes no commit implementation.
 
-The executor ends with a preview result bound to its preview schema.
+The executor continues to later transactions and accounts for unavailable dependencies explicitly.
+A transaction's optional `previewBind` supplies schema-checked prepare/commit inputs plus labelled
+sample provenance through the workflow scope. It runs only for a dry-run envelope. A sample is a
+preview input, never a completed transaction output, receipt or gate decision. Sample-dependent
+preparations do not claim an authoritative probe of the synthetic target and capture the label
+alongside the form. The final preview binds its own schema and actual read evidence.
 It does not call the authored terminal-result derivation or fabricate a completed transaction output.
 `externalCommit: "none"` distinguishes the preview from an HR write.
 [Workflow model](workflow-model.md) owns the terminal preview shape and run outcome.

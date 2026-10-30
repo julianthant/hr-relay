@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import { ProtectedStoreRecordSchema } from "../../../src/models/config/protected-settings.js";
 import { ProtectedInputBindingSchema } from "../../../src/models/write-safety/protected-input.js";
@@ -453,6 +454,7 @@ export async function finalizationHarness(
     workflowId: WorkflowIdSchema.parse(FINALIZATION_WORKFLOW_ID),
     stores: taskStoreRegistry,
     factory: sessions.factory,
+    browserScreenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
@@ -491,6 +493,7 @@ export async function finalizationHarness(
         manager,
         FINALIZATION_CONFIG_FINGERPRINT,
         work,
+        "headless", { runId: FINALIZATION_RUN_ID, descriptorFingerprint: separationsKualiFinalizationDescriptor.contractFingerprint, captureBrowserScreenshots: false },
       ),
     dispose: async (): Promise<void> => {
       if (held.failure !== undefined) throw held.failure;

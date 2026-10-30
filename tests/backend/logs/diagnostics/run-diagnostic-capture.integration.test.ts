@@ -470,11 +470,11 @@ it("retains exact pre/post-submit boundary metadata and refuses a foreign browse
   }
   const bundles = database.authority.diagnosticBundles.listByRun(RUN_ID);
   assert.equal(bundles.length, 2);
-  assert.deepEqual(bundles.map(bundle => bundle.redaction.fields.find(field => field.key === "captureBoundary")?.value), ["before-submit", "after-submit"]);
+  assert.deepEqual(bundles.map(bundle => bundle.redaction.fields.filter(field => field.state === "allowed").find(field => field.key === "captureBoundary")?.value), ["before-submit", "after-submit"]);
   for (const bundle of bundles) {
-    assert.equal(bundle.redaction.fields.find(field => field.key === "nodeId")?.value, "submit-write");
-    assert.equal(bundle.redaction.fields.find(field => field.key === "runAttempt")?.value, 1);
-    assert.equal(bundle.redaction.fields.find(field => field.key === "browserSessionId")?.value, sessionId);
+    assert.equal(bundle.redaction.fields.filter(field => field.state === "allowed").find(field => field.key === "nodeId")?.value, "submit-write");
+    assert.equal(bundle.redaction.fields.filter(field => field.state === "allowed").find(field => field.key === "runAttempt")?.value, 1);
+    assert.equal(bundle.redaction.fields.filter(field => field.state === "allowed").find(field => field.key === "browserSessionId")?.value, sessionId);
   }
   await assert.rejects(capture.capture({ ...context, trigger: { kind: "task-point", nodeId: "submit-write", attempt: 1, boundary: "before-submit" } }), /matching active browser lease/);
   assert.equal(database.authority.diagnosticBundles.listByRun(RUN_ID).length, 2);
@@ -534,7 +534,7 @@ describe("task screenshot persistence before checkpoint", () => {
         const warnings = notes.filter(note => note.level === "warn");
         assert.equal(warnings.length, 1);
         assert.equal(warnings[0]?.message, "Screenshot capture unavailable.");
-        assert.deepEqual(warnings[0]?.fields?.map(field => ({ key: field.key, value: field.value })), [{ key: "reason", value: failure === "unavailable" ? "secret-controls-present" : failure === "persist" ? "TypeError" : "Error" }]);
+        assert.deepEqual(warnings[0]?.fields?.map(field => ({ key: field.key, value: field.value })), [{ key: "code", value: "BROWSER_SCREENSHOT_CAPTURE_FAILED" }, { key: "boundary", value: "step" }, { key: "reason", value: failure === "unavailable" ? "secret-controls-present" : failure === "persist" ? "TypeError" : "Error" }]);
         assert.doesNotMatch(JSON.stringify(warnings), /private/);
         const section = buildRunLogsSection({ timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined } } as unknown as RunDetailQueryDeps,
           claimed.run.envelope.runId, undefined, settledRun);

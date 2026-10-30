@@ -550,7 +550,7 @@ export class WorkerSessionManager {
     instance: string | undefined,
     signal: AbortSignal,
     operation: (driver: BrowserDriver, captureScreenshot: (boundary?: "step" | "before-submit" | "after-submit") => Promise<void>) => Promise<Result>,
-    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>,
+    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn">; sampleLabels?: readonly string[] }>,
   ): Promise<Result> {
     const need = SessionNeedSchema.parse(needInput);
     return this.#withDriverLease(need, instance, signal, (driver, captureScreenshot) => waitForOperation(
@@ -565,7 +565,7 @@ export class WorkerSessionManager {
     instance: string | undefined,
     signal: AbortSignal,
     operation: (driver: BrowserDriver, ownership: TransactionDriverLeaseOwnership, captureScreenshot: (boundary?: "step" | "before-submit" | "after-submit") => Promise<void>) => Promise<Result>,
-    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>,
+    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn">; sampleLabels?: readonly string[] }>,
   ): Promise<Result> {
     const need = SessionNeedSchema.parse(needInput);
     if (need.access !== "transaction") {
@@ -584,7 +584,7 @@ export class WorkerSessionManager {
     instance: string | undefined,
     signal: AbortSignal,
     use: (driver: BrowserDriver, captureScreenshot: (boundary?: "step" | "before-submit" | "after-submit") => Promise<void>) => Promise<Result>,
-    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>,
+    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn">; sampleLabels?: readonly string[] }>,
   ): Promise<Result> {
     this.#resetEpoch += 1;
     if (this.#closingReason !== undefined) {
@@ -616,13 +616,13 @@ export class WorkerSessionManager {
         assertLeaseActive();
         let reason: string | undefined;
         try {
-          reason = await this.#captureLeaseScreenshot(resource, { kind: "task-point", nodeId: screenshotOwner.nodeId, attempt: screenshotOwner.attempt, boundary }, configFingerprint, assertLeaseActive);
+          reason = await this.#captureLeaseScreenshot(resource, { kind: "task-point", nodeId: screenshotOwner.nodeId, attempt: screenshotOwner.attempt, boundary }, configFingerprint, assertLeaseActive, screenshotOwner.sampleLabels);
         } catch (cause) {
           assertLeaseActive();
           reason = cause instanceof Error && ["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "AggregateError", "TimeoutError"].includes(cause.name) ? cause.name : "Error";
         }
         if (reason !== undefined) {
-          screenshotOwner.log.warn("Screenshot capture unavailable.", { reason });
+          screenshotOwner.log.warn("Screenshot capture unavailable.", { code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", boundary, reason });
           throw new TaskError(screenshotOwner.taskId, "BROWSER_SCREENSHOT_CAPTURE_FAILED", ERROR_CATALOG.BROWSER_SCREENSHOT_CAPTURE_FAILED.text);
         }
       };
@@ -686,6 +686,7 @@ export class WorkerSessionManager {
     trigger: Parameters<RunBrowserScreenshotCapture["capture"]>[0]["trigger"],
     configFingerprint: Fingerprint,
     assertLeaseActive?: () => void,
+    sampleLabels?: readonly string[],
   ): Promise<Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"] | undefined> {
     const context = this.#runScreenshotContext;
     if (context === undefined) {
@@ -698,7 +699,7 @@ export class WorkerSessionManager {
     if (resource.screenshot === undefined) {
       throw new Error(`run ${context.runId} selected browser screenshots but ${resource.system} has no screenshot capability`);
     }
-    const screenshot = await resource.screenshot();
+    const screenshot = await resource.screenshot(sampleLabels);
     assertLeaseActive?.();
     await this.#browserScreenshotCapture.capture({
       runId: context.runId,
@@ -707,6 +708,7 @@ export class WorkerSessionManager {
       system: resource.system,
       trigger,
       screenshot,
+      ...(sampleLabels === undefined ? {} : { sampleLabels }),
     });
     if (screenshot.state === "unavailable") return screenshot.reason;
   }

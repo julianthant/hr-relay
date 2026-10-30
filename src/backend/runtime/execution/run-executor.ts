@@ -1,3 +1,4 @@
+import { DryRunSampleSchema, type DryRunStep, type DryRunBinding } from "../../../models/workflow/dry-run.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
@@ -34,7 +35,7 @@ import { publishConfirmedSubmit } from "../../logs/confirmed-submit.js";
 import { drainBrowserActionNotes } from "../../logs/browser-action-drain.js";
 import { withBrowserActionBinding, withBrowserActionNotes, type BrowserAction, type BrowserActionBinder } from "../../systems/browser-shared/action-notes.js";
 import type { TaskId } from "../../../rules/identity/ids.js";
-import { GateIdSchema, IsoInstantSchema, NodeIdSchema, ProviderCapabilityIdSchema, TaskIdSchema } from "../../../rules/identity/ids.js";
+import { GateIdSchema, IsoInstantSchema, ProviderCapabilityIdSchema, TaskIdSchema } from "../../../rules/identity/ids.js";
 import type { Fingerprint, IsoInstant, NodeId, ProviderCapabilityId } from "../../../rules/identity/ids.js";
 import { RunLifecycleSchema, RunRecordSchema, runClaim, type RunLifecycle, type RunRecord } from "../../../models/run/record.js";
 import type { RunResultRecord, TerminalDependencyEvidence } from "../../../models/run/result.js";
@@ -93,6 +94,7 @@ export interface WriteSequencerContext {
   readonly scope: RuntimeScope;
   readonly dryRun: boolean;
   readonly captureLog?: Pick<TaskLogger, "warn">;
+  readonly previewBinding?: DryRunBinding;
   readonly signal: AbortSignal;
   /** Synchronous in-memory handoff after beat ⑦; consumers publish after the sequencer returns. */
   readonly onDurableCommit?: (proof: Readonly<{ writeIntentId: string; confirmedAt: string; proofDigest: string }>) => void;
@@ -644,19 +646,15 @@ export async function executeClaimedRun(
     };
 
 
-    const settlePreview = (
-      node: TransactionRuntimeNode,
-      preview: TransactionDryRunPreview,
-    ): RunExecutionOutcome => {
-      const current = getRun();
-      return settleSuccess(current, buildRunPreviewResult(
-        descriptor,
-        current,
-        preview,
-        [...dependencyEvidenceFor(node.dependsOn.map(nodeId => NodeIdSchema.parse(nodeId)), "dry-run preview"),
-          ...[...childResultEvidence.values()].filter(entry => !node.dependsOn.includes(entry.nodeId))],
-        clock,
-      ));
+    const dryRunSteps = new Map<string, DryRunStep>();
+    const previewOnly = new Set<string>();
+    const markUnavailable = (node: RuntimeFlowNode): void => {
+      previewOnly.add(String(node.id));
+      dryRunSteps.set(String(node.id), { nodeId: node.id, state: "unavailable", reason: "requires-unsubmitted-output" });
+      deps.taskNotes?.emitRunLog({ workflow: descriptor.id,
+        address: { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath: `${envelope.traceId}/${node.id}` },
+        level: "warn", message: "Dry run: this stage is unavailable because it requires an unsubmitted result.",
+      }, getRun());
     };
     const branchExcluded = new Set<string>();
 
@@ -669,7 +667,8 @@ export async function executeClaimedRun(
         const value = outputs[String(dependency)];
         if (value !== undefined) picked[String(dependency)] = value;
       }
-      return { input: canonicalInput, outputs: Object.freeze(picked), configuration: Object.freeze(configurationValues),
+      return { input: canonicalInput, outputs: Object.freeze(picked),
+        ...(envelope.dryRun ? { dryRun: { transactions: [...dryRunSteps.values()].filter(step => step.state === "transaction-preview") } } : {}), configuration: Object.freeze(configurationValues),
         protectedInputBindings: retainedRunProtectedBindings(getRun()) };
     };
 
@@ -1446,6 +1445,7 @@ export async function executeClaimedRun(
     };
 
     for (const [index, node] of nodes.entries()) {
+      if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "exercised" });
       checkCancellation();
       if (input.signal.aborted) throw abortReason(`run ${runId} execution was aborted`);
       const entry = plan.get(String(node.id));
@@ -1460,6 +1460,7 @@ export async function executeClaimedRun(
       }
       if (entry.mode === "skipped-condition") {
         skippedReasons.set(String(node.id), "condition-false");
+        if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "condition-false" });
         continue;
       }
       if (entry.mode === "replay-gate") {
@@ -1479,11 +1480,13 @@ export async function executeClaimedRun(
 
       if (excludedByBranch(node)) {
         skippedReasons.set(String(node.id), "branch-not-selected");
+        if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "branch-not-selected" });
         continue;
       }
       if (entry.mode === "omitted") {
 
         skippedReasons.set(String(node.id), "step-omitted");
+        if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "step-omitted" });
         const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
         emit({
           t: "span.started", kind: "task",
@@ -1499,6 +1502,7 @@ export async function executeClaimedRun(
         continue;
       }
       if (entry.mode === "asserted") {
+        if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "operator-asserted" });
 
         const assertion = omissionPlan.asserted.get(String(node.id));
         if (assertion === undefined || node.kind !== "task") {
@@ -1598,6 +1602,10 @@ export async function executeClaimedRun(
         continue;
       }
 
+      if (envelope.dryRun && node.kind !== "transaction" && node.dependsOn.some(id => previewOnly.has(String(id)))) {
+        markUnavailable(node);
+        continue;
+      }
       switch (node.kind) {
         case "task": {
           transitionTo(runningLifecycle(node.id));
@@ -1606,6 +1614,7 @@ export async function executeClaimedRun(
             const condition = evaluateNodeCondition(node.when, scope);
             if (!condition) {
               skippedReasons.set(String(node.id), "condition-false");
+              if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "condition-false" });
               const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
               emit({
                 t: "span.started", kind: "task",
@@ -1710,11 +1719,24 @@ export async function executeClaimedRun(
             ));
           }
           const transactionScope = scopeFor(node.dependsOn);
+          let previewBinding: DryRunBinding | undefined;
+          if (envelope.dryRun) {
+            try {
+              previewBinding = node.previewBind?.(transactionScope);
+              if (previewBinding !== undefined) previewBinding = { ...previewBinding, samples: previewBinding.samples.map(sample => DryRunSampleSchema.parse(sample)) };
+            }
+            catch (error) { return await failNode(node, node.prepare.uses.id, error); }
+            if (node.dependsOn.some(id => previewOnly.has(String(id))) && previewBinding === undefined) {
+              markUnavailable(node);
+              continue;
+            }
+          }
+          const usesPreviewBinding = previewBinding !== undefined;
           const committedGestures: BrowserAction[] = [];
           const savedVerifications: BrowserAction[] = [];
           const roleInvocations = new Map<string, ReturnType<typeof createConfirmedInvocation>>();
           const confirmedRole = (role: "probe" | "prepare" | "verify", taskId: string, parsedInput: unknown) => {
-            if (operationDisplaySnapshot === undefined) return undefined;
+            if (operationDisplaySnapshot === undefined || usesPreviewBinding) return undefined;
             const key = `${role}/${taskId}`;
             const previous = roleInvocations.get(key);
             if (previous !== undefined) return previous;
@@ -1736,7 +1758,7 @@ export async function executeClaimedRun(
             roleInvocations.set(key, invocation);
             return invocation;
           };
-          const operationReadBinder = operationDisplaySnapshot === undefined ? undefined
+          const operationReadBinder = operationDisplaySnapshot === undefined || usesPreviewBinding ? undefined
             : (role: "probe" | "verify", taskId: string, parsedInput: unknown): BrowserActionBinder => {
               const bind = confirmedRole(role, taskId, parsedInput)!.observingBinder;
               return note => {
@@ -1745,7 +1767,7 @@ export async function executeClaimedRun(
                 return bound;
               };
             };
-          const operationActionBinders = operationDisplaySnapshot === undefined
+          const operationActionBinders = operationDisplaySnapshot === undefined || usesPreviewBinding
             ? undefined
             : {
               prepare: confirmedRole("prepare", node.prepare.uses.id, node.prepare.bind(transactionScope))!.observingBinder,
@@ -1788,12 +1810,18 @@ export async function executeClaimedRun(
             },
           };
           if (envelope.dryRun) {
+            const samples = [...(previewBinding?.samples ?? [])];
+            for (const sample of samples) deps.taskNotes?.emitRunLog({ workflow: descriptor.id,
+              address: { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath: `${envelope.traceId}/${node.id}/prepare` },
+              level: "step", message: "dry-run sample", fields: { field: sample.field, value: canonicalJsonStringify(sample.value) },
+            }, getRun());
             let preview: TransactionDryRunPreview;
             try {
               preview = TransactionDryRunPreviewSchema.parse(await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeDryRun({
                 descriptor, node, run: getRun(), claim,
                 scope: transactionScope,
                 dryRun: true, captureLog,
+                ...(previewBinding === undefined ? {} : { previewBinding }),
                 signal: input.signal,
                 confirmedForRole: (role, taskId, parsedInput) => confirmedRole(role, taskId, parsedInput)?.actions,
                 ...(trackedBinders === undefined ? {} : { operationActionBinders: trackedBinders }),
@@ -1813,7 +1841,9 @@ export async function executeClaimedRun(
                 : "not-observed",
               externalCommit: "none",
             });
-            return settlePreview(node, preview);
+            dryRunSteps.set(String(node.id), { nodeId: node.id, state: "transaction-preview", preview, samples: preview.outcome.state === "would-prepare" ? samples : [] });
+            previewOnly.add(String(node.id));
+            continue;
           }
           try {
             let durableCommitProof: Readonly<{ writeIntentId: string; confirmedAt: string; proofDigest: string }> | undefined;
@@ -1996,6 +2026,14 @@ export async function executeClaimedRun(
     }
 
 
+    if (envelope.dryRun) {
+      const first = nodes.find(node => node.kind === "transaction");
+      if (first === undefined) throw new Error("dry-run preview has no transaction boundary");
+      return settleSuccess(getRun(), buildRunPreviewResult(descriptor, getRun(),
+        nodes.map(node => dryRunSteps.get(String(node.id))),
+        dependencyEvidenceFor([...new Set([...first.dependsOn,
+          ...nodes.filter(node => node.kind === "task" && dryRunSteps.get(String(node.id))?.state === "exercised").map(node => node.id)])], "dry-run preview"), clock));
+    }
     const terminal = workflowTerminalResultExecution(descriptor);
     const current = getRun();
     return settleSuccess(current, buildRunResult(

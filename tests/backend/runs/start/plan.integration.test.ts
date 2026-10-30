@@ -380,7 +380,7 @@ afterEach(_afterEachFixture0);
       const firstTransaction = descriptorRuntimeNodes(descriptor)
         .find((node) => node.kind === "transaction");
       assert.ok(firstTransaction);
-      assert.equal(support.state === "supported" ? support.stopsAt : "", String(firstTransaction.id));
+      assert.equal(support.state === "supported" ? support.firstTransactionNodeId : "", String(firstTransaction.id));
     }
     // The independence, stated in both directions on the shipped set.
     assert.deepEqual(separationsUcpathTerminationDescriptor.surfaces, {});

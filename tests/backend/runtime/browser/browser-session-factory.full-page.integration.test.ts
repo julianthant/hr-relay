@@ -44,6 +44,24 @@ async function image(resource: WorkerBrowserResource) {
 const pixel = (png: PNG, x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)];
 
 describe("whole-page factory screenshots", () => {
+  it("adds a visible dry-run sample banner without hiding any form pixels and removes the temporary label", async () => {
+    await withPage(content, async (page, resource) => {
+      const plain = await image(resource);
+      const evidence = await resource.screenshot?.(["dry-run sample: UCPath transaction number = T000000000000"]);
+      assert.ok(evidence?.state === "available");
+      const labelled = PNG.sync.read(Buffer.from(evidence.bytes));
+      assert.equal(labelled.width, plain.width);
+      assert.ok(labelled.height > plain.height);
+      const bannerHeight = labelled.height - plain.height;
+      assert.deepEqual(pixel(labelled, 2, 2), [255, 240, 179]);
+      const form = new PNG({ width: plain.width, height: plain.height });
+      PNG.bitblt(labelled, form, 0, bannerHeight, form.width, form.height, 0, 0);
+      assert.deepEqual(form.data, plain.data, "the banner must not cover or change any form pixel");
+      assert.equal(await page.locator("#relay-dry-run-sample-banner").count(), 0);
+      assert.deepEqual(page.viewportSize(), { width: 800, height: 600 });
+    });
+  });
+
   for (const target of ["window", "element", "iframe"] as const) {
     it(`captures the complete painted ${target} content as one image`, async () => {
       const body = target === "window" ? content : target === "element" ? `<div style="height:600px;overflow:auto">${content}</div>` : `<iframe style="border:0;width:100%;height:600px" srcdoc='${html(content)}'></iframe>`;

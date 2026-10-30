@@ -1,3 +1,7 @@
+import { containsDryRunSample } from "../../../models/workflow/dry-run.js";
+import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
+import { RunDryRunPreviewResultSchema } from "../../../models/run/result.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { isLocalActionValueEligible } from "../../storage/events/note-timeline-writer.js";
 import { buildUiTaskLinks } from "../../systems/ui-task-links.js";
 import { LogDisplayRefusedError, LogIdentityRefusedError } from "../commands/refusals.js";
@@ -5,6 +9,7 @@ import { readTimelineRecords, timelineNoteLocation } from "../../storage/events/
 import { RedactedFieldSchema } from "../../../rules/redaction/redaction.js";
 import { z } from "zod";
 import {
+  DryRunPreviewWireSchema,
   LogPageCursorSchema,
   ObservedLogRowWireSchema,
   LogRowWireSchema,
@@ -429,7 +434,8 @@ function logRowOf(
   }
   const { operatorFields: _operatorFields, ...producer } = entry.producer;
   if (entry.kind === "observed") {
-    const fields = operatorOnly ? operatorFieldsOf(entry) : undefined;
+    const fields = operatorOnly ? operatorFieldsOf(entry).map(field => authority?.envelope.dryRun && containsDryRunSample(field.value)
+      ? { ...field, label: `dry-run sample: ${field.label}` } : field) : undefined;
     return {
       kind: "observed",
       native,
@@ -526,6 +532,31 @@ export function operationStructureForRun(
   });
 }
 
+function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
+  if (!authority.envelope.dryRun) return undefined;
+  if (deps.canonical === undefined) return DryRunPreviewWireSchema.parse({ state: "unavailable", reason: "preview-authority-unavailable" });
+  const result = deps.canonical.database.authority.runResults.get(authority.envelope.runId);
+  if (result === undefined || result.resultSchemaHash !== deriveSchemaHash(RunDryRunPreviewResultSchema, "output")) {
+    return DryRunPreviewWireSchema.parse(authority.lifecycle.state !== "terminal" ? { state: "pending" }
+      : { state: "unavailable", reason: authority.lifecycle.outcome === "done" ? "preview-result-unreadable" : "preview-not-completed" });
+  }
+  const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
+  const descriptor = deps.canonical.descriptors.resolve(authority.envelope.workflow);
+  return DryRunPreviewWireSchema.parse({ state: "available", coverage: preview.coverage.state, stages: preview.steps.map((step, index) => {
+    const node = descriptor?.contractFingerprint === result.contractFingerprint ? descriptorRuntimeNodes(descriptor).find(node => node.id === step.nodeId) : undefined;
+    const label = node?.kind === "task" ? node.label ?? node.uses.title : node?.kind === "transaction" ? node.label ?? node.prepare.uses.title : String(step.nodeId);
+    const state = step.state === "not-run" ? "skipped" : step.state === "unavailable" || step.state === "transaction-preview" && step.preview.outcome.state !== "would-prepare" ? "unavailable" : "exercised";
+    const samples = step.state === "transaction-preview" ? step.samples : [];
+    const detail = step.state === "not-run" ? step.reason : step.state === "unavailable" ? "Requires an unsubmitted result; this stage was not exercised."
+        : step.state === "transaction-preview" ? step.preview.outcome.state === "would-prepare" ? "Filled, verified and captured without submitting."
+        : "Existing completion observed; the form was not staged." : "Completed from recorded workflow evidence.";
+    return { id: step.nodeId, label, state,
+      detail: detail + (preview.coverage.state === "partial" && index === preview.steps.length - 1 ? " Historical partial preview; later stages were not recorded." : ""),
+      ...(samples.length === 0 ? {} : { sample: { label: "dry-run sample", value: samples.map(sample => `${sample.field}: ${canonicalJsonStringify(sample.value)}`).join("; ") } }),
+    };
+  }) });
+}
+
 export function buildRunLogsSection(
   deps: RunDetailQueryDeps,
   runId: string,
@@ -584,6 +615,7 @@ export function buildRunLogsSection(
     payload: {
       runId,
       operationStructure: operationStructureForRun(authority, runId, page),
+      ...(authority.envelope.dryRun ? { dryRunPreview: dryRunPreviewForLogs(deps, authority) } : {}),
       rows,
       confirmedActionBindings: bindings,
       notes: rows.flatMap((row) => row.kind === "note" ? [row.note] : []),

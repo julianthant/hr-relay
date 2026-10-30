@@ -426,6 +426,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
       if (!Number.isInteger(identity.probeToFenceMaxMs) || identity.probeToFenceMaxMs <= 0) {
         throw new Error(`transaction entry "${identity.id}" requires a positive integer probeToFenceMaxMs budget`);
       }
+      const previewBind = binds.previewBind;
       const entry: TransactionEntry<string, unknown> = {
         entryKind: "workflow-entry",
         kind: "transaction",
@@ -440,7 +441,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
         probePolicy: identity.probePolicy,
         probeToFenceMaxMs: identity.probeToFenceMaxMs,
         ...(identity.retryBeforeFence === undefined ? {} : { retryBeforeFence: identity.retryBeforeFence }),
-        ...(binds.previewBind === undefined ? {} : { previewBind: (scope: unknown) => binds.previewBind!(scope as never) }),
+        ...(previewBind === undefined ? {} : { previewBind: (scope: unknown) => previewBind(scope as never) }),
         prepareBind: (scope) => binds.prepareBind(scope as never),
         commitBind: (scope) => binds.commitBind(scope as never),
       };
@@ -848,6 +849,7 @@ interface RuntimeFlowBuilder {
   transaction(id: string, pair: Readonly<{
     label?: string;
     dependsOn: readonly string[];
+    previewBind?: (scope: unknown) => DryRunBinding | undefined;
     prepare: Readonly<{ uses: AnyPrepareTaskContract; bind: (scope: unknown) => unknown }>;
     commit: Readonly<{ uses: AnyCommitTaskContract; bind: (scope: unknown) => unknown }>;
     dryRun: "stop-after-prepare" | "unsupported";

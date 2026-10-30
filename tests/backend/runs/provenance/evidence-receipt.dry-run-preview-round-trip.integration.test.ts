@@ -1,3 +1,4 @@
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { runClaim } from '../../../../src/models/run/record.js';
 import { testRunService } from '../../../support/fixtures/run-lifecycle-fixtures.js';
@@ -19,9 +20,9 @@ const {kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness, cleanup } = createDryRunP
 
 afterEach(cleanup);
 
-describe("a dry run previews its transaction node and ends there", () => {
+describe("a dry run retains transaction preview accounting", () => {
 
-  it("records an honest transaction.previewed span and ends the run at the node", async () => {
+  it("records an honest transaction.previewed span without any commit span", async () => {
     const h = await harness();
     await h.run();
 
@@ -59,7 +60,9 @@ describe("a dry run previews its transaction node and ends there", () => {
     const built = buildRunPreviewResult(
       separationsKualiFinalizationDescriptor,
       run,
-      preview,
+      descriptorRuntimeNodes(separationsKualiFinalizationDescriptor).map(node => node.id === preview.nodeId
+        ? { nodeId: node.id, state: "transaction-preview", preview, samples: [] }
+        : { nodeId: node.id, state: "exercised" }),
       finalizationPreviewDependencies(run),
       k.clock,
     );
@@ -136,7 +139,9 @@ describe("a dry run previews its transaction node and ends there", () => {
     const built = buildRunPreviewResult(
       separationsKualiFinalizationDescriptor,
       run,
-      preview,
+      descriptorRuntimeNodes(separationsKualiFinalizationDescriptor).map(node => node.id === preview.nodeId
+        ? { nodeId: node.id, state: "transaction-preview", preview, samples: [] }
+        : { nodeId: node.id, state: "exercised" }),
       finalizationPreviewDependencies(run),
       k.clock,
     );

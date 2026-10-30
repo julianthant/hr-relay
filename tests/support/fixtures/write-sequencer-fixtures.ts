@@ -466,6 +466,7 @@ interface FixtureDescriptorOptions {
   readonly commitEid?: string;
 
   readonly dryRun?: "stop-after-prepare" | "unsupported";
+  readonly traversal?: boolean;
 }
 
 function buildDescriptor(
@@ -493,6 +494,14 @@ function buildDescriptor(
     });
   const omittedFlow = () => fixtureGraph.step("read", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
     .build({ schema: z.strictObject({ eid: EidSchema }), dependsOn: [], derive: ({ input }) => ({ eid: input.eid }) });
+  const traversalFlow = () => fixtureGraph.transaction("second-write", {
+    dependsOn: [WRITE_FIXTURE_NODE_ID], prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
+    commit: { uses: commitContract, bind: ({ input }) => ({ eid: input.eid }) },
+    previewBind: ({ input }) => ({ prepare: { eid: input.eid }, commit: { eid: input.eid }, samples: [] }),
+    dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
+  }).step("after-write", WriteFixtureProbe, { dependsOn: ["second-write"], replay: "always-rerun",
+    bind: ({ input }) => ({ eid: input.eid }) }).build({ schema: z.strictObject({ transactionId: z.string().min(1) }),
+      dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => ({ transactionId: outputs[WRITE_FIXTURE_NODE_ID].output.transactionId }) });
   const fixtureFlow = () => fixtureGraph.build({
     schema: z.strictObject({ transactionId: z.string().min(1) }), dependsOn: [WRITE_FIXTURE_NODE_ID],
     derive: ({ outputs }) => ({ transactionId: outputs[WRITE_FIXTURE_NODE_ID].output.transactionId }),
@@ -519,10 +528,12 @@ function buildDescriptor(
       omission: { form: { fields: [{ key: "reason", label: "Reason", kind: "text" as const }] }, produces: {} } }] } : {}),
   } as const;
   return options.omittable === true ? defineWorkflowDescriptor({ ...definition, flow: omittedFlow() })
+    : options.traversal === true ? defineWorkflowDescriptor({ ...definition, flow: traversalFlow() })
     : defineWorkflowDescriptor({ ...definition, flow: fixtureFlow() });
 }
 
 export const writeFixtureDescriptor = buildDescriptor("receipt");
+export const writeFixtureTraversalDescriptor = buildDescriptor("receipt", { traversal: true });
 export const writeFixtureOmittableDescriptor = buildDescriptor("receipt", { omittable: true });
 export const writeFixtureMemoDescriptor = buildDescriptor("receipt", { memo: true });
 export const writeFixtureDocumentDescriptor = buildDescriptor("receipt", { documentNumber: true });

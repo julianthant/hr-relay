@@ -1,4 +1,4 @@
-import type { DryRunBinding } from "../models/workflow/dry-run.js";
+import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
 /** The ONE workflow builder API (ref workflow-model ): it accumulates `S` (per-node output/conditional/contracts) and `Nodes`, so reading an undeclared output fails `tsc`. */
 import { z } from "zod";
@@ -54,6 +54,7 @@ export type OutputsOf<S> = {
 };
 
 export interface FlowScope<InputSchema extends z.ZodType, S> {
+  readonly dryRun?: DryRunScope;
   readonly input: z.output<InputSchema>;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: OutputsOf<S>;

@@ -25,15 +25,13 @@ const APPROVAL_NODE = "approval";
 const PENDING_SET_NODE = "pending-set";
 const TRANSACTION_NODE = "clear-pending";
 
-const FULL_PATH = [...READ_NODES, APPROVAL_NODE, PENDING_SET_NODE, TRANSACTION_NODE] as const;
+const FULL_PATH = [...READ_NODES, APPROVAL_NODE, PENDING_SET_NODE, TRANSACTION_NODE, "file-termination", "finalize-kuali"] as const;
 
 
 const EXCLUDED_NODES = [
   GATE_NODE,
-  "file-termination",
   "receipt",
   "filing-presence",
-  "finalize-kuali",
 ] as const;
 
 const CHECKPOINT_KEY = [
@@ -107,14 +105,8 @@ const MANIFEST = {
 
       subjectLabel: "finalization-canary",
       subjectKind: "full-chain-dry-run",
-      why: "D284's one retained historical test subject is now gone from the Kuali Action List, so "
-        + "the command records `blocked` before resolving its environment reference or composing a browser. "
-        + "Its last valid UCPath observation held no Pending transaction — §9.19 row ① read five, every one Approved — "
-        + "so the pending-terminations sweep settles `already-present` at its live probe before "
-        + "anything is staged. That is the arm D215 requires a rehearsal to reach FIRST: a preview "
-        + "that skipped the probe would have reported a would-prepare it could not honour. Nothing "
-        + "would be written by that declared rehearsal: it stops at `clear-pending`, so filing ②, "
-        + "the filing-presence re-read, and finalization ③ are never entered.",
+      why: "Synthetic preview with an empty pending set, staged termination and staged Kuali finalization using a labelled dry-run sample. "
+        + "The filing receipt and filing-presence read remain unavailable because no submission occurred.",
       nodesReached: [...FULL_PATH],
       nodesExcluded: [...EXCLUDED_NODES],
       checkpoints: [...EXPECTED_CHECKPOINTS],
@@ -130,7 +122,7 @@ const MANIFEST = {
         resultSchema: "RunDryRunPreviewResultSchema",
         kind: "dry-run-preview",
         externalCommit: "none",
-        stoppedAtNodeId: TRANSACTION_NODE,
+        coverage: "full", previewedNodeIds: [TRANSACTION_NODE, "file-termination", "finalize-kuali"],
       },
       preview: { outcome: "already-present", proofSource: "live-probe" },
     },

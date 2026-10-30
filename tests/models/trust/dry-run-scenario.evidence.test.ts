@@ -44,7 +44,7 @@ const READY_EVIDENCE = {
     resultSchema: "RunDryRunPreviewResultSchema",
     kind: "dry-run-preview",
     externalCommit: "none",
-    stoppedAtNodeId: "write",
+    coverage: "full", previewedNodeIds: ["write"],
     preview: { outcome: "would-prepare", subject: "match", staged: true },
   },
 } as const;
@@ -411,7 +411,7 @@ describe("dry-run scenario evidence assertions", () => {
     }],
     [["terminal"], {
       ...READY_EVIDENCE,
-      terminal: { ...READY_EVIDENCE.terminal, stoppedAtNodeId: "after-write" },
+      terminal: { ...READY_EVIDENCE.terminal, previewedNodeIds: ["after-write"] },
     }],
     [["preview"], {
       ...READY_EVIDENCE,

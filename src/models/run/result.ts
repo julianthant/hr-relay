@@ -1,3 +1,4 @@
+import { DryRunCoverageSchema, DryRunStepSchema } from "../workflow/dry-run.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { DeclaredActionIdentitySchema, OperationInputLineageSchema } from "../workflow/operation-action-identity.js";
 import { valueFreeProtectedData } from "../write-safety/protected-input.js";
@@ -27,7 +28,6 @@ import { FailureRecordSchema, type FailureRecord } from "../trust/failure.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { RunCheckpointRecordSchema } from "../workflow/checkpoint.js";
-import { TransactionDryRunPreviewSchema } from "../../rules/write-safety/write-safety-primitives.js";
 
 export const TerminalNotRunReasonSchema = z.enum([
   "condition-false",
@@ -168,13 +168,12 @@ export const TerminalDependencyEvidenceSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-/** The terminal record of a PREVIEWED run: it stops at its first transaction node, so no declared result was derived and none is fabricated. */
+/** Preview accounting is separate from the workflow result and every write receipt. */
 export const RunDryRunPreviewResultSchema = z.strictObject({
   kind: z.literal("dry-run-preview"),
-  /** The transaction node the run stopped at — its first (ref task-contract ). */
-  stoppedAtNodeId: NodeIdSchema,
   externalCommit: z.literal("none"),
-  preview: TransactionDryRunPreviewSchema,
+  coverage: DryRunCoverageSchema,
+  steps: z.array(DryRunStepSchema).min(1),
 });
 export type RunDryRunPreviewResult = z.infer<typeof RunDryRunPreviewResultSchema>;
 

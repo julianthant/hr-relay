@@ -24,5 +24,6 @@ export interface RunBrowserScreenshotCapture {
     system: string;
     trigger: Readonly<{ kind: "task-point"; nodeId: string; attempt: number; boundary?: "step" | "before-submit" | "after-submit" }> | Readonly<{ kind: "lease-end"; outcome: "succeeded" | "failed" }>;
     screenshot: BrowserScreenshotEvidence;
+    sampleLabels?: readonly string[];
   }>): Promise<void>;
 }

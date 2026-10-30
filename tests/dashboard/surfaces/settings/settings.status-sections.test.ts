@@ -50,7 +50,7 @@ const FACTS: SettingsFactsWire = SettingsFactsWireSchema.parse({
     },
     {
       workflowId: "separations",
-      dryRun: { state: "supported", stopsAt: "clear-pending" },
+      dryRun: { state: "supported", firstTransactionNodeId: "clear-pending" },
       typedStart: false,
       reviewPanel: false,
       editData: { state: "read-only" },
@@ -189,7 +189,7 @@ describe("Workflow capabilities", () => {
       await act(async () => { trigger.click(); });
     }
     const text = mounted().textContent ?? "";
-    assert.ok(text.includes("stops at clear-pending"), text);
+    assert.ok(text.includes("traverses all applicable stages"), text);
     assert.ok(text.includes("Not built"), text);
     assert.ok(text.includes("write-anyway declares no preview arm"), text);
   });
@@ -216,7 +216,7 @@ describe("Workflow capabilities", () => {
     assert.ok(supported);
     const supportedTrigger = supported.querySelector("button"); assert.ok(supportedTrigger);
     await act(async () => { supportedTrigger.click(); });
-    assert.ok(supported.textContent?.includes("Stops after the prepare of clear-pending"));
+    assert.ok(supported.textContent?.includes("Reads, fills, verifies and captures each applicable stage"));
     const refusal = [...mounted().querySelectorAll(".settings-reference-disclosure")].find(node => node.textContent?.includes("unpreviewable-fixture"));
     assert.ok(refusal);
     const trigger = refusal.querySelector("button"); assert.ok(trigger);
