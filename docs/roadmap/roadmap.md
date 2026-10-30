@@ -4,58 +4,35 @@ Statuses: `done`, `now`, `next`, `later`. One line per key implementation.
 
 ## Foundation
 
-- [done] Approved mock dashboard frozen — the parity screenshots are the visual contract; unused UI removed.
-- [done] One combined codebase — frontend, backend and launch fixes merged onto one branch.
-- [done] Cleanup — old plans, history docs, decision log and CLAUDE.md removed; new AGENTS.md.
-- [done] AI providers removed — only the ChatGPT-subscription OCR entry point remains.
-- [done] Every check green — typecheck, lint, tests, screenshots and coverage pass; merged into master.
-- [done] Docs and comments describe the current system — no decision numbers, dates or history.
+- [done] Approved mock dashboard frozen — parity screenshots define the visual contract.
+- [done] One combined codebase — frontend, backend and launch fixes share one codebase.
 - [done] Renamed to Relay — app title, README, favicon and repository name.
-- [done] Dependency and startup fixes — patched packages and a crash-safe admission lock.
-- [done] Legacy code removed — current version only, on a fresh stored state of 34 tables.
-- [now] Simplified source and one test tree — each concept said once; tests mirror the source.
-- [next] Reference docs and codebase review — docs match the code; approved review findings fixed.
+- [done] AI limited to ChatGPT — OCR and the dashboard assistant use the operator's subscription.
+- [done] Singleton app lock and held operations — one app owns the runtime and holds maintenance operations until they settle.
+- [done] Person Lookup and Separations rerun readiness — reruns use the current inputs and readiness checks.
+- [done] Settings Test OCR — the OCR test runs from Preflight.
+- [now] Automatic PR flow — publish history, run cloud CI on macOS and Windows, get Cursor Bugbot review and auto-merge into staging.
+- [next] Functional spec — the charter owns product behaviour; reference docs own mechanisms.
 
-## Wiring base
+## Dashboard ready
 
-Every component connected to real backend data. Each workflow keeps its mock until its own step.
+Complete these in order.
 
-- [next] Shell, workflow catalog and Queue — real day, runs and row commands.
-- [next] Run and Rerun — real start plans and command results.
-- [next] Logs and decisions — real steps, actions and live updates.
-- [next] Explorer — timelines generated from registered workflow definitions.
-- [next] OCR and Records — real records, corrections and approval.
-- [next] Settings — saved values, credentials and storage paths.
-- [next] ChatGPT account — Sign in with ChatGPT so OCR runs on the operator's subscription.
-- [next] Preflight and storage — real readiness checks.
-- [next] Sessions and workers — real workers and controls.
-- [next] Notifications and search — durable inbox and cross-day search.
-- [next] Analytics and exports — real metrics, CSV and XLSX.
-- [next] Spreadsheets and Intake — saved workbooks and roster imports.
-- [next] Error codes — every failure shows its defined code and text.
+- [next] Portable storage core — one database and settings per person, simpler safety checks on Mac and Windows, backup and same-person restore, with no folder relocation.
+- [next] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucpath.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Logout keeps credentials. Put Delete account in Settings > General. An empty machine says to sign up first. Back up the old store, then start clean.
+- [next] Windows test runner and portability — make Windows checks required.
+- [next] Runs — add Pause and Resume, "Pause all and quit" and reruns of failed items only. A crash parks items caught mid-submit as unknown.
+- [next] Write safety — take screenshots at every browser step and before and after submit. Dry runs fill the whole workflow with sample values where needed, without submitting. UCPath shows transaction-list findings for the operator to decide. Kuali keeps its reload check.
+- [next] OCR and Emergency Contact on the new core — review OCR, save corrections as revisions and feed approved snapshots into Emergency Contact.
+- [next] Dashboard cleanups — make Explorer read-only, have the assistant always ask before acting and propose workflow starts, save appearance preferences per person and put Backup/Restore in Settings.
+- [next] Operator preview — complete the full test pass and verify a backup before preview.
+- [next] Workflow sign-off — Person Lookup live read and sign-off, then Separations dry run and sign-off, then OCR to Emergency Contact dry run and sign-off, then real runs.
 
-## Workflows
+## After the dashboard is ready
 
-One at a time: dry run and operator sign-off before the next.
-
-- [next] Person Lookup
-- [later] Separations
-- [later] OCR
-- [later] Oath Signature
-- [later] Oath Upload
-- [later] Emergency Contact
-- [later] OnBase Emergency Contact
-- [later] I-9 Check
-- [later] I-9 Lookup
-- [later] Onboarding
-- [later] Work-Study
-- [later] Kronos Pay Rule
-- [later] CRM Document Download
-- [later] SharePoint Download
-- [later] Old Kronos Reports
-- [later] Background Check
-
-## Release
-
-- [later] Cutover — the rebuild replaces production in one switch.
-- [later] Desktop app — packaged local app.
+- [later] Workflow logins — use fast-duo and remove duo-autopilot.
+- [later] Shared-laptop access — add a login screen and profile menu.
+- [later] Desktop app — package for Mac and Windows with updates.
+- [later] Remaining workflows, one at a time — Oath Signature, Oath Upload, OnBase Emergency Contact, I-9 Check, I-9 Lookup, Onboarding, Work-Study, Kronos Pay Rule, CRM Document Download, SharePoint Download, Old Kronos Reports and Background Check.
+- [later] Parked work — re-judge schema baseline, one UI library and bundled backend against the new core.
+- [later] Release and cutover — release staging to main and replace the old app.
