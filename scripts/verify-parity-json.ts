@@ -644,7 +644,14 @@ function killProcessTree(pid: number): void {
 }
 
 export function runChild(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv, idleTimeoutMs = 180_000): Promise<ChildResult> {
-  const child = spawn(command, [...args], { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+  const previousUmask = process.umask(0o077);
+  const child = (() => {
+    try {
+      return spawn(command, [...args], { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    } finally {
+      process.umask(previousUmask);
+    }
+  })();
   let failure: string | undefined;
   let timer: NodeJS.Timeout | undefined;
   const arm = (): void => {
