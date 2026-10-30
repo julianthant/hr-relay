@@ -102,6 +102,9 @@ The repository holds only the current version. No compatibility readers, old mig
 - One pull request per feature or fix, so Bugbot reviews one concern at a time. Never bundle
   unrelated changes; split a large task into separate pull requests that each build and pass alone.
   Title and describe what changed and why.
+- Stay with the pull request until it merges, fixing red checks and Bugbot findings. After the merge,
+  GitHub deletes the remote branch; delete the local branch and remove its worktree (save anything
+  in `.work/` first), then report done.
   The operator previews `staging` in the main checkout, which owns the store, credentials and
   ports: stop the dashboard, switch to `staging`, start it. A rejected feature is reverted on `staging`.
 - A release pull request merges `staging` into `main` with a merge commit, only on the operator's
