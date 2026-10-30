@@ -16,7 +16,7 @@ import type { DashboardClient as DashboardClient_m1 } from "../../../src/dashboa
 import { DashboardClientProvider as DashboardClientProvider_m1 } from "../../../src/dashboard/state/client-context.js";
 import type { SettingsSaveNotice as SettingsSaveNotice_m1 } from "../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { useStorageRelocation as useStorageRelocation_m1 } from "../../../src/dashboard/surfaces/settings/general/settings-relocation-model.js";
-import { StorageRelocationRows as StorageRelocationRows_m1 } from "../../../src/dashboard/surfaces/settings/general/settings-relocation.js";
+import { FixedStorageRows as FixedStorageRows_m1 } from "../../../src/dashboard/surfaces/settings/general/settings-relocation.js";
 import { StorageRelocationPlanViewSchema as StorageRelocationPlanViewSchema_m1 } from "../../../src/rules/commands/commands.js";
 
 
@@ -89,7 +89,7 @@ async function mount(client: DashboardClient_m1) {
   const notices: SettingsSaveNotice_m1[] = [];
   host = document.createElement("div"); document.body.append(host); root = createRoot_m1(host);
   let controller: ReturnType<typeof useStorageRelocation_m1> | undefined;
-  function Surface() { controller = useStorageRelocation_m1({ actorId: "local-operator", onSaved: notice => notices.push(notice) }); currentController = controller; return createElement_m1(StorageRelocationRows_m1, { editor: controller }); }
+  function Surface() { controller = useStorageRelocation_m1({ actorId: "local-operator", onSaved: notice => notices.push(notice) }); currentController = controller; return createElement_m1(FixedStorageRows_m1, { editor: controller }); }
   await act_m1(async () => { root?.render(createElement_m1(DashboardClientProvider_m1, { client, children: createElement_m1(FixtureCommandBinding, { actorId: "local-operator", children: createElement_m1(Surface) }) })); });
   await act_m1(async () => undefined);
   if (controller === undefined) throw new Error("relocation-controller-missing");

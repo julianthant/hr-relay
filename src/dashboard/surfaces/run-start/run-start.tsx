@@ -355,7 +355,6 @@ export function RunStartDialog({
     setPriority("interactive");
     setDryRunRequested(false);
     setBrowserMode("headed");
-    setCaptureBrowserScreenshots(true);
   }, [workflows, setCurrentStage, setCustomizeSteps, setWorkflowId]);
 
   // Opening lands on the panel you are standing in, every time — including the

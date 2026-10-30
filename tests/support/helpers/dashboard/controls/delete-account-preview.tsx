@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Banner, Button, DsBodyScope, PageHeading, TooltipProvider, dsText, useDemoTheme } from "../../../src/dashboard/ds/ui.js";
-import { DeleteAccountControl } from "../../../src/dashboard/surfaces/settings/general/ui-settings-records-general-paths.js";
-import type { DeleteAccountPresentation } from "../../../src/dashboard/surfaces/settings/general/delete-account-model.js";
+import { Banner, Button, DsBodyScope, PageHeading, TooltipProvider, dsText, useDemoTheme } from "../../../../../src/dashboard/ds/ui.js";
+import { DeleteAccountControl } from "../../../../../src/dashboard/surfaces/settings/general/ui-settings-records-general-paths.js";
+import type { DeleteAccountPresentation } from "../../../../../src/dashboard/surfaces/settings/general/delete-account-model.js";
 
 export function ControlPreview() {
   const { theme } = useDemoTheme();

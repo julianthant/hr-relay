@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Banner, Button, BodySection, DsBodyScope, Field, Input, PageHeading, TooltipProvider, dsText, useDemoTheme } from "../../../src/dashboard/ds/ui.js";
-import { BackupRestoreControls } from "../../../src/dashboard/surfaces/settings/general/settings-relocation.js";
+import { Banner, Button, BodySection, DsBodyScope, Field, Input, PageHeading, TooltipProvider, dsText, useDemoTheme } from "../../../../../src/dashboard/ds/ui.js";
+import { BackupRestoreControls } from "../../../../../src/dashboard/surfaces/settings/general/settings-relocation.js";
 export function ControlPreview() {
   const { theme } = useDemoTheme();
   const [state, setState] = useState<"ready" | "backing-up" | "backup-complete" | "restoring" | "blocked" | "unavailable">("ready");

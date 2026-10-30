@@ -490,7 +490,7 @@ export function PauseAllQuitControls({ state, activeCount, onPauseAll, onPauseAn
     {state === "blocked" && <Banner tone="warning" title="Pause and quit not complete">RUNTIME_CUSTODY_UNCERTAIN: {ERROR_CATALOG.RUNTIME_CUSTODY_UNCERTAIN.text}</Banner>}
     {state === "unavailable" && <p>Pause all and quit authority is unavailable.</p>}
     <Dialog open={confirming && enabled} onOpenChange={setConfirming}><DialogContent size="sm" title="Pause all and quit?" description={`${activeCount} active ${activeCount === 1 ? "run" : "runs"} will pause before Relay quits.`} onCloseAutoFocus={event => { event.preventDefault(); quit.current?.focus(); }}>
-      <DialogBody><p>Stop new items, finish current steps, record pauses, and close owned resources before quitting. A submit is never interrupted. Paused work waits for explicit Resume after restart.</p></DialogBody>
+      <DialogBody className={dsText.body}><p>Stop new items, finish current steps, record pauses, and close owned resources before quitting. A submit is never interrupted. Paused work waits for explicit Resume after restart.</p></DialogBody>
       <DialogFooter><Button variant="muted" autoFocus onClick={() => setConfirming(false)}>Keep Relay open</Button><Button disabled={!onPauseAndQuit} onClick={() => { setConfirming(false); onPauseAndQuit?.(); }}>Pause all and quit</Button></DialogFooter>
     </DialogContent></Dialog>
   </div>;

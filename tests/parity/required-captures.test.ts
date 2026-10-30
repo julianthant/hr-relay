@@ -1,3 +1,4 @@
+import { attachShellA11y } from "./helpers/shell-proof.js";
 import { expect, test } from "@playwright/test";
 import { captureParityPair } from "./helpers/capture.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
@@ -16,42 +17,19 @@ test("Required captures distinguish pre-submit refusal from post-submit proof an
   await expect(page.getByText("original write outcome stays unknown", { exact: false })).toHaveCount(0);
 });
 
-test("required-captures required presentation", async ({ page }) => {
+for (const [state, actions] of [
+  ["required", ["Show required"]],
+  ["pre-submit-failed", ["Show pre-submit-failed"]],
+  ["post-submit-unknown", ["Show post-submit-unknown"]],
+  ["post-submit-proved", ["Show post-submit-proved"]],
+] as const) test(`required-captures ${state} presentation`, { annotation: [{ type: "required-a11y-evidence", description: `required-captures-${state}.a11y.yml` }] }, async ({ page }, info) => {
   await page.goto(`${servers.server.baseUrl}/?fixture=required-captures`);
-  await page.getByRole("button", { name: "Show required", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Screenshots", exact: true, level: 1 })).toBeVisible();
+  for (const name of actions) await page.getByRole("button", { name, exact: true }).click();
   await captureParityPair(page, REFERENCES, {
-    stateId: "required-captures-required", viewport: "1280x720", theme: "graphite-warm",
+    stateId: `required-captures-${state}`, viewport: "1280x720", theme: "graphite-warm",
     adapter: "fixture", fixtureId: "required-captures", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
     appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
   });
-});
-
-test("required-captures pre-submit-failed presentation", async ({ page }) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=required-captures`);
-  await page.getByRole("button", { name: "Show pre-submit-failed", exact: true }).click();
-  await captureParityPair(page, REFERENCES, {
-    stateId: "required-captures-pre-submit-failed", viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "required-captures", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
-});
-
-test("required-captures post-submit-unknown presentation", async ({ page }) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=required-captures`);
-  await page.getByRole("button", { name: "Show post-submit-unknown", exact: true }).click();
-  await captureParityPair(page, REFERENCES, {
-    stateId: "required-captures-post-submit-unknown", viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "required-captures", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
-});
-
-test("required-captures post-submit-proved presentation", async ({ page }) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=required-captures`);
-  await page.getByRole("button", { name: "Show post-submit-proved", exact: true }).click();
-  await captureParityPair(page, REFERENCES, {
-    stateId: "required-captures-post-submit-proved", viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "required-captures", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
+  await attachShellA11y(page, info, `required-captures-${state}.a11y.yml`);
 });

@@ -1,3 +1,4 @@
+import { attachShellA11y } from "./helpers/shell-proof.js";
 import { expect, test } from "@playwright/test";
 import { captureParityPair } from "./helpers/capture.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
@@ -17,22 +18,17 @@ test("Full preview labels samples and never calls unavailable stages exercised",
   await expect(page.getByText("Skipped", { exact: true })).toBeVisible();
 });
 
-test("dry-run complete presentation", async ({ page }) => {
+for (const [state, actions] of [
+  ["complete", []],
+  ["unavailable", ["Show unavailable stage"]],
+] as const) test(`dry-run ${state} presentation`, { annotation: [{ type: "required-a11y-evidence", description: `dry-run-${state}.a11y.yml` }] }, async ({ page }, info) => {
   await page.goto(`${servers.server.baseUrl}/?fixture=dry-run`);
-
+  await expect(page.getByRole("heading", { name: "Logs", exact: true, level: 1 })).toBeVisible();
+  for (const name of actions) await page.getByRole("button", { name, exact: true }).click();
   await captureParityPair(page, REFERENCES, {
-    stateId: "dry-run-complete", viewport: "1280x720", theme: "graphite-warm",
+    stateId: `dry-run-${state}`, viewport: "1280x720", theme: "graphite-warm",
     adapter: "fixture", fixtureId: "dry-run", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
     appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
   });
-});
-
-test("dry-run unavailable presentation", async ({ page }) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=dry-run`);
-  await page.getByRole("button", { name: "Show unavailable stage", exact: true }).click();
-  await captureParityPair(page, REFERENCES, {
-    stateId: "dry-run-unavailable", viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "dry-run", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
+  await attachShellA11y(page, info, `dry-run-${state}.a11y.yml`);
 });

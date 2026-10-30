@@ -1,3 +1,4 @@
+import { attachShellA11y } from "./helpers/shell-proof.js";
 import { expect, test } from "@playwright/test";
 import { captureParityPair } from "./helpers/capture.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
@@ -19,73 +20,22 @@ test("Fixed app data cannot relocate and Restore requires confirmation", async (
   await expect(page.getByRole("button", { name: "Restore", exact: true })).toBeDisabled();
 });
 
-test("fixed-backup ready presentation", async ({ page }) => {
+for (const [state, actions] of [
+  ["ready", []],
+  ["backing-up", ["Backup"]],
+  ["backup-complete", ["Show backup-complete"]],
+  ["restore-confirmation", ["Restore"]],
+  ["restoring", ["Restore", "Restore verified backup"]],
+  ["blocked", ["Show blocked"]],
+  ["unavailable", ["Show unavailable"]],
+] as const) test(`fixed-backup ${state} presentation`, { annotation: [{ type: "required-a11y-evidence", description: `fixed-backup-${state}.a11y.yml` }] }, async ({ page }, info) => {
   await page.goto(`${servers.server.baseUrl}/?fixture=fixed-backup`);
-
+  await expect(page.getByRole("heading", { name: "Paths", exact: true, level: 1 })).toBeVisible();
+  for (const name of actions) await page.getByRole("button", { name, exact: true }).click();
   await captureParityPair(page, REFERENCES, {
-    stateId: "fixed-backup-ready", viewport: "1280x720", theme: "graphite-warm",
+    stateId: `fixed-backup-${state}`, viewport: "1280x720", theme: "graphite-warm",
     adapter: "fixture", fixtureId: "fixed-backup", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
     appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
   });
-});
-
-test("fixed-backup backing-up presentation", async ({ page }) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=fixed-backup`);
-  await page.getByRole("button", { name: "Backup", exact: true }).click();
-  await captureParityPair(page, REFERENCES, {
-    stateId: "fixed-backup-backing-up", viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "fixed-backup", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
-});
-
-test("fixed-backup backup-complete presentation", async ({ page }) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=fixed-backup`);
-  await page.getByRole("button", { name: "Show backup-complete", exact: true }).click();
-  await captureParityPair(page, REFERENCES, {
-    stateId: "fixed-backup-backup-complete", viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "fixed-backup", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
-});
-
-test("fixed-backup restore-confirmation presentation", async ({ page }) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=fixed-backup`);
-  await page.getByRole("button", { name: "Restore", exact: true }).click();
-  await captureParityPair(page, REFERENCES, {
-    stateId: "fixed-backup-restore-confirmation", viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "fixed-backup", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
-});
-
-test("fixed-backup restoring presentation", async ({ page }) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=fixed-backup`);
-  await page.getByRole("button", { name: "Restore", exact: true }).click();
-  await page.getByRole("button", { name: "Restore verified backup", exact: true }).click();
-  await captureParityPair(page, REFERENCES, {
-    stateId: "fixed-backup-restoring", viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "fixed-backup", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
-});
-
-test("fixed-backup blocked presentation", async ({ page }) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=fixed-backup`);
-  await page.getByRole("button", { name: "Show blocked", exact: true }).click();
-  await captureParityPair(page, REFERENCES, {
-    stateId: "fixed-backup-blocked", viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "fixed-backup", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
-});
-
-test("fixed-backup unavailable presentation", async ({ page }) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=fixed-backup`);
-  await page.getByRole("button", { name: "Show unavailable", exact: true }).click();
-  await captureParityPair(page, REFERENCES, {
-    stateId: "fixed-backup-unavailable", viewport: "1280x720", theme: "graphite-warm",
-    adapter: "fixture", fixtureId: "fixed-backup", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  });
+  await attachShellA11y(page, info, `fixed-backup-${state}.a11y.yml`);
 });

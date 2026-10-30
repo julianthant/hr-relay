@@ -1,3 +1,4 @@
+import { attachShellA11y } from "./helpers/shell-proof.js";
 import { expect, test } from "@playwright/test";
 import { captureParityPair } from "./helpers/capture.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
@@ -24,8 +25,9 @@ test("Delete account requires explicit confirmation and never claims pending era
   await expect(page.getByRole("button", { name: "Delete account", exact: true })).toBeDisabled();
 });
 
-for (const state of ["ready", "confirmation", "blocked", "closure-blocked", "deleting", "unavailable"] as const) test(`Delete account ${state} presentation`, async ({ page }) => {
+for (const state of ["ready", "confirmation", "blocked", "closure-blocked", "deleting", "unavailable"] as const) test(`Delete account ${state} presentation`, { annotation: [{ type: "required-a11y-evidence", description: `delete-account-${state}.a11y.yml` }] }, async ({ page }, info) => {
   await page.goto(`${servers.server.baseUrl}/?fixture=delete-account`);
+  await expect(page.getByRole("heading", { name: "General", exact: true, level: 1 })).toBeVisible();
   if (state === "confirmation") await page.getByRole("button", { name: "Delete account", exact: true }).click();
   else await page.getByRole("button", { name: `Show ${state}`, exact: true }).click();
   await captureParityPair(page, REFERENCES, {
@@ -33,4 +35,5 @@ for (const state of ["ready", "confirmation", "blocked", "closure-blocked", "del
     adapter: "fixture", fixtureId: "delete-account", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
     appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
   });
+  await attachShellA11y(page, info, `delete-account-${state}.a11y.yml`);
 });

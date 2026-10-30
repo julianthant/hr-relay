@@ -209,8 +209,8 @@ Rerun prefills safe source identity fields in Values, using the declared input p
 values and identities that no longer satisfy the current input stay uncopied.
 
 Options show Priority as Interactive or Bulk, Browser mode as Headed or Headless, Dry run where
-declared, Capture screenshots and workflow-specific fields. New/reset dashboard
-launches start with Dry run off, Headed browser mode, and captures on. The operator explicitly
+declared, a required-screenshots notice, and workflow-specific fields. New/reset dashboard
+launches start with Dry run off and Headed browser mode. Workflow captures cannot be turned off. The operator explicitly
 chooses other values. Interactive work has priority over Bulk background batches; this is not a
 promise of immediate execution or preemption. Fixed facts use the shared field/grid treatment with
 visible reasons. A workflow with no flags has no empty flag group.
@@ -393,10 +393,10 @@ value-free toast; refusal uses danger and conflict/uncertainty uses warning. Sav
 after toast expiry. Blur never retries a failed/uncertain attempt. Text fields keep native undo,
 while unsaved date/folder choices revert within their field.
 
-Paths retains the native picker and reviewed relocation plan. Persisted and active roots are not
-interchangeable. Leaving an unconfirmed plan states that it may be recorded and that recorded intent
-does not imply folders moved. Rendering Paths does not execute relocation. Performance and Routes
-retain their existing metadata/authority, and missing served values remain unavailable.
+Paths retains native pickers for ordinary document, download, and report folders. Runtime state
+and evidence roots are read-only; no relocation action is offered. Recorded pending plans are
+explicitly unapplied. Performance and Routes retain their existing metadata/authority, and missing
+served values remain unavailable.
 
 ### Preflight and storage
 
@@ -611,7 +611,7 @@ the controls; unknown closure cannot show a completed pause or clean shutdown. T
 
 The in-app found table displays transaction, person/EID, type, effective date, submission time,
 match quality, verified detail, list completeness, and authority. Submitted requires a selected
-exact row with verified detail. Not submitted requires a complete authoritative list containing
+exact row with verified detail and authoritative acquisition. Not submitted requires a complete authoritative list containing
 no exact or ambiguous match. Check again requests confirmation readback only; a typed transaction
 number supplies no proof. Pending decisions keep the original outcome unknown. The isolated
 `ucpath-found` fixture is synthetic; backend acquisition and resolution wiring are separate.
@@ -620,7 +620,7 @@ number supplies no proof. Pending decisions keep the original outcome unknown. T
 
 Full-preview stage accounting distinguishes Exercised, Unavailable, and Skipped. Dependent
 preview values display “dry-run sample” beside the value and warn that they are not receipts,
-subject proof, or real-run authority. The `dry-run-preview` parity fixture demonstrates complete
+subject proof, or real-run authority. The `dry-run` parity fixture demonstrates complete
 and partial exercise without executing workflows. Executor and served projection wiring are separate.
 
 ### Required capture presentation

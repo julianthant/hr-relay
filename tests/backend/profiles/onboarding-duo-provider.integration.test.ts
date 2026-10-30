@@ -71,7 +71,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     await expect(setup.locator("#connection h3")).toHaveText("Set up a sign-in method");
     await expect(setup.locator("#connection > p").first()).toContainText("same window");
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId); assert.equal(launches, 1);
-    await setup.getByRole("button", { name: "Open duo.ucpath.edu", exact: true }).click();
+    await setup.getByRole("button", { name: "Open duo.ucsd.edu", exact: true }).click();
     await expect(setup.locator("#openLogin")).toBeEnabled();
     assert.equal(context.pages().length, 2);
     const portal = context.pages().find(page => page !== setup); assert.ok(portal);
@@ -96,7 +96,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     await portal.goto("https://foreign.invalid/");
     await assert.rejects(profile.session.openOnboardingPortal(draft.token, draft.operationId));
     assert.equal(submissions, 1); assert.equal(acquisitions, 1); assert.equal(context.pages().length, 2);
-    await setup.getByRole("button", { name: "Open duo.ucpath.edu", exact: true }).click();
+    await setup.getByRole("button", { name: "Open duo.ucsd.edu", exact: true }).click();
     await expect(setup.locator("#message")).toContainText("Duo could not complete this setup action");
     await setup.evaluate(() => new Promise<void>(resolve => {
       const list = document.getElementById("accountList"); if (!list) throw new Error("fixture method list missing");

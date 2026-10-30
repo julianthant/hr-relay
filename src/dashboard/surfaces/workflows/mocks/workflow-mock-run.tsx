@@ -19,7 +19,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   onSubmit: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
   const flow = mockWorkflow(workflowId);
-  const [draft, setDraft] = useState<MockDraft>(() => ({ ...editableMockDraft(workflowId, initialDraft ?? source?.draft ?? initialMockDraft(workflowId)), captures: true }));
+  const [draft, setDraft] = useState<MockDraft>(() => editableMockDraft(workflowId, initialDraft ?? source?.draft ?? initialMockDraft(workflowId)));
   const [stage, setStage] = useViewState("launchStage", source ? "Steps" : "Input");
   const [fileError, setFileError] = useState<string>();
   const [reading, setReading] = useState(false);

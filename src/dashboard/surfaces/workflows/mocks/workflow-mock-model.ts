@@ -23,7 +23,7 @@ export type MockDraft = Readonly<{
   roster: "existing" | "download" | "none"; formType: string; documentType: string;
   effectiveDate: string; startDate: string; endDate: string;
   dryRun: boolean; priority: "interactive" | "background"; browser: "headed" | "headless";
-  captures: boolean; selectedSteps: readonly string[];
+  selectedSteps: readonly string[];
   ocrMode?: "extract" | "manual"; manualSteps?: readonly string[]; manualValues?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }>;
 export type MockRun = Readonly<{
@@ -46,7 +46,7 @@ export function initialMockDraft(id: string): MockDraft {
     hireType: "new-hire", uploadMode: "full", roster: "existing", formType: id === "i9-check" ? "i9" : id === "onbase" ? "onbase-emergency-contact" : id === "emergency-contact" ? "emergency-contact" : "oath",
     documentType: "Emergency Contact", effectiveDate: "2026-08-03", startDate: "2017-01-01", endDate: "2026-01-31",
     // Dry run is an explicit operator choice; every launch starts with it off.
-    dryRun: false, priority: "interactive", browser: "headed", captures: true,
+    dryRun: false, priority: "interactive", browser: "headed",
     ocrMode: "extract", manualSteps: [], manualValues: {}, selectedSteps: flow.steps.map(step => step.key) };
 }
 

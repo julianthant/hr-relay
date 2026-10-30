@@ -147,7 +147,7 @@ export function DeleteAccountControl({ presentation }: { presentation: DeleteAcc
     <Button ref={trigger} variant="danger" disabled={presentation.state !== "ready"} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete account"}</Button>
     <Dialog open={confirming && presentation.state === "ready"} onOpenChange={setConfirming}>
       <DialogContent onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }} title="Delete account?" description={presentation.state === "unavailable" ? "" : `Permanently erase ${presentation.personName}’s Relay account from this device.`} size="sm">
-        <DialogBody><p>All data, history, evidence, settings, and encrypted credentials for this person will be erased. Other people’s accounts are unaffected.</p><p>This does not remove devices enrolled on the Duo website.</p></DialogBody>
+        <DialogBody className={dsText.body}><p>All data, history, evidence, settings, and encrypted credentials for this person will be erased. Other people’s accounts are unaffected.</p><p>This does not remove devices enrolled on the Duo website.</p></DialogBody>
         <DialogFooter><Button variant="muted" autoFocus onClick={() => setConfirming(false)}>Keep account</Button><Button variant="danger" onClick={() => { if (presentation.state === "ready") { setConfirming(false); presentation.onConfirm(); } }}>Delete account permanently</Button></DialogFooter>
       </DialogContent>
     </Dialog>

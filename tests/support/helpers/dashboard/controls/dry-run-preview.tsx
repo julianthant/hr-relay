@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Banner, Button, DsBodyScope, PageHeading, TooltipProvider, dsText, useDemoTheme } from "../../../src/dashboard/ds/ui.js";
-import { FullDryRunPreview } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
+import { Banner, Button, DsBodyScope, PageHeading, TooltipProvider, dsText, useDemoTheme } from "../../../../../src/dashboard/ds/ui.js";
+import { FullDryRunPreview } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 
 export function ControlPreview() {
   const { theme } = useDemoTheme();

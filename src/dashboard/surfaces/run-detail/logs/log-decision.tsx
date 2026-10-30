@@ -54,8 +54,8 @@ export function UcpathFoundTransactions({ attemptLabel, presentation, onDecision
   const [transaction, setTransaction] = useState("");
   const found = presentation.state === "found" ? presentation : undefined;
   const row = found?.rows.find(candidate => candidate.transactionNumber === selected);
-  const submitted = row?.match === "exact" && row.detailVerified;
-  const absent = found?.complete === true && found.authoritative && found.rows.every(candidate => candidate.match === "different");
+  const submitted = found?.authoritative === true && row?.match === "exact" && row.detailVerified;
+  const absent = found?.complete === true && found.authoritative && found.rows.every(candidate => candidate.match === "different" && candidate.detailVerified);
   const busy = presentation.state === "checking" || presentation.state === "loading";
   return <section className="log-decision" aria-label="UCPath found transactions">
     <header className="log-decision-header"><h4>UCPath found transactions</h4><Badge tone="neutral">Outcome unknown</Badge></header>

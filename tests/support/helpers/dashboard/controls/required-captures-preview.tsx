@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Banner, Button, DsBodyScope, PageHeading, TooltipProvider, dsText, useDemoTheme } from "../../../src/dashboard/ds/ui.js";
-import { RequiredCaptureStatus } from "../../../src/dashboard/surfaces/run-detail/logs/log-screenshots.js";
+import { Banner, Button, DsBodyScope, PageHeading, TooltipProvider, dsText, useDemoTheme } from "../../../../../src/dashboard/ds/ui.js";
+import { RequiredCaptureStatus } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-screenshots.js";
 export function ControlPreview() {
   const { theme } = useDemoTheme();
   const [state, setState] = useState<"required" | "pre-submit-failed" | "post-submit-unknown" | "post-submit-proved">("required");
