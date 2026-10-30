@@ -179,7 +179,6 @@ The repository holds only the current version. No compatibility readers, old mig
 | Dev backend + Vite | `npm run dashboard` (Ctrl+C stops both) |
 | Production bundle and server | `npm run web:build`, then `npm run dashboard:prod` |
 | Workflow dry run | Sign in to the dashboard, use Run, and select Dry Run for a workflow that supports previews |
-| Remove leftover test runs | `npm run test:reap` |
 | Visual contract | `npm run test:parity` (desktop only) |
 | Workflow manifest | `npm run build:manifest`, then `npm run build:manifest:check` |
 | Store catalog | `npm run stores:catalog`, then `npm run stores:catalog:check` |

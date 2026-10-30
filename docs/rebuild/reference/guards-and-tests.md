@@ -69,19 +69,17 @@ results. Role-derived scenario paths do not prove that a file exists.
 
 | Command | Exact package script or purpose |
 | --- | --- |
-| `npm run test -- <paths>` | `tsx scripts/test/runner.ts run`; selects unit, integration, architecture and perf. A bare `run` does not select `local`. |
-| `npm run test:unit -- <paths>` | `tsx scripts/test/runner.ts unit`; selects only `unit`. |
-| `npm run test:integration -- <paths>` | `tsx scripts/test/runner.ts integration`; selects only `integration`. |
-| `npm run test:architecture -- <paths>` | `tsx scripts/test/runner.ts run --project architecture --passWithNoTests=false`. |
-| `npm run test:local -- <paths>` | `tsx scripts/test/runner.ts run --project local --passWithNoTests=true`. |
-| `npm run test:coverage` | `tsx scripts/test/runner.ts run --coverage --project unit --project integration --project architecture && tsx scripts/test/suite-size.ts`. |
-| `npm run test:perf` | `tsx scripts/test/runner.ts run --project perf --passWithNoTests=false`. |
-| `npm run test:watch` | Interactive `vitest` on unit, integration, architecture and perf; outside batch scratch containment. |
-| `npm run test:reap` | `tsx scripts/test/runner.ts --reap`; explicitly reclaims eligible runner scratch. |
+| `npm run test -- <paths>` | `vitest run --project unit --project integration --project architecture --project perf`. A bare run does not select `local`. |
+| `npm run test:unit -- <paths>` | `vitest run --project unit --passWithNoTests=false`. |
+| `npm run test:integration -- <paths>` | `vitest run --project integration --passWithNoTests=false`. |
+| `npm run test:architecture -- <paths>` | `vitest run --project architecture --passWithNoTests=false`. |
+| `npm run test:local -- <paths>` | `vitest run --project local --passWithNoTests=true`. |
+| `npm run test:coverage` | `vitest run --coverage --project unit --project integration --project architecture && tsx scripts/test/suite-size.ts`. |
+| `npm run test:perf` | `vitest run --project perf --passWithNoTests=false`. |
+| `npm run test:watch` | Interactive `vitest` on unit, integration, architecture and perf. |
 | `npm run perf:dashboard` | `TZ=UTC tsx tests/perf/dashboard-benchmark.ts`. |
 
-The `unit` and `integration` runner modes accept positional filters only. Empty filters, option
-arguments, and NUL bytes refuse. They cannot override the selected project or config.
+Package scripts pass extra arguments through to Vitest.
 `scripts/test/project-policy.ts` rejects empty, duplicate, orphaned, and multiply owned listings;
 `tests/architecture/tooling/guard-manifest.test.ts` applies that policy to the real corpus and
 injected violations.
@@ -92,68 +90,17 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
 
-## 3. Batch runner and scratch
+## 3. Private test temporary directory
 
-`scripts/test/runner.ts` launches the installed Vitest CLI and propagates its failure exit.
-`runTestProcess` contains Vitest and parity children in a detached POSIX process group.
-It refuses Windows because this ownership model requires POSIX groups. Cloud CI still starts that
-runner on Windows; the refusal fails the Windows job.
+`tests/support/private-temp-setup.ts` is Vitest's global setup. It creates one directory with
+`fs.mkdtemp` under `os.tmpdir()` (mode `0700` on POSIX; the per-user temp on Windows), points
+`TMPDIR`, `TMP`, and `TEMP` at it for the workers, and removes it when the run ends.
+`KEEP_TEST_TMP=1` keeps the directory. `tests/support/private-temp.test.ts` checks the directory
+the workers see.
 
-A bare `run` selects unit, integration, architecture and perf before taking the suite lock.
-Unfiltered `run`, `unit`, and `integration` invocations take a shared suite lock before starting a
-child or inactivity watchdog. Vitest's `parseCLI` identifies positional test-file and spec filters
-as focused runs. Those filters bypass the suite lock. Parity `assert` and `update` take the same
-lock only when no argument follows the mode. Any argument skips the suite lock. Wrapper-owned
-parity policy validation still applies. The interactive `test:watch` command remains outside this
-lock.
+Parity launches Playwright directly and kills that child after 180 seconds without output. It does
+not take a suite lock. Its command lock remains the private file under `.tracker/data/locks`.
 
-The lock is the mode-0600 `suite.lock` file under `testRunsDirectory()`, shared across this user's
-worktrees in the private mode-0700 directory. `/usr/bin/lockf -s -k -t 0` holds it while a piped
-`cat` waits for EOF. The holder has its own process group so terminal signals cannot release the
-lock while tests drain. The runner waits for the holder's `held` marker before starting the suite. The
-runner passes the holder's stdin pipe to the detached test group leader as fd 3. The pipe reaches
-EOF only after both the runner and group leader exit, so the kernel releases the lock without
-stale-lock or PID-reuse logic. Normal release occurs only after the child's whole process group is
-absent.
-The lock carries no worktree, branch, session, or result data.
-
-Contention retries every **5 seconds**, with one line when waiting starts and once per minute:
-
-```text
-[test-run] waiting for another Relay test suite (since HH:MM)
-```
-
-After **45 minutes**, `TestSuiteWaitTimeoutError` produces exit 1 without starting a child:
-"Another Relay test suite is still running; this run waited 45 minutes and did not start."
-Tests can supply shorter retry and wait budgets. Package commands use the defaults.
-
-Every child invocation creates `run-*` under canonical `/tmp/hrt-<uid>` with directory mode `0700`.
-`owner.json` has mode `0600`, a UUID, and the child group ID. The child inherits a private `tmp/`
-through `TMPDIR`, `TMP`, and `TEMP`, with file-creation mask `077`. The short root protects macOS
-UNIX socket path lengths.
-
-The runner streams child stdout/stderr while retaining the last **16,384 characters**. Successful
-scratch is removed only after the whole child group is absent. Failure writes `failure.txt` with the
-exit/signal or interruption detail and output tail. When the whole group is gone, it then removes
-`tmp/`; a live group keeps both for `npm run test:reap`. A leader exiting while a descendant remains
-makes the result fail. A suite-locked run stops that remaining group and waits for its absence
-before releasing the lock. SIGINT/SIGTERM sends TERM to the owned group, then KILL after **3,000 ms** if
-needed. A parent SIGKILL leaves the recorded group protected until it exits.
-
-`reapTestRuns` leaves `suite.lock` in place and validates the canonical base, direct owned private
-directories, run names, and strict ownership records. It refuses symlinks, wrong owners/modes, malformed records, unknown
-entries, or uncertain liveness. An owner with `groupId: null` or a live group remains retained.
-A dead group is removed only after rereading the same owner UUID. On Darwin, an EPERM signal probe
-requires an independently validated complete `ps` group listing before absence can be concluded.
-
-There is one age-based exception: an ownerless directory older than **10 minutes** may be removed
-only when it is empty, or contains exactly an owned mode-0700 empty `tmp/`. Removal uses `rmdirSync`
-and retains a directory that becomes nonempty. A fresh startup remains protected. This exception
-does not reclaim nonempty ownerless directories or other historical scratch paths.
-
-`tests/scripts/test/runner.integration.test.ts` owns real child success/failure, interruption,
-parent/child death, silent stalls, descendant preservation, suite-lock waiting and bypass, and
-reclamation refusal proofs. Parity's entry tests cover filtered bypass and unfiltered acquisition.
 `scripts/test/artifact-policy.ts` and its architecture owner keep generated coverage/test output
 untracked and ignored. Accepted task evidence belongs in the main checkout's ignored `.work/`
 folder; the artifact policy's external-evidence-root check covers its injected listing, not that
@@ -211,7 +158,6 @@ reruns add no acceptance evidence for unchanged inputs. The brief may additional
 require `npm run build:manifest:check`, `npm run stores:catalog:check`, or other affected freshness
 checks. Derived output is regenerated at its source before its freshness check.
 
-The suite lock enforces no overlapping whole-suite run among the batch entry points above.
 Before coverage, the operator gate still requires free memory, no swap pressure, and no listener
 on port 3938:
 

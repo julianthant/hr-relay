@@ -45,7 +45,7 @@
       "file": "tests/architecture/runtime/gate-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "The exact per-commit typecheck, lint and coverage commands plus the targeted all-project test convenience cannot be replaced by inert wrappers; the single TypeScript program and strict typed ESLint configuration cover every authored src/tests/scripts root plus the exact root TypeScript config set, lint warnings remain fatal, and no legacy debt or unmatched-pattern escape hatch can return. The approved test-runner wrapper executes the installed Vitest CLI with unchanged selection and propagates failure; tests/integration/scripts/test-runner.test.ts proves the executable boundary, including a deliberately failing test ( reliability amendment).",
+      "invariant": "The exact per-commit typecheck, lint and coverage commands plus the targeted all-project test convenience cannot be replaced by inert wrappers; the single TypeScript program and strict typed ESLint configuration cover every authored src/tests/scripts root plus the exact root TypeScript config set, lint warnings remain fatal, and no legacy debt or unmatched-pattern escape hatch can return. Package scripts call Vitest directly for the named projects. A private per-run temp directory is created under os.tmpdir() and removed unless KEEP_TEST_TMP=1.",
       "replacementRequired": true
     },
     {
@@ -603,7 +603,7 @@
       "file": "tests/architecture/tooling/test-artifact-ownership.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Generated test-results, coverage and parity scratch remain ignored and untracked; the existing owned test runner keeps scratch outside the checkout and accepted evidence has an external owner. The pure injected-listing policy test supplies tracked-output, missing-ignore and in-checkout negative controls.",
+      "invariant": "Generated test-results, coverage and parity scratch remain ignored and untracked; Vitest scratch stays outside the checkout and accepted evidence has an external owner. The pure injected-listing policy test supplies tracked-output, missing-ignore and in-checkout negative controls.",
       "replacementRequired": true
     },
     {

@@ -124,7 +124,10 @@ const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
   "OCR_OPENROUTER_MODEL", "OCR_SAMBANOVA_MODEL",
 ] as const;
 
-const TEST_ONLY_ENVIRONMENT_KEYS = ["PARITY_UPDATE", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN"] as const;
+const TEST_ONLY_ENVIRONMENT_KEYS = [
+  "PARITY_UPDATE", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN",
+  "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP",
+] as const;
 
 const INERT_RETIRED_ENVIRONMENT_KEYS = [
   ...PROVIDER_MODEL_ENVIRONMENT_KEYS, ...SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS,
@@ -154,6 +157,20 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   NODE_OPTIONS: ["playwright.parity.config.ts", "tests/support/duo-ceremony-setup.ts", "tests/support/helpers/credential-keychain-fake.ts"],
   RELAY_TEST_KEYCHAIN: ["tests/support/helpers/credential-keychain-fake.ts"],
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
+  TMPDIR: [
+    "tests/support/private-temp-setup.ts",
+    "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",
+    "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
+  ],
+  TMP: [
+    "tests/support/private-temp-setup.ts",
+    "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",
+  ],
+  TEMP: [
+    "tests/support/private-temp-setup.ts",
+    "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",
+  ],
+  KEEP_TEST_TMP: ["tests/support/private-temp-setup.ts"],
   TZ: [
     "tests/backend/runs/projections/run-summary.derivation.integration.test.ts",
     "tests/perf/dashboard-fixture.integration.test.ts",
@@ -253,7 +270,6 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-process-mechanics", exact: WORKER_PROCESS_MECHANIC_KEYS } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "scripts/dev/dashboard.ts", enclosingSymbol: "<module>", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "target-bootstrap", targets: { kind: "bulk-pass-through", boundary: "dashboard-child-processes", reason: "the dashboard launcher forwards its inherited environment plus one owned nonce to the two same-runtime child processes" } }),
-  computedReader({ path: "scripts/test/runner.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the batch test wrapper forwards its inherited environment with owned scratch paths to the installed Vitest child" } }),
   computedReader({ path: "scripts/verify-parity-json.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the parity wrapper forwards its inherited environment to its same-checkout Playwright child" } }),
   computedReader({ path: "vite.dashboard.config.ts", enclosingSymbol: "<module>", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "5c77e74cb49d532097f685ae27e9a8029afb783349dbaff9f709b90a7cece316", classification: "target-bootstrap", targets: { kind: "closed-targets", exact: ["HRAUTO_DASHBOARD_LAUNCH_NONCE"], families: [] } }),
 ]));

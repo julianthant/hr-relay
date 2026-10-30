@@ -27,10 +27,9 @@ before locking them. Add the Cursor Bugbot check when its name is known; do not 
 
 CI takes Node from `package.json` engines and caches npm. Required unit, integration and architecture
 run on `macos-15`. The same suites are also reported on `windows-latest` and do not gate `release`
-or merges. Static and privacy stay on Ubuntu. Parity stays on macOS. The batch runner requires
-`/usr/bin/lockf` and refuses Windows, so those reported legs fail until the Windows lane lands.
-Desktop parity uses headless Chromium and existing references; CI never updates references or uploads
-HR evidence.
+or merges. Static and privacy stay on Ubuntu. Parity stays on macOS. Those reported Windows legs
+stay non-required until the Windows lane is portable. Desktop parity uses headless Chromium and
+existing references; CI never updates references or uploads HR evidence.
 
 ## Privacy check
 

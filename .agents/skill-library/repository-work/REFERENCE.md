@@ -53,7 +53,6 @@ npm run test:architecture  # the guard suite alone
 npm run test:local         # operator-machine tests only; passes when that project is empty
 npm run test:coverage      # 60/80 lines/statements/functions floors + the suite-size report
 npm run test:watch
-npm run test:reap          # reclaim only validated inactive owned test-run roots; retain live/unknown runs
 
 # Workflow execution uses the signed-in dashboard Run surface.
 npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr)

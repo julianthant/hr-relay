@@ -67,6 +67,7 @@ export default defineConfig({
     },
   },
   test: {
+    globalSetup: ["tests/support/private-temp-setup.ts"],
     setupFiles: ["tests/support/duo-ceremony-setup.ts"],
     // Cloud and perf projects fail when a selected run collects nothing. The
     // local project may be empty; test:local passes --passWithNoTests=true.

@@ -129,7 +129,7 @@ export function architectureProjectViolations({
   const violations: string[] = [];
   const normalized = command.trim().replace(/\s+/g, " ");
   const exactCommand =
-    "tsx scripts/test/runner.ts run --project architecture --passWithNoTests=false";
+    "vitest run --project architecture --passWithNoTests=false";
   if (normalized !== exactCommand) {
     violations.push(
       `test:architecture must select only the named architecture project; expected '${exactCommand}'`,
@@ -302,7 +302,7 @@ describe("reviewed architecture guard manifest", () => {
     assert.deepEqual(architectureProjectViolations(actual), []);
     assert.equal(
       packageJson.scripts["test:local"],
-      "tsx scripts/test/runner.ts run --project local --passWithNoTests=true",
+      "vitest run --project local --passWithNoTests=true",
     );
     assert.deepEqual(REBUILD_TEST_PROJECTS.map(({ name }) => name), ["unit", "integration", "architecture", "perf", "local"]);
     assert.deepEqual(configuredTestProjects(vitestConfig), REBUILD_TEST_PROJECTS);

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { it } from "vitest";
 import { artifactOwnershipViolations } from "../../../scripts/test/artifact-policy.js";
-import { testRunsDirectory } from "../../../scripts/test/runner.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
 it("keeps generated test output ignored and external evidence outside the checkout", () => {
@@ -18,7 +18,7 @@ it("keeps generated test output ignored and external evidence outside the checko
     });
   assert.deepEqual(artifactOwnershipViolations({
     repositoryRoot: REPO_ROOT,
-    scratchRoot: testRunsDirectory(),
+    scratchRoot: tmpdir(),
     evidenceRoot: resolve(REPO_ROOT, "..", "..", "hr-automation-rebuild-evidence", "2026-09-30", "logs-backend-phase1"),
     tracked,
     ignored,
