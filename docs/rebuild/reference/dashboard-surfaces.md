@@ -595,3 +595,12 @@ supply the existing model policy with synchronous currentness; without it the se
 transaction-free capability canary remain required before the assistant is usable. Subject actions,
 freeform or protected changes, unsupported owners and remaining served actions require their current
 operator interface until their canonical assistant binding is implemented.
+
+### UCPath found transactions presentation
+
+The in-app found table displays transaction, person/EID, type, effective date, submission time,
+match quality, verified detail, list completeness, and authority. Submitted requires a selected
+exact row with verified detail. Not submitted requires a complete authoritative list containing
+no exact or ambiguous match. Check again requests confirmation readback only; a typed transaction
+number supplies no proof. Pending decisions keep the original outcome unknown. The isolated
+`ucpath-found` fixture is synthetic; backend acquisition and resolution wiring are separate.
