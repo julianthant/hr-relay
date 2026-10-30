@@ -82,11 +82,13 @@ export async function fixtureDuoCeremonyGate(
   testWorkerPorts(database, clock, { path, descriptor: personLookupDescriptor, poolIndex: 1 });
   const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(candidate => candidate.poolIndex === 1);
   assert.equal(slot?.workerId, workerId, "recipe gate must use its actually admitted worker");
-  return duoCeremonyGatesOver(database, clock, realScheduler).openGate({
+  const gate = duoCeremonyGatesOver(database, clock, realScheduler).openGate({
     workerId,
     system,
     envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
     cancelCeremony: () => undefined,
     signal: new AbortController().signal,
   });
+  closeFixtures.push(() => { gate.dispose(); });
+  return gate;
 }
